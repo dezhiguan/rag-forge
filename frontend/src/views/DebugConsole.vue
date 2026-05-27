@@ -90,9 +90,16 @@
               v-for="(r, i) in results"
               :key="r.chunkId ?? i"
               class="result-card"
-              :class="{ top: isTopResult(i, r) }"
+              :class="{ top: isTopResult(i, r), selected: selectedChunkIds.includes(r.chunkId) }"
             >
               <div class="result-head">
+                <label v-if="showSaveModal" class="result-check">
+                  <input
+                    type="checkbox"
+                    :value="r.chunkId"
+                    v-model="selectedChunkIds"
+                  >
+                </label>
                 <span class="result-doc">📄 {{ r.filename }} #{{ r.chunkIndex }}</span>
                 <span
                   class="result-score"
@@ -116,8 +123,8 @@
             </div>
           </template>
 
-          <div v-if="results.length" class="save-case" @click="$router.push('/eval')">
-            💾 保存为评测用例 →
+          <div v-if="results.length" class="save-case" @click="openSaveModal">
+            💾 保存为评测用例
           </div>
         </div>
 
@@ -142,6 +149,33 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showSaveModal" class="modal-mask" @click.self="closeSaveModal">
+      <div class="modal">
+        <h3 class="modal-title">保存为评测用例</h3>
+        <label class="field">
+          <span>目标数据集 *</span>
+          <select v-model="saveDatasetId" class="param-select modal-select">
+            <option :value="null" disabled>请选择数据集</option>
+            <option v-for="ds in evalDatasets" :key="ds.id" :value="ds.id">
+              {{ ds.name }}（{{ ds.questionCount ?? 0 }} 题）
+            </option>
+          </select>
+        </label>
+        <div class="field">
+          <span>期望命中的结果（勾选上方检索结果中的 chunk）</span>
+          <div class="selected-summary">
+            {{ selectedChunkIds.length ? `已选 ${selectedChunkIds.length} 个 chunk` : '未选择，将保存为空期望列表' }}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" @click="closeSaveModal">取消</button>
+          <button class="btn-primary" :disabled="savingCase" @click="onSaveCase">
+            {{ savingCase ? '保存中…' : '确认保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -149,6 +183,7 @@
 import { onMounted, ref, reactive, computed } from 'vue'
 import { listKb } from '../api/kb'
 import { search as searchApi } from '../api/search'
+import { listEvalDatasets, saveQuestionFromSearch } from '../api/eval'
 
 const query = ref('')
 const kbList = ref([])
@@ -161,6 +196,12 @@ const rewrittenQueries = ref([])
 const vectorLatencyMs = ref(null)
 const keywordLatencyMs = ref(null)
 const rerankLatencyMs = ref(null)
+
+const showSaveModal = ref(false)
+const evalDatasets = ref([])
+const saveDatasetId = ref(null)
+const selectedChunkIds = ref([])
+const savingCase = ref(false)
 
 const config = reactive({
   kbId: null,
@@ -327,6 +368,54 @@ async function doSearch() {
   }
 }
 
+async function openSaveModal() {
+  if (!query.value.trim()) {
+    alert('请先输入检索查询')
+    return
+  }
+  try {
+    const res = await listEvalDatasets()
+    evalDatasets.value = res.data ?? []
+  } catch {
+    evalDatasets.value = []
+  }
+  if (!evalDatasets.value.length) {
+    alert('暂无评测数据集，请先在评测实验室创建')
+    return
+  }
+  saveDatasetId.value = evalDatasets.value[0].id
+  selectedChunkIds.value = results.value
+    .slice(0, 3)
+    .map((r) => r.chunkId)
+    .filter((id) => id != null)
+  showSaveModal.value = true
+}
+
+function closeSaveModal() {
+  showSaveModal.value = false
+  selectedChunkIds.value = []
+}
+
+async function onSaveCase() {
+  if (!saveDatasetId.value) {
+    alert('请选择数据集')
+    return
+  }
+  savingCase.value = true
+  try {
+    await saveQuestionFromSearch(saveDatasetId.value, {
+      question: query.value.trim(),
+      strategy: strategy.value || config.strategy,
+      selectedChunkIds: selectedChunkIds.value,
+    })
+    const ds = evalDatasets.value.find((d) => d.id === saveDatasetId.value)
+    alert(`已保存到数据集「${ds?.name || saveDatasetId.value}」`)
+    closeSaveModal()
+  } finally {
+    savingCase.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     const res = await listKb()
@@ -368,7 +457,10 @@ onMounted(async () => {
 .state-hint { text-align: center; color: var(--text-muted); padding: 32px 0; font-size: 12px; }
 .result-card { background: var(--light); border: 1px solid var(--border); border-radius: 7px; padding: 10px; margin-bottom: 8px; }
 .result-card.top { background: #f0fdf4; border-color: #bbf7d0; }
+.result-card.selected { border-color: #93c5fd; background: #eff6ff; }
 .result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; }
+.result-check { display: flex; align-items: center; flex-shrink: 0; }
+.result-check input { cursor: pointer; }
 .result-doc { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-score { font-weight: 700; font-size: 13px; flex-shrink: 0; }
 .result-text { color: var(--gray); line-height: 1.5; margin-bottom: 4px; word-break: break-word; }
@@ -382,4 +474,46 @@ onMounted(async () => {
 .prompt-cost { border-top: 1px solid var(--border); padding-top: 10px; font-family: -apple-system, sans-serif; }
 .cost-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 10px; color: var(--text-muted); }
 .cost-row.total { font-weight: 600; color: var(--cyan); }
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: min(420px, 92vw);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+  font-family: -apple-system, sans-serif;
+}
+.modal-title { font-size: 16px; margin-bottom: 16px; color: var(--slate); }
+.field { display: block; margin-bottom: 14px; }
+.field span { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.modal-select { font-size: 12px; padding: 8px 10px; }
+.selected-summary { font-size: 12px; color: var(--gray); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.btn-primary {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-ghost {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
 </style>

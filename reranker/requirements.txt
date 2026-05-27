@@ -3,3 +3,4 @@ uvicorn[standard]==0.34.0
 torch>=2.0.0
 transformers==4.47.0
 sentencepiece
+numpy<2
