@@ -49,31 +49,35 @@
           </div>
         </div>
 
-        <div class="pipeline" aria-label="processing pipeline">
-          <div class="pipe-item">
-            <div class="pipe-icon">📥</div>
-            <div class="pipe-name">解析</div>
+        <div class="pipeline-bar" aria-label="processing pipeline">
+          <div class="pipeline-step" :class="stepClass('parsing')">
+            <span class="step-icon">📥</span>
+            <span class="step-label">解析</span>
+            <span class="step-sub">PDF→Text</span>
           </div>
-          <span class="pipe-arrow">→</span>
-          <div class="pipe-item">
-            <div class="pipe-icon">✂️</div>
-            <div class="pipe-name">分块</div>
-            <div class="pipe-desc">512 tokens</div>
+          <span class="pipe-arrow" :class="stepClass('parsing')">→</span>
+          <div class="pipeline-step" :class="stepClass('chunking')">
+            <span class="step-icon">✂️</span>
+            <span class="step-label">分块</span>
+            <span class="step-sub">512 tokens</span>
           </div>
-          <span class="pipe-arrow">→</span>
-          <div class="pipe-item">
-            <div class="pipe-icon">🧮</div>
-            <div class="pipe-name">向量化</div>
+          <span class="pipe-arrow" :class="stepClass('chunking')">→</span>
+          <div class="pipeline-step" :class="stepClass('embedding')">
+            <span class="step-icon">🧮</span>
+            <span class="step-label">向量化</span>
+            <span class="step-sub">Embedding</span>
           </div>
-          <span class="pipe-arrow">→</span>
-          <div class="pipe-item">
-            <div class="pipe-icon">📇</div>
-            <div class="pipe-name">BM25</div>
+          <span class="pipe-arrow" :class="stepClass('embedding')">→</span>
+          <div class="pipeline-step" :class="stepClass('indexing')">
+            <span class="step-icon">📇</span>
+            <span class="step-label">BM25</span>
+            <span class="step-sub">ES 索引</span>
           </div>
-          <span class="pipe-arrow">→</span>
-          <div class="pipe-item">
-            <div class="pipe-icon">✅</div>
-            <div class="pipe-name">可用</div>
+          <span class="pipe-arrow" :class="stepClass('indexing')">→</span>
+          <div class="pipeline-step" :class="stepClass('completed')">
+            <span class="step-icon">✅</span>
+            <span class="step-label">可用</span>
+            <span class="step-sub">可检索</span>
           </div>
         </div>
 
@@ -263,6 +267,11 @@ const uploadKbId = ref(null)
 const uploadProcessing = ref(false)
 const isDragOver = ref(false)
 const fileInputRef = ref(null)
+const activeDocId = ref(null)
+const activeStatus = ref(null)
+const pendingTrackQueue = ref([])
+
+const STATUS_ORDER = ['pending', 'parsing', 'chunking', 'embedding', 'indexing', 'completed']
 
 const showCreate = ref(false)
 const submittingKb = ref(false)
@@ -291,13 +300,68 @@ function applyStatusToDoc(kbId, docId, status) {
   doc.errorMsg = status.errorMsg
 }
 
+function stepClass(stepName) {
+  if (!activeDocId.value) return ''
+  if (activeStatus.value === 'failed') return 'failed'
+
+  const currentIdx = STATUS_ORDER.indexOf(activeStatus.value)
+  const stepIdx = STATUS_ORDER.indexOf(stepName)
+
+  if (stepIdx < currentIdx) return 'done'
+  if (stepIdx === currentIdx) {
+    return activeStatus.value === 'completed' ? 'done' : 'active'
+  }
+  if (stepIdx === currentIdx + 1) return 'next'
+  return ''
+}
+
+function enqueueTracking(docId, kbId) {
+  if (!docId || !kbId) return
+  if (activeDocId.value === docId) return
+  if (pendingTrackQueue.value.some((item) => item.docId === docId)) return
+  pendingTrackQueue.value.push({ docId, kbId })
+}
+
+function ensureActiveTracking(docId, kbId, status = 'pending') {
+  if (!docId || !kbId) return
+  if (!activeDocId.value) {
+    activeDocId.value = docId
+    activeStatus.value = status
+    return
+  }
+  if (activeDocId.value === docId) {
+    activeStatus.value = status
+    return
+  }
+  enqueueTracking(docId, kbId)
+}
+
+function advanceTrackingQueue() {
+  if (activeDocId.value && activeStatus.value && !['completed', 'failed'].includes(activeStatus.value)) {
+    return
+  }
+  const next = pendingTrackQueue.value.shift()
+  if (!next) return
+  activeDocId.value = next.docId
+  activeStatus.value = 'pending'
+}
+
 function watchProcessingDocs(kbId) {
   const list = docsMap[kbId]?.list ?? []
   for (const doc of list) {
     if (!isProcessing(doc.parseStatus)) continue
+    ensureActiveTracking(doc.id, kbId, doc.parseStatus)
     startDocPolling(
       doc.id,
-      (status) => applyStatusToDoc(kbId, doc.id, status),
+      (status) => {
+        applyStatusToDoc(kbId, doc.id, status)
+        if (activeDocId.value === doc.id) {
+          activeStatus.value = status.parseStatus
+          if (['completed', 'failed'].includes(status.parseStatus)) {
+            advanceTrackingQueue()
+          }
+        }
+      },
       async () => {
         await loadDocs(kbId)
         await loadKbs()
@@ -321,9 +385,18 @@ async function loadDocs(kbId) {
 
 function beginPollingDoc(docId, kbId) {
   if (!docId || !kbId) return
+  ensureActiveTracking(docId, kbId, 'pending')
   startDocPolling(
     docId,
-    (status) => applyStatusToDoc(kbId, docId, status),
+    (status) => {
+      applyStatusToDoc(kbId, docId, status)
+      if (activeDocId.value === docId) {
+        activeStatus.value = status.parseStatus
+        if (['completed', 'failed'].includes(status.parseStatus)) {
+          advanceTrackingQueue()
+        }
+      }
+    },
     async () => {
       await loadDocs(kbId)
       await loadKbs()
@@ -442,6 +515,7 @@ async function onReprocessDoc(doc) {
       chunkCount: 0,
       errorMsg: null,
     })
+    ensureActiveTracking(doc.id, doc.kbId, 'pending')
     beginPollingDoc(doc.id, doc.kbId)
   } catch (e) {
     alert(e?.response?.data?.message || e?.message || '重试失败')
@@ -451,6 +525,13 @@ async function onReprocessDoc(doc) {
 async function onDeleteDoc(doc) {
   if (!confirm(`确定删除文档「${doc.filename}」？`)) return
   stopDocPolling(doc.id)
+  if (activeDocId.value === doc.id) {
+    activeDocId.value = null
+    activeStatus.value = null
+    advanceTrackingQueue()
+  } else {
+    pendingTrackQueue.value = pendingTrackQueue.value.filter((item) => item.docId !== doc.id)
+  }
   await deleteDocument(doc.id)
   // 删除后刷新知识库计数 + 文档列表
   await loadKbs()
@@ -627,28 +708,52 @@ onMounted(async () => {
 }
 .hidden-file { display: none; }
 
-.pipeline {
+.pipeline-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 4px;
-  font-size: 10px;
+  justify-content: center;
+  gap: 0;
+  padding: 16px 0;
+  margin-bottom: 16px;
 }
 
-.pipe-item {
+.pipeline-step {
   flex: 1;
-  background: #f1f5f9;
-  border: 2px solid transparent;
-  border-radius: 10px;
-  padding: 12px 10px;
   text-align: center;
+  padding: 12px 8px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  border: 2px solid #e2e8f0;
+  transition: all 0.3s;
 }
 
-.pipe-icon { font-size: 16px; }
-.pipe-name { font-weight: 700; font-size: 11px; margin-top: 4px; }
-.pipe-desc { font-size: 9px; color: var(--text-muted); margin-top: 2px; }
-.pipe-arrow { color: var(--border); font-size: 16px; }
+.step-icon { font-size: 18px; display: block; }
+.step-label { display: block; font-weight: 600; font-size: 12px; margin-top: 2px; }
+.step-sub { display: block; font-size: 10px; color: #94a3b8; margin-top: 2px; }
+.pipe-arrow {
+  color: #cbd5e1;
+  font-size: 18px;
+  padding: 0 4px;
+  flex-shrink: 0;
+  transition: color 0.3s;
+}
+.pipe-arrow.done { color: #10b981; }
+.pipe-arrow.active { color: #3b82f6; }
+.pipe-arrow.failed { color: #ef4444; }
+
+.pipeline-step.done { background: #f0fdf4; border-color: #10b981; }
+.pipeline-step.active {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  animation: pulse 1.5s infinite;
+}
+.pipeline-step.next { background: #f8fafc; border-color: #93c5fd; }
+.pipeline-step.failed { background: #fef2f2; border-color: #ef4444; }
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(59,130,246,0); }
+}
 
 .table-card {
   border: 1px solid var(--border);
