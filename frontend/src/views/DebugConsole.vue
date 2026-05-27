@@ -19,6 +19,7 @@
               <option value="vector">vector（向量检索）</option>
               <option value="keyword">keyword（关键词检索）</option>
               <option value="rewrite">rewrite（Query 改写检索）</option>
+              <option value="hybrid">hybrid（混合检索）</option>
             </select>
           </div>
           <div class="param-row">
@@ -28,7 +29,7 @@
               <span class="param-val">{{ config.topK }}</span>
             </div>
           </div>
-          <template v-if="config.strategy !== 'keyword' && config.strategy !== 'rewrite'">
+          <template v-if="config.strategy === 'hybrid'">
             <div class="param-row">
               <div class="param-label">向量权重</div>
               <div class="param-slider">
@@ -72,7 +73,7 @@
           <div class="results-info">
             检索结果
             <span v-if="searched" class="time-text">
-              · 耗时 {{ latencyMs }}ms · {{ strategy || config.strategy }}
+              · {{ formattedLatency }}
             </span>
           </div>
           <div v-if="rewrittenQueries.length" class="rewritten-queries">
@@ -101,7 +102,12 @@
               </div>
               <div class="result-text" v-html="highlightContent(r.content, query)"></div>
               <div class="result-meta">
-                {{ strategy === 'keyword' ? 'BM25' : '向量' }} {{ formatScore(displayScore(r)) }}
+                <template v-if="strategy === 'hybrid'">
+                  向量 {{ (r.vectorScore ?? 0).toFixed(4) }} | BM25 {{ (r.bm25Score ?? 0).toFixed(2) }} | 融合 {{ (r.finalScore ?? 0).toFixed(4) }}
+                </template>
+                <template v-else>
+                  {{ strategy === 'keyword' ? 'BM25' : '向量' }} {{ formatScore(displayScore(r)) }}
+                </template>
               </div>
             </div>
           </template>
@@ -148,6 +154,8 @@ const searched = ref(false)
 const latencyMs = ref(0)
 const strategy = ref('')
 const rewrittenQueries = ref([])
+const vectorLatencyMs = ref(null)
+const keywordLatencyMs = ref(null)
 
 const config = reactive({
   kbId: null,
@@ -162,6 +170,22 @@ const compareModes = ['单策略', 'A/B 对比', '四路对比']
 
 const promptTokens = computed(() => {
   return results.value.slice(0, config.rerankTopN).reduce((s, r) => s + Math.floor((r.content?.length || 0) / 2), 0) + 180
+})
+
+const formattedLatency = computed(() => {
+  const active = strategy.value || config.strategy
+  if (active === 'hybrid') {
+    const parts = []
+    if (keywordLatencyMs.value != null) parts.push(`BM25 ${keywordLatencyMs.value}ms`)
+    if (vectorLatencyMs.value != null) parts.push(`Vector ${vectorLatencyMs.value}ms`)
+    return parts.length ? `耗时 ${parts.join(' + ')}` : `耗时 ${latencyMs.value}ms`
+  }
+  if (active === 'keyword') {
+    const cost = keywordLatencyMs.value ?? latencyMs.value
+    return `耗时 BM25 ${cost}ms`
+  }
+  const cost = vectorLatencyMs.value ?? latencyMs.value
+  return `耗时 Vector ${cost}ms`
 })
 
 function excerpt(text, maxLen = 200) {
@@ -190,15 +214,20 @@ function highlightContent(content, q) {
 }
 
 function displayScore(r) {
+  if (strategy.value === 'hybrid') return r.finalScore ?? 0
   return strategy.value === 'keyword' ? (r.bm25Score ?? 0) : (r.vectorScore ?? 0)
 }
 
 function formatScore(score) {
+  if (strategy.value === 'hybrid') return score.toFixed(4)
   return strategy.value === 'keyword' ? score.toFixed(2) : score.toFixed(4)
 }
 
 function isTopResult(index, r) {
   if (index !== 0) return false
+  if (strategy.value === 'hybrid') {
+    return (r.finalScore ?? 0) >= 0.7
+  }
   if (strategy.value === 'keyword') {
     return (r.bm25Score ?? 0) >= 3.0
   }
@@ -206,6 +235,11 @@ function isTopResult(index, r) {
 }
 
 function scoreColor(score) {
+  if (strategy.value === 'hybrid') {
+    if (score >= 0.9) return '#10b981'
+    if (score >= 0.7) return '#f59e0b'
+    return '#64748b'
+  }
   if (strategy.value === 'keyword') {
     if (score >= 5) return '#10b981'
     if (score >= 3) return '#f59e0b'
@@ -217,7 +251,12 @@ function scoreColor(score) {
 }
 
 function sortResults(list) {
-  const key = strategy.value === 'keyword' ? 'bm25Score' : 'vectorScore'
+  const key =
+    strategy.value === 'hybrid'
+      ? 'finalScore'
+      : strategy.value === 'keyword'
+        ? 'bm25Score'
+        : 'vectorScore'
   return list.slice().sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0))
 }
 
@@ -236,6 +275,9 @@ async function doSearch() {
       topK: config.topK,
       strategy: config.strategy,
     }
+    if (config.strategy === 'hybrid') {
+      payload.vectorWeight = config.vectorWeight
+    }
     if (config.kbId != null) {
       payload.kbIds = [config.kbId]
     }
@@ -243,12 +285,16 @@ async function doSearch() {
     const data = res.data ?? {}
     strategy.value = data.strategy ?? config.strategy
     rewrittenQueries.value = data.rewrittenQueries ?? []
+    vectorLatencyMs.value = data.vectorLatencyMs ?? null
+    keywordLatencyMs.value = data.keywordLatencyMs ?? null
     results.value = sortResults(data.results ?? [])
     latencyMs.value = data.latencyMs ?? 0
     searched.value = true
   } catch {
     results.value = []
     rewrittenQueries.value = []
+    vectorLatencyMs.value = null
+    keywordLatencyMs.value = null
     searched.value = true
   } finally {
     searching.value = false

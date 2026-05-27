@@ -4,6 +4,8 @@ import com.ragforge.common.Result;
 import com.ragforge.model.dto.SearchRequest;
 import com.ragforge.model.vo.SearchResponse;
 import com.ragforge.search.EsSearchService;
+import com.ragforge.search.HybridSearchService;
+import com.ragforge.search.HybridSearchService.HybridSearchOutput;
 import com.ragforge.search.QueryRewriter;
 import com.ragforge.search.SearchResult;
 import com.ragforge.search.VectorSearchService;
@@ -27,6 +29,7 @@ public class SearchController {
 
   private final VectorSearchService vectorSearchService;
   private final EsSearchService esSearchService;
+  private final HybridSearchService hybridSearchService;
   private final QueryRewriter queryRewriter;
   private final RetrievalLogService retrievalLogService;
 
@@ -36,14 +39,30 @@ public class SearchController {
     long start = System.currentTimeMillis();
 
     List<String> rewrittenQueries = null;
+    Long vectorLatencyMs = null;
+    Long keywordLatencyMs = null;
     List<SearchResult> results;
     if ("rewrite".equals(strategy)) {
       rewrittenQueries = queryRewriter.rewrite(req.getQuery());
+      long vectorStart = System.currentTimeMillis();
       results = searchByRewrittenQueries(rewrittenQueries, req.getKbIds(), req.getTopK());
+      vectorLatencyMs = System.currentTimeMillis() - vectorStart;
+    } else if ("hybrid".equals(strategy)) {
+      HybridSearchOutput output =
+          hybridSearchService.searchWithMetrics(
+              req.getQuery(), req.getKbIds(), req.getTopK(), normalizeVectorWeight(req));
+      results = output.getResults();
+      vectorLatencyMs = output.getVectorLatencyMs();
+      keywordLatencyMs = output.getKeywordLatencyMs();
+      strategy = output.getEffectiveStrategy();
     } else if ("keyword".equals(strategy)) {
+      long keywordStart = System.currentTimeMillis();
       results = esSearchService.search(req.getQuery(), req.getKbIds(), req.getTopK());
+      keywordLatencyMs = System.currentTimeMillis() - keywordStart;
     } else {
+      long vectorStart = System.currentTimeMillis();
       results = vectorSearchService.search(req.getQuery(), req.getKbIds(), req.getTopK());
+      vectorLatencyMs = System.currentTimeMillis() - vectorStart;
     }
 
     long latencyMs = System.currentTimeMillis() - start;
@@ -57,10 +76,21 @@ public class SearchController {
         results.size(),
         latencyMs);
 
-    return Result.ok(new SearchResponse(results, latencyMs, strategy, rewrittenQueries));
+    return Result.ok(
+        new SearchResponse(
+            results,
+            latencyMs,
+            strategy,
+            rewrittenQueries,
+            vectorLatencyMs,
+            keywordLatencyMs,
+            null));
   }
 
   private static String normalizeStrategy(String strategy) {
+    if ("hybrid".equalsIgnoreCase(strategy)) {
+      return "hybrid";
+    }
     if ("rewrite".equalsIgnoreCase(strategy)) {
       return "rewrite";
     }
@@ -91,5 +121,13 @@ public class SearchController {
       return merged.subList(0, topK);
     }
     return merged;
+  }
+
+  private static double normalizeVectorWeight(SearchRequest req) {
+    Double raw = req.getVectorWeight();
+    if (raw == null) {
+      return 0.55;
+    }
+    return Math.max(0, Math.min(1, raw));
   }
 }
