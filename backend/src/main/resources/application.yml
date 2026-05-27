@@ -31,6 +31,12 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
+# RocketMQ（dev 默认连本机 NameServer；与 spring.* 同级，勿写在 spring 下）
+rocketmq:
+  name-server: ${ROCKETMQ_NAMESRV_ADDR:127.0.0.1:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:ragforge-producer}
+
 # dev 环境详见 application-dev.yml（本机 PG/MQ + ECS ES，不依赖 docker-compose）
 
 ---

@@ -69,5 +69,11 @@ public class DocumentController {
     documentService.delete(id);
     return Result.ok();
   }
+
+  @PostMapping("/documents/{id}/reprocess")
+  public Result<Void> reprocess(@PathVariable Long id) {
+    documentService.reprocess(id);
+    return Result.ok();
+  }
 }
 

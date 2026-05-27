@@ -24,5 +24,7 @@ public interface DocumentService {
   ResponseEntity<Resource> download(Long id);
 
   void delete(Long id);
+
+  void reprocess(Long id);
 }
 

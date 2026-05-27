@@ -138,7 +138,7 @@
                             <th>状态</th>
                             <th>Chunk</th>
                             <th>上传时间</th>
-                            <th style="width: 140px;">操作</th>
+                            <th style="width: 180px;">操作</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -152,15 +152,42 @@
                             </td>
                             <td>{{ formatBytes(doc.fileSize) }}</td>
                             <td>
-                              <span class="badge" :class="docStatusClass(doc.parseStatus)">
-                                {{ doc.parseStatus }}
-                              </span>
+                              <div
+                                class="doc-status-cell"
+                                :title="doc.parseStatus === 'failed' ? doc.errorMsg || '处理失败' : undefined"
+                              >
+                                <span
+                                  v-if="isProcessing(doc.parseStatus)"
+                                  class="status-icon spin"
+                                  aria-hidden="true"
+                                >⟳</span>
+                                <span
+                                  v-else-if="doc.parseStatus === 'completed'"
+                                  class="status-icon ok"
+                                  aria-hidden="true"
+                                >✓</span>
+                                <span
+                                  v-else-if="doc.parseStatus === 'failed'"
+                                  class="status-icon fail"
+                                  aria-hidden="true"
+                                >✗</span>
+                                <span class="badge" :class="docStatusClass(doc.parseStatus)">
+                                  {{ docStatusLabel(doc.parseStatus) }}
+                                </span>
+                              </div>
                             </td>
                             <td>{{ doc.chunkCount ?? 0 }}</td>
                             <td>{{ formatTime(doc.createdAt) }}</td>
                             <td>
                               <span class="link-action" @click.stop="goDoc(doc.id)">详情</span>
                               <span class="link-action" @click.stop="onDownloadDoc(doc)">下载</span>
+                              <span
+                                v-if="doc.parseStatus === 'failed'"
+                                class="link-action"
+                                @click.stop="onReprocessDoc(doc)"
+                              >
+                                重试
+                              </span>
                               <span
                                 class="link-action danger"
                                 @click.stop="onDeleteDoc(doc)"
@@ -211,11 +238,19 @@ import {
   deleteDocument,
   downloadDocument,
   listDocuments,
+  reprocessDocument,
   replaceDocument,
   uploadDocument,
 } from '../api/document'
+import { useDocumentPolling } from '../composables/useDocumentPolling'
+import {
+  docStatusClass,
+  docStatusLabel,
+  isProcessing,
+} from '../composables/useDocumentStatus'
 
 const router = useRouter()
+const { start: startDocPolling, stop: stopDocPolling } = useDocumentPolling()
 
 const kbList = ref([])
 const loadingKb = ref(false)
@@ -246,6 +281,31 @@ async function loadKbs() {
   }
 }
 
+function applyStatusToDoc(kbId, docId, status) {
+  const list = docsMap[kbId]?.list
+  if (!list) return
+  const doc = list.find((d) => d.id === docId)
+  if (!doc) return
+  doc.parseStatus = status.parseStatus
+  doc.chunkCount = status.chunkCount
+  doc.errorMsg = status.errorMsg
+}
+
+function watchProcessingDocs(kbId) {
+  const list = docsMap[kbId]?.list ?? []
+  for (const doc of list) {
+    if (!isProcessing(doc.parseStatus)) continue
+    startDocPolling(
+      doc.id,
+      (status) => applyStatusToDoc(kbId, doc.id, status),
+      async () => {
+        await loadDocs(kbId)
+        await loadKbs()
+      },
+    )
+  }
+}
+
 async function loadDocs(kbId) {
   docsLoading[kbId] = true
   try {
@@ -253,9 +313,22 @@ async function loadDocs(kbId) {
     docsMap[kbId] = {
       list: res.data?.list ?? [],
     }
+    watchProcessingDocs(kbId)
   } finally {
     docsLoading[kbId] = false
   }
+}
+
+function beginPollingDoc(docId, kbId) {
+  if (!docId || !kbId) return
+  startDocPolling(
+    docId,
+    (status) => applyStatusToDoc(kbId, docId, status),
+    async () => {
+      await loadDocs(kbId)
+      await loadKbs()
+    },
+  )
 }
 
 async function toggleKb(kbId) {
@@ -316,12 +389,28 @@ async function handleFiles(files) {
         const version = payload.existingDocument.version ?? 1
         const confirmed = confirm(`该文件已存在（v${version}），是否覆盖更新？`)
         if (confirmed) {
-          await replaceDocument(uploadKbId.value, payload.existingDocument.id, file)
+          const replaceRes = await replaceDocument(
+            uploadKbId.value,
+            payload.existingDocument.id,
+            file,
+          )
+          const replaced = replaceRes.data
+          if (replaced?.id) {
+            beginPollingDoc(replaced.id, uploadKbId.value)
+          }
+        }
+      } else {
+        const docId = payload?.documentId ?? payload?.document?.id
+        if (docId) {
+          beginPollingDoc(docId, uploadKbId.value)
         }
       }
     }
     await loadKbs()
     if (expandedKbId.value === uploadKbId.value) {
+      await loadDocs(uploadKbId.value)
+    } else if (uploadKbId.value) {
+      expandedKbId.value = uploadKbId.value
       await loadDocs(uploadKbId.value)
     }
   } finally {
@@ -345,8 +434,23 @@ function goDoc(id) {
   router.push(`/document/${id}`)
 }
 
+async function onReprocessDoc(doc) {
+  try {
+    await reprocessDocument(doc.id)
+    applyStatusToDoc(doc.kbId, doc.id, {
+      parseStatus: 'pending',
+      chunkCount: 0,
+      errorMsg: null,
+    })
+    beginPollingDoc(doc.id, doc.kbId)
+  } catch (e) {
+    alert(e?.response?.data?.message || e?.message || '重试失败')
+  }
+}
+
 async function onDeleteDoc(doc) {
   if (!confirm(`确定删除文档「${doc.filename}」？`)) return
+  stopDocPolling(doc.id)
   await deleteDocument(doc.id)
   // 删除后刷新知识库计数 + 文档列表
   await loadKbs()
@@ -391,13 +495,6 @@ function statusLabel(status) {
 function statusClass(status) {
   if (status === 'active') return 'badge-green'
   if (status === 'rebuilding') return 'badge-amber'
-  return 'badge-gray'
-}
-
-function docStatusClass(parseStatus) {
-  if (parseStatus === 'pending') return 'badge-gray'
-  if (parseStatus === 'success') return 'badge-green'
-  if (parseStatus === 'failed') return 'badge-red'
   return 'badge-gray'
 }
 
@@ -611,6 +708,40 @@ onMounted(async () => {
 }
 .badge-green { background: #dcfce7; color: #166534; border-color: rgba(22,101,52,0.2); }
 .badge-amber { background: #fef3c7; color: #92400e; border-color: rgba(146,64,14,0.2); }
+
+.doc-status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.status-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.status-icon.ok {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.status-icon.fail {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.status-icon.spin {
+  color: #d97706;
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .badge-gray { background: #f1f5f9; color: #64748b; border-color: rgba(148,163,184,0.35); }
 .badge-red { background: #fee2e2; color: #991b1b; border-color: rgba(239,68,68,0.25); }
 

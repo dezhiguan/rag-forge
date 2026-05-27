@@ -21,7 +21,7 @@
     <java.version>17</java.version>
     <mybatis-plus.version>3.5.9</mybatis-plus.version>
     <elasticsearch-java.version>8.11.0</elasticsearch-java.version>
-    <rocketmq-spring-boot.version>2.2.3</rocketmq-spring-boot.version>
+    <rocketmq-spring-boot.version>2.3.1</rocketmq-spring-boot.version>
     <pgvector.version>0.1.6</pgvector.version>
   </properties>
 

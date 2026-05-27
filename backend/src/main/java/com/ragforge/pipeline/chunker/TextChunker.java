@@ -3,6 +3,9 @@ package com.ragforge.pipeline.chunker;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.springframework.stereotype.Component;
+
+@Component
 public class TextChunker {
 
   public static final int DEFAULT_CHUNK_SIZE = 512;

@@ -1,9 +1,9 @@
 package com.ragforge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
 import com.ragforge.common.PageResult;
 import com.ragforge.mapper.DocumentChunkMapper;
@@ -17,14 +17,12 @@ import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
 import com.ragforge.model.vo.DocumentVO;
+import com.ragforge.mq.DocumentProcessProducer;
+import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.service.DocumentService;
 import com.ragforge.service.FileStorageService;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,7 +30,6 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
@@ -57,29 +54,14 @@ public class DocumentServiceImpl implements DocumentService {
   private static final Set<String> ALLOWED_EXTENSIONS =
       Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm");
 
-  @Value("${elasticsearch.host:localhost}")
-  private String esHost;
-
-  @Value("${elasticsearch.port:9200}")
-  private Integer esPort;
-
-  @Value("${elasticsearch.scheme:http}")
-  private String esScheme;
-
-  @Value("${elasticsearch.username:}")
-  private String esUsername;
-
-  @Value("${elasticsearch.password:}")
-  private String esPassword;
-
-  @Value("${app.es.document-index:document_chunks}")
-  private String esDocumentIndex;
+  private static final String STATUS_PROCESSING = "processing";
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper documentChunkMapper;
   private final FileStorageService fileStorageService;
-  private final ObjectMapper objectMapper;
+  private final DocumentProcessProducer documentProcessProducer;
+  private final EsIndexService esIndexService;
 
   @Override
   @Transactional
@@ -126,15 +108,14 @@ public class DocumentServiceImpl implements DocumentService {
 
     documentMapper.insert(doc);
 
-    // Update knowledge base counters (chunk pipeline is async; here only create a pending document)
-    kb.setDocCount(coalesce(kb.getDocCount(), 0) + 1);
-    kb.setUpdatedAt(now);
-    knowledgeBaseMapper.updateById(kb);
+    documentProcessProducer.send(doc.getId());
 
     DocumentUploadResultVO result = new DocumentUploadResultVO();
     result.setExists(false);
     result.setDocument(toDocumentVO(doc));
-    result.setMessage("上传成功");
+    result.setDocumentId(doc.getId());
+    result.setStatus(STATUS_PROCESSING);
+    result.setMessage("上传成功，正在处理");
     return result;
   }
 
@@ -158,7 +139,7 @@ public class DocumentServiceImpl implements DocumentService {
     // delete previous artifacts
     fileStorageService.delete(existing.getFilePath());
     documentChunkMapper.delete(new LambdaQueryWrapper<DocumentChunk>().eq(DocumentChunk::getDocId, existingDocId));
-    deleteEsByDocId(existingDocId);
+    esIndexService.deleteByDocId(existingDocId);
 
     // store new file
     String newFilePath = fileStorageService.store(file);
@@ -176,12 +157,13 @@ public class DocumentServiceImpl implements DocumentService {
     existing.setCreatedAt(now);
     documentMapper.updateById(existing);
 
-    // kb chunk/doc counters remain unchanged; chunk may need rollback to zero for replaced document
     if (coalesce(kb.getChunkCount(), 0) > 0 && oldChunkCount > 0) {
       kb.setChunkCount(Math.max(0, coalesce(kb.getChunkCount(), 0) - oldChunkCount));
       kb.setUpdatedAt(now);
       knowledgeBaseMapper.updateById(kb);
     }
+
+    documentProcessProducer.send(existing.getId());
 
     return toDocumentVO(existing);
   }
@@ -236,6 +218,7 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setVersion(doc.getVersion());
     vo.setParseStatus(doc.getParseStatus());
     vo.setChunkCount(doc.getChunkCount());
+    vo.setErrorMsg(doc.getErrorMsg());
     vo.setCreatedAt(doc.getCreatedAt());
     vo.setChunks(chunks);
     return vo;
@@ -285,6 +268,27 @@ public class DocumentServiceImpl implements DocumentService {
   }
 
   @Override
+  public void reprocess(Long id) {
+    Document doc = documentMapper.selectById(id);
+    if (doc == null) {
+      throw new BizException(404, "文档不存在");
+    }
+    if (!"failed".equals(doc.getParseStatus())) {
+      throw new BizException("只有失败状态的文档可以重试");
+    }
+
+    documentMapper.update(
+        null,
+        new LambdaUpdateWrapper<Document>()
+            .eq(Document::getId, id)
+            .set(Document::getParseStatus, PARSE_STATUS_PENDING)
+            .set(Document::getErrorMsg, null)
+            .set(Document::getChunkCount, 0));
+
+    documentProcessProducer.send(id);
+  }
+
+  @Override
   @Transactional
   public void delete(Long id) {
     Document doc = documentMapper.selectById(id);
@@ -292,10 +296,10 @@ public class DocumentServiceImpl implements DocumentService {
       throw new BizException(404, "文档不存在");
     }
 
-    // 1) delete physical file (best effort)
+    esIndexService.deleteByDocId(id);
+
     fileStorageService.delete(doc.getFilePath());
 
-    // 2) delete DB record (document_chunks cascade via FK)
     documentMapper.deleteById(id);
 
     // 3) update knowledge base counters
@@ -305,8 +309,10 @@ public class DocumentServiceImpl implements DocumentService {
       int kbChunkCount = coalesce(kb.getChunkCount(), 0);
       int docChunkCount = coalesce(doc.getChunkCount(), 0);
 
-      kb.setDocCount(Math.max(0, kbDocCount - 1));
-      kb.setChunkCount(Math.max(0, kbChunkCount - docChunkCount));
+      if ("completed".equals(doc.getParseStatus())) {
+        kb.setDocCount(Math.max(0, kbDocCount - 1));
+        kb.setChunkCount(Math.max(0, kbChunkCount - docChunkCount));
+      }
       kb.setUpdatedAt(LocalDateTime.now());
       knowledgeBaseMapper.updateById(kb);
     }
@@ -394,37 +400,6 @@ public class DocumentServiceImpl implements DocumentService {
     }
   }
 
-  private void deleteEsByDocId(Long docId) {
-    try {
-      String payload =
-          objectMapper.writeValueAsString(
-              java.util.Map.of("query", java.util.Map.of("term", java.util.Map.of("doc_id", docId))));
-
-      HttpRequest.Builder builder =
-          HttpRequest.newBuilder(
-                  URI.create(
-                      String.format("%s://%s:%d/%s/_delete_by_query", esScheme, esHost, esPort, esDocumentIndex)))
-              .header("Content-Type", "application/json")
-              .POST(HttpRequest.BodyPublishers.ofString(payload));
-
-      if (StringUtils.hasText(esUsername) && StringUtils.hasText(esPassword)) {
-        String auth =
-            java.util.Base64.getEncoder()
-                .encodeToString((esUsername + ":" + esPassword).getBytes(StandardCharsets.UTF_8));
-        builder.header("Authorization", "Basic " + auth);
-      }
-
-      HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.discarding());
-    } catch (InterruptedException e) {
-      log.warn("Failed to cleanup Elasticsearch index for doc_id={}", docId, e);
-      Thread.currentThread().interrupt();
-    } catch (IOException e) {
-      log.warn("Failed to cleanup Elasticsearch index for doc_id={}", docId, e);
-    } catch (Exception e) {
-      log.warn("Failed to cleanup Elasticsearch index for doc_id={}", docId, e);
-    }
-  }
-
   private DocumentVO toDocumentVO(Document doc) {
     DocumentVO vo = new DocumentVO();
     vo.setId(doc.getId());
@@ -436,6 +411,7 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setVersion(doc.getVersion());
     vo.setParseStatus(doc.getParseStatus());
     vo.setChunkCount(doc.getChunkCount());
+    vo.setErrorMsg(doc.getErrorMsg());
     vo.setCreatedAt(doc.getCreatedAt());
     return vo;
   }

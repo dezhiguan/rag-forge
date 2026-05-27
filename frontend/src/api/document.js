@@ -22,6 +22,8 @@ export const getDocumentStatus = (id) => request.get(`/documents/${id}/status`)
 
 export const deleteDocument = (id) => request.delete(`/documents/${id}`)
 
+export const reprocessDocument = (id) => request.post(`/documents/${id}/reprocess`)
+
 export const downloadDocument = (id) =>
   request.get(`/documents/${id}/download`, { responseType: 'blob' })
 

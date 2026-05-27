@@ -15,6 +15,7 @@ public class DocumentVO {
   private Integer version;
   private String parseStatus;
   private Integer chunkCount;
+  private String errorMsg;
   private LocalDateTime createdAt;
 }
 
