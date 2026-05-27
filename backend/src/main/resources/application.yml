@@ -8,6 +8,12 @@ ragforge:
   files:
     upload-path: /data/files/
 
+app:
+  api-key:
+    header: X-API-Key
+    whitelist-paths:
+      - /api/v1/health
+
 mybatis-plus:
   type-aliases-package: com.ragforge.model.entity
   type-handlers-package: com.ragforge.config.handler
