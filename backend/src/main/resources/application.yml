@@ -20,46 +20,7 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
----
-spring:
-  config:
-    activate:
-      on-profile: dev
-
-  datasource:
-    url: jdbc:postgresql://127.0.0.1:5433/ragforge
-    username: ragforge
-    password: ragforge
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      initialization-fail-timeout: -1
-
-  sql:
-    init:
-      # pgvector extension is created by docker-compose postgres init script;
-      # keep dev startup working when middleware is not running locally.
-      mode: never
-      schema-locations: classpath:db/init/schema.sql
-      continue-on-error: true
-
-elasticsearch:
-  host: localhost
-  port: 9200
-  scheme: http
-
-rocketmq:
-  name-server: localhost:9876
-  producer:
-    group: ragforge-producer
-
-mybatis-plus:
-  configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-
-logging:
-  level:
-    root: DEBUG
-    com.ragforge.mapper: DEBUG
+# dev 环境详见 application-dev.yml（本机 PG/MQ + ECS ES，不依赖 docker-compose）
 
 ---
 spring:

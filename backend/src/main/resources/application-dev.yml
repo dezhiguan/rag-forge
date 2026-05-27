@@ -1,0 +1,44 @@
+# 本地开发：使用本机 PostgreSQL / RocketMQ，ECS 上的 Elasticsearch（不依赖 docker-compose）
+# 使用前请复制 backend/.env.example 为 backend/.env 并填写敏感项
+
+spring:
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:127.0.0.1}:${POSTGRES_PORT:5432}/${POSTGRES_DB:ragforge}
+    username: ${POSTGRES_USER:amy}
+    password: ${POSTGRES_PASSWORD:amy}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      initialization-fail-timeout: -1
+
+  sql:
+    init:
+      mode: never
+      schema-locations: classpath:db/init/schema.sql
+      continue-on-error: true
+
+# ECS Elasticsearch（默认主机来自同账号其他项目，可用环境变量覆盖）
+elasticsearch:
+  host: ${ELASTICSEARCH_HOST:8.163.63.222}
+  port: ${ELASTICSEARCH_PORT:9200}
+  scheme: ${ELASTICSEARCH_SCHEME:http}
+  username: ${ELASTICSEARCH_USERNAME:elastic}
+  password: ${ELASTICSEARCH_PASSWORD:}
+
+# 本机 RocketMQ（需先启动 NameServer，例如 ~/rocketmq-5.5.0/bin/mqnamesrv）
+rocketmq:
+  name-server: ${ROCKETMQ_NAMESRV_ADDR:127.0.0.1:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:ragforge-producer}
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+logging:
+  level:
+    root: INFO
+    com.ragforge: DEBUG
+    com.ragforge.mapper: DEBUG
