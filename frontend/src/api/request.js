@@ -1,0 +1,27 @@
+import axios from 'axios'
+
+const request = axios.create({
+  baseURL: '/api/v1',
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json',
+    'X-API-Key': 'sk-ragforge-dev',
+  },
+})
+
+request.interceptors.response.use(
+  (res) => {
+    const body = res.data
+    if (body && typeof body.code === 'number' && body.code !== 200) {
+      alert('请求失败: ' + (body.msg || '未知错误'))
+      return Promise.reject(body)
+    }
+    return body
+  },
+  (err) => {
+    alert('请求失败: ' + (err.response?.data?.msg || err.message))
+    return Promise.reject(err)
+  }
+)
+
+export default request
