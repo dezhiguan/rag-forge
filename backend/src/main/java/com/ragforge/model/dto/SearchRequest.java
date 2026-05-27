@@ -14,11 +14,16 @@ public class SearchRequest {
 
   private List<Long> kbIds;
 
-  /** vector | keyword | rewrite | hybrid */
+  /** vector | keyword | rewrite | hybrid | full */
   private String strategy = "vector";
 
   /** only used by hybrid strategy */
   private Double vectorWeight = 0.55;
+
+  /** used by full strategy rerank */
+  @Min(1)
+  @Max(50)
+  private int rerankTopN = 5;
 
   @Min(1)
   @Max(50)
