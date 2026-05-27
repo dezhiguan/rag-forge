@@ -1,0 +1,84 @@
+spring:
+  application:
+    name: rag-forge
+  profiles:
+    active: dev
+
+ragforge:
+  files:
+    upload-path: /data/files/
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ragforge
+    username: ragforge
+    password: ragforge
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      initialization-fail-timeout: -1
+
+  sql:
+    init:
+      # pgvector extension is created by docker-compose postgres init script;
+      # keep dev startup working when middleware is not running locally.
+      mode: never
+      schema-locations: classpath:db/init/schema.sql
+      continue-on-error: true
+
+elasticsearch:
+  host: localhost
+  port: 9200
+  scheme: http
+
+rocketmq:
+  name-server: localhost:9876
+  producer:
+    group: ragforge-producer
+
+logging:
+  level:
+    root: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/ragforge}
+    username: ${SPRING_DATASOURCE_USERNAME:ragforge}
+    password: ${SPRING_DATASOURCE_PASSWORD:ragforge}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      initialization-fail-timeout: -1
+
+  sql:
+    init:
+      mode: ${SPRING_SQL_INIT_MODE:always}
+      schema-locations: classpath:db/init/schema.sql
+      continue-on-error: true
+
+elasticsearch:
+  host: ${ELASTICSEARCH_HOST:elasticsearch}
+  port: ${ELASTICSEARCH_PORT:9200}
+  scheme: ${ELASTICSEARCH_SCHEME:http}
+
+rocketmq:
+  name-server: ${ROCKETMQ_NAMESRV_ADDR:rocketmq-namesrv:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:ragforge-producer}
+
+ragforge:
+  files:
+    upload-path: ${RAGFORGE_UPLOAD_PATH:/data/files/}
+
+logging:
+  level:
+    root: DEBUG
+

@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: ragforge-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ragforge
+      POSTGRES_USER: ragforge
+      POSTGRES_PASSWORD: ragforge
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/db/init/schema.sql:/docker-entrypoint-initdb.d/01-pgvector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ragforge -d ragforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: ragforge-elasticsearch
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    mem_limit: 1g
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9200'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.1.0
+    container_name: ragforge-rocketmq-namesrv
+    restart: unless-stopped
+    ports:
+      - "9876:9876"
+    command: sh mqnamesrv
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9876 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.1.0
+    container_name: ragforge-rocketmq-broker
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+      - "10912:10912"
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_started
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+      JAVA_OPT_EXT: "-Xms128m -Xmx128m -Xmn64m"
+    mem_limit: 384m
+    command: sh mqbroker -n rocketmq-namesrv:9876 autoCreateTopicEnable=true
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  es_data:

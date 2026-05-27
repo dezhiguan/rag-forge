@@ -1,0 +1,153 @@
+<template>
+  <nav class="sidebar" :class="{ collapsed }">
+    <div class="sidebar-brand" @click="$router.push('/')">
+      <div class="brand-icon">⚡</div>
+      <div class="brand-text" v-show="!collapsed">
+        <span class="brand-name">RAGForge</span>
+        <span class="brand-ver">v1.0</span>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <router-link
+        v-for="item in navItems"
+        :key="item.path"
+        :to="item.path"
+        class="nav-item"
+        :class="{ active: $route.path === item.path || (item.path !== '/' && $route.path.startsWith(item.path)) }"
+        :title="collapsed ? item.label : ''"
+      >
+        <span class="nav-icon">{{ item.icon }}</span>
+        <span class="nav-label" v-show="!collapsed">{{ item.label }}</span>
+      </router-link>
+    </div>
+    <div class="sidebar-footer" v-show="!collapsed">
+      <div class="api-key-info">
+        <div class="api-key-label">🔑 API Key</div>
+        <div class="api-key-value">sk-ragforge-xxxx</div>
+      </div>
+      <div class="status-dot"></div>
+      <span class="status-text">运行中</span>
+    </div>
+    <div class="collapse-btn" @click="toggleCollapse" :title="collapsed ? '展开' : '收起'">
+      {{ collapsed ? '▶' : '◀' }}
+    </div>
+  </nav>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+
+const router = useRouter()
+const route = useRoute()
+const collapsed = ref(true)
+
+const emit = defineEmits(['toggle'])
+
+function toggleCollapse() {
+  collapsed.value = !collapsed.value
+  emit('toggle')
+}
+
+const navItems = [
+  { path: '/', icon: '🏠', label: '驾驶舱' },
+  { path: '/knowledge', icon: '📁', label: '知识库管理' },
+  { path: '/debug', icon: '🔍', label: '检索调试台' },
+  { path: '/eval', icon: '🧪', label: '评测实验室' },
+  { path: '/api', icon: '🔌', label: 'API 网关' },
+]
+</script>
+
+<style scoped>
+.sidebar {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 200px;
+  background: #f1f5f9;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  border-right: 1px solid var(--border);
+  transition: width 0.25s ease;
+}
+.sidebar.collapsed { width: 56px; }
+
+.sidebar-brand {
+  padding: 18px 14px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  min-height: 56px;
+}
+.brand-icon { font-size: 20px; flex-shrink: 0; }
+.brand-text { overflow: hidden; white-space: nowrap; }
+.brand-name { display: block; font-weight: 700; font-size: 14px; color: var(--navy); }
+.brand-ver { font-size: 10px; color: var(--text-muted); }
+
+.sidebar-nav {
+  flex: 1;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: var(--gray);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.nav-item:hover { color: var(--navy); background: rgba(0,0,0,0.04); }
+.nav-item.active { color: var(--blue); background: #dbeafe; font-weight: 600; }
+.nav-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
+.nav-label { flex: 1; }
+
+.sidebar-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.api-key-info { flex: 1; }
+.api-key-label { font-size: 9px; color: var(--text-muted); margin-bottom: 2px; }
+.api-key-value { font-family: 'SF Mono', Monaco, monospace; font-size: 9px; color: var(--text-muted); }
+.status-dot {
+  width: 7px; height: 7px;
+  background: #10b981;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-text { font-size: 10px; color: var(--text-muted); }
+
+.collapse-btn {
+  position: absolute;
+  right: -12px; top: 50%;
+  transform: translateY(-50%);
+  width: 24px; height: 24px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  z-index: 10;
+}
+.collapse-btn:hover { background: var(--light); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+</style>
