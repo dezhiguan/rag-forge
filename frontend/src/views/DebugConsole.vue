@@ -6,8 +6,11 @@
           <div class="panel-title">⚙️ 检索参数</div>
           <div class="param-row">
             <div class="param-label">知识库</div>
-            <select v-model="config.kb" class="param-select">
-              <option v-for="kb in kbList" :key="kb" :value="kb">{{ kb }}</option>
+            <select v-model="config.kbId" class="param-select">
+              <option :value="null">全部知识库</option>
+              <option v-for="kb in kbList" :key="kb.id" :value="kb.id">
+                {{ kb.name }}
+              </option>
             </select>
           </div>
           <div class="param-row">
@@ -43,23 +46,54 @@
           <label class="radio-row" v-for="m in compareModes" :key="m">
             <input type="radio" v-model="config.compareMode" :value="m" name="mode"> {{ m }}
           </label>
-          <button class="search-btn" @click="doSearch">🔍 检索</button>
+          <button class="search-btn" :disabled="searching" @click="doSearch">
+            {{ searching ? '检索中…' : '🔍 检索' }}
+          </button>
         </div>
 
         <div class="debug-center">
-          <input class="search-input" v-model="query" placeholder="输入检索查询..." @keyup.enter="doSearch">
+          <input
+            class="search-input"
+            v-model="query"
+            placeholder="输入检索查询..."
+            :disabled="searching"
+            @keyup.enter="doSearch"
+          >
           <div class="results-info">
-            检索结果 · 耗时 <span class="time-text">BM25 142ms + Vector 238ms + Rerank 310ms</span>
+            检索结果
+            <span v-if="searched" class="time-text">
+              · 耗时 Vector {{ latencyMs }}ms
+            </span>
           </div>
-          <div class="result-card top" v-for="(r, i) in results" :key="i">
-            <div class="result-head">
-              <span class="result-doc">📄 {{ r.doc }}</span>
-              <span class="result-score" :style="{ color: r.score >= 0.9 ? '#10b981' : r.score >= 0.8 ? '#f59e0b' : 'var(--text-muted)' }">Score {{ r.score.toFixed(2) }}</span>
+
+          <div v-if="searching" class="state-hint">检索中…</div>
+          <div v-else-if="searched && results.length === 0" class="state-hint">
+            未找到匹配的文档块
+          </div>
+          <template v-else>
+            <div
+              v-for="(r, i) in results"
+              :key="r.chunkId ?? i"
+              class="result-card"
+              :class="{ top: i === 0 && r.vectorScore >= 0.8 }"
+            >
+              <div class="result-head">
+                <span class="result-doc">📄 {{ r.filename }} #{{ r.chunkIndex }}</span>
+                <span
+                  class="result-score"
+                  :style="{ color: scoreColor(r.vectorScore) }"
+                >
+                  Score {{ r.vectorScore.toFixed(4) }}
+                </span>
+              </div>
+              <div class="result-text" v-html="highlightContent(r.content, query)"></div>
+              <div class="result-meta">向量 {{ r.vectorScore.toFixed(4) }}</div>
             </div>
-            <div class="result-text">"...{{ r.content.slice(0, 60) }}..."</div>
-            <div class="result-meta">向量 {{ r.vectorScore }} | BM25 {{ r.bm25Score }} | Rerank {{ r.rerankScore }}</div>
+          </template>
+
+          <div v-if="results.length" class="save-case" @click="$router.push('/eval')">
+            💾 保存为评测用例 →
           </div>
-          <div class="save-case" @click="$router.push('/eval')">💾 保存为评测用例 →</div>
         </div>
 
         <div class="debug-right">
@@ -67,12 +101,18 @@
           <div class="prompt-block">
             <div class="prompt-line dim">System: 你是RAG知识引擎，只基于Context回答。</div>
             <div class="prompt-line dim" style="margin-top:6px;">Context:</div>
-            <div class="prompt-line" v-for="(r, i) in results.slice(0, config.rerankTopN)" :key="i">[{{ i + 1 }}] {{ r.doc }}: ...{{ r.content.slice(0, 40) }}...</div>
+            <div
+              class="prompt-line"
+              v-for="(r, i) in results.slice(0, config.rerankTopN)"
+              :key="r.chunkId ?? i"
+            >
+              [{{ i + 1 }}] {{ r.filename }} #{{ r.chunkIndex }}: ...{{ excerpt(r.content, 40) }}...
+            </div>
           </div>
           <div class="prompt-cost">
             <div class="cost-row"><span>Prompt</span><span>{{ promptTokens }} tk</span></div>
-            <div class="cost-row"><span>Completion</span><span>310 tk</span></div>
-            <div class="cost-row total"><span>预估成本</span><span>¥0.006</span></div>
+            <div class="cost-row"><span>Completion</span><span>—</span></div>
+            <div class="cost-row total"><span>预估成本</span><span>—</span></div>
           </div>
         </div>
       </div>
@@ -81,36 +121,99 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { onMounted, ref, reactive, computed } from 'vue'
+import { listKb } from '../api/kb'
+import { search as searchApi } from '../api/search'
 
-const query = ref('2026年后端开发需要掌握哪些AI技能？')
-const kbList = ['岗位 JD 库', '面试题库', '行业知识库', '求职策略库', '公司信息库']
+const query = ref('')
+const kbList = ref([])
+const results = ref([])
+const searching = ref(false)
+const searched = ref(false)
+const latencyMs = ref(0)
+const strategy = ref('')
 
 const config = reactive({
-  kb: '岗位 JD 库', topK: 8, vectorWeight: 0.55, rerankTopN: 5, compareMode: '单策略',
+  kbId: null,
+  topK: 8,
+  vectorWeight: 0.55,
+  rerankTopN: 5,
+  compareMode: '单策略',
 })
 
 const compareModes = ['单策略', 'A/B 对比', '四路对比']
 
-const baseResults = [
-  { doc: '字节后端JD.pdf #12', content: '有大模型应用开发经验者优先，熟悉LangChain/LlamaIndex等框架，了解RAG架构设计，有Prompt Engineering实践经验...', score: 0.94, vectorScore: 0.94, bm25Score: 0.91, rerankScore: 0.96 },
-  { doc: '美团后端JD.pdf #8', content: '了解AI/ML基础知识，能参与智能业务系统开发，对新技术保持好奇心，愿意学习和应用AI技术到实际业务场景...', score: 0.85, vectorScore: 0.82, bm25Score: 0.88, rerankScore: 0.85 },
-  { doc: '腾讯JD.pdf #21', content: '负责后台服务开发，优化系统架构，有大规模分布式系统开发经验，熟悉微服务架构设计...', score: 0.71, vectorScore: 0.68, bm25Score: 0.74, rerankScore: 0.71 },
-]
-
-const results = ref(baseResults.map(r => ({ ...r })))
-
 const promptTokens = computed(() => {
-  return results.value.slice(0, config.rerankTopN).reduce((s, r) => s + Math.floor(r.content.length / 2), 0) + 180
+  return results.value.slice(0, config.rerankTopN).reduce((s, r) => s + Math.floor((r.content?.length || 0) / 2), 0) + 180
 })
 
-function doSearch() {
-  const w = config.vectorWeight
-  results.value = baseResults.map(r => ({
-    ...r,
-    score: +(r.vectorScore * w + r.bm25Score * (1 - w)).toFixed(2),
-  })).sort((a, b) => b.score - a.score)
+function excerpt(text, maxLen = 200) {
+  if (!text) return ''
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLen) return normalized
+  return `${normalized.slice(0, maxLen)}…`
 }
+
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function highlightContent(content, q) {
+  const text = excerpt(content, 200)
+  let html = escapeHtml(text)
+  const keyword = q?.trim()
+  if (!keyword) return html
+  const pattern = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+  html = html.replace(pattern, (match) => `<mark class="hl">${match}</mark>`)
+  return html
+}
+
+function scoreColor(score) {
+  if (score >= 0.9) return '#10b981'
+  if (score >= 0.8) return '#f59e0b'
+  return '#64748b'
+}
+
+async function doSearch() {
+  const q = query.value.trim()
+  if (!q) {
+    alert('请输入检索查询')
+    return
+  }
+
+  searching.value = true
+  searched.value = false
+  try {
+    const payload = { query: q, topK: config.topK }
+    if (config.kbId != null) {
+      payload.kbIds = [config.kbId]
+    }
+    const res = await searchApi(payload)
+    const data = res.data ?? {}
+    results.value = (data.results ?? []).slice().sort((a, b) => b.vectorScore - a.vectorScore)
+    latencyMs.value = data.latencyMs ?? 0
+    strategy.value = data.strategy ?? 'vector'
+    searched.value = true
+  } catch {
+    results.value = []
+    searched.value = true
+  } finally {
+    searching.value = false
+  }
+}
+
+onMounted(async () => {
+  try {
+    const res = await listKb()
+    kbList.value = res.data ?? []
+  } catch {
+    kbList.value = []
+  }
+})
 </script>
 
 <style scoped>
@@ -131,16 +234,19 @@ function doSearch() {
 .radio-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; font-size: 11px; }
 .search-btn { width: 100%; margin-top: 12px; padding: 7px 0; background: var(--blue); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
 .search-btn:hover { background: #2563eb; }
+.search-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; font-size: 12px; margin-bottom: 10px; outline: none; }
 .search-input:focus { border-color: var(--blue); }
 .results-info { font-weight: 600; margin-bottom: 10px; font-size: 11px; }
 .time-text { color: var(--text-muted); font-weight: 400; }
+.state-hint { text-align: center; color: var(--text-muted); padding: 32px 0; font-size: 12px; }
 .result-card { background: var(--light); border: 1px solid var(--border); border-radius: 7px; padding: 10px; margin-bottom: 8px; }
 .result-card.top { background: #f0fdf4; border-color: #bbf7d0; }
-.result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.result-doc { font-weight: 600; }
-.result-score { font-weight: 700; font-size: 13px; }
-.result-text { color: var(--gray); line-height: 1.5; margin-bottom: 4px; }
+.result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; }
+.result-doc { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-score { font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.result-text { color: var(--gray); line-height: 1.5; margin-bottom: 4px; word-break: break-word; }
+.result-text :deep(mark.hl) { background: #fef08a; color: inherit; padding: 0 2px; border-radius: 2px; }
 .result-meta { color: var(--text-muted); font-size: 9px; }
 .save-case { margin-top: 12px; padding: 8px; border: 1px dashed var(--blue); border-radius: 7px; text-align: center; color: var(--blue); font-size: 11px; cursor: pointer; transition: background 0.15s; }
 .save-case:hover { background: #eff6ff; }
