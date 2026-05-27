@@ -3,7 +3,7 @@
 
 spring:
   config:
-    import: optional:file:.env[.properties]
+    import: optional:file:backend/.env[.properties],optional:file:.env[.properties]
 
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:127.0.0.1}:${POSTGRES_PORT:5432}/${POSTGRES_DB:ragforge}
@@ -19,12 +19,12 @@ spring:
       schema-locations: classpath:db/init/schema.sql
       continue-on-error: true
 
-# ECS Elasticsearch（默认主机来自同账号其他项目，可用环境变量覆盖）
+# 本机 Elasticsearch（默认 localhost:9200，无认证）
 elasticsearch:
-  host: ${ELASTICSEARCH_HOST:8.163.63.222}
+  host: ${ELASTICSEARCH_HOST:localhost}
   port: ${ELASTICSEARCH_PORT:9200}
   scheme: ${ELASTICSEARCH_SCHEME:http}
-  username: ${ELASTICSEARCH_USERNAME:elastic}
+  username: ${ELASTICSEARCH_USERNAME:}
   password: ${ELASTICSEARCH_PASSWORD:}
 
 # 本机 RocketMQ（需先启动 NameServer，例如 ~/rocketmq-5.5.0/bin/mqnamesrv）
