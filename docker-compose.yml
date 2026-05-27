@@ -4,7 +4,7 @@ services:
     container_name: ragforge-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_DB: ragforge
       POSTGRES_USER: ragforge
@@ -12,6 +12,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/main/resources/db/init/schema.sql:/docker-entrypoint-initdb.d/01-pgvector.sql:ro
+      - ./backend/src/main/resources/db/migration/V1__init.sql:/docker-entrypoint-initdb.d/02-tables.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ragforge -d ragforge"]
       interval: 5s

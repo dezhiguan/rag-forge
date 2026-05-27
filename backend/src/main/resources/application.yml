@@ -8,6 +8,12 @@ ragforge:
   files:
     upload-path: /data/files/
 
+mybatis-plus:
+  type-aliases-package: com.ragforge.model.entity
+  type-handlers-package: com.ragforge.config.handler
+  configuration:
+    map-underscore-to-camel-case: true
+
 ---
 spring:
   config:
@@ -15,7 +21,7 @@ spring:
       on-profile: dev
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/ragforge
+    url: jdbc:postgresql://127.0.0.1:5433/ragforge
     username: ragforge
     password: ragforge
     driver-class-name: org.postgresql.Driver
@@ -40,9 +46,14 @@ rocketmq:
   producer:
     group: ragforge-producer
 
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
 logging:
   level:
     root: DEBUG
+    com.ragforge.mapper: DEBUG
 
 ---
 spring:
