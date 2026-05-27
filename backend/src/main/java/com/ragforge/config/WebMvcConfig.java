@@ -8,7 +8,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 @RequiredArgsConstructor
-@EnableConfigurationProperties(ApiKeyProperties.class)
+@EnableConfigurationProperties({ApiKeyProperties.class, DashScopeProperties.class})
 public class WebMvcConfig implements WebMvcConfigurer {
 
   private final ApiKeyInterceptor apiKeyInterceptor;
