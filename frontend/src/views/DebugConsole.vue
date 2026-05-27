@@ -226,7 +226,7 @@ function formatScore(score) {
 function isTopResult(index, r) {
   if (index !== 0) return false
   if (strategy.value === 'hybrid') {
-    return (r.finalScore ?? 0) >= 0.7
+    return (r.finalScore ?? 0) >= 0.06
   }
   if (strategy.value === 'keyword') {
     return (r.bm25Score ?? 0) >= 3.0
@@ -236,8 +236,8 @@ function isTopResult(index, r) {
 
 function scoreColor(score) {
   if (strategy.value === 'hybrid') {
-    if (score >= 0.9) return '#10b981'
-    if (score >= 0.7) return '#f59e0b'
+    if (score >= 0.12) return '#10b981'
+    if (score >= 0.06) return '#f59e0b'
     return '#64748b'
   }
   if (strategy.value === 'keyword') {

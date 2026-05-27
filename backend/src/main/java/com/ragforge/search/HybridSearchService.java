@@ -2,6 +2,7 @@ package com.ragforge.search;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,8 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class HybridSearchService {
+
+  private static final int RRF_K = 10;
 
   private final VectorSearchService vectorSearchService;
   private final EsSearchService esSearchService;
@@ -70,16 +73,8 @@ public class HybridSearchService {
     List<SearchResult> vectorResults = vectorFuture.join();
     List<SearchResult> keywordResults = keywordFuture.join();
 
-    double vMax = vectorResults.stream().mapToDouble(SearchResult::getVectorScore).max().orElse(1);
-    double vMin = vectorResults.stream().mapToDouble(SearchResult::getVectorScore).min().orElse(0);
-    double kMax = keywordResults.stream().mapToDouble(SearchResult::getBm25Score).max().orElse(1);
-    double kMin = keywordResults.stream().mapToDouble(SearchResult::getBm25Score).min().orElse(0);
-
-    double vRange = (vMax - vMin) == 0 ? 1 : (vMax - vMin);
-    double kRange = (kMax - kMin) == 0 ? 1 : (kMax - kMin);
-
-    double kw = 1.0 - vw;
     Map<Long, SearchResult> merged = new LinkedHashMap<>();
+    Map<Long, Double> rrfScores = new HashMap<>();
     for (int i = 0; i < vectorResults.size(); i++) {
       SearchResult item = vectorResults.get(i);
       if (item.getChunkId() == null) {
@@ -87,11 +82,11 @@ public class HybridSearchService {
       }
       SearchResult base = merged.computeIfAbsent(item.getChunkId(), id -> cloneForHybrid(item));
       base.setVectorScore(item.getVectorScore());
-      double normVector = (item.getVectorScore() - vMin) / vRange;
-      base.setFinalScore(base.getFinalScore() + vw * normVector);
+      rrfScores.merge(item.getChunkId(), 1.0 / (RRF_K + i + 1), Double::sum);
     }
 
-    for (SearchResult item : keywordResults) {
+    for (int i = 0; i < keywordResults.size(); i++) {
+      SearchResult item = keywordResults.get(i);
       if (item.getChunkId() == null) {
         continue;
       }
@@ -109,11 +104,13 @@ public class HybridSearchService {
       if (base.getChunkIndex() == 0 && item.getChunkIndex() != 0) {
         base.setChunkIndex(item.getChunkIndex());
       }
-      double normBm25 = (item.getBm25Score() - kMin) / kRange;
-      base.setFinalScore(base.getFinalScore() + kw * normBm25);
+      rrfScores.merge(item.getChunkId(), 1.0 / (RRF_K + i + 1), Double::sum);
     }
 
     List<SearchResult> sorted = new ArrayList<>(merged.values());
+    for (SearchResult result : sorted) {
+      result.setFinalScore(rrfScores.getOrDefault(result.getChunkId(), 0.0));
+    }
     sorted.sort(Comparator.comparingDouble(SearchResult::getFinalScore).reversed());
     if (sorted.size() > topK) {
       sorted = new ArrayList<>(sorted.subList(0, topK));
