@@ -10,6 +10,9 @@ const request = axios.create({
 
 request.interceptors.response.use(
   (res) => {
+    if (res.config?.responseType === 'blob') {
+      return res
+    }
     const body = res.data
     if (body && typeof body.code === 'number' && body.code !== 200) {
       alert('请求失败: ' + (body.msg || '未知错误'))

@@ -146,7 +146,10 @@
                             <td colspan="6" class="empty-hint">暂无文档</td>
                           </tr>
                           <tr v-for="doc in docsMap[kb.id]?.list || []" :key="doc.id">
-                            <td class="doc-filename">{{ doc.filename }}</td>
+                            <td class="doc-filename">
+                              {{ doc.filename }}
+                              <span class="doc-version">v{{ doc.version ?? 1 }}</span>
+                            </td>
                             <td>{{ formatBytes(doc.fileSize) }}</td>
                             <td>
                               <span class="badge" :class="docStatusClass(doc.parseStatus)">
@@ -157,6 +160,7 @@
                             <td>{{ formatTime(doc.createdAt) }}</td>
                             <td>
                               <span class="link-action" @click.stop="goDoc(doc.id)">详情</span>
+                              <span class="link-action" @click.stop="onDownloadDoc(doc)">下载</span>
                               <span
                                 class="link-action danger"
                                 @click.stop="onDeleteDoc(doc)"
@@ -205,7 +209,9 @@ import { useRouter } from 'vue-router'
 import { createKb, deleteKb, listKb } from '../api/kb'
 import {
   deleteDocument,
+  downloadDocument,
   listDocuments,
+  replaceDocument,
   uploadDocument,
 } from '../api/document'
 
@@ -304,7 +310,15 @@ async function handleFiles(files) {
   uploadProcessing.value = true
   try {
     for (const file of files) {
-      await uploadDocument(uploadKbId.value, file)
+      const res = await uploadDocument(uploadKbId.value, file)
+      const payload = res.data
+      if (payload?.exists && payload?.existingDocument) {
+        const version = payload.existingDocument.version ?? 1
+        const confirmed = confirm(`该文件已存在（v${version}），是否覆盖更新？`)
+        if (confirmed) {
+          await replaceDocument(uploadKbId.value, payload.existingDocument.id, file)
+        }
+      }
     }
     await loadKbs()
     if (expandedKbId.value === uploadKbId.value) {
@@ -339,6 +353,19 @@ async function onDeleteDoc(doc) {
   if (expandedKbId.value) {
     await loadDocs(expandedKbId.value)
   }
+}
+
+async function onDownloadDoc(doc) {
+  const res = await downloadDocument(doc.id)
+  const blob = res.data
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = doc.filename || `document-${doc.id}`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.URL.revokeObjectURL(url)
 }
 
 function formatTime(iso) {
@@ -627,6 +654,11 @@ onMounted(async () => {
 }
 .empty-hint { color: var(--text-muted); text-align: center; padding: 20px 12px; }
 .doc-filename { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-version {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
 
 .modal-mask {
   position: fixed;

@@ -1,0 +1,10 @@
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS file_md5 VARCHAR(32);
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS version INT DEFAULT 1;
+
+UPDATE documents
+SET version = 1
+WHERE version IS NULL;
+

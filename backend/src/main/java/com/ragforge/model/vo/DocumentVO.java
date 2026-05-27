@@ -11,6 +11,8 @@ public class DocumentVO {
   private String filename;
   private Long fileSize;
   private String fileType;
+  private String fileMd5;
+  private Integer version;
   private String parseStatus;
   private Integer chunkCount;
   private LocalDateTime createdAt;

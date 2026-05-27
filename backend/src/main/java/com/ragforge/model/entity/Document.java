@@ -18,6 +18,8 @@ public class Document {
   private String filePath;
   private Long fileSize;
   private String fileType;
+  private String fileMd5;
+  private Integer version;
   private String parseStatus;
   private Integer chunkCount;
   private String errorMsg;

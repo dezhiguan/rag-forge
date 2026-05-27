@@ -3,6 +3,7 @@ package com.ragforge.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
 import com.ragforge.common.PageResult;
 import com.ragforge.mapper.DocumentChunkMapper;
@@ -14,23 +15,37 @@ import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
+import com.ragforge.model.vo.DocumentUploadResultVO;
 import com.ragforge.model.vo.DocumentVO;
 import com.ragforge.service.DocumentService;
 import com.ragforge.service.FileStorageService;
-import jakarta.validation.constraints.NotNull;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DocumentServiceImpl implements DocumentService {
@@ -42,19 +57,56 @@ public class DocumentServiceImpl implements DocumentService {
   private static final Set<String> ALLOWED_EXTENSIONS =
       Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm");
 
+  @Value("${elasticsearch.host:localhost}")
+  private String esHost;
+
+  @Value("${elasticsearch.port:9200}")
+  private Integer esPort;
+
+  @Value("${elasticsearch.scheme:http}")
+  private String esScheme;
+
+  @Value("${elasticsearch.username:}")
+  private String esUsername;
+
+  @Value("${elasticsearch.password:}")
+  private String esPassword;
+
+  @Value("${app.es.document-index:document_chunks}")
+  private String esDocumentIndex;
+
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper documentChunkMapper;
   private final FileStorageService fileStorageService;
+  private final ObjectMapper objectMapper;
 
   @Override
   @Transactional
-  public DocumentVO upload(Long kbId, MultipartFile file) {
+  public DocumentUploadResultVO upload(Long kbId, MultipartFile file) {
     KnowledgeBase kb = requireActiveKb(kbId);
     validateFile(file);
 
     String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
     String fileType = extractExtension(originalFilename);
+    String fileMd5 = calculateMd5(file);
+
+    Document existing =
+        documentMapper.selectOne(
+            new LambdaQueryWrapper<Document>()
+                .eq(Document::getKbId, kbId)
+                .eq(Document::getFileMd5, fileMd5)
+                .ne(Document::getParseStatus, "failed")
+                .orderByDesc(Document::getId)
+                .last("LIMIT 1"));
+
+    if (existing != null) {
+      DocumentUploadResultVO result = new DocumentUploadResultVO();
+      result.setExists(true);
+      result.setExistingDocument(toDocumentVO(existing));
+      result.setMessage("文件已存在");
+      return result;
+    }
 
     String filePath = fileStorageService.store(file);
     LocalDateTime now = LocalDateTime.now();
@@ -65,6 +117,8 @@ public class DocumentServiceImpl implements DocumentService {
     doc.setFilePath(filePath);
     doc.setFileSize(file.getSize());
     doc.setFileType(fileType);
+    doc.setFileMd5(fileMd5);
+    doc.setVersion(1);
     doc.setParseStatus(PARSE_STATUS_PENDING);
     doc.setChunkCount(0);
     doc.setErrorMsg(null);
@@ -77,7 +131,59 @@ public class DocumentServiceImpl implements DocumentService {
     kb.setUpdatedAt(now);
     knowledgeBaseMapper.updateById(kb);
 
-    return toDocumentVO(doc);
+    DocumentUploadResultVO result = new DocumentUploadResultVO();
+    result.setExists(false);
+    result.setDocument(toDocumentVO(doc));
+    result.setMessage("上传成功");
+    return result;
+  }
+
+  @Override
+  @Transactional
+  public DocumentVO replaceDocument(Long kbId, MultipartFile file, Long existingDocId) {
+    KnowledgeBase kb = requireActiveKb(kbId);
+    validateFile(file);
+
+    Document existing = documentMapper.selectById(existingDocId);
+    if (existing == null || !Objects.equals(existing.getKbId(), kbId)) {
+      throw new BizException(404, "文档不存在");
+    }
+
+    String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
+    String fileType = extractExtension(originalFilename);
+    String fileMd5 = calculateMd5(file);
+
+    int oldChunkCount = coalesce(existing.getChunkCount(), 0);
+
+    // delete previous artifacts
+    fileStorageService.delete(existing.getFilePath());
+    documentChunkMapper.delete(new LambdaQueryWrapper<DocumentChunk>().eq(DocumentChunk::getDocId, existingDocId));
+    deleteEsByDocId(existingDocId);
+
+    // store new file
+    String newFilePath = fileStorageService.store(file);
+    LocalDateTime now = LocalDateTime.now();
+
+    existing.setFilename(originalFilename);
+    existing.setFilePath(newFilePath);
+    existing.setFileSize(file.getSize());
+    existing.setFileType(fileType);
+    existing.setFileMd5(fileMd5);
+    existing.setVersion(coalesce(existing.getVersion(), 1) + 1);
+    existing.setParseStatus(PARSE_STATUS_PENDING);
+    existing.setChunkCount(0);
+    existing.setErrorMsg(null);
+    existing.setCreatedAt(now);
+    documentMapper.updateById(existing);
+
+    // kb chunk/doc counters remain unchanged; chunk may need rollback to zero for replaced document
+    if (coalesce(kb.getChunkCount(), 0) > 0 && oldChunkCount > 0) {
+      kb.setChunkCount(Math.max(0, coalesce(kb.getChunkCount(), 0) - oldChunkCount));
+      kb.setUpdatedAt(now);
+      knowledgeBaseMapper.updateById(kb);
+    }
+
+    return toDocumentVO(existing);
   }
 
   @Override
@@ -126,6 +232,8 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setFilename(doc.getFilename());
     vo.setFileSize(doc.getFileSize());
     vo.setFileType(doc.getFileType());
+    vo.setFileMd5(doc.getFileMd5());
+    vo.setVersion(doc.getVersion());
     vo.setParseStatus(doc.getParseStatus());
     vo.setChunkCount(doc.getChunkCount());
     vo.setCreatedAt(doc.getCreatedAt());
@@ -144,6 +252,36 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setChunkCount(doc.getChunkCount());
     vo.setErrorMsg(doc.getErrorMsg());
     return vo;
+  }
+
+  @Override
+  public ResponseEntity<Resource> download(Long id) {
+    Document doc = documentMapper.selectById(id);
+    if (doc == null) {
+      throw new BizException(404, "文档不存在");
+    }
+    if (!StringUtils.hasText(doc.getFilePath())) {
+      throw new BizException(404, "原文件不存在");
+    }
+
+    FileSystemResource resource = new FileSystemResource(doc.getFilePath());
+    if (!resource.exists()) {
+      throw new BizException(404, "原文件不存在");
+    }
+
+    String filename = StringUtils.hasText(doc.getFilename()) ? doc.getFilename() : resource.getFilename();
+    ContentDisposition disposition =
+        ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build();
+
+    try {
+      return ResponseEntity.ok()
+          .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+          .contentType(MediaType.APPLICATION_OCTET_STREAM)
+          .contentLength(resource.contentLength())
+          .body(resource);
+    } catch (IOException e) {
+      throw new BizException(500, "读取文件失败");
+    }
   }
 
   @Override
@@ -182,7 +320,7 @@ public class DocumentServiceImpl implements DocumentService {
     return kb;
   }
 
-  private void validateFile(@NotNull MultipartFile file) {
+  private void validateFile(MultipartFile file) {
     if (file.isEmpty()) {
       throw new BizException(400, "文件不能为空");
     }
@@ -237,6 +375,56 @@ public class DocumentServiceImpl implements DocumentService {
     return filename.substring(idx + 1).toLowerCase(Locale.ROOT);
   }
 
+  private String calculateMd5(MultipartFile file) {
+    try (InputStream is = file.getInputStream()) {
+      java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+      byte[] buffer = new byte[8192];
+      int len;
+      while ((len = is.read(buffer)) != -1) {
+        md.update(buffer, 0, len);
+      }
+      byte[] digest = md.digest();
+      StringBuilder sb = new StringBuilder();
+      for (byte b : digest) {
+        sb.append(String.format("%02x", b));
+      }
+      return sb.toString();
+    } catch (Exception e) {
+      throw new BizException(500, "计算文件 MD5 失败");
+    }
+  }
+
+  private void deleteEsByDocId(Long docId) {
+    try {
+      String payload =
+          objectMapper.writeValueAsString(
+              java.util.Map.of("query", java.util.Map.of("term", java.util.Map.of("doc_id", docId))));
+
+      HttpRequest.Builder builder =
+          HttpRequest.newBuilder(
+                  URI.create(
+                      String.format("%s://%s:%d/%s/_delete_by_query", esScheme, esHost, esPort, esDocumentIndex)))
+              .header("Content-Type", "application/json")
+              .POST(HttpRequest.BodyPublishers.ofString(payload));
+
+      if (StringUtils.hasText(esUsername) && StringUtils.hasText(esPassword)) {
+        String auth =
+            java.util.Base64.getEncoder()
+                .encodeToString((esUsername + ":" + esPassword).getBytes(StandardCharsets.UTF_8));
+        builder.header("Authorization", "Basic " + auth);
+      }
+
+      HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.discarding());
+    } catch (InterruptedException e) {
+      log.warn("Failed to cleanup Elasticsearch index for doc_id={}", docId, e);
+      Thread.currentThread().interrupt();
+    } catch (IOException e) {
+      log.warn("Failed to cleanup Elasticsearch index for doc_id={}", docId, e);
+    } catch (Exception e) {
+      log.warn("Failed to cleanup Elasticsearch index for doc_id={}", docId, e);
+    }
+  }
+
   private DocumentVO toDocumentVO(Document doc) {
     DocumentVO vo = new DocumentVO();
     vo.setId(doc.getId());
@@ -244,6 +432,8 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setFilename(doc.getFilename());
     vo.setFileSize(doc.getFileSize());
     vo.setFileType(doc.getFileType());
+    vo.setFileMd5(doc.getFileMd5());
+    vo.setVersion(doc.getVersion());
     vo.setParseStatus(doc.getParseStatus());
     vo.setChunkCount(doc.getChunkCount());
     vo.setCreatedAt(doc.getCreatedAt());
