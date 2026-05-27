@@ -14,6 +14,9 @@ public class SearchRequest {
 
   private List<Long> kbIds;
 
+  /** vector | keyword */
+  private String strategy = "vector";
+
   @Min(1)
   @Max(50)
   private int topK = 8;

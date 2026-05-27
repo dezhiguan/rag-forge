@@ -11,4 +11,5 @@ public class SearchResult {
   private String content;
   private int chunkIndex;
   private double vectorScore;
+  private double bm25Score;
 }

@@ -14,26 +14,35 @@
             </select>
           </div>
           <div class="param-row">
+            <div class="param-label">检索策略</div>
+            <select v-model="config.strategy" class="param-select">
+              <option value="vector">vector（向量检索）</option>
+              <option value="keyword">keyword（关键词检索）</option>
+            </select>
+          </div>
+          <div class="param-row">
             <div class="param-label">Top-K</div>
             <div class="param-slider">
               <input type="range" v-model.number="config.topK" min="1" max="20">
               <span class="param-val">{{ config.topK }}</span>
             </div>
           </div>
-          <div class="param-row">
-            <div class="param-label">向量权重</div>
-            <div class="param-slider">
-              <input type="range" v-model.number="config.vectorWeight" min="0" max="1" step="0.05">
-              <span class="param-val">{{ config.vectorWeight.toFixed(2) }}</span>
+          <template v-if="config.strategy !== 'keyword'">
+            <div class="param-row">
+              <div class="param-label">向量权重</div>
+              <div class="param-slider">
+                <input type="range" v-model.number="config.vectorWeight" min="0" max="1" step="0.05">
+                <span class="param-val">{{ config.vectorWeight.toFixed(2) }}</span>
+              </div>
             </div>
-          </div>
-          <div class="param-row">
-            <div class="param-label">BM25 权重</div>
-            <div class="param-slider">
-              <input type="range" :value="1 - config.vectorWeight" min="0" max="1" step="0.05" @input="config.vectorWeight = +(1 - $event.target.value).toFixed(2)">
-              <span class="param-val">{{ (1 - config.vectorWeight).toFixed(2) }}</span>
+            <div class="param-row">
+              <div class="param-label">BM25 权重</div>
+              <div class="param-slider">
+                <input type="range" :value="1 - config.vectorWeight" min="0" max="1" step="0.05" @input="config.vectorWeight = +(1 - $event.target.value).toFixed(2)">
+                <span class="param-val">{{ (1 - config.vectorWeight).toFixed(2) }}</span>
+              </div>
             </div>
-          </div>
+          </template>
           <div class="param-row">
             <div class="param-label">Rerank TopN</div>
             <div class="param-slider">
@@ -62,7 +71,7 @@
           <div class="results-info">
             检索结果
             <span v-if="searched" class="time-text">
-              · 耗时 Vector {{ latencyMs }}ms
+              · 耗时 {{ latencyMs }}ms · {{ strategy || config.strategy }}
             </span>
           </div>
 
@@ -75,19 +84,21 @@
               v-for="(r, i) in results"
               :key="r.chunkId ?? i"
               class="result-card"
-              :class="{ top: i === 0 && r.vectorScore >= 0.8 }"
+              :class="{ top: isTopResult(i, r) }"
             >
               <div class="result-head">
                 <span class="result-doc">📄 {{ r.filename }} #{{ r.chunkIndex }}</span>
                 <span
                   class="result-score"
-                  :style="{ color: scoreColor(r.vectorScore) }"
+                  :style="{ color: scoreColor(displayScore(r)) }"
                 >
-                  Score {{ r.vectorScore.toFixed(4) }}
+                  Score {{ formatScore(displayScore(r)) }}
                 </span>
               </div>
               <div class="result-text" v-html="highlightContent(r.content, query)"></div>
-              <div class="result-meta">向量 {{ r.vectorScore.toFixed(4) }}</div>
+              <div class="result-meta">
+                {{ strategy === 'keyword' ? 'BM25' : '向量' }} {{ formatScore(displayScore(r)) }}
+              </div>
             </div>
           </template>
 
@@ -135,6 +146,7 @@ const strategy = ref('')
 
 const config = reactive({
   kbId: null,
+  strategy: 'vector',
   topK: 8,
   vectorWeight: 0.55,
   rerankTopN: 5,
@@ -172,10 +184,36 @@ function highlightContent(content, q) {
   return html
 }
 
+function displayScore(r) {
+  return strategy.value === 'keyword' ? (r.bm25Score ?? 0) : (r.vectorScore ?? 0)
+}
+
+function formatScore(score) {
+  return strategy.value === 'keyword' ? score.toFixed(2) : score.toFixed(4)
+}
+
+function isTopResult(index, r) {
+  if (index !== 0) return false
+  if (strategy.value === 'keyword') {
+    return (r.bm25Score ?? 0) >= 3.0
+  }
+  return (r.vectorScore ?? 0) >= 0.8
+}
+
 function scoreColor(score) {
+  if (strategy.value === 'keyword') {
+    if (score >= 5) return '#10b981'
+    if (score >= 3) return '#f59e0b'
+    return '#64748b'
+  }
   if (score >= 0.9) return '#10b981'
   if (score >= 0.8) return '#f59e0b'
   return '#64748b'
+}
+
+function sortResults(list) {
+  const key = strategy.value === 'keyword' ? 'bm25Score' : 'vectorScore'
+  return list.slice().sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0))
 }
 
 async function doSearch() {
@@ -188,15 +226,19 @@ async function doSearch() {
   searching.value = true
   searched.value = false
   try {
-    const payload = { query: q, topK: config.topK }
+    const payload = {
+      query: q,
+      topK: config.topK,
+      strategy: config.strategy,
+    }
     if (config.kbId != null) {
       payload.kbIds = [config.kbId]
     }
     const res = await searchApi(payload)
     const data = res.data ?? {}
-    results.value = (data.results ?? []).slice().sort((a, b) => b.vectorScore - a.vectorScore)
+    strategy.value = data.strategy ?? config.strategy
+    results.value = sortResults(data.results ?? [])
     latencyMs.value = data.latencyMs ?? 0
-    strategy.value = data.strategy ?? 'vector'
     searched.value = true
   } catch {
     results.value = []
