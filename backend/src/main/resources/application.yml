@@ -3,6 +3,10 @@ spring:
     name: rag-forge
   profiles:
     active: dev
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
 
 ragforge:
   files:
@@ -13,6 +17,8 @@ app:
     header: X-API-Key
     whitelist-paths:
       - /api/v1/health
+  file:
+    storage-path: ./data/files
 
 mybatis-plus:
   type-aliases-package: com.ragforge.model.entity

@@ -1,57 +1,198 @@
 <template>
   <div>
     <div class="page-body">
-      <div class="toolbar">
-        <button class="btn-primary" @click="openCreate">+ 创建知识库</button>
-        <button class="btn-ghost" :disabled="loading" @click="loadList">刷新</button>
+      <div class="top-toolbar">
+        <div class="toolbar-left">
+          <button class="btn-primary" @click="openCreate">+ 创建知识库</button>
+          <button class="btn-ghost" :disabled="loadingKb" @click="loadKbs">刷新</button>
+        </div>
       </div>
 
-      <div v-if="loading" class="state-hint">加载中…</div>
+      <div v-if="loadingKb" class="state-hint">加载中…</div>
       <div v-else-if="!kbList.length" class="state-hint">暂无知识库，点击上方按钮创建</div>
 
-      <table v-else class="data-table">
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>文档数</th>
-            <th>Chunk 数</th>
-            <th>状态</th>
-            <th>创建时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="kb in kbList" :key="kb.id">
-            <td>
-              <strong>{{ kb.name }}</strong>
-              <div v-if="kb.description" class="desc">{{ kb.description }}</div>
-            </td>
-            <td>{{ kb.docCount ?? 0 }}</td>
-            <td>{{ kb.chunkCount ?? 0 }}</td>
-            <td><span class="badge" :class="statusClass(kb.status)">{{ statusLabel(kb.status) }}</span></td>
-            <td>{{ formatTime(kb.createdAt) }}</td>
-            <td>
-              <span class="link-action danger" @click="onDelete(kb)">删除</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <div v-else class="content">
+        <div class="upload-layout">
+          <div class="upload-settings">
+            <label class="select-label">
+              上传到知识库
+              <select v-model="uploadKbId" class="select">
+                <option v-for="kb in kbList" :key="kb.id" :value="kb.id">
+                  {{ kb.name }}
+                </option>
+              </select>
+            </label>
+            <div v-if="uploadProcessing" class="processing-hint">处理中…</div>
+          </div>
 
-    <div v-if="showCreate" class="modal-mask" @click.self="showCreate = false">
-      <div class="modal">
-        <h3 class="modal-title">创建知识库</h3>
-        <label class="field">
-          <span>名称 *</span>
-          <input v-model="form.name" type="text" placeholder="例如：产品文档库" />
-        </label>
-        <label class="field">
-          <span>描述</span>
-          <textarea v-model="form.description" rows="3" placeholder="可选" />
-        </label>
-        <div class="modal-actions">
-          <button class="btn-ghost" @click="showCreate = false">取消</button>
-          <button class="btn-primary" :disabled="submitting" @click="onCreate">确定</button>
+          <div
+            class="upload-zone"
+            @dragover.prevent="isDragOver = true"
+            @dragleave.prevent="isDragOver = false"
+            @drop.prevent="onDrop"
+            :class="{ 'upload-zone-drag': isDragOver }"
+            @click="onPickFile"
+          >
+            <input
+              ref="fileInputRef"
+              class="hidden-file"
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.md,.markdown,.html,.htm,application/pdf"
+              @change="onFileChange"
+            />
+            <div class="upload-icon">📤</div>
+            <div class="upload-text">
+              拖拽文件上传 · 支持 PDF / Markdown / Word / HTML
+            </div>
+            <div class="upload-hint">单文件最大 50MB · 支持批量上传</div>
+          </div>
+        </div>
+
+        <div class="pipeline" aria-label="processing pipeline">
+          <div class="pipe-item">
+            <div class="pipe-icon">📥</div>
+            <div class="pipe-name">解析</div>
+          </div>
+          <span class="pipe-arrow">→</span>
+          <div class="pipe-item">
+            <div class="pipe-icon">✂️</div>
+            <div class="pipe-name">分块</div>
+            <div class="pipe-desc">512 tokens</div>
+          </div>
+          <span class="pipe-arrow">→</span>
+          <div class="pipe-item">
+            <div class="pipe-icon">🧮</div>
+            <div class="pipe-name">向量化</div>
+          </div>
+          <span class="pipe-arrow">→</span>
+          <div class="pipe-item">
+            <div class="pipe-icon">📇</div>
+            <div class="pipe-name">BM25</div>
+          </div>
+          <span class="pipe-arrow">→</span>
+          <div class="pipe-item">
+            <div class="pipe-icon">✅</div>
+            <div class="pipe-name">可用</div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 36%;">知识库</th>
+                <th>文档</th>
+                <th>Chunk</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th style="width: 110px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="kb in kbList" :key="kb.id">
+                <tr class="kb-row" @click="toggleKb(kb.id)">
+                  <td>
+                    <div class="kb-cell">
+                      <span class="expander">{{ expandedKbId === kb.id ? '▾' : '▸' }}</span>
+                      <div class="kb-title">
+                        <strong>{{ kb.name }}</strong>
+                        <div v-if="kb.description" class="desc">{{ kb.description }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{{ kb.docCount ?? 0 }}</td>
+                  <td>{{ kb.chunkCount ?? 0 }}</td>
+                  <td>
+                    <span class="badge" :class="statusClass(kb.status)">
+                      {{ statusLabel(kb.status) }}
+                    </span>
+                  </td>
+                  <td>{{ formatTime(kb.createdAt) }}</td>
+                  <td>
+                    <span class="link-action danger" @click.stop="onDeleteKb(kb)">
+                      删除
+                    </span>
+                  </td>
+                </tr>
+
+                <tr v-if="expandedKbId === kb.id" class="docs-row">
+                  <td colspan="6">
+                    <div class="docs-panel">
+                      <div class="docs-head">
+                        <div class="docs-title">文档列表</div>
+                        <button
+                          class="btn-ghost btn-ghost-small"
+                          :disabled="docsLoading[kb.id]"
+                          @click.stop="loadDocs(kb.id)"
+                        >
+                          刷新
+                        </button>
+                      </div>
+
+                      <table class="docs-table">
+                        <thead>
+                          <tr>
+                            <th>文件名</th>
+                            <th>大小</th>
+                            <th>状态</th>
+                            <th>Chunk</th>
+                            <th>上传时间</th>
+                            <th style="width: 140px;">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-if="(docsMap[kb.id]?.list || []).length === 0">
+                            <td colspan="6" class="empty-hint">暂无文档</td>
+                          </tr>
+                          <tr v-for="doc in docsMap[kb.id]?.list || []" :key="doc.id">
+                            <td class="doc-filename">{{ doc.filename }}</td>
+                            <td>{{ formatBytes(doc.fileSize) }}</td>
+                            <td>
+                              <span class="badge" :class="docStatusClass(doc.parseStatus)">
+                                {{ doc.parseStatus }}
+                              </span>
+                            </td>
+                            <td>{{ doc.chunkCount ?? 0 }}</td>
+                            <td>{{ formatTime(doc.createdAt) }}</td>
+                            <td>
+                              <span class="link-action" @click.stop="goDoc(doc.id)">详情</span>
+                              <span
+                                class="link-action danger"
+                                @click.stop="onDeleteDoc(doc)"
+                              >
+                                删除
+                              </span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-if="showCreate" class="modal-mask" @click.self="showCreate = false">
+        <div class="modal">
+          <h3 class="modal-title">创建知识库</h3>
+          <label class="field">
+            <span>名称 *</span>
+            <input v-model="kbForm.name" type="text" placeholder="例如：产品文档库" />
+          </label>
+          <label class="field">
+            <span>描述</span>
+            <textarea v-model="kbForm.description" rows="3" placeholder="可选" />
+          </label>
+          <div class="modal-actions">
+            <button class="btn-ghost" @click="showCreate = false">取消</button>
+            <button class="btn-primary" :disabled="submittingKb" @click="onCreateKb">
+              确定
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -59,61 +200,160 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { createKb, deleteKb, listKb } from '../api/kb'
+import {
+  deleteDocument,
+  listDocuments,
+  uploadDocument,
+} from '../api/document'
+
+const router = useRouter()
 
 const kbList = ref([])
-const loading = ref(false)
-const showCreate = ref(false)
-const submitting = ref(false)
-const form = ref({ name: '', description: '' })
+const loadingKb = ref(false)
+const expandedKbId = ref(null)
 
-async function loadList() {
-  loading.value = true
+const docsMap = reactive({})
+const docsLoading = reactive({})
+
+const uploadKbId = ref(null)
+const uploadProcessing = ref(false)
+const isDragOver = ref(false)
+const fileInputRef = ref(null)
+
+const showCreate = ref(false)
+const submittingKb = ref(false)
+const kbForm = ref({ name: '', description: '' })
+
+async function loadKbs() {
+  loadingKb.value = true
   try {
     const res = await listKb()
     kbList.value = res.data ?? []
+    if (!uploadKbId.value && kbList.value.length) {
+      uploadKbId.value = kbList.value[0].id
+    }
   } finally {
-    loading.value = false
+    loadingKb.value = false
+  }
+}
+
+async function loadDocs(kbId) {
+  docsLoading[kbId] = true
+  try {
+    const res = await listDocuments(kbId, 1, 20)
+    docsMap[kbId] = {
+      list: res.data?.list ?? [],
+    }
+  } finally {
+    docsLoading[kbId] = false
+  }
+}
+
+async function toggleKb(kbId) {
+  expandedKbId.value = expandedKbId.value === kbId ? null : kbId
+  if (expandedKbId.value === kbId && !(docsMap[kbId]?.list?.length > 0)) {
+    // 空列表也允许展开，但这里先拉一次
+    await loadDocs(kbId)
   }
 }
 
 function openCreate() {
-  form.value = { name: '', description: '' }
+  kbForm.value = { name: '', description: '' }
   showCreate.value = true
 }
 
-async function onCreate() {
-  if (!form.value.name?.trim()) {
+async function onCreateKb() {
+  if (!kbForm.value.name?.trim()) {
     alert('请填写知识库名称')
     return
   }
-  submitting.value = true
+  submittingKb.value = true
   try {
     await createKb({
-      name: form.value.name.trim(),
-      description: form.value.description || undefined,
+      name: kbForm.value.name.trim(),
+      description: kbForm.value.description || undefined,
     })
     showCreate.value = false
-    await loadList()
+    await loadKbs()
   } finally {
-    submitting.value = false
+    submittingKb.value = false
   }
 }
 
-async function onDelete(kb) {
+async function onDeleteKb(kb) {
   if (!confirm(`确定删除知识库「${kb.name}」？`)) return
+  await deleteKb(kb.id)
+  await loadKbs()
+  if (expandedKbId.value === kb.id) expandedKbId.value = null
+}
+
+function onPickFile() {
+  if (fileInputRef.value) fileInputRef.value.click()
+}
+
+async function handleFiles(files) {
+  if (!uploadKbId.value) {
+    alert('请先选择上传到哪个知识库')
+    return
+  }
+  if (!files || files.length === 0) return
+
+  uploadProcessing.value = true
   try {
-    await deleteKb(kb.id)
-    await loadList()
-  } catch {
-    /* 错误已在 request 拦截器提示 */
+    for (const file of files) {
+      await uploadDocument(uploadKbId.value, file)
+    }
+    await loadKbs()
+    if (expandedKbId.value === uploadKbId.value) {
+      await loadDocs(uploadKbId.value)
+    }
+  } finally {
+    uploadProcessing.value = false
+  }
+}
+
+function onFileChange(e) {
+  const files = e.target.files ? Array.from(e.target.files) : []
+  handleFiles(files)
+  e.target.value = ''
+}
+
+async function onDrop(e) {
+  isDragOver.value = false
+  const files = e.dataTransfer?.files ? Array.from(e.dataTransfer.files) : []
+  handleFiles(files)
+}
+
+function goDoc(id) {
+  router.push(`/document/${id}`)
+}
+
+async function onDeleteDoc(doc) {
+  if (!confirm(`确定删除文档「${doc.filename}」？`)) return
+  await deleteDocument(doc.id)
+  // 删除后刷新知识库计数 + 文档列表
+  await loadKbs()
+  if (expandedKbId.value) {
+    await loadDocs(expandedKbId.value)
   }
 }
 
 function formatTime(iso) {
   if (!iso) return '-'
-  return iso.replace('T', ' ').slice(0, 19)
+  return iso.toString().replace('T', ' ').slice(0, 19)
+}
+
+function formatBytes(bytes) {
+  if (bytes == null) return '-'
+  const n = Number(bytes)
+  if (Number.isNaN(n)) return '-'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+  return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
 function statusLabel(status) {
@@ -127,16 +367,34 @@ function statusClass(status) {
   return 'badge-gray'
 }
 
-onMounted(loadList)
+function docStatusClass(parseStatus) {
+  if (parseStatus === 'pending') return 'badge-gray'
+  if (parseStatus === 'success') return 'badge-green'
+  if (parseStatus === 'failed') return 'badge-red'
+  return 'badge-gray'
+}
+
+onMounted(async () => {
+  await loadKbs()
+  if (kbList.value.length) {
+    expandedKbId.value = kbList.value[0].id
+    await loadDocs(kbList.value[0].id)
+  }
+})
 </script>
 
 <style scoped>
-.page-body { padding: 20px 28px 32px; }
+.page-body {
+  padding: 20px 28px 32px;
+}
 
-.toolbar {
+.top-toolbar {
+  margin-bottom: 12px;
+}
+
+.toolbar-left {
   display: flex;
   gap: 10px;
-  margin-bottom: 16px;
 }
 
 .btn-primary {
@@ -161,6 +419,11 @@ onMounted(loadList)
 }
 .btn-ghost:disabled { opacity: 0.5; }
 
+.btn-ghost-small {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .state-hint {
   text-align: center;
   color: var(--text-muted);
@@ -168,25 +431,202 @@ onMounted(loadList)
   font-size: 14px;
 }
 
-.data-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: 10px; overflow: hidden; }
-.data-table th, .data-table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-.data-table th { background: var(--light); font-weight: 600; color: var(--slate); font-size: 11px; text-transform: uppercase; }
-.data-table tbody tr:hover { background: #f8fafc; }
-.desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-weight: normal; }
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.upload-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.upload-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.select-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+}
+
+.processing-hint {
+  font-size: 12px;
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.upload-zone {
+  border: 2px dashed #e2e8f0;
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  background: #fafbfc;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.upload-zone-drag {
+  border-color: var(--blue);
+  background: #eff6ff;
+}
+
+.upload-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+.upload-text {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.upload-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.hidden-file { display: none; }
+
+.pipeline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+.pipe-item {
+  flex: 1;
+  background: #f1f5f9;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 12px 10px;
+  text-align: center;
+}
+
+.pipe-icon { font-size: 16px; }
+.pipe-name { font-weight: 700; font-size: 11px; margin-top: 4px; }
+.pipe-desc { font-size: 9px; color: var(--text-muted); margin-top: 2px; }
+.pipe-arrow { color: var(--border); font-size: 16px; }
+
+.table-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table thead th {
+  text-align: left;
+  padding: 12px 16px;
+  background: var(--light);
+  color: var(--slate);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--gray);
+  vertical-align: top;
+}
+
+.kb-row {
+  cursor: pointer;
+  background: #fff;
+}
+.kb-row:hover {
+  background: #f8fafc;
+}
+
+.kb-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.expander { font-size: 16px; color: var(--text-muted); line-height: 1.4; }
+.kb-title strong { font-size: 13px; }
+.desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-weight: 500; }
 
 .badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
+  border: 1px solid transparent;
 }
-.badge-green { background: #dcfce7; color: #166534; }
-.badge-amber { background: #fef3c7; color: #92400e; }
-.badge-gray { background: #f1f5f9; color: #64748b; }
+.badge-green { background: #dcfce7; color: #166534; border-color: rgba(22,101,52,0.2); }
+.badge-amber { background: #fef3c7; color: #92400e; border-color: rgba(146,64,14,0.2); }
+.badge-gray { background: #f1f5f9; color: #64748b; border-color: rgba(148,163,184,0.35); }
+.badge-red { background: #fee2e2; color: #991b1b; border-color: rgba(239,68,68,0.25); }
 
-.link-action { color: var(--blue); cursor: pointer; font-size: 12px; }
-.link-action.danger { color: var(--red); }
+.link-action { cursor: pointer; font-size: 12px; color: var(--blue); margin-right: 10px; }
+.link-action.danger { color: var(--red); margin-right: 0; }
+
+.docs-row td { padding: 0; }
+.docs-panel {
+  padding: 16px;
+  background: #fbfdff;
+  border-top: 1px solid var(--border);
+}
+
+.docs-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.docs-title { font-size: 13px; color: var(--slate); font-weight: 800; }
+
+.docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.docs-table thead th {
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--slate);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.docs-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--gray);
+}
+.empty-hint { color: var(--text-muted); text-align: center; padding: 20px 12px; }
+.doc-filename { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .modal-mask {
   position: fixed;
