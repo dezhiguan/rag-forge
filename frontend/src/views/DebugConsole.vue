@@ -18,6 +18,7 @@
             <select v-model="config.strategy" class="param-select">
               <option value="vector">vector（向量检索）</option>
               <option value="keyword">keyword（关键词检索）</option>
+              <option value="rewrite">rewrite（Query 改写检索）</option>
             </select>
           </div>
           <div class="param-row">
@@ -27,7 +28,7 @@
               <span class="param-val">{{ config.topK }}</span>
             </div>
           </div>
-          <template v-if="config.strategy !== 'keyword'">
+          <template v-if="config.strategy !== 'keyword' && config.strategy !== 'rewrite'">
             <div class="param-row">
               <div class="param-label">向量权重</div>
               <div class="param-slider">
@@ -73,6 +74,9 @@
             <span v-if="searched" class="time-text">
               · 耗时 {{ latencyMs }}ms · {{ strategy || config.strategy }}
             </span>
+          </div>
+          <div v-if="rewrittenQueries.length" class="rewritten-queries">
+            改写查询：{{ rewrittenQueries.join(' | ') }}
           </div>
 
           <div v-if="searching" class="state-hint">检索中…</div>
@@ -143,6 +147,7 @@ const searching = ref(false)
 const searched = ref(false)
 const latencyMs = ref(0)
 const strategy = ref('')
+const rewrittenQueries = ref([])
 
 const config = reactive({
   kbId: null,
@@ -237,11 +242,13 @@ async function doSearch() {
     const res = await searchApi(payload)
     const data = res.data ?? {}
     strategy.value = data.strategy ?? config.strategy
+    rewrittenQueries.value = data.rewrittenQueries ?? []
     results.value = sortResults(data.results ?? [])
     latencyMs.value = data.latencyMs ?? 0
     searched.value = true
   } catch {
     results.value = []
+    rewrittenQueries.value = []
     searched.value = true
   } finally {
     searching.value = false
@@ -281,6 +288,11 @@ onMounted(async () => {
 .search-input:focus { border-color: var(--blue); }
 .results-info { font-weight: 600; margin-bottom: 10px; font-size: 11px; }
 .time-text { color: var(--text-muted); font-weight: 400; }
+.rewritten-queries {
+  margin: -2px 0 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
 .state-hint { text-align: center; color: var(--text-muted); padding: 32px 0; font-size: 12px; }
 .result-card { background: var(--light); border: 1px solid var(--border); border-radius: 7px; padding: 10px; margin-bottom: 8px; }
 .result-card.top { background: #f0fdf4; border-color: #bbf7d0; }

@@ -14,4 +14,5 @@ public class SearchResponse {
   private List<SearchResult> results;
   private long latencyMs;
   private String strategy;
+  private List<String> rewrittenQueries;
 }

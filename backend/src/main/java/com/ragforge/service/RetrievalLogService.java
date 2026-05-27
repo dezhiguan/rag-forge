@@ -20,6 +20,7 @@ public class RetrievalLogService {
       String query,
       String strategy,
       List<Long> kbIds,
+      List<String> rewrittenQueries,
       int topK,
       int resultCount,
       long latencyMs) {
@@ -28,6 +29,9 @@ public class RetrievalLogService {
     log.setStrategy(strategy);
     if (kbIds != null && !kbIds.isEmpty()) {
       log.setKbIds(kbIds.stream().map(String::valueOf).collect(Collectors.joining(",")));
+    }
+    if (rewrittenQueries != null && !rewrittenQueries.isEmpty()) {
+      log.setRewrittenQueries(String.join("\n", rewrittenQueries));
     }
     log.setTopK(topK);
     log.setResultCount(resultCount);
