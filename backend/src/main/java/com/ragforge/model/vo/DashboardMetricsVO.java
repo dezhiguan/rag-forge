@@ -1,5 +1,6 @@
 package com.ragforge.model.vo;
 
+import java.util.List;
 import lombok.Data;
 
 @Data
@@ -11,5 +12,6 @@ public class DashboardMetricsVO {
   private long todayApiCalls;
   private long avgLatencyMs;
   private double hitRate;
+  private List<DashboardActivityVO> recentActivities;
 }
 

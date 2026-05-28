@@ -1,0 +1,40 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:172.25.90.183}:${POSTGRES_PORT:5432}/${POSTGRES_DB:ragforge}
+    username: ${POSTGRES_USER:ragforge}
+    password: ${POSTGRES_PASSWORD:ragforge}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      initialization-fail-timeout: -1
+      maximum-pool-size: 10
+
+  sql:
+    init:
+      mode: never
+
+elasticsearch:
+  host: ${ELASTICSEARCH_HOST:172.25.90.183}
+  port: ${ELASTICSEARCH_PORT:9200}
+  scheme: ${ELASTICSEARCH_SCHEME:http}
+
+rocketmq:
+  name-server: ${ROCKETMQ_NAMESRV_ADDR:172.25.90.183:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:ragforge-producer}
+
+reranker:
+  base-url: ${RERANKER_BASE_URL:http://172.25.90.183:8001}
+
+ragforge:
+  files:
+    upload-path: /data/files/
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    root: INFO
+    com.ragforge: INFO
+

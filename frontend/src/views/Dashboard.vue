@@ -42,10 +42,18 @@
       <div class="activity-panel">
         <div class="activity-title">最近操作</div>
         <div class="activity-list">
-          <div class="activity-item">12:30 知识库「面试题库」索引重建完成</div>
-          <div class="activity-item">11:45 评测实验「Hybrid+Reranker」完成，Top3: 89%</div>
-          <div class="activity-item error">
-            10:20 文档「某公司面经.pdf」解析失败 — <span class="link-action">重试</span>
+          <div
+            class="activity-item"
+            :class="{ error: item.type === 'error' }"
+            v-for="(item, index) in metrics.recentActivities"
+            :key="index"
+          >
+            {{ item.time }} {{ item.message }}
+            <span
+              v-if="item.retryable"
+              class="link-action"
+              @click="retryDocument(item.docId)"
+            >重试</span>
           </div>
         </div>
       </div>
@@ -56,6 +64,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { getDashboardMetrics } from '../api/metrics'
+import { reprocessDocument } from '../api/document'
 
 const loading = ref(false)
 const metrics = reactive({
@@ -65,6 +74,7 @@ const metrics = reactive({
   todayApiCalls: 0,
   avgLatencyMs: 0,
   hitRate: 0,
+  recentActivities: [],
 })
 
 async function loadMetrics() {
@@ -78,9 +88,19 @@ async function loadMetrics() {
     metrics.todayApiCalls = data.todayApiCalls ?? 0
     metrics.avgLatencyMs = data.avgLatencyMs ?? 0
     metrics.hitRate = data.hitRate ?? 0
+    metrics.recentActivities = data.recentActivities ?? []
   } finally {
     loading.value = false
   }
+}
+
+async function retryDocument(docId) {
+  if (!docId) {
+    console.log('retryDocument: missing docId')
+    return
+  }
+  await reprocessDocument(docId)
+  await loadMetrics()
 }
 
 function formatNumber(n) {
@@ -228,5 +248,11 @@ onMounted(loadMetrics)
 
 .activity-item.error {
   color: #ef4444;
+}
+
+.link-action {
+  margin-left: 6px;
+  color: var(--blue);
+  cursor: pointer;
 }
 </style>
