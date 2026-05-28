@@ -143,67 +143,50 @@
       </template>
 
       <template v-else>
-        <div class="eval-metrics">
-          <div class="eval-card">
-            <div class="card-label">评测问题数</div>
-            <div class="card-value">100</div>
-          </div>
-          <div class="eval-card">
-            <div class="card-label">Top3 命中率</div>
-            <div class="card-value" style="color:#10b981;">89%</div>
-          </div>
-          <div class="eval-card">
-            <div class="card-label">答案可信度</div>
-            <div class="card-value" style="color:#10b981;">84%</div>
-          </div>
-          <div class="eval-card">
-            <div class="card-label">平均耗时</div>
-            <div class="card-value">1.9s</div>
+        <div class="top-toolbar">
+          <div class="toolbar-left">
+            <button class="btn-primary" @click="openRunExperiment">+ 运行新实验</button>
+            <button class="btn-ghost" :disabled="loadingExperiments" @click="loadExperiments">
+              刷新
+            </button>
           </div>
         </div>
-        <div class="section-title">检索策略对比 · Top3 命中率</div>
-        <div class="bar-chart">
-          <div class="bar-col">
-            <div class="bar" style="height:45px;opacity:0.4;"></div>
-            <div class="bar-label">Naive</div><div class="bar-pct">62%</div>
-          </div>
-          <div class="bar-col">
-            <div class="bar" style="height:55px;opacity:0.6;"></div>
-            <div class="bar-label">BM25</div><div class="bar-pct">74%</div>
-          </div>
-          <div class="bar-col">
-            <div class="bar" style="height:68px;opacity:0.8;"></div>
-            <div class="bar-label">Hybrid</div><div class="bar-pct">85%</div>
-          </div>
-          <div class="bar-col">
-            <div class="bar" style="height:75px;opacity:1;"></div>
-            <div class="bar-label">Reranker</div><div class="bar-pct">89%</div>
-          </div>
+
+        <div v-if="loadingExperiments" class="state-hint">加载中…</div>
+        <div v-else-if="!experiments.length" class="state-hint">暂无实验记录，点击上方运行新实验</div>
+        <div v-else class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>数据集</th>
+                <th>策略</th>
+                <th>题目数</th>
+                <th>Top1</th>
+                <th>Top3</th>
+                <th>MRR</th>
+                <th>平均耗时</th>
+                <th>时间</th>
+                <th style="width: 130px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="exp in experiments" :key="exp.id">
+                <td>{{ exp.datasetName || `#${exp.datasetId}` }}</td>
+                <td>{{ exp.strategy }}</td>
+                <td>{{ exp.totalQuestions ?? 0 }}</td>
+                <td>{{ formatRate(exp.top1HitRate) }}</td>
+                <td>{{ formatRate(exp.top3HitRate) }}</td>
+                <td>{{ formatMrr(exp.mrr) }}</td>
+                <td>{{ exp.avgLatencyMs ?? 0 }}ms</td>
+                <td>{{ formatTime(exp.createdAt) }}</td>
+                <td>
+                  <span class="link-action" @click="openExperimentDetail(exp.id)">查看详情</span>
+                  <span class="link-action danger" @click="onDeleteExperiment(exp)">删除</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="section-title">失败样本分析</div>
-        <table class="data-table">
-          <thead><tr><th>问题</th><th>失败原因</th><th>优化建议</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr>
-              <td>"AI工程师需要掌握哪些框架？"</td>
-              <td><span class="badge badge-amber">召回太少</span> Top1 未命中</td>
-              <td>提高 TopK，降低相似度阈值</td>
-              <td><span class="link-action" @click="$router.push('/debug')">去调试 →</span></td>
-            </tr>
-            <tr>
-              <td>"分布式系统面试一般怎么问？"</td>
-              <td><span class="badge badge-red">Chunk切碎</span> 上下文不完整</td>
-              <td>调整分块策略，增大重叠</td>
-              <td><span class="link-action" @click="$router.push('/debug')">去调试 →</span></td>
-            </tr>
-            <tr>
-              <td>"字节跳动的面试流程有几轮？"</td>
-              <td><span class="badge badge-amber">文档缺失</span> 知识库无此信息</td>
-              <td>补充面经文档</td>
-              <td><span class="link-action" @click="$router.push('/knowledge')">去上传 →</span></td>
-            </tr>
-          </tbody>
-        </table>
       </template>
 
       <div v-if="showCreateDataset" class="modal-mask" @click.self="showCreateDataset = false">
@@ -232,22 +215,149 @@
       </div>
 
       <div v-if="showAddQuestion" class="modal-mask" @click.self="showAddQuestion = false">
-        <div class="modal">
+        <div class="modal modal-question">
           <h3 class="modal-title">添加题目</h3>
+          <template v-if="addQuestionStep === 1">
+            <label class="field">
+              <span>问题 *</span>
+              <textarea v-model="questionForm.question" rows="3" placeholder="输入评测问题" />
+            </label>
+            <div class="modal-actions">
+              <button class="btn-ghost" @click="showAddQuestion = false">取消</button>
+              <button class="btn-primary" :disabled="searchingCandidates" @click="onSearchCandidates">
+                {{ searchingCandidates ? '检索中…' : '🔍 检索候选 Chunk' }}
+              </button>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="field">
+              <span>问题</span>
+              <div class="question-preview">{{ questionForm.question }}</div>
+            </div>
+            <div class="selected-count">已选 {{ selectedChunkIds.length }} 个 chunk</div>
+            <div v-if="!candidateChunks.length" class="empty-hint">未检索到候选 Chunk</div>
+            <div v-else class="candidate-list">
+              <label
+                v-for="item in candidateChunks"
+                :key="item.chunkId ?? `${item.filename}-${item.chunkIndex}`"
+                class="candidate-item"
+              >
+                <input
+                  v-if="item.chunkId != null"
+                  v-model="selectedChunkIds"
+                  :value="item.chunkId"
+                  type="checkbox"
+                >
+                <div class="candidate-body">
+                  <div class="candidate-head">
+                    <span>{{ item.filename }} #{{ item.chunkIndex }}</span>
+                    <span class="candidate-score">{{ Number(item.score || 0).toFixed(4) }}</span>
+                  </div>
+                  <div class="candidate-content">{{ candidatePreview(item.content) }}</div>
+                </div>
+              </label>
+            </div>
+            <div class="modal-actions">
+              <button class="btn-ghost" @click="addQuestionStep = 1">上一步</button>
+              <button class="btn-primary" :disabled="submittingQuestion" @click="onAddQuestion">
+                {{ submittingQuestion ? '保存中…' : '确认保存' }}
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div v-if="showRunExperiment" class="modal-mask" @click.self="showRunExperiment = false">
+        <div class="modal">
+          <h3 class="modal-title">运行实验</h3>
           <label class="field">
-            <span>问题 *</span>
-            <textarea v-model="questionForm.question" rows="3" placeholder="输入评测问题" />
+            <span>数据集 *</span>
+            <select v-model="runForm.datasetId" class="select">
+              <option :value="null" disabled>请选择数据集</option>
+              <option v-for="ds in datasets" :key="ds.id" :value="ds.id">
+                {{ ds.name }}（{{ ds.questionCount ?? 0 }}题）
+              </option>
+            </select>
           </label>
           <label class="field">
-            <span>期望 Chunk IDs（逗号分隔）</span>
-            <input v-model="questionForm.chunkIdsText" type="text" placeholder="例如：12, 45, 78" />
+            <span>策略</span>
+            <select v-model="runForm.strategy" class="select" :disabled="runForm.ablation">
+              <option value="vector">vector</option>
+              <option value="keyword">keyword</option>
+              <option value="hybrid">hybrid</option>
+              <option value="full">full</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>TopK</span>
+            <input v-model.number="runForm.topK" type="number" min="1" max="50" />
+          </label>
+          <label class="field">
+            <span>Vector Weight（hybrid/full）</span>
+            <input v-model.number="runForm.vectorWeight" type="number" min="0" max="1" step="0.05" />
+          </label>
+          <label class="field checkbox-row">
+            <input v-model="runForm.ablation" type="checkbox">
+            <span>消融实验（对比 4 种策略）</span>
           </label>
           <div class="modal-actions">
-            <button class="btn-ghost" @click="showAddQuestion = false">取消</button>
-            <button class="btn-primary" :disabled="submittingQuestion" @click="onAddQuestion">
-              确定
+            <button class="btn-ghost" @click="showRunExperiment = false">取消</button>
+            <button class="btn-primary" :disabled="runningExperiment" @click="onRunExperiment">
+              {{ runningExperiment ? '运行中…' : '开始运行' }}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div v-if="showExperimentDetail && experimentDetail" class="modal-mask" @click.self="showExperimentDetail = false">
+        <div class="modal modal-detail">
+          <h3 class="modal-title">实验详情 · {{ experimentDetail.strategy }}</h3>
+          <div class="eval-metrics">
+            <div class="eval-card">
+              <div class="card-label">题目数</div>
+              <div class="card-value">{{ experimentDetail.totalQuestions ?? 0 }}</div>
+            </div>
+            <div class="eval-card">
+              <div class="card-label">Top3 命中率</div>
+              <div class="card-value">{{ formatRate(experimentDetail.top3HitRate) }}</div>
+            </div>
+            <div class="eval-card">
+              <div class="card-label">MRR</div>
+              <div class="card-value">{{ formatMrr(experimentDetail.mrr) }}</div>
+            </div>
+            <div class="eval-card">
+              <div class="card-label">平均耗时</div>
+              <div class="card-value">{{ experimentDetail.avgLatencyMs ?? 0 }}ms</div>
+            </div>
+          </div>
+
+          <div class="section-title">策略 Top3 命中率对比</div>
+          <div class="bar-chart">
+            <div v-for="exp in compareExperiments" :key="exp.id" class="bar-col">
+              <div class="bar" :style="{ height: `${Math.max(8, Number(exp.top3HitRate || 0) * 100)}px` }"></div>
+              <div class="bar-label">{{ exp.strategy }}</div>
+              <div class="bar-pct">{{ formatRate(exp.top3HitRate) }}</div>
+            </div>
+          </div>
+
+          <div class="section-title">失败样本分析</div>
+          <table class="data-table">
+            <thead><tr><th>问题</th><th>失败原因</th><th>优化建议</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-if="!(experimentDetail.failureSamples || []).length">
+                <td colspan="4" class="empty-hint">无失败样本</td>
+              </tr>
+              <tr v-for="item in experimentDetail.failureSamples || []" :key="item.questionId">
+                <td>{{ item.question }}</td>
+                <td>
+                  <span class="badge" :class="failureBadgeClass(item.failureReason)">{{ item.failureReason }}</span>
+                </td>
+                <td>{{ failureSuggestion(item.failureReason) }}</td>
+                <td><span class="link-action" @click="$router.push('/debug')">去调试 →</span></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -271,17 +381,22 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
   batchCreateEvalQuestions,
   createEvalDataset,
   createEvalQuestion,
+  deleteExperiment,
   deleteEvalDataset,
   deleteEvalQuestion,
+  getExperiment,
   listEvalDatasets,
+  listExperiments,
   listEvalQuestions,
+  runExperiment,
 } from '../api/eval'
 import { listKb } from '../api/kb'
+import { search as searchApi } from '../api/search'
 
 const activeTab = ref('datasets')
 const datasets = ref([])
@@ -299,13 +414,31 @@ const datasetForm = ref({ name: '', kbId: null })
 
 const showAddQuestion = ref(false)
 const submittingQuestion = ref(false)
+const searchingCandidates = ref(false)
 const addQuestionDatasetId = ref(null)
-const questionForm = ref({ question: '', chunkIdsText: '' })
+const addQuestionStep = ref(1)
+const questionForm = ref({ question: '' })
+const candidateChunks = ref([])
+const selectedChunkIds = ref([])
 
 const showBatchImport = ref(false)
 const submittingBatch = ref(false)
 const batchDatasetId = ref(null)
 const batchText = ref('')
+
+const experiments = ref([])
+const loadingExperiments = ref(false)
+const showRunExperiment = ref(false)
+const runningExperiment = ref(false)
+const showExperimentDetail = ref(false)
+const experimentDetail = ref(null)
+const runForm = ref({
+  datasetId: null,
+  strategy: 'full',
+  vectorWeight: 0.55,
+  topK: 8,
+  ablation: false,
+})
 
 async function loadDatasets() {
   loadingDatasets.value = true
@@ -314,6 +447,16 @@ async function loadDatasets() {
     datasets.value = res.data ?? []
   } finally {
     loadingDatasets.value = false
+  }
+}
+
+async function loadExperiments() {
+  loadingExperiments.value = true
+  try {
+    const res = await listExperiments()
+    experiments.value = res.data ?? []
+  } finally {
+    loadingExperiments.value = false
   }
 }
 
@@ -379,18 +522,49 @@ async function onDeleteDataset(ds) {
 
 function openAddQuestion(datasetId) {
   addQuestionDatasetId.value = datasetId
-  questionForm.value = { question: '', chunkIdsText: '' }
+  addQuestionStep.value = 1
+  questionForm.value = { question: '' }
+  candidateChunks.value = []
+  selectedChunkIds.value = []
   showAddQuestion.value = true
 }
 
-function parseChunkIdsText(text) {
-  if (!text?.trim()) return []
-  return text
-    .split(/[,，\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map(Number)
-    .filter((n) => !Number.isNaN(n))
+async function onSearchCandidates() {
+  if (!questionForm.value.question?.trim()) {
+    alert('请先填写问题')
+    return
+  }
+  searchingCandidates.value = true
+  try {
+    const res = await searchApi({
+      query: questionForm.value.question.trim(),
+      strategy: 'full',
+      topK: 8,
+      rerankTopN: 5,
+    })
+    candidateChunks.value = (res.data?.results ?? []).map((item) => ({
+      chunkId: item.chunkId,
+      filename: item.filename || '未知文档',
+      chunkIndex: item.chunkIndex ?? '-',
+      content: item.content || '',
+      score: item.finalScore ?? item.vectorScore ?? item.bm25Score ?? 0,
+    }))
+    selectedChunkIds.value = candidateChunks.value
+      .filter((item) => item.chunkId != null)
+      .slice(0, 3)
+      .map((item) => item.chunkId)
+    addQuestionStep.value = 2
+  } catch {
+    alert('检索候选 Chunk 失败，请稍后重试')
+  } finally {
+    searchingCandidates.value = false
+  }
+}
+
+function candidatePreview(content) {
+  const text = (content || '').replace(/\s+/g, ' ').trim()
+  if (text.length <= 200) return text
+  return `${text.slice(0, 200)}…`
 }
 
 async function onAddQuestion() {
@@ -402,7 +576,7 @@ async function onAddQuestion() {
   try {
     await createEvalQuestion(addQuestionDatasetId.value, {
       question: questionForm.value.question.trim(),
-      expectedChunkIds: parseChunkIdsText(questionForm.value.chunkIdsText),
+      expectedChunkIds: selectedChunkIds.value,
     })
     showAddQuestion.value = false
     await loadDatasets()
@@ -448,6 +622,61 @@ async function onDeleteQuestion(datasetId, question) {
   await loadQuestions(datasetId, questionPage[datasetId] || 1)
 }
 
+function openRunExperiment() {
+  runForm.value = {
+    datasetId: datasets.value.length ? datasets.value[0].id : null,
+    strategy: 'full',
+    vectorWeight: 0.55,
+    topK: 8,
+    ablation: false,
+  }
+  showRunExperiment.value = true
+}
+
+async function onRunExperiment() {
+  if (!runForm.value.datasetId) {
+    alert('请选择数据集')
+    return
+  }
+  runningExperiment.value = true
+  try {
+    if (runForm.value.ablation) {
+      const strategies = ['vector', 'keyword', 'hybrid', 'full']
+      for (const strategy of strategies) {
+        await runExperiment({
+          datasetId: runForm.value.datasetId,
+          strategy,
+          vectorWeight: runForm.value.vectorWeight,
+          topK: runForm.value.topK,
+        })
+      }
+    } else {
+      await runExperiment({
+        datasetId: runForm.value.datasetId,
+        strategy: runForm.value.strategy,
+        vectorWeight: runForm.value.vectorWeight,
+        topK: runForm.value.topK,
+      })
+    }
+    showRunExperiment.value = false
+    await loadExperiments()
+  } finally {
+    runningExperiment.value = false
+  }
+}
+
+async function openExperimentDetail(id) {
+  const res = await getExperiment(id)
+  experimentDetail.value = res.data ?? null
+  showExperimentDetail.value = true
+}
+
+async function onDeleteExperiment(exp) {
+  if (!confirm(`确定删除实验 #${exp.id}？`)) return
+  await deleteExperiment(exp.id)
+  await loadExperiments()
+}
+
 function formatTime(iso) {
   if (!iso) return '-'
   return iso.toString().replace('T', ' ').slice(0, 19)
@@ -458,6 +687,34 @@ function formatChunkIds(ids) {
   return ids.join(', ')
 }
 
+function formatRate(v) {
+  const n = Number(v ?? 0)
+  return `${(n * 100).toFixed(1)}%`
+}
+
+function formatMrr(v) {
+  const n = Number(v ?? 0)
+  return n.toFixed(4)
+}
+
+function failureBadgeClass(reason) {
+  if (reason === '召回不足') return 'badge-amber'
+  if (reason === '排序错误') return 'badge-red'
+  return 'badge-blue'
+}
+
+function failureSuggestion(reason) {
+  if (reason === '召回不足') return '提高 TopK、扩充知识库'
+  if (reason === '排序错误') return '调整向量权重或 rerank 参数'
+  return '补充相关文档或修正标注'
+}
+
+const compareExperiments = computed(() => {
+  const dsId = experimentDetail.value?.datasetId
+  if (!dsId) return []
+  return experiments.value.filter((item) => item.datasetId === dsId).slice(0, 6)
+})
+
 onMounted(async () => {
   try {
     const res = await listKb()
@@ -466,6 +723,7 @@ onMounted(async () => {
     kbList.value = []
   }
   await loadDatasets()
+  await loadExperiments()
 })
 </script>
 
@@ -626,6 +884,7 @@ onMounted(async () => {
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .badge-amber { background: #fef3c7; color: #92400e; }
 .badge-red { background: #fee2e2; color: #991b1b; }
+.badge-blue { background: #dbeafe; color: #1d4ed8; }
 
 .modal-mask {
   position: fixed;
@@ -643,9 +902,27 @@ onMounted(async () => {
   width: min(420px, 92vw);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
 }
+.modal-question {
+  width: min(760px, 92vw);
+  max-height: 80vh;
+  overflow: auto;
+}
 .modal-wide { width: min(520px, 92vw); }
+.modal-detail {
+  width: min(980px, 95vw);
+  max-height: 84vh;
+  overflow: auto;
+}
 .modal-title { font-size: 16px; margin-bottom: 16px; }
 .field { display: block; margin-bottom: 14px; }
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.checkbox-row span {
+  margin: 0;
+}
 .field span { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
 .field input, .field textarea, .select {
   width: 100%;
@@ -658,4 +935,51 @@ onMounted(async () => {
   color: var(--text);
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.question-preview {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+}
+.selected-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.candidate-list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 44vh;
+  overflow: auto;
+}
+.candidate-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.candidate-item:last-child { border-bottom: none; }
+.candidate-body { flex: 1; min-width: 0; }
+.candidate-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--slate);
+  margin-bottom: 4px;
+}
+.candidate-score {
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--text-muted);
+}
+.candidate-content {
+  color: var(--gray);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
 </style>

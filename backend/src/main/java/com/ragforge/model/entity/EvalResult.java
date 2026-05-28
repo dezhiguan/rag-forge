@@ -18,6 +18,7 @@ public class EvalResult {
   private Boolean hit;
   private Integer hitAt;
   private String recalledChunkIds;
+  private String failureReason;
   private BigDecimal score;
   private Integer latencyMs;
 }

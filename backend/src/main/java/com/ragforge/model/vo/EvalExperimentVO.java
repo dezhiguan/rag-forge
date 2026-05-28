@@ -1,31 +1,26 @@
-package com.ragforge.model.entity;
+package com.ragforge.model.vo;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.Data;
 
 @Data
-@TableName("eval_experiments")
-public class EvalExperiment {
-
-  @TableId(type = IdType.AUTO)
+public class EvalExperimentVO {
   private Long id;
-
   private Long datasetId;
+  private String datasetName;
   private String strategy;
-  private Boolean enableQueryRewrite;
-  private Boolean enableReranker;
   private Integer totalQuestions;
   private Integer top1HitCount;
   private Integer top3HitCount;
   private BigDecimal top1HitRate;
   private BigDecimal top3HitRate;
-  private BigDecimal top5HitRate;
   private BigDecimal mrr;
   private Integer avgLatencyMs;
   private String status;
   private LocalDateTime createdAt;
+  private List<EvalFailureSampleVO> failureSamples;
+  private List<EvalResultDetailVO> results;
 }
+
