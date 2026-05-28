@@ -29,8 +29,23 @@ public class DocumentController {
 
   @PostMapping("/kb/{kbId}/documents")
   public Result<DocumentUploadResultVO> upload(
-      @PathVariable Long kbId, @RequestParam("file") MultipartFile file) {
-    return Result.ok(documentService.upload(kbId, file));
+      @PathVariable Long kbId,
+      @RequestParam("file") MultipartFile file,
+      @RequestParam(name = "overwrite", defaultValue = "false") boolean overwrite) {
+    return Result.ok(documentService.upload(kbId, file, overwrite));
+  }
+
+  /**
+   * Backward/forward compatible alias for docs.
+   *
+   * <p>Alias route: /api/v1/documents/upload?kbId=1&overwrite=true
+   */
+  @PostMapping("/documents/upload")
+  public Result<DocumentUploadResultVO> uploadAlias(
+      @RequestParam("kbId") Long kbId,
+      @RequestParam("file") MultipartFile file,
+      @RequestParam(name = "overwrite", defaultValue = "false") boolean overwrite) {
+    return Result.ok(documentService.upload(kbId, file, overwrite));
   }
 
   @PostMapping("/kb/{kbId}/documents/replace/{docId}")

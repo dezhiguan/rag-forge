@@ -13,6 +13,8 @@ public interface DocumentService {
 
   DocumentUploadResultVO upload(Long kbId, MultipartFile file);
 
+  DocumentUploadResultVO upload(Long kbId, MultipartFile file, boolean overwrite);
+
   DocumentVO replaceDocument(Long kbId, MultipartFile file, Long existingDocId);
 
   PageResult<DocumentVO> listByKb(Long kbId, int page, int size);

@@ -66,6 +66,12 @@ public class DocumentServiceImpl implements DocumentService {
   @Override
   @Transactional
   public DocumentUploadResultVO upload(Long kbId, MultipartFile file) {
+    return upload(kbId, file, false);
+  }
+
+  @Override
+  @Transactional
+  public DocumentUploadResultVO upload(Long kbId, MultipartFile file, boolean overwrite) {
     KnowledgeBase kb = requireActiveKb(kbId);
     validateFile(file);
 
@@ -83,6 +89,16 @@ public class DocumentServiceImpl implements DocumentService {
                 .last("LIMIT 1"));
 
     if (existing != null) {
+      if (overwrite) {
+        DocumentVO replaced = replaceDocument(kbId, file, existing.getId());
+        DocumentUploadResultVO result = new DocumentUploadResultVO();
+        result.setExists(false);
+        result.setDocument(replaced);
+        result.setDocumentId(replaced.getId());
+        result.setStatus(STATUS_PROCESSING);
+        result.setMessage("文件已存在，已覆盖更新并重新处理");
+        return result;
+      }
       DocumentUploadResultVO result = new DocumentUploadResultVO();
       result.setExists(true);
       result.setExistingDocument(toDocumentVO(existing));

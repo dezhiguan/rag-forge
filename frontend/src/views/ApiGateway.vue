@@ -13,7 +13,7 @@
           </div>
           <div class="api-key-box">
             <div class="api-key-title">🔑 API Key</div>
-            <div class="api-key-value">sk-ragforge-xxxx</div>
+            <div class="api-key-value">sk-ragforge-dev</div>
           </div>
         </div>
         <div class="api-right" v-if="currentApi">
@@ -45,45 +45,52 @@ const activeApi = ref('/search')
 const apis = [
   {
     method: 'POST', path: '/search',
-    description: '混合检索接口 —— Agent 调用此接口获取知识上下文。支持向量检索 + BM25 关键词检索 + Rerank 重排序。',
+    description: '检索接口 —— 支持 vector / keyword / hybrid / full（全链路 reranker）。',
     integration: 'CareerMate Agent 调用此接口获取 JD 要求 → 与简历匹配 → 生成个性化建议',
-    request: { query: '2026年后端需要什么AI技能', kb_ids: ['jd_library', 'industry_kb'], strategy: 'hybrid_rerank', top_k: 8, rerank_top_n: 5 },
-    response: { results: [{ doc: '字节JD.pdf', chunk_id: '#12', score: 0.94, content: '...有大模型应用开发经验...' }], latency_ms: 452, tokens_used: 1240 }
+    request: { query: '2026年后端需要掌握哪些AI技能？', kbIds: [1], strategy: 'hybrid', topK: 8, vectorWeight: 0.55, rerankTopN: 5 },
+    response: { results: [{ chunkId: 12, docId: 3, filename: '字节JD.pdf', chunkIndex: 2, content: '...有大模型应用开发经验...', finalScore: 0.0942 }], latencyMs: 452, strategy: 'hybrid' }
   },
   {
-    method: 'POST', path: '/search/batch',
-    description: '批量检索接口 —— 一次查询多个问题，用于评测和质量监控。',
-    integration: 'CareerMate Agent 批量查询多个 JD 要求 → 逐条比对简历 → 生成综合匹配报告',
-    request: { queries: ['后端需要什么技能？', '前端需要什么技能？'], kb_ids: ['jd_library'], strategy: 'hybrid_rerank', top_k: 8 },
-    response: { results: [[{ doc: '字节JD.pdf', score: 0.94 }], [{ doc: '腾讯前端JD.pdf', score: 0.88 }]], total_latency_ms: 1020 }
-  },
-  {
-    method: 'GET', path: '/kb/list',
-    description: '知识库列表 —— 获取所有可用的知识库及其元信息。',
-    integration: 'CareerMate Agent 获取可用知识库 → 根据求职者意向选择匹配的知识库进行检索',
+    method: 'GET', path: '/kb',
+    description: '知识库列表 —— 获取知识库及文档/Chunk 计数。',
+    integration: '管理后台用于展示知识库、上传文档、查看处理状态。',
     request: null,
-    response: { kbs: [{ id: 'jd_library', name: '岗位 JD 库', docs: 156, chunks: 8200 }, { id: 'interview_q', name: '面试题库', docs: 420, chunks: 18500 }] }
+    response: [{ id: 1, name: '面试题库', docCount: 156, chunkCount: 8200, status: 'active', createdAt: '2026-05-27 12:30:00' }]
   },
   {
-    method: 'POST', path: '/kb/upload',
-    description: '文档上传接口 —— 上传文档到指定知识库，自动触发解析和索引管道。',
-    integration: '管理员通过此接口上传新的 JD 文档 → 自动解析入库 → CareerMate Agent 即可检索',
-    request: { kb_id: 'jd_library', filename: 'new_jd.pdf', content: '<base64>' },
-    response: { task_id: 'task_abc123', status: 'processing', estimated_seconds: 12 }
+    method: 'POST', path: '/kb',
+    description: '创建知识库。',
+    integration: '管理后台创建知识库并配置分块策略。',
+    request: { name: '产品文档库', description: '可选', chunkSize: 512, chunkOverlap: 64 },
+    response: { id: 1, name: '产品文档库', docCount: 0, chunkCount: 0, status: 'active' }
   },
   {
-    method: 'GET', path: '/eval/run',
-    description: '评测执行 —— 对指定评测集执行检索质量评估，返回命中率等指标。',
-    integration: '定期自动调用此接口进行回归评测 → 命中率下降超过 3% 触发告警',
+    method: 'POST', path: '/kb/1/documents',
+    description: '上传文档到知识库（multipart/form-data）。支持 MD5 去重并提示覆盖。',
+    integration: '管理后台上传 PDF/Markdown/Word/HTML，触发异步解析与索引。',
     request: null,
-    response: { eval_id: 'eval_001', total: 100, top3_hit: 89, top5_hit: 93, avg_latency_ms: 452 }
+    response: { exists: false, documentId: 123, status: 'processing', message: '上传成功，正在处理' }
   },
   {
-    method: 'GET', path: '/metrics',
-    description: '系统指标 —— 获取检索服务的实时性能指标和调用统计。',
-    integration: '监控面板调用此接口展示实时 QPS 和延迟 → 异常时自动告警',
+    method: 'GET', path: '/documents/123',
+    description: '文档详情 + chunks 列表。',
+    integration: '用于文档详情页展示分块结果与处理状态。',
     request: null,
-    response: { qps: 38, p95_latency_ms: 2800, total_requests_today: 3240, avg_cost_per_call: 0.008 }
+    response: { id: 123, kbId: 1, filename: '某公司面经.pdf', parseStatus: 'completed', chunkCount: 80, chunks: [{ chunkIndex: 0, tokenCount: 512, content: '...' }] }
+  },
+  {
+    method: 'GET', path: '/eval/datasets',
+    description: '评测数据集列表。',
+    integration: '评测实验室用于管理评测题库与实验。',
+    request: null,
+    response: [{ id: 1, name: '后端检索基准集', kbId: 1, questionCount: 100, createdAt: '2026-05-27 12:30:00' }]
+  },
+  {
+    method: 'GET', path: '/metrics/dashboard',
+    description: '驾驶舱指标（知识库、文档、Chunk、今日调用、平均延迟、Top3 命中率）。',
+    integration: '管理后台驾驶舱展示运行态指标。',
+    request: null,
+    response: { kbCount: 6, documentCount: 1280, chunkCount: 52000, todayApiCalls: 3240, avgLatencyMs: 2800, hitRate: 0.912 }
   },
 ]
 

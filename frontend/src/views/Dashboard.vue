@@ -4,23 +4,25 @@
       <div class="metrics-grid">
         <div class="metric-card">
           <div class="metric-label">知识库</div>
-          <div class="metric-value">6</div>
-          <div class="metric-desc">1,280 文档 · 52K Chunk</div>
+          <div class="metric-value">{{ metrics.kbCount ?? 0 }}</div>
+          <div class="metric-desc">
+            {{ formatNumber(metrics.documentCount ?? 0) }} 文档 · {{ formatChunkCount(metrics.chunkCount ?? 0) }} Chunk
+          </div>
         </div>
         <div class="metric-card">
           <div class="metric-label">检索命中率</div>
-          <div class="metric-value metric-value--hit">91.2%</div>
-          <div class="metric-desc">Hybrid + Reranker</div>
+          <div class="metric-value metric-value--hit">{{ formatHitRate(metrics.hitRate) }}</div>
+          <div class="metric-desc">最近一次评测实验 Top3</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">P95 延迟</div>
-          <div class="metric-value">2.8s</div>
-          <div class="metric-desc">稳定 QPS 38</div>
+          <div class="metric-value">{{ formatLatency(metrics.avgLatencyMs) }}</div>
+          <div class="metric-desc">今日平均检索延迟</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">今日 API 调用</div>
-          <div class="metric-value">3,240</div>
-          <div class="metric-desc">¥0.008/次</div>
+          <div class="metric-value">{{ formatNumber(metrics.todayApiCalls ?? 0) }}</div>
+          <div class="metric-desc">来自 retrieval_logs</div>
         </div>
       </div>
       <div class="quick-actions">
@@ -52,6 +54,65 @@
 </template>
 
 <script setup>
+import { onMounted, reactive, ref } from 'vue'
+import { getDashboardMetrics } from '../api/metrics'
+
+const loading = ref(false)
+const metrics = reactive({
+  kbCount: 0,
+  documentCount: 0,
+  chunkCount: 0,
+  todayApiCalls: 0,
+  avgLatencyMs: 0,
+  hitRate: 0,
+})
+
+async function loadMetrics() {
+  loading.value = true
+  try {
+    const res = await getDashboardMetrics()
+    const data = res.data ?? {}
+    metrics.kbCount = data.kbCount ?? 0
+    metrics.documentCount = data.documentCount ?? 0
+    metrics.chunkCount = data.chunkCount ?? 0
+    metrics.todayApiCalls = data.todayApiCalls ?? 0
+    metrics.avgLatencyMs = data.avgLatencyMs ?? 0
+    metrics.hitRate = data.hitRate ?? 0
+  } finally {
+    loading.value = false
+  }
+}
+
+function formatNumber(n) {
+  const num = Number(n)
+  if (Number.isNaN(num)) return '0'
+  return num.toLocaleString()
+}
+
+function formatChunkCount(n) {
+  const num = Number(n)
+  if (Number.isNaN(num)) return '0'
+  if (num >= 1000) {
+    const k = num / 1000
+    return `${k.toFixed(k >= 100 ? 0 : 1)}K`
+  }
+  return `${num}`
+}
+
+function formatLatency(ms) {
+  const num = Number(ms)
+  if (Number.isNaN(num) || num <= 0) return '—'
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}s`
+  return `${num}ms`
+}
+
+function formatHitRate(rate) {
+  const num = Number(rate)
+  if (Number.isNaN(num) || num <= 0) return '—'
+  return `${(num * 100).toFixed(1)}%`
+}
+
+onMounted(loadMetrics)
 </script>
 
 <style scoped>
