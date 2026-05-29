@@ -40,7 +40,7 @@
                   <span class="chunk-title">#{{ c.chunkIndex }}</span>
                   <span class="chunk-tokens">{{ c.tokenCount ?? 0 }} tokens</span>
                 </div>
-                <div class="chunk-text">{{ summarizeContent(c.content) }}</div>
+                <div class="chunk-text" :title="c.content">{{ summarizeContent(c.content) }}</div>
               </div>
             </div>
           </div>

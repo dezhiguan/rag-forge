@@ -46,10 +46,41 @@
           <div class="state-icon">⏳</div>
           <div class="state-title">加载中...</div>
         </div>
-        <div v-else-if="!datasets.length" class="state-hint">
-          <div class="state-icon">📋</div>
-          <div class="state-title">暂无评测数据集</div>
-          <div class="state-desc">创建数据集并添加题目，开始评测检索质量</div>
+        <div v-else-if="!datasets.length" class="eval-onboard">
+          <div class="onboard-hero">
+            <div class="onboard-icon">🧪</div>
+            <div class="onboard-title">评测实验室</div>
+            <div class="onboard-desc">
+              用真实数据检验不同检索策略的效果——<br>向量检索、关键词检索、混合检索、全链路 Reranker，哪个更准？
+            </div>
+          </div>
+          <div class="onboard-steps">
+            <div class="onboard-step">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <div class="step-title">上传文档到知识库</div>
+                <div class="step-desc">将你的简历 PDF 上传，系统自动解析分块并生成向量索引</div>
+              </div>
+            </div>
+            <div class="onboard-step">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <div class="step-title">创建评测数据集</div>
+                <div class="step-desc">添加问题 + 标注期望命中的 Chunk（"标准答案"），点击下方按钮快速体验</div>
+              </div>
+            </div>
+            <div class="onboard-step">
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <div class="step-title">运行实验，对比策略</div>
+                <div class="step-desc">一键对比四种检索策略的 Top1/Top3/MRR，找到最优方案</div>
+              </div>
+            </div>
+          </div>
+          <div class="onboard-actions">
+            <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
+            <button class="btn-accent" @click="openQuickStart">⚡ 快速体验（简历测试用例）</button>
+          </div>
         </div>
 
         <div v-else class="table-card">
@@ -109,7 +140,7 @@
                           </tr>
                           <tr v-for="q in questionsMap[ds.id]?.list || []" :key="q.id">
                             <td class="question-text">{{ q.question }}</td>
-                            <td class="chunk-ids">
+                            <td class="chunk-ids" :title="formatChunkIds(q.expectedChunkIds)">
                               {{ formatChunkIds(q.expectedChunkIds) }}
                             </td>
                             <td>
@@ -293,7 +324,7 @@
                     <span>{{ item.filename }} #{{ item.chunkIndex }}</span>
                     <span class="candidate-score">{{ Number(item.score || 0).toFixed(4) }}</span>
                   </div>
-                  <div class="candidate-content">{{ candidatePreview(item.content) }}</div>
+                  <div class="candidate-content" :title="item.content">{{ candidatePreview(item.content) }}</div>
                 </div>
               </label>
             </div>
@@ -373,6 +404,10 @@
               <div class="card-value">{{ experimentDetail.totalQuestions ?? 0 }}</div>
             </div>
             <div class="eval-card">
+              <div class="card-label">Top1 命中率</div>
+              <div class="card-value">{{ formatRate(experimentDetail.top1HitRate) }}</div>
+            </div>
+            <div class="eval-card">
               <div class="card-label">Top3 命中率</div>
               <div class="card-value">{{ formatRate(experimentDetail.top3HitRate) }}</div>
             </div>
@@ -386,32 +421,130 @@
             </div>
           </div>
 
-          <div class="section-title">策略 Top3 命中率对比</div>
-          <div class="bar-chart">
-            <div v-for="exp in compareExperiments" :key="exp.id" class="bar-col">
-              <div class="bar" :style="{ height: `${Math.max(8, Number(exp.top3HitRate || 0) * 100)}px` }"></div>
-              <div class="bar-label">{{ strategyLabelMap[exp.strategy] || exp.strategy }}</div>
-              <div class="bar-pct">{{ formatRate(exp.top3HitRate) }}</div>
+          <!-- 每道题检索结果 -->
+          <div class="section-title">
+            逐题检索结果
+            <span style="font-weight:400;font-size:11px;color:var(--text-muted);margin-left:8px;">
+              期望 Chunk = 标注的标准答案，实际召回 = 检索策略返回的 Top-K
+            </span>
+          </div>
+          <div v-if="(experimentDetail.results || []).length" class="per-question-table">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:30%;">问题</th>
+                  <th>期望 Chunk</th>
+                  <th>实际召回 Chunk</th>
+                  <th>命中位置</th>
+                  <th>Top1</th>
+                  <th>Top3</th>
+                  <th>MRR</th>
+                  <th>耗时</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in experimentDetail.results" :key="r.questionId" :class="{ 'row-fail': r.failureReason }">
+                  <td class="question-cell" :title="r.question">{{ r.question }}</td>
+                  <td class="chunk-cell" :title="formatChunkIds(r.expectedChunkIds)">{{ formatChunkIds(r.expectedChunkIds) }}</td>
+                  <td class="chunk-cell" :title="formatChunkIds(r.recalledChunkIds)">{{ formatChunkIds(r.recalledChunkIds) }}</td>
+                  <td>
+                    <span v-if="r.hitAt != null && r.hitAt >= 0" class="hit-badge hit-ok">#{{ r.hitAt }}</span>
+                    <span v-else class="hit-badge hit-miss">未命中</span>
+                  </td>
+                  <td><span :class="['hit-mark', r.top1Hit ? 'hit-yes' : 'hit-no']">{{ r.top1Hit ? '✓' : '✗' }}</span></td>
+                  <td><span :class="['hit-mark', r.top3Hit ? 'hit-yes' : 'hit-no']">{{ r.top3Hit ? '✓' : '✗' }}</span></td>
+                  <td class="metric-cell">{{ (r.mrr ?? 0).toFixed(4) }}</td>
+                  <td>{{ r.latencyMs ?? 0 }}ms</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="state-hint" style="padding:24px 0">
+            <div class="state-desc">暂无逐题详细结果</div>
+          </div>
+
+          <!-- 策略对比 -->
+          <div v-if="compareExperiments.length > 1" style="margin-top:24px;">
+            <div class="section-title">
+              同数据集策略对比（Top3 命中率）
+              <span style="font-weight:400;font-size:11px;color:var(--text-muted);margin-left:8px;">
+                柱子越高 = 该策略在此数据集上检索越准
+              </span>
+            </div>
+            <div class="bar-chart-wrap">
+              <div class="bar-chart">
+                <div v-for="exp in compareExperiments" :key="exp.id" class="bar-col">
+                  <div class="bar-val">{{ formatRate(exp.top3HitRate) }}</div>
+                  <div
+                    class="bar"
+                    :class="{ 'bar-best': Number(exp.top3HitRate || 0) === bestCompareRate }"
+                    :style="{ height: `${Math.max(12, Number(exp.top3HitRate || 0) * 100)}px` }"
+                  ></div>
+                  <div class="bar-label">{{ strategyLabelMap[exp.strategy] || exp.strategy }}</div>
+                </div>
+              </div>
+              <!-- 80% 参考线 -->
+              <div class="bar-ref-line" style="bottom:80px;">
+                <span class="bar-ref-label">80%</span>
+              </div>
             </div>
           </div>
 
-          <div class="section-title">失败样本分析</div>
-          <table class="data-table">
-            <thead><tr><th>问题</th><th>失败原因</th><th>优化建议</th><th>操作</th></tr></thead>
+          <!-- 失败样本 -->
+          <div v-if="(experimentDetail.failureSamples || []).length" class="section-title" style="margin-top:20px;">
+            失败样本分析
+          </div>
+          <table v-if="(experimentDetail.failureSamples || []).length" class="data-table" style="margin-top:8px;">
+            <thead><tr><th>问题</th><th>失败原因</th><th>优化建议</th></tr></thead>
             <tbody>
-              <tr v-if="!(experimentDetail.failureSamples || []).length">
-                <td colspan="4" class="empty-hint">无失败样本</td>
-              </tr>
               <tr v-for="item in experimentDetail.failureSamples || []" :key="item.questionId">
                 <td>{{ item.question }}</td>
                 <td>
                   <span class="badge" :class="failureBadgeClass(item.failureReason)">{{ item.failureReason }}</span>
                 </td>
                 <td>{{ failureSuggestion(item.failureReason) }}</td>
-                <td><span class="link-action" @click="$router.push('/debug')">去调试 →</span></td>
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div v-if="showQuickStart" class="modal-mask" @click.self="showQuickStart = false">
+        <div class="modal modal-wide">
+          <h3 class="modal-title">⚡ 快速体验 — 基于简历的测试用例</h3>
+          <div class="field">
+            <span>选择知识库（包含你简历的 KB）*</span>
+            <select v-model="quickStartKbId" class="select">
+              <option :value="null" disabled>请选择知识库</option>
+              <option v-for="kb in kbList" :key="kb.id" :value="kb.id">
+                {{ kb.name }}
+              </option>
+            </select>
+          </div>
+          <div class="field">
+            <span>数据集名称</span>
+            <input v-model="quickStartName" type="text" placeholder="简历检索评测集" />
+          </div>
+          <div class="quick-questions-label">
+            预置题目（{{ quickStartQuestions.length }} 道，基于你的简历内容）：
+          </div>
+          <div class="quick-questions-list">
+            <div v-for="(q, i) in quickStartQuestions" :key="i" class="quick-q-item">
+              <span class="quick-q-num">{{ i + 1 }}</span>
+              <span>{{ q }}</span>
+            </div>
+          </div>
+          <div class="field" style="margin-top:12px;">
+            <span style="color:var(--text-muted);font-size:11px;">
+              {{ creatingQuickStart ? '正在逐题检索并自动标注期望 Chunk…' : '题目导入后自动检索知识库，取 Top-3 作为期望 Chunk' }}
+            </span>
+          </div>
+          <div class="modal-actions">
+            <button class="btn-ghost" @click="showQuickStart = false">取消</button>
+            <button class="btn-accent" :disabled="creatingQuickStart" @click="onCreateQuickStart">
+              {{ creatingQuickStart ? '创建中…' : '一键创建数据集和题目' }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -486,6 +619,22 @@ const addQuestionStep = ref(1)
 const questionForm = ref({ question: '' })
 const candidateChunks = ref([])
 const selectedChunkIds = ref([])
+
+const showQuickStart = ref(false)
+const creatingQuickStart = ref(false)
+const quickStartKbId = ref(null)
+const quickStartName = ref('简历检索评测集')
+
+const quickStartQuestions = [
+  '官德志在影子科技主导了什么核心架构设计？',
+  'B2B抢购系统中是如何解决高并发超卖问题的？',
+  'CountDownLatch在海量数据平台中起到了什么关键作用？',
+  '边缘端运行时为什么要从Java重构到Go语言？',
+  'AI协同开发模式中，SDD（标准化开发规范）解决了什么问题？',
+  '官德志在铂涛信息公司的年度绩效评价如何？',
+  'ELK+SkyWalking全链路监控体系带来了什么具体效果？',
+  'RocketMQ事务消息在智能体平台中解决了什么分布式难题？',
+]
 
 const showBatchImport = ref(false)
 const submittingBatch = ref(false)
@@ -658,6 +807,71 @@ function openBatchImport(datasetId) {
   showBatchImport.value = true
 }
 
+function openQuickStart() {
+  quickStartKbId.value = kbList.value.length ? kbList.value[0].id : null
+  quickStartName.value = '简历检索评测集'
+  showQuickStart.value = true
+}
+
+async function onCreateQuickStart() {
+  if (!quickStartKbId.value) {
+    alert('请选择知识库')
+    return
+  }
+  if (!quickStartName.value?.trim()) {
+    alert('请填写数据集名称')
+    return
+  }
+  creatingQuickStart.value = true
+  try {
+    // 1. 创建数据集
+    const ds = await createEvalDataset({
+      name: quickStartName.value.trim(),
+      kbId: quickStartKbId.value,
+    })
+    const datasetId = ds.data?.id
+    if (!datasetId) {
+      alert('数据集创建失败')
+      return
+    }
+
+    // 2. 逐题检索，自动取 Top-3 作为期望 Chunk
+    const questionsWithChunks = []
+    for (const question of quickStartQuestions) {
+      try {
+        const res = await searchApi({
+          query: question,
+          strategy: 'full',
+          topK: 8,
+          kbIds: [quickStartKbId.value],
+          rerankTopN: 5,
+        })
+        const top3Ids = (res.data?.results ?? [])
+          .slice(0, 3)
+          .map((r) => r.chunkId)
+          .filter((id) => id != null)
+        questionsWithChunks.push({ question, expectedChunkIds: top3Ids })
+      } catch {
+        // 检索失败也创建，只是没有期望 Chunk
+        questionsWithChunks.push({ question, expectedChunkIds: [] })
+      }
+    }
+
+    // 3. 批量导入
+    await batchCreateEvalQuestions(datasetId, questionsWithChunks)
+    showQuickStart.value = false
+    await loadDatasets()
+    if (datasetId) {
+      expandedDatasetId.value = datasetId
+      await loadQuestions(datasetId, 1)
+    }
+  } catch (e) {
+    alert('创建失败：' + (e?.response?.data?.message || e?.message || '未知错误'))
+  } finally {
+    creatingQuickStart.value = false
+  }
+}
+
 async function onBatchImport() {
   const lines = batchText.value
     .split('\n')
@@ -725,6 +939,7 @@ async function onRunExperiment() {
       })
     }
     showRunExperiment.value = false
+    activeTab.value = 'experiments'
     await loadExperiments()
   } finally {
     runningExperiment.value = false
@@ -766,19 +981,33 @@ function formatMrr(v) {
 function failureBadgeClass(reason) {
   if (reason === '召回不足') return 'badge-amber'
   if (reason === '排序错误') return 'badge-red'
+  if (reason === '标注缺失') return 'badge-gray'
   return 'badge-blue'
 }
 
 function failureSuggestion(reason) {
-  if (reason === '召回不足') return '提高 TopK、扩充知识库'
-  if (reason === '排序错误') return '调整向量权重或 rerank 参数'
+  if (reason === '召回不足') return '提高 TopK（如从 8→15）、补充知识库相关文档'
+  if (reason === '排序错误') return '尝试切换到 hybrid 或 full 策略，利用 Reranker 精排'
+  if (reason === '标注缺失') return '未检索到足够结果，检查文档是否已处理完成、分块是否正常'
   return '补充相关文档或修正标注'
 }
+
+const bestCompareRate = computed(() => {
+  if (!experiments.value.length) return 0
+  return Math.max(...experiments.value.map(e => Number(e.top3HitRate ?? 0)))
+})
 
 const compareExperiments = computed(() => {
   const dsId = experimentDetail.value?.datasetId
   if (!dsId) return []
-  return experiments.value.filter((item) => item.datasetId === dsId).slice(0, 6)
+  // 同策略取最新一条，避免重复柱子
+  const seen = new Map()
+  for (const item of experiments.value) {
+    if (item.datasetId === dsId && !seen.has(item.strategy)) {
+      seen.set(item.strategy, item)
+    }
+  }
+  return [...seen.values()]
 })
 
 const totalQuestions = computed(() =>
@@ -831,6 +1060,137 @@ onMounted(async () => {
 
 <style scoped>
 .page-body { padding: 20px 28px 32px; }
+
+/* ====== Onboarding ====== */
+.eval-onboard {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 32px 28px;
+  text-align: center;
+}
+.onboard-hero { margin-bottom: 24px; }
+.onboard-icon { font-size: 40px; margin-bottom: 8px; }
+.onboard-title { font-size: 20px; font-weight: 700; color: var(--slate); margin-bottom: 8px; }
+.onboard-desc { font-size: 13px; color: var(--text-muted); line-height: 1.8; }
+.onboard-steps {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+.onboard-step {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  background: #f8fafc;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+.step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.step-body { min-width: 0; }
+.step-title { font-size: 13px; font-weight: 600; color: var(--slate); margin-bottom: 4px; }
+.step-desc { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+.onboard-actions { display: flex; justify-content: center; gap: 12px; }
+
+/* ====== Accent Button ====== */
+.btn-accent {
+  background: #fff;
+  color: var(--purple);
+  border: 1px solid var(--purple);
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-accent:hover { background: #f5f3ff; }
+.btn-accent:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ====== Quick Start ====== */
+.quick-questions-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate);
+  margin-bottom: 8px;
+}
+.quick-questions-list {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.quick-q-item {
+  padding: 5px 0;
+  font-size: 12px;
+  color: var(--gray);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.quick-q-item:last-child { border-bottom: none; }
+.quick-q-num {
+  color: var(--text-muted);
+  font-weight: 600;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+/* ====== Per-Question Results ====== */
+.per-question-table {
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.per-question-table .data-table { font-size: 12px; }
+.per-question-table .data-table thead th { font-size: 10px; padding: 8px 10px; position: sticky; top: 0; z-index: 1; }
+.per-question-table .data-table tbody td { padding: 8px 10px; }
+.question-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.chunk-cell {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 10px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hit-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+}
+.hit-badge.hit-ok { background: #dcfce7; color: #166534; }
+.hit-badge.hit-miss { background: #fee2e2; color: #991b1b; }
+.hit-mark { font-weight: 700; font-size: 13px; }
+.hit-mark.hit-yes { color: #10b981; }
+.hit-mark.hit-no { color: #dc2626; }
+.row-fail { background: #fff5f5; }
 
 .tab-bar {
   display: flex;
@@ -1089,16 +1449,62 @@ onMounted(async () => {
 }
 .pager-info { font-size: 12px; color: var(--text-muted); }
 
-.eval-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+.eval-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 24px; }
 .eval-card { background: var(--navy); border-radius: 10px; padding: 16px; color: #fff; }
 .card-label { font-size: 10px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
 .card-value { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
 .section-title { font-weight: 600; font-size: 13px; margin-bottom: 12px; color: var(--slate); }
-.bar-chart { display: flex; align-items: flex-end; justify-content: center; gap: 20px; height: 90px; margin-bottom: 24px; padding: 0 8px; }
-.bar-col { text-align: center; }
-.bar { width: 44px; background: var(--blue); border-radius: 3px 3px 0 0; }
-.bar-label { font-size: 10px; font-weight: 600; color: var(--slate); margin-top: 4px; }
+
+.bar-chart-wrap {
+  position: relative;
+  margin-bottom: 24px;
+  padding: 0 8px;
+}
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 28px;
+  height: 150px;
+}
+.bar-col { text-align: center; display: flex; flex-direction: column; align-items: center; }
+.bar-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--slate);
+  margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.bar {
+  width: 48px;
+  background: #93c5fd;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.4s ease;
+  min-height: 12px;
+}
+.bar.bar-best { background: var(--blue); }
+.bar-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate);
+  margin-top: 8px;
+  white-space: nowrap;
+}
 .bar-pct { font-size: 10px; color: var(--blue); font-weight: 600; }
+
+.bar-ref-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed #d4d4d8;
+}
+.bar-ref-label {
+  position: absolute;
+  right: 0;
+  top: -10px;
+  font-size: 10px;
+  color: #a1a1aa;
+}
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .badge-amber { background: #fef3c7; color: #92400e; }
 .badge-red { background: #fee2e2; color: #991b1b; }
@@ -1247,7 +1653,7 @@ onMounted(async () => {
   }
 
   .eval-metrics {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 10px;
   }
 
@@ -1257,6 +1663,16 @@ onMounted(async () => {
 
   .card-value {
     font-size: 22px;
+  }
+
+  .onboard-steps {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .onboard-actions {
+    flex-direction: column;
+    align-items: center;
   }
 
   .bar-chart {
@@ -1270,6 +1686,10 @@ onMounted(async () => {
     width: 95vw;
     max-height: 90vh;
     padding: 16px;
+  }
+
+  .per-question-table {
+    max-height: 50vh;
   }
 
   .toolbar-left {

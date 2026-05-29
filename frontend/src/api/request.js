@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const request = axios.create({
   baseURL: '/api/v1',
-  timeout: 15000,
+  timeout: 0,
   headers: {
     'X-API-Key': 'sk-ragforge-dev',
   },

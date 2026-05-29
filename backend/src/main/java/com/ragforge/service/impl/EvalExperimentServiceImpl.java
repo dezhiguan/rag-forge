@@ -36,12 +36,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EvalExperimentServiceImpl implements EvalExperimentService {
 
   private static final TypeReference<List<Long>> LONG_LIST_TYPE = new TypeReference<>() {};
@@ -242,13 +244,26 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
             .filter(id -> id != null && id > 0)
             .toList();
 
+    // 转为 Set<Long> 避免 Jackson 反序列化可能产生的 Integer/Long 类型不匹配
+    java.util.Set<Long> expectedSet = expectedChunkIds.stream()
+        .map(Number::longValue)
+        .collect(java.util.stream.Collectors.toSet());
+
     int hitAt = 0;
     for (int i = 0; i < Math.min(3, recalledChunkIds.size()); i++) {
-      if (expectedChunkIds.contains(recalledChunkIds.get(i))) {
+      Long chunkId = recalledChunkIds.get(i);
+      if (chunkId != null && expectedSet.contains(chunkId.longValue())) {
         hitAt = i + 1;
         break;
       }
     }
+    log.info("buildEvalResult questionId={} expected={} recalled(top3)={} hitAt={} expectedClass={} recalledClass={}",
+        questionId,
+        expectedChunkIds.stream().map(n -> n.getClass().getSimpleName() + "(" + n + ")").toList(),
+        recalledChunkIds.subList(0, Math.min(3, recalledChunkIds.size())).stream().map(n -> n.getClass().getSimpleName() + "(" + n + ")").toList(),
+        hitAt,
+        expectedChunkIds.isEmpty() ? "empty" : expectedChunkIds.get(0).getClass().getSimpleName(),
+        recalledChunkIds.isEmpty() ? "empty" : recalledChunkIds.get(0).getClass().getSimpleName());
     boolean top3Hit = hitAt > 0;
 
     EvalResult row = new EvalResult();

@@ -166,7 +166,7 @@
                   Score {{ formatScore(displayScore(r)) }}
                 </span>
               </div>
-              <div class="result-text" v-html="highlightContent(r.content, query)"></div>
+              <div class="result-text" :title="r.content" v-html="highlightContent(r.content, query)"></div>
               <div class="result-meta">
                 <template v-if="activeStrategyRef === 'hybrid'">
                   向量 {{ (r.vectorScore ?? 0).toFixed(4) }} | BM25 {{ (r.bm25Score ?? 0).toFixed(2) }} | 融合 {{ (r.finalScore ?? 0).toFixed(4) }}
@@ -188,16 +188,11 @@
 
         <div class="debug-right">
           <div class="panel-title">Prompt 预览</div>
-          <div class="prompt-block">
-            <div class="prompt-line dim">系统提示词：你是RAG知识引擎，只基于Context回答。</div>
-            <div class="prompt-line dim" style="margin-top:6px;">上下文（Context）：</div>
-            <div
-              class="prompt-line"
-              v-for="(r, i) in displayResults.slice(0, config.rerankTopN)"
-              :key="r.chunkId ?? i"
-            >
-              [{{ i + 1 }}] {{ r.filename }} #{{ r.chunkIndex }}: ...{{ excerpt(r.content, 40) }}...
-            </div>
+          <div class="prompt-block" v-if="displayResults.length">
+            <pre class="prompt-full">{{ fullPrompt }}</pre>
+          </div>
+          <div v-else class="prompt-block">
+            <div class="prompt-line dim">执行检索后将展示完整 Prompt 输入</div>
           </div>
           <div class="prompt-cost">
             <div class="cost-row"><span>输入 Prompt</span><span>{{ promptTokens }} tk</span></div>
@@ -326,6 +321,26 @@ const promptTokens = computed(() => {
     : results.value
   if (!source.length) return 0
   return source.slice(0, config.rerankTopN).reduce((s, r) => s + Math.floor((r.content?.length || 0) / 2), 0) + 180
+})
+
+const fullPrompt = computed(() => {
+  const source = compareResults.value.length > 1
+    ? (compareResults.value[activeCompareTab.value]?.results ?? [])
+    : results.value
+  if (!source.length) return ''
+
+  const chunks = source.slice(0, config.rerankTopN)
+  const contextParts = chunks.map((r, i) =>
+    `[${i + 1}] ${r.filename} #${r.chunkIndex}:\n${r.content}`
+  )
+  const context = contextParts.join('\n\n')
+
+  return `系统：你是RAG知识引擎，只基于以下Context回答问题。
+
+Context：
+${context}
+
+用户：${query.value}`
 })
 
 const estimatedCompletionTokens = computed(() => {
@@ -734,8 +749,21 @@ onMounted(async () => {
 .compare-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
 .compare-tab:hover:not(.active) { border-color: var(--blue); color: var(--blue); }
 .prompt-block { margin-bottom: 12px; }
-.prompt-line { color: var(--gray); line-height: 1.7; word-break: break-all; font-size: 9px; }
-.prompt-line.dim { color: var(--text-muted); }
+.prompt-full {
+  margin: 0;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--gray);
+  line-height: 1.7;
+  word-break: break-word;
+  white-space: pre-wrap;
+  font-size: 9px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.prompt-line.dim { color: var(--text-muted); font-size: 9px; }
 .prompt-cost { border-top: 1px solid var(--border); padding-top: 10px; font-family: -apple-system, sans-serif; }
 .cost-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 10px; color: var(--text-muted); }
 .cost-row.total { font-weight: 600; color: var(--cyan); }
