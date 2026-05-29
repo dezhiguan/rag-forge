@@ -41,7 +41,7 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
   }
 
   private boolean isWhitelisted(String path) {
-    return apiKeyProperties.getWhitelistPaths().stream().anyMatch(path::equals);
+    return apiKeyProperties.getWhitelistPaths().stream().anyMatch(p -> path.equals(p) || path.startsWith(p + "/"));
   }
 
   private boolean isValidApiKey(String apiKey) {

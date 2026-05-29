@@ -114,6 +114,7 @@
                   </td>
                   <td>{{ formatTime(kb.createdAt) }}</td>
                   <td>
+                    <span class="link-action" @click.stop="openEdit(kb)">编辑</span>
                     <span class="link-action danger" @click.stop="onDeleteKb(kb)">
                       删除
                     </span>
@@ -230,6 +231,36 @@
           </div>
         </div>
       </div>
+
+      <div v-if="showEdit" class="modal-mask" @click.self="showEdit = false">
+        <div class="modal">
+          <h3 class="modal-title">编辑知识库</h3>
+          <label class="field">
+            <span>名称 *</span>
+            <input v-model="editForm.name" type="text" placeholder="知识库名称" />
+          </label>
+          <label class="field">
+            <span>描述</span>
+            <textarea v-model="editForm.description" rows="3" placeholder="可选" />
+          </label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <label class="field">
+              <span>分块大小（字符）</span>
+              <input v-model.number="editForm.chunkSize" type="number" min="100" step="100" />
+            </label>
+            <label class="field">
+              <span>分块重叠（字符）</span>
+              <input v-model.number="editForm.chunkOverlap" type="number" min="0" step="10" />
+            </label>
+          </div>
+          <div class="modal-actions">
+            <button class="btn-ghost" @click="showEdit = false">取消</button>
+            <button class="btn-primary" :disabled="submittingKb" @click="onUpdateKb">
+              {{ submittingKb ? '保存中…' : '保存' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -237,7 +268,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { createKb, deleteKb, listKb } from '../api/kb'
+import { createKb, deleteKb, listKb, updateKb } from '../api/kb'
 import {
   deleteDocument,
   downloadDocument,
@@ -274,8 +305,10 @@ const pendingTrackQueue = ref([])
 const STATUS_ORDER = ['pending', 'parsing', 'chunking', 'embedding', 'indexing', 'completed']
 
 const showCreate = ref(false)
+const showEdit = ref(false)
 const submittingKb = ref(false)
 const kbForm = ref({ name: '', description: '' })
+const editForm = ref({ id: null, name: '', description: '', chunkSize: null, chunkOverlap: null })
 
 async function loadKbs() {
   loadingKb.value = true
@@ -429,6 +462,37 @@ async function onCreateKb() {
       description: kbForm.value.description || undefined,
     })
     showCreate.value = false
+    await loadKbs()
+  } finally {
+    submittingKb.value = false
+  }
+}
+
+function openEdit(kb) {
+  editForm.value = {
+    id: kb.id,
+    name: kb.name || '',
+    description: kb.description || '',
+    chunkSize: kb.chunkSize ?? null,
+    chunkOverlap: kb.chunkOverlap ?? null,
+  }
+  showEdit.value = true
+}
+
+async function onUpdateKb() {
+  if (!editForm.value.name?.trim()) {
+    alert('请填写知识库名称')
+    return
+  }
+  submittingKb.value = true
+  try {
+    await updateKb(editForm.value.id, {
+      name: editForm.value.name.trim(),
+      description: editForm.value.description || undefined,
+      chunkSize: editForm.value.chunkSize || undefined,
+      chunkOverlap: editForm.value.chunkOverlap ?? undefined,
+    })
+    showEdit.value = false
     await loadKbs()
   } finally {
     submittingKb.value = false

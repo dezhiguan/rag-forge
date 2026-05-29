@@ -64,8 +64,24 @@
                 <span class="meta-val">{{ doc.chunkCount ?? 0 }}</span>
               </div>
               <div class="meta-row">
+                <span class="meta-key">向量模型</span>
+                <span class="meta-val">{{ doc.embeddingModel || '-' }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">块大小</span>
+                <span class="meta-val">{{ doc.chunkSize != null ? doc.chunkSize + ' 字符' : '-' }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">块重叠</span>
+                <span class="meta-val">{{ doc.chunkOverlap != null ? doc.chunkOverlap + ' 字符' : '-' }}</span>
+              </div>
+              <div class="meta-row">
                 <span class="meta-key">上传时间</span>
                 <span class="meta-val">{{ formatTime(doc.createdAt) }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">知识库</span>
+                <span class="meta-val">{{ doc.kbName || '-' }}</span>
               </div>
               <div class="meta-row">
                 <span class="meta-key">状态</span>
@@ -74,7 +90,7 @@
                 </span>
               </div>
             </div>
-            <div class="search-action" @click="$router.push('/debug')">🔍 在此文档中检索 →</div>
+            <div class="search-action" @click="$router.push({ path: '/debug', query: { kbId: doc.kbId, docId: doc.id, docFilename: doc.filename } })">🔍 在此文档中检索 →</div>
           </div>
         </div>
 

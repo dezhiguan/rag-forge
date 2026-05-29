@@ -14,7 +14,7 @@ public class VectorSearchService {
   private final EmbeddingService embedder;
   private final JdbcTemplate jdbcTemplate;
 
-  public List<SearchResult> search(String query, List<Long> kbIds, int topK) {
+  public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
     float[] queryVector = embedder.embed(query);
     PGvector pgVector = new PGvector(queryVector);
 
@@ -35,6 +35,13 @@ public class VectorSearchService {
       sql.append(")");
     }
 
+    if (docIds != null && !docIds.isEmpty()) {
+      sql.append(" AND dc.doc_id IN (");
+      sql.append("?,".repeat(docIds.size()));
+      sql.setLength(sql.length() - 1);
+      sql.append(")");
+    }
+
     sql.append(" ORDER BY dc.content_vector <=> ?::vector LIMIT ?");
 
     return jdbcTemplate.query(
@@ -45,6 +52,11 @@ public class VectorSearchService {
           if (kbIds != null) {
             for (Long kbId : kbIds) {
               ps.setLong(idx++, kbId);
+            }
+          }
+          if (docIds != null) {
+            for (Long docId : docIds) {
+              ps.setLong(idx++, docId);
             }
           }
           ps.setObject(idx++, pgVector);

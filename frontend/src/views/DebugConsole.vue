@@ -6,10 +6,19 @@
           <div class="panel-title" @click="toggleParams">⚙️ 检索参数</div>
           <div class="param-row">
             <div class="param-label">知识库</div>
-            <select v-model="config.kbId" class="param-select">
+            <select v-model="config.kbId" class="param-select" @change="onKbChange">
               <option :value="null">全部知识库</option>
               <option v-for="kb in kbList" :key="kb.id" :value="kb.id">
                 {{ kb.name }}
+              </option>
+            </select>
+          </div>
+          <div class="param-row">
+            <div class="param-label">文档</div>
+            <select v-model="config.docId" class="param-select" :disabled="!config.kbId">
+              <option :value="null">全部文档</option>
+              <option v-for="doc in docList" :key="doc.id" :value="doc.id">
+                {{ doc.filename }}
               </option>
             </select>
           </div>
@@ -58,6 +67,14 @@
           <label class="radio-row" v-for="m in compareModes" :key="m">
             <input type="radio" v-model="config.compareMode" :value="m" name="mode"> {{ m }}
           </label>
+          <div v-if="config.compareMode === 'A/B 对比'" class="param-row" style="margin-top:8px;">
+            <div class="param-label">策略 B</div>
+            <select v-model="config.compareStrategyB" class="param-select">
+              <option v-for="s in availableStrategiesB" :key="s.value" :value="s.value">
+                {{ s.label }}
+              </option>
+            </select>
+          </div>
           <button class="search-btn" :disabled="searching" @click="doSearch">
             {{ searching ? '检索中…' : '🔍 检索' }}
           </button>
@@ -73,21 +90,57 @@
           >
           <div class="results-info">
             检索结果
-            <span v-if="searched" class="time-text">
-              · {{ formattedLatency }}
+            <span v-if="compareResults.length > 1 && searched" class="time-text">
+              · {{ compareResults[activeCompareTab]?.label }}
+            </span>
+            <span v-else-if="searched" class="time-text">
+              · {{ currentStrategyLabel }} · {{ formattedLatency }}
             </span>
           </div>
           <div v-if="rewrittenQueries.length" class="rewritten-queries">
             改写查询：{{ rewrittenQueries.join(' | ') }}
           </div>
 
+          <!-- 对比模式摘要 -->
+          <div v-if="compareResults.length > 1 && searched" class="compare-summary">
+            <div class="compare-title">策略对比</div>
+            <div class="compare-grid">
+              <div
+                v-for="cr in compareResults"
+                :key="cr.label"
+                class="compare-cell"
+                :class="{ best: cr.label === bestCompareLabel }"
+              >
+                <div class="compare-label">{{ cr.label }}</div>
+                <div class="compare-metric">{{ cr.latencyMs }}ms</div>
+                <div class="compare-sub">耗时</div>
+                <div class="compare-metric">{{ cr.resultCount }} 条</div>
+                <div class="compare-sub">结果</div>
+                <div class="compare-metric">{{ formatScore(cr.topScore) }}</div>
+                <div class="compare-sub">最高分</div>
+              </div>
+            </div>
+            <!-- 策略 Tab 切换 -->
+            <div class="compare-tabs">
+              <button
+                v-for="(cr, idx) in compareResults"
+                :key="cr.label"
+                class="compare-tab"
+                :class="{ active: activeCompareTab === idx }"
+                @click="activeCompareTab = idx"
+              >
+                {{ cr.label }}
+              </button>
+            </div>
+          </div>
+
           <div v-if="searching" class="state-hint">检索中…</div>
-          <div v-else-if="searched && results.length === 0" class="state-hint">
+          <div v-else-if="searched && displayResults.length === 0" class="state-hint">
             未找到匹配的文档块
           </div>
           <template v-else>
             <div
-              v-for="(r, i) in results"
+              v-for="(r, i) in displayResults"
               :key="r.chunkId ?? i"
               class="result-card"
               :class="{ top: isTopResult(i, r), selected: selectedChunkIds.includes(r.chunkId) }"
@@ -110,20 +163,20 @@
               </div>
               <div class="result-text" v-html="highlightContent(r.content, query)"></div>
               <div class="result-meta">
-                <template v-if="strategy === 'hybrid'">
+                <template v-if="activeStrategyRef === 'hybrid'">
                   向量 {{ (r.vectorScore ?? 0).toFixed(4) }} | BM25 {{ (r.bm25Score ?? 0).toFixed(2) }} | 融合 {{ (r.finalScore ?? 0).toFixed(4) }}
                 </template>
-                <template v-else-if="strategy === 'full'">
+                <template v-else-if="activeStrategyRef === 'full'">
                   向量 {{ (r.vectorScore ?? 0).toFixed(4) }} | BM25 {{ (r.bm25Score ?? 0).toFixed(2) }} | Rerank {{ (r.finalScore ?? 0).toFixed(4) }}
                 </template>
                 <template v-else>
-                  {{ strategy === 'keyword' ? 'BM25' : '向量' }} {{ formatScore(displayScore(r)) }}
+                  {{ activeStrategyRef === 'keyword' ? 'BM25' : '向量' }} {{ formatScore(displayScore(r)) }}
                 </template>
               </div>
             </div>
           </template>
 
-          <div v-if="results.length" class="save-case" @click="openSaveModal">
+          <div v-if="displayResults.length" class="save-case" @click="openSaveModal">
             💾 保存为评测用例
           </div>
         </div>
@@ -131,20 +184,20 @@
         <div class="debug-right">
           <div class="panel-title">Prompt 预览</div>
           <div class="prompt-block">
-            <div class="prompt-line dim">System: 你是RAG知识引擎，只基于Context回答。</div>
-            <div class="prompt-line dim" style="margin-top:6px;">Context:</div>
+            <div class="prompt-line dim">系统提示词：你是RAG知识引擎，只基于Context回答。</div>
+            <div class="prompt-line dim" style="margin-top:6px;">上下文（Context）：</div>
             <div
               class="prompt-line"
-              v-for="(r, i) in results.slice(0, config.rerankTopN)"
+              v-for="(r, i) in displayResults.slice(0, config.rerankTopN)"
               :key="r.chunkId ?? i"
             >
               [{{ i + 1 }}] {{ r.filename }} #{{ r.chunkIndex }}: ...{{ excerpt(r.content, 40) }}...
             </div>
           </div>
           <div class="prompt-cost">
-            <div class="cost-row"><span>Prompt</span><span>{{ promptTokens }} tk</span></div>
-            <div class="cost-row"><span>Completion</span><span>—</span></div>
-            <div class="cost-row total"><span>预估成本</span><span>—</span></div>
+            <div class="cost-row"><span>输入 Prompt</span><span>{{ promptTokens }} tk</span></div>
+            <div class="cost-row"><span>预计输出 Completion</span><span>{{ estimatedCompletionTokens }} tk</span></div>
+            <div class="cost-row total"><span>预估成本</span><span>¥{{ estimatedCost }}</span></div>
           </div>
         </div>
       </div>
@@ -180,10 +233,16 @@
 </template>
 
 <script setup>
-import { onMounted, ref, reactive, computed } from 'vue'
+import { onMounted, ref, reactive, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { listKb } from '../api/kb'
+import { listDocuments } from '../api/document'
 import { search as searchApi } from '../api/search'
 import { listEvalDatasets, saveQuestionFromSearch } from '../api/eval'
+
+const route = useRoute()
+const docList = ref([])
+const pendingDocIdFromRoute = ref(null)
 
 const query = ref('')
 const kbList = ref([])
@@ -212,17 +271,66 @@ const savingCase = ref(false)
 
 const config = reactive({
   kbId: null,
+  docId: null,
   strategy: 'vector',
   topK: 8,
   vectorWeight: 0.55,
   rerankTopN: 5,
   compareMode: '单策略',
+  compareStrategyB: 'hybrid',
 })
 
 const compareModes = ['单策略', 'A/B 对比', '四路对比']
+const compareResults = ref([])
+const activeCompareTab = ref(0)
+
+const allStrategies = [
+  { value: 'vector', label: 'vector（向量检索）' },
+  { value: 'keyword', label: 'keyword（关键词检索）' },
+  { value: 'rewrite', label: 'rewrite（Query改写）' },
+  { value: 'hybrid', label: 'hybrid（混合检索）' },
+  { value: 'full', label: 'full（全链路 Reranker）' },
+]
+
+const availableStrategiesB = computed(() =>
+  allStrategies.filter(s => s.value !== config.strategy)
+)
+
+const currentStrategyLabel = computed(() => {
+  const s = strategy.value || config.strategy
+  return strategyLabel(s)
+})
+
+const bestCompareLabel = computed(() => {
+  if (compareResults.value.length <= 1) return null
+  const sorted = [...compareResults.value].sort((a, b) => b.topScore - a.topScore)
+  return sorted[0]?.label ?? null
+})
+
+const displayResults = computed(() => {
+  if (compareResults.value.length > 1) {
+    return compareResults.value[activeCompareTab.value]?.results ?? []
+  }
+  return results.value
+})
 
 const promptTokens = computed(() => {
-  return results.value.slice(0, config.rerankTopN).reduce((s, r) => s + Math.floor((r.content?.length || 0) / 2), 0) + 180
+  const source = compareResults.value.length > 1
+    ? (compareResults.value[activeCompareTab.value]?.results ?? [])
+    : results.value
+  return source.slice(0, config.rerankTopN).reduce((s, r) => s + Math.floor((r.content?.length || 0) / 2), 0) + 180
+})
+
+const estimatedCompletionTokens = computed(() => {
+  // 粗略估算：根据检索到的上下文量，预估 LLM 回答长度
+  return Math.max(80, Math.floor(promptTokens.value * 0.25))
+})
+
+const estimatedCost = computed(() => {
+  // DeepSeek-V3 定价：输入 ¥1/M tk，输出 ¥2/M tk
+  const inputCost = promptTokens.value * 0.000001
+  const outputCost = estimatedCompletionTokens.value * 0.000002
+  return (inputCost + outputCost).toFixed(4)
 })
 
 const formattedLatency = computed(() => {
@@ -273,42 +381,57 @@ function highlightContent(content, q) {
   return html
 }
 
+const activeStrategyRef = computed(() => {
+  if (compareResults.value.length > 1) {
+    return compareResults.value[activeCompareTab.value]?.strategy ?? strategy.value
+  }
+  return strategy.value
+})
+
+function activeStrategy() {
+  return activeStrategyRef.value
+}
+
 function displayScore(r) {
-  if (strategy.value === 'hybrid' || strategy.value === 'full') return r.finalScore ?? 0
-  return strategy.value === 'keyword' ? (r.bm25Score ?? 0) : (r.vectorScore ?? 0)
+  const s = activeStrategy()
+  if (s === 'hybrid' || s === 'full') return r.finalScore ?? 0
+  return s === 'keyword' ? (r.bm25Score ?? 0) : (r.vectorScore ?? 0)
 }
 
 function formatScore(score) {
-  if (strategy.value === 'hybrid' || strategy.value === 'full') return score.toFixed(4)
-  return strategy.value === 'keyword' ? score.toFixed(2) : score.toFixed(4)
+  const s = activeStrategy()
+  if (s === 'hybrid' || s === 'full') return score.toFixed(4)
+  return s === 'keyword' ? score.toFixed(2) : score.toFixed(4)
 }
 
 function isTopResult(index, r) {
   if (index !== 0) return false
-  if (strategy.value === 'hybrid') {
+  const s = activeStrategy()
+  if (s === 'hybrid') {
     return (r.finalScore ?? 0) >= 0.06
   }
-  if (strategy.value === 'full') {
+  if (s === 'full') {
     return (r.finalScore ?? 0) >= 0.8
   }
-  if (strategy.value === 'keyword') {
+  if (s === 'keyword') {
     return (r.bm25Score ?? 0) >= 3.0
   }
   return (r.vectorScore ?? 0) >= 0.8
 }
 
 function scoreColor(score) {
-  if (strategy.value === 'hybrid') {
+  const s = activeStrategy()
+  if (s === 'hybrid') {
     if (score >= 0.12) return '#10b981'
     if (score >= 0.06) return '#f59e0b'
     return '#64748b'
   }
-  if (strategy.value === 'full') {
+  if (s === 'full') {
     if (score >= 0.9) return '#10b981'
     if (score >= 0.8) return '#f59e0b'
     return '#64748b'
   }
-  if (strategy.value === 'keyword') {
+  if (s === 'keyword') {
     if (score >= 5) return '#10b981'
     if (score >= 3) return '#f59e0b'
     return '#64748b'
@@ -318,15 +441,54 @@ function scoreColor(score) {
   return '#64748b'
 }
 
-function sortResults(list) {
+function sortResults(list, s) {
+  const active = s ?? strategy.value
   const key =
-    strategy.value === 'hybrid'
-      || strategy.value === 'full'
+    active === 'hybrid' || active === 'full'
       ? 'finalScore'
-      : strategy.value === 'keyword'
+      : active === 'keyword'
         ? 'bm25Score'
         : 'vectorScore'
   return list.slice().sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0))
+}
+
+async function loadDocsForKb(kbId) {
+  if (!kbId) {
+    docList.value = []
+    config.docId = null
+    return
+  }
+  try {
+    const res = await listDocuments(kbId, 1, 200)
+    docList.value = res.data?.list ?? []
+  } catch {
+    docList.value = []
+  }
+}
+
+function onKbChange() {
+  loadDocsForKb(config.kbId)
+}
+
+function buildPayload(q, strategy) {
+  const payload = {
+    query: q,
+    topK: config.topK,
+    strategy,
+  }
+  if (config.kbId != null) {
+    payload.kbIds = [config.kbId]
+  }
+  if (config.docId != null) {
+    payload.docIds = [config.docId]
+  }
+  if (strategy === 'hybrid' || strategy === 'full') {
+    payload.vectorWeight = config.vectorWeight
+  }
+  if (strategy === 'full') {
+    payload.rerankTopN = config.rerankTopN
+  }
+  return payload
 }
 
 async function doSearch() {
@@ -338,41 +500,99 @@ async function doSearch() {
 
   searching.value = true
   searched.value = false
+  compareResults.value = []
+  activeCompareTab.value = 0
+
+  const strategies = resolveStrategies()
   try {
-    const payload = {
-      query: q,
-      topK: config.topK,
-      strategy: config.strategy,
+    const searches = strategies.map(async (s) => {
+      const payload = buildPayload(q, s)
+      const start = performance.now()
+      try {
+        const res = await searchApi(payload)
+        const data = res.data ?? {}
+        return {
+          label: strategyLabel(s),
+          strategy: data.strategy ?? s,
+          results: sortResults(data.results ?? [], s),
+          latencyMs: data.latencyMs ?? Math.round(performance.now() - start),
+          vectorLatencyMs: data.vectorLatencyMs ?? null,
+          keywordLatencyMs: data.keywordLatencyMs ?? null,
+          rerankLatencyMs: data.rerankLatencyMs ?? null,
+          rewrittenQueries: data.rewrittenQueries ?? [],
+          topScore: topScore(data.results ?? [], s),
+          resultCount: (data.results ?? []).length,
+        }
+      } catch {
+        return {
+          label: strategyLabel(s),
+          strategy: s,
+          results: [],
+          latencyMs: Math.round(performance.now() - start),
+          vectorLatencyMs: null,
+          keywordLatencyMs: null,
+          rerankLatencyMs: null,
+          rewrittenQueries: [],
+          topScore: 0,
+          resultCount: 0,
+        }
+      }
+    })
+
+    const all = await Promise.all(searches)
+
+    if (strategies.length === 1) {
+      const first = all[0]
+      results.value = first.results
+      strategy.value = first.strategy
+      rewrittenQueries.value = first.rewrittenQueries
+      vectorLatencyMs.value = first.vectorLatencyMs
+      keywordLatencyMs.value = first.keywordLatencyMs
+      rerankLatencyMs.value = first.rerankLatencyMs
+      latencyMs.value = first.latencyMs
+      compareResults.value = []
+    } else {
+      compareResults.value = all
+      // 同步单策略视图到第一个
+      const first = all[0]
+      results.value = first.results
+      strategy.value = first.strategy
+      rewrittenQueries.value = first.rewrittenQueries
+      vectorLatencyMs.value = first.vectorLatencyMs
+      keywordLatencyMs.value = first.keywordLatencyMs
+      rerankLatencyMs.value = first.rerankLatencyMs
+      latencyMs.value = first.latencyMs
     }
-    if (config.strategy === 'hybrid' || config.strategy === 'full') {
-      payload.vectorWeight = config.vectorWeight
-    }
-    if (config.strategy === 'full') {
-      payload.rerankTopN = config.rerankTopN
-    }
-    if (config.kbId != null) {
-      payload.kbIds = [config.kbId]
-    }
-    const res = await searchApi(payload)
-    const data = res.data ?? {}
-    strategy.value = data.strategy ?? config.strategy
-    rewrittenQueries.value = data.rewrittenQueries ?? []
-    vectorLatencyMs.value = data.vectorLatencyMs ?? null
-    keywordLatencyMs.value = data.keywordLatencyMs ?? null
-    rerankLatencyMs.value = data.rerankLatencyMs ?? null
-    results.value = sortResults(data.results ?? [])
-    latencyMs.value = data.latencyMs ?? 0
     searched.value = true
   } catch {
     results.value = []
     rewrittenQueries.value = []
-    vectorLatencyMs.value = null
-    keywordLatencyMs.value = null
-    rerankLatencyMs.value = null
+    compareResults.value = []
     searched.value = true
   } finally {
     searching.value = false
   }
+}
+
+function resolveStrategies() {
+  if (config.compareMode === 'A/B 对比') {
+    return [config.strategy, config.compareStrategyB]
+  }
+  if (config.compareMode === '四路对比') {
+    return ['vector', 'keyword', 'hybrid', 'full']
+  }
+  return [config.strategy]
+}
+
+function strategyLabel(s) {
+  const map = { vector: '向量检索', keyword: '关键词检索', hybrid: '混合检索', full: '全链路Reranker' }
+  return map[s] ?? s
+}
+
+function topScore(list, s) {
+  if (!list || list.length === 0) return 0
+  const key = (s === 'hybrid' || s === 'full') ? 'finalScore' : (s === 'keyword' ? 'bm25Score' : 'vectorScore')
+  return Math.max(...list.map(r => r[key] ?? 0))
 }
 
 async function openSaveModal() {
@@ -391,7 +611,10 @@ async function openSaveModal() {
     return
   }
   saveDatasetId.value = evalDatasets.value[0].id
-  selectedChunkIds.value = results.value
+  const source = compareResults.value.length > 1
+    ? (compareResults.value[activeCompareTab.value]?.results ?? [])
+    : results.value
+  selectedChunkIds.value = source
     .slice(0, 3)
     .map((r) => r.chunkId)
     .filter((id) => id != null)
@@ -429,6 +652,23 @@ onMounted(async () => {
     kbList.value = res.data ?? []
   } catch {
     kbList.value = []
+  }
+  // 从文档详情页跳转过来时，自动选中对应知识库和文档
+  const kbIdParam = route.query.kbId
+  const docIdParam = route.query.docId
+  if (kbIdParam != null) {
+    const id = Number(kbIdParam)
+    if (!Number.isNaN(id) && kbList.value.some(kb => kb.id === id)) {
+      config.kbId = id
+      await loadDocsForKb(id)
+      // 加载完文档列表后再选中指定文档
+      if (docIdParam != null) {
+        const docId = Number(docIdParam)
+        if (!Number.isNaN(docId) && docList.value.some(d => d.id === docId)) {
+          config.docId = docId
+        }
+      }
+    }
   }
 })
 </script>
@@ -475,6 +715,19 @@ onMounted(async () => {
 .result-meta { color: var(--text-muted); font-size: 9px; }
 .save-case { margin-top: 12px; padding: 8px; border: 1px dashed var(--blue); border-radius: 7px; text-align: center; color: var(--blue); font-size: 11px; cursor: pointer; transition: background 0.15s; }
 .save-case:hover { background: #eff6ff; }
+.compare-summary { margin-bottom: 12px; }
+.compare-title { font-weight: 600; font-size: 11px; margin-bottom: 8px; }
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; margin-bottom: 8px; }
+.compare-cell { background: var(--light); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+.compare-cell.best { background: #f0fdf4; border-color: #bbf7d0; }
+.compare-label { font-weight: 700; font-size: 10px; color: var(--slate); margin-bottom: 4px; }
+.compare-metric { font-weight: 700; font-size: 13px; color: var(--blue); }
+.compare-cell.best .compare-metric { color: #166534; }
+.compare-sub { font-size: 9px; color: var(--text-muted); }
+.compare-tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+.compare-tab { padding: 4px 10px; border: 1px solid var(--border); border-radius: 14px; background: #fff; font-size: 10px; cursor: pointer; color: var(--text-muted); transition: all 0.15s; }
+.compare-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.compare-tab:hover:not(.active) { border-color: var(--blue); color: var(--blue); }
 .prompt-block { margin-bottom: 12px; }
 .prompt-line { color: var(--gray); line-height: 1.7; word-break: break-all; font-size: 9px; }
 .prompt-line.dim { color: var(--text-muted); }
@@ -567,6 +820,10 @@ onMounted(async () => {
     border-left: none;
     border-top: 1px solid var(--border);
     padding: 10px 12px;
+  }
+
+  .compare-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .search-input {

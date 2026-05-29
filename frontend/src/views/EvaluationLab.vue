@@ -54,7 +54,7 @@
                   <td>{{ formatTime(ds.createdAt) }}</td>
                   <td>
                     <span class="link-action" @click.stop="toggleDataset(ds.id)">查看题目</span>
-                    <span class="link-action muted" @click.stop>创建实验</span>
+                    <span class="link-action" @click.stop="openRunExperiment(ds.id)">创建实验</span>
                     <span class="link-action danger" @click.stop="onDeleteDataset(ds)">删除</span>
                   </td>
                 </tr>
@@ -283,10 +283,10 @@
           <label class="field">
             <span>策略</span>
             <select v-model="runForm.strategy" class="select" :disabled="runForm.ablation">
-              <option value="vector">vector</option>
-              <option value="keyword">keyword</option>
-              <option value="hybrid">hybrid</option>
-              <option value="full">full</option>
+              <option value="vector">vector（向量检索）</option>
+              <option value="keyword">keyword（关键词检索 BM25）</option>
+              <option value="hybrid">hybrid（向量+关键词 混合检索）</option>
+              <option value="full">full（全链路：改写+混合+Reranker）</option>
             </select>
           </label>
           <label class="field">
@@ -298,8 +298,8 @@
             <input v-model.number="runForm.vectorWeight" type="number" min="0" max="1" step="0.05" />
           </label>
           <label class="field checkbox-row">
-            <input v-model="runForm.ablation" type="checkbox">
-            <span>消融实验（对比 4 种策略）</span>
+            <input v-model="runForm.ablation" type="checkbox" />
+            <span>消融实验（自动对比 4 种策略：vector / keyword / hybrid / full）</span>
           </label>
           <div class="modal-actions">
             <button class="btn-ghost" @click="showRunExperiment = false">取消</button>
@@ -622,9 +622,9 @@ async function onDeleteQuestion(datasetId, question) {
   await loadQuestions(datasetId, questionPage[datasetId] || 1)
 }
 
-function openRunExperiment() {
+function openRunExperiment(datasetId) {
   runForm.value = {
-    datasetId: datasets.value.length ? datasets.value[0].id : null,
+    datasetId: datasetId || (datasets.value.length ? datasets.value[0].id : null),
     strategy: 'full',
     vectorWeight: 0.55,
     topK: 8,
@@ -917,11 +917,18 @@ onMounted(async () => {
 .field { display: block; margin-bottom: 14px; }
 .checkbox-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  padding: 8px 0;
+}
+.checkbox-row input[type="checkbox"] {
+  width: auto;
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 .checkbox-row span {
   margin: 0;
+  font-size: 13px;
 }
 .field span { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
 .field input, .field textarea, .select {

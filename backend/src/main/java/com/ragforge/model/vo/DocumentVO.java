@@ -17,5 +17,11 @@ public class DocumentVO {
   private Integer chunkCount;
   private String errorMsg;
   private LocalDateTime createdAt;
+
+  // 来自关联知识库的冗余字段，方便展示
+  private String kbName;
+  private String embeddingModel;
+  private Integer chunkSize;
+  private Integer chunkOverlap;
 }
 

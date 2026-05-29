@@ -21,19 +21,19 @@ public class HybridSearchService {
   private final VectorSearchService vectorSearchService;
   private final EsSearchService esSearchService;
 
-  public List<SearchResult> search(String query, List<Long> kbIds, int topK, double vectorWeight) {
-    return searchWithMetrics(query, kbIds, topK, vectorWeight).getResults();
+  public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK, double vectorWeight) {
+    return searchWithMetrics(query, kbIds, docIds, topK, vectorWeight).getResults();
   }
 
   public HybridSearchOutput searchWithMetrics(
-      String query, List<Long> kbIds, int topK, double vectorWeight) {
+      String query, List<Long> kbIds, List<Long> docIds, int topK, double vectorWeight) {
     int recallTopK = Math.max(topK * 2, topK);
     double vw = clampWeight(vectorWeight);
 
     // Extreme weights should fully degrade to a single strategy.
     if (vw >= 1.0) {
       long start = System.currentTimeMillis();
-      List<SearchResult> results = vectorSearchService.search(query, kbIds, topK);
+      List<SearchResult> results = vectorSearchService.search(query, kbIds, docIds, topK);
       long vectorLatency = System.currentTimeMillis() - start;
       for (SearchResult r : results) {
         r.setFinalScore(r.getVectorScore());
@@ -42,7 +42,7 @@ public class HybridSearchService {
     }
     if (vw <= 0.0) {
       long start = System.currentTimeMillis();
-      List<SearchResult> results = esSearchService.search(query, kbIds, topK);
+      List<SearchResult> results = esSearchService.search(query, kbIds, docIds, topK);
       long keywordLatency = System.currentTimeMillis() - start;
       for (SearchResult r : results) {
         r.setFinalScore(r.getBm25Score());
@@ -57,7 +57,7 @@ public class HybridSearchService {
         CompletableFuture.supplyAsync(
             () -> {
               long start = System.currentTimeMillis();
-              List<SearchResult> result = vectorSearchService.search(query, kbIds, recallTopK);
+              List<SearchResult> result = vectorSearchService.search(query, kbIds, docIds, recallTopK);
               vectorLatency.set(System.currentTimeMillis() - start);
               return result;
             });
@@ -65,7 +65,7 @@ public class HybridSearchService {
         CompletableFuture.supplyAsync(
             () -> {
               long start = System.currentTimeMillis();
-              List<SearchResult> result = esSearchService.search(query, kbIds, recallTopK);
+              List<SearchResult> result = esSearchService.search(query, kbIds, docIds, recallTopK);
               keywordLatency.set(System.currentTimeMillis() - start);
               return result;
             });

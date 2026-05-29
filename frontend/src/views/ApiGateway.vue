@@ -12,8 +12,29 @@
             {{ api.path }}
           </div>
           <div class="api-key-box">
-            <div class="api-key-title">🔑 API Key</div>
-            <div class="api-key-value">sk-ragforge-dev</div>
+            <div class="api-key-title">🔑 API Keys</div>
+            <div v-if="apiKeyLoading" class="key-loading">加载中…</div>
+            <div v-for="key in apiKeys" :key="key.id" class="key-row">
+              <div class="key-info">
+                <div class="key-name">{{ key.keyName }}</div>
+                <div class="key-value" :title="key.apiKey">{{ key.apiKey }}</div>
+              </div>
+              <div class="key-actions">
+                <span
+                  class="key-toggle"
+                  :class="{ on: key.enabled }"
+                  @click="onToggleKey(key)"
+                  :title="key.enabled ? '点击停用' : '点击启用'"
+                >
+                  {{ key.enabled ? '✓' : '—' }}
+                </span>
+                <span class="key-copy" @click="onCopyKey(key.apiKey)" title="复制">📋</span>
+                <span class="key-del" @click="onDeleteKey(key)" title="删除">✗</span>
+              </div>
+            </div>
+            <button class="key-gen-btn" :disabled="apiKeyLoading" @click="onCreateKey">
+              + 生成新 Key
+            </button>
           </div>
         </div>
         <div class="api-right" v-if="currentApi">
@@ -38,9 +59,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { onMounted, ref, computed } from 'vue'
+import { listApiKeys, createApiKey, enableApiKey, deleteApiKey } from '../api/apikey'
 
 const activeApi = ref('/search')
+const apiKeys = ref([])
+const apiKeyLoading = ref(false)
 
 const apis = [
   {
@@ -99,6 +123,60 @@ const currentApi = computed(() => apis.find(a => a.path === activeApi.value))
 function formatJson(obj) {
   return JSON.stringify(obj, null, 2)
 }
+
+async function loadKeys() {
+  apiKeyLoading.value = true
+  try {
+    const res = await listApiKeys()
+    apiKeys.value = res.data ?? []
+  } catch {
+    apiKeys.value = []
+  } finally {
+    apiKeyLoading.value = false
+  }
+}
+
+async function onCreateKey() {
+  const name = prompt('请输入 Key 名称（例如：CareerMate-Prod）：')
+  if (!name?.trim()) return
+  try {
+    await createApiKey(name.trim())
+    await loadKeys()
+  } catch {
+    // error handled by interceptor
+  }
+}
+
+async function onToggleKey(key) {
+  try {
+    await enableApiKey(key.id, !key.enabled)
+    key.enabled = !key.enabled
+  } catch {
+    // error handled by interceptor
+  }
+}
+
+async function onDeleteKey(key) {
+  if (!confirm(`确定删除 API Key「${key.keyName}」？`)) return
+  try {
+    await deleteApiKey(key.id)
+    apiKeys.value = apiKeys.value.filter(k => k.id !== key.id)
+  } catch {
+    // error handled by interceptor
+  }
+}
+
+async function onCopyKey(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    // fallback silently
+  }
+}
+
+onMounted(() => {
+  loadKeys()
+})
 </script>
 
 <style scoped>
@@ -113,8 +191,22 @@ function formatJson(obj) {
 .api-method.POST { background: #dbeafe; color: #1d4ed8; }
 .api-method.GET { background: #d1fae5; color: #065f46; }
 .api-key-box { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
-.api-key-title { font-weight: 600; font-size: 10px; margin-bottom: 6px; }
-.api-key-value { background: #fff; border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; font-family: 'SF Mono', Monaco, monospace; font-size: 10px; }
+.api-key-title { font-weight: 600; font-size: 10px; margin-bottom: 8px; }
+.key-loading { font-size: 10px; color: var(--text-muted); }
+.key-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; padding: 6px; background: #fff; border: 1px solid var(--border); border-radius: 5px; }
+.key-info { min-width: 0; }
+.key-name { font-size: 9px; font-weight: 600; color: var(--slate); }
+.key-value { font-size: 8px; font-family: 'SF Mono', Monaco, monospace; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.key-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.key-toggle { cursor: pointer; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 10px; background: rgba(148,163,184,0.18); color: #64748b; }
+.key-toggle.on { background: #dcfce7; color: #166534; }
+.key-copy { cursor: pointer; font-size: 10px; opacity: 0.6; }
+.key-copy:hover { opacity: 1; }
+.key-del { cursor: pointer; font-size: 11px; color: var(--red); font-weight: 700; }
+.key-del:hover { opacity: 0.7; }
+.key-gen-btn { width: 100%; margin-top: 8px; padding: 5px 0; background: #fff; border: 1px dashed var(--blue); border-radius: 5px; font-size: 10px; color: var(--blue); cursor: pointer; transition: background 0.15s; }
+.key-gen-btn:hover { background: #eff6ff; }
+.key-gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .api-detail-title { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
 .api-detail-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
 .code-block { background: var(--navy); border-radius: 8px; padding: 14px; font-family: 'SF Mono', Monaco, monospace; font-size: 10px; color: #e2e8f0; margin-bottom: 14px; line-height: 1.7; overflow-x: auto; }

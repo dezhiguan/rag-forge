@@ -49,16 +49,17 @@ public class SearchController {
     Long keywordLatencyMs = null;
     Long rerankLatencyMs = null;
     List<SearchResult> results;
+    List<Long> docIds = req.getDocIds();
     if ("rewrite".equals(strategy)) {
       rewrittenQueries = queryRewriter.rewrite(req.getQuery());
       long vectorStart = System.currentTimeMillis();
-      results = searchByRewrittenQueries(rewrittenQueries, req.getKbIds(), req.getTopK());
+      results = searchByRewrittenQueries(rewrittenQueries, req.getKbIds(), docIds, req.getTopK());
       vectorLatencyMs = System.currentTimeMillis() - vectorStart;
     } else if ("full".equals(strategy)) {
       rewrittenQueries = queryRewriter.rewrite(req.getQuery());
       HybridSearchOutput output =
           searchByRewrittenHybrid(
-              rewrittenQueries, req.getKbIds(), req.getTopK(), normalizeVectorWeight(req));
+              rewrittenQueries, req.getKbIds(), docIds, req.getTopK(), normalizeVectorWeight(req));
       results = output.getResults();
       vectorLatencyMs = output.getVectorLatencyMs();
       keywordLatencyMs = output.getKeywordLatencyMs();
@@ -76,18 +77,18 @@ public class SearchController {
     } else if ("hybrid".equals(strategy)) {
       HybridSearchOutput output =
           hybridSearchService.searchWithMetrics(
-              req.getQuery(), req.getKbIds(), req.getTopK(), normalizeVectorWeight(req));
+              req.getQuery(), req.getKbIds(), docIds, req.getTopK(), normalizeVectorWeight(req));
       results = output.getResults();
       vectorLatencyMs = output.getVectorLatencyMs();
       keywordLatencyMs = output.getKeywordLatencyMs();
       strategy = output.getEffectiveStrategy();
     } else if ("keyword".equals(strategy)) {
       long keywordStart = System.currentTimeMillis();
-      results = esSearchService.search(req.getQuery(), req.getKbIds(), req.getTopK());
+      results = esSearchService.search(req.getQuery(), req.getKbIds(), docIds, req.getTopK());
       keywordLatencyMs = System.currentTimeMillis() - keywordStart;
     } else {
       long vectorStart = System.currentTimeMillis();
-      results = vectorSearchService.search(req.getQuery(), req.getKbIds(), req.getTopK());
+      results = vectorSearchService.search(req.getQuery(), req.getKbIds(), docIds, req.getTopK());
       vectorLatencyMs = System.currentTimeMillis() - vectorStart;
     }
 
@@ -130,10 +131,10 @@ public class SearchController {
   }
 
   private List<SearchResult> searchByRewrittenQueries(
-      List<String> queries, List<Long> kbIds, int topK) {
+      List<String> queries, List<Long> kbIds, List<Long> docIds, int topK) {
     Map<Long, SearchResult> dedup = new LinkedHashMap<>();
     for (String q : queries) {
-      List<SearchResult> partial = vectorSearchService.search(q, kbIds, topK);
+      List<SearchResult> partial = vectorSearchService.search(q, kbIds, docIds, topK);
       for (SearchResult item : partial) {
         if (item.getChunkId() == null) {
           continue;
@@ -161,12 +162,12 @@ public class SearchController {
   }
 
   private HybridSearchOutput searchByRewrittenHybrid(
-      List<String> queries, List<Long> kbIds, int topK, double vectorWeight) {
+      List<String> queries, List<Long> kbIds, List<Long> docIds, int topK, double vectorWeight) {
     Map<Long, SearchResult> dedup = new LinkedHashMap<>();
     long vectorLatency = 0;
     long keywordLatency = 0;
     for (String q : queries) {
-      HybridSearchOutput output = hybridSearchService.searchWithMetrics(q, kbIds, topK * 2, vectorWeight);
+      HybridSearchOutput output = hybridSearchService.searchWithMetrics(q, kbIds, docIds, topK * 2, vectorWeight);
       vectorLatency += output.getVectorLatencyMs() == null ? 0 : output.getVectorLatencyMs();
       keywordLatency += output.getKeywordLatencyMs() == null ? 0 : output.getKeywordLatencyMs();
       for (SearchResult item : output.getResults()) {

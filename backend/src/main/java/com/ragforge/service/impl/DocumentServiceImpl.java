@@ -224,6 +224,7 @@ public class DocumentServiceImpl implements DocumentService {
                 })
             .toList();
 
+    KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
     DocumentDetailVO vo = new DocumentDetailVO();
     vo.setId(doc.getId());
     vo.setKbId(doc.getKbId());
@@ -236,6 +237,12 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setChunkCount(doc.getChunkCount());
     vo.setErrorMsg(doc.getErrorMsg());
     vo.setCreatedAt(doc.getCreatedAt());
+    if (kb != null) {
+      vo.setKbName(kb.getName());
+      vo.setEmbeddingModel(kb.getEmbeddingModel());
+      vo.setChunkSize(kb.getChunkSize());
+      vo.setChunkOverlap(kb.getChunkOverlap());
+    }
     vo.setChunks(chunks);
     return vo;
   }

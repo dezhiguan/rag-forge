@@ -19,7 +19,7 @@ public class EsSearchService {
 
   private final ElasticsearchClient client;
 
-  public List<SearchResult> search(String query, List<Long> kbIds, int topK) {
+  public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
     try {
       SearchResponse<Map> response =
           client.search(
@@ -40,6 +40,16 @@ public class EsSearchService {
                                                   t ->
                                                       t.field("kb_id")
                                                           .terms(ts -> ts.value(values))));
+                                    }
+                                    if (docIds != null && !docIds.isEmpty()) {
+                                      List<FieldValue> docValues =
+                                          docIds.stream().map(FieldValue::of).toList();
+                                      b.filter(
+                                          f ->
+                                              f.terms(
+                                                  t ->
+                                                      t.field("doc_id")
+                                                          .terms(ts -> ts.value(docValues))));
                                     }
                                     return b;
                                   })),

@@ -14,6 +14,9 @@ public class SearchRequest {
 
   private List<Long> kbIds;
 
+  /** 限定文档范围（可选），不传则检索知识库下全部文档 */
+  private List<Long> docIds;
+
   /** vector | keyword | rewrite | hybrid | full */
   private String strategy = "vector";
 
