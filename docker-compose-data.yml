@@ -47,6 +47,8 @@ services:
     ports:
       - "9876:9876"
     command: sh mqnamesrv
+    environment:
+      JAVA_OPT_EXT: "-Xms128m -Xmx128m -Xmn64m"
     mem_limit: 256m
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9876 || exit 1"]
@@ -69,7 +71,9 @@ services:
       NAMESRV_ADDR: rocketmq-namesrv:9876
       JAVA_OPT_EXT: "-Xms128m -Xmx128m -Xmn64m"
     mem_limit: 512m
-    command: sh mqbroker -n rocketmq-namesrv:9876 autoCreateTopicEnable=true
+    volumes:
+      - ./docker/rocketmq/broker.conf:/home/rocketmq/rocketmq-5.1.0/conf/broker.conf:ro
+    command: sh mqbroker -c /home/rocketmq/rocketmq-5.1.0/conf/broker.conf
 
   redis:
     image: redis:7-alpine
@@ -94,7 +98,7 @@ services:
     volumes:
       - reranker_cache:/app/.cache
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).read()\" || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -105,3 +109,8 @@ volumes:
   es_data:
   reranker_cache:
 
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.255.10.0/24
