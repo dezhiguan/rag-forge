@@ -19,17 +19,38 @@
       </div>
 
       <template v-if="activeTab === 'datasets'">
-        <div class="top-toolbar">
-          <div class="toolbar-left">
-            <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
-            <button class="btn-ghost" :disabled="loadingDatasets" @click="loadDatasets">
-              刷新
-            </button>
+        <!-- 统计卡片 -->
+        <div class="summary-cards" v-if="datasets.length">
+          <div class="summary-card">
+            <div class="summary-num">{{ datasets.length }}</div>
+            <div class="summary-label">数据集</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-num">{{ totalQuestions }}</div>
+            <div class="summary-label">总题目数</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-num">{{ totalExperiments }}</div>
+            <div class="summary-label">实验记录</div>
           </div>
         </div>
 
-        <div v-if="loadingDatasets" class="state-hint">加载中…</div>
-        <div v-else-if="!datasets.length" class="state-hint">暂无评测数据集</div>
+        <div class="top-toolbar">
+          <div class="toolbar-left">
+            <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
+            <button class="btn-ghost btn-sm" :disabled="loadingDatasets" @click="loadDatasets">刷新</button>
+          </div>
+        </div>
+
+        <div v-if="loadingDatasets" class="state-hint">
+          <div class="state-icon">⏳</div>
+          <div class="state-title">加载中...</div>
+        </div>
+        <div v-else-if="!datasets.length" class="state-hint">
+          <div class="state-icon">📋</div>
+          <div class="state-title">暂无评测数据集</div>
+          <div class="state-desc">创建数据集并添加题目，开始评测检索质量</div>
+        </div>
 
         <div v-else class="table-card">
           <table class="data-table">
@@ -52,10 +73,9 @@
                   </td>
                   <td>{{ ds.questionCount ?? 0 }}</td>
                   <td>{{ formatTime(ds.createdAt) }}</td>
-                  <td>
-                    <span class="link-action" @click.stop="toggleDataset(ds.id)">查看题目</span>
-                    <span class="link-action" @click.stop="openRunExperiment(ds.id)">创建实验</span>
-                    <span class="link-action danger" @click.stop="onDeleteDataset(ds)">删除</span>
+                  <td class="actions-cell">
+                    <button class="btn-outline-sm" @click.stop="openRunExperiment(ds.id)">创建实验</button>
+                    <span class="link-action danger-subtle" @click.stop="onDeleteDataset(ds)">删除</span>
                   </td>
                 </tr>
 
@@ -65,19 +85,8 @@
                       <div class="questions-head">
                         <div class="questions-title">题目列表</div>
                         <div class="questions-actions">
-                          <button class="btn-ghost btn-ghost-small" @click.stop="openAddQuestion(ds.id)">
-                            + 添加题目
-                          </button>
-                          <button class="btn-ghost btn-ghost-small" @click.stop="openBatchImport(ds.id)">
-                            批量导入
-                          </button>
-                          <button
-                            class="btn-ghost btn-ghost-small"
-                            :disabled="questionsLoading[ds.id]"
-                            @click.stop="loadQuestions(ds.id, questionPage[ds.id] || 1)"
-                          >
-                            刷新
-                          </button>
+                          <button class="btn-outline-sm" @click.stop="openAddQuestion(ds.id)">+ 添加题目</button>
+                          <span class="link-action" @click.stop="openBatchImport(ds.id)">批量导入</span>
                         </div>
                       </div>
 
@@ -91,7 +100,12 @@
                         </thead>
                         <tbody>
                           <tr v-if="!(questionsMap[ds.id]?.list || []).length">
-                            <td colspan="3" class="empty-hint">暂无题目</td>
+                            <td colspan="3">
+                              <div class="state-hint" style="padding:24px 0">
+                                <div class="state-icon">📝</div>
+                                <div class="state-desc">点击「添加题目」或「批量导入」</div>
+                              </div>
+                            </td>
                           </tr>
                           <tr v-for="q in questionsMap[ds.id]?.list || []" :key="q.id">
                             <td class="question-text">{{ q.question }}</td>
@@ -143,17 +157,42 @@
       </template>
 
       <template v-else>
-        <div class="top-toolbar">
-          <div class="toolbar-left">
-            <button class="btn-primary" @click="openRunExperiment">+ 运行新实验</button>
-            <button class="btn-ghost" :disabled="loadingExperiments" @click="loadExperiments">
-              刷新
-            </button>
+        <!-- 概览卡片 -->
+        <div class="summary-cards" v-if="experiments.length">
+          <div class="summary-card">
+            <div class="summary-num">{{ experiments.length }}</div>
+            <div class="summary-label">实验总数</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-num accent-green">{{ bestTop3Rate }}</div>
+            <div class="summary-label">最佳 Top3</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-num">{{ avgMrr }}</div>
+            <div class="summary-label">平均 MRR</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-num">{{ avgLatency }}ms</div>
+            <div class="summary-label">平均延迟</div>
           </div>
         </div>
 
-        <div v-if="loadingExperiments" class="state-hint">加载中…</div>
-        <div v-else-if="!experiments.length" class="state-hint">暂无实验记录，点击上方运行新实验</div>
+        <div class="top-toolbar">
+          <div class="toolbar-left">
+            <button class="btn-primary" @click="openRunExperiment">+ 运行新实验</button>
+            <button class="btn-ghost btn-sm" :disabled="loadingExperiments" @click="loadExperiments">刷新</button>
+          </div>
+        </div>
+
+        <div v-if="loadingExperiments" class="state-hint">
+          <div class="state-icon">⏳</div>
+          <div class="state-title">加载中...</div>
+        </div>
+        <div v-else-if="!experiments.length" class="state-hint">
+          <div class="state-icon">🧪</div>
+          <div class="state-title">暂无实验记录</div>
+          <div class="state-desc">选择一个数据集，运行实验对比不同检索策略</div>
+        </div>
         <div v-else class="table-card">
           <table class="data-table">
             <thead>
@@ -163,7 +202,7 @@
                 <th>题目数</th>
                 <th>Top1</th>
                 <th>Top3</th>
-                <th>MRR</th>
+                <th>MRR <span style="color:var(--text-muted);font-weight:400;font-size:10px">平均倒数排名</span></th>
                 <th>平均耗时</th>
                 <th>时间</th>
                 <th style="width: 130px;">操作</th>
@@ -172,16 +211,16 @@
             <tbody>
               <tr v-for="exp in experiments" :key="exp.id">
                 <td>{{ exp.datasetName || `#${exp.datasetId}` }}</td>
-                <td>{{ exp.strategy }}</td>
+                <td><span class="strategy-badge" :class="`strategy-${exp.strategy}`">{{ strategyLabelMap[exp.strategy] || exp.strategy }}</span></td>
                 <td>{{ exp.totalQuestions ?? 0 }}</td>
-                <td>{{ formatRate(exp.top1HitRate) }}</td>
-                <td>{{ formatRate(exp.top3HitRate) }}</td>
-                <td>{{ formatMrr(exp.mrr) }}</td>
+                <td class="metric-cell">{{ formatRate(exp.top1HitRate) }}</td>
+                <td class="metric-cell metric-accent">{{ formatRate(exp.top3HitRate) }}</td>
+                <td class="metric-cell">{{ formatMrr(exp.mrr) }}</td>
                 <td>{{ exp.avgLatencyMs ?? 0 }}ms</td>
                 <td>{{ formatTime(exp.createdAt) }}</td>
-                <td>
-                  <span class="link-action" @click="openExperimentDetail(exp.id)">查看详情</span>
-                  <span class="link-action danger" @click="onDeleteExperiment(exp)">删除</span>
+                <td class="actions-cell">
+                  <span class="link-action" @click="openExperimentDetail(exp.id)">详情</span>
+                  <span class="link-action danger-subtle" @click="onDeleteExperiment(exp)">删除</span>
                 </td>
               </tr>
             </tbody>
@@ -283,24 +322,39 @@
           <label class="field">
             <span>策略</span>
             <select v-model="runForm.strategy" class="select" :disabled="runForm.ablation">
-              <option value="vector">vector（向量检索）</option>
-              <option value="keyword">keyword（关键词检索 BM25）</option>
-              <option value="hybrid">hybrid（向量+关键词 混合检索）</option>
-              <option value="full">full（全链路：改写+混合+Reranker）</option>
+              <option value="vector">向量检索（vector）</option>
+              <option value="keyword">关键词检索 BM25（keyword）</option>
+              <option value="hybrid">混合检索（hybrid）</option>
+              <option value="full">全链路 Reranker（full）</option>
             </select>
           </label>
-          <label class="field">
-            <span>TopK</span>
-            <input v-model.number="runForm.topK" type="number" min="1" max="50" />
-          </label>
-          <label class="field">
-            <span>Vector Weight（hybrid/full）</span>
-            <input v-model.number="runForm.vectorWeight" type="number" min="0" max="1" step="0.05" />
-          </label>
-          <label class="field checkbox-row">
-            <input v-model="runForm.ablation" type="checkbox" />
-            <span>消融实验（自动对比 4 种策略：vector / keyword / hybrid / full）</span>
-          </label>
+
+          <!-- 消融实验 Toggle -->
+          <div class="ablation-toggle" @click="runForm.ablation = !runForm.ablation">
+            <div class="toggle-track" :class="{ on: runForm.ablation }">
+              <div class="toggle-thumb"></div>
+            </div>
+            <div class="toggle-body">
+              <div class="toggle-label">消融实验</div>
+              <div class="toggle-desc">自动对比向量检索 / 关键词检索 / 混合检索 / 全链路 四种策略</div>
+            </div>
+          </div>
+
+          <!-- 高级选项（单策略时可用） -->
+          <div v-if="!runForm.ablation" class="advanced-toggle" @click="showAdvanced = !showAdvanced">
+            ⚙ 高级选项 {{ showAdvanced ? '▾' : '▸' }}
+          </div>
+          <template v-if="!runForm.ablation && showAdvanced">
+            <label class="field">
+              <span>TopK</span>
+              <input v-model.number="runForm.topK" type="number" min="1" max="50" />
+            </label>
+            <label class="field">
+              <span>向量权重（混合检索/全链路）</span>
+              <input v-model.number="runForm.vectorWeight" type="number" min="0" max="1" step="0.05" />
+            </label>
+          </template>
+
           <div class="modal-actions">
             <button class="btn-ghost" @click="showRunExperiment = false">取消</button>
             <button class="btn-primary" :disabled="runningExperiment" @click="onRunExperiment">
@@ -312,7 +366,7 @@
 
       <div v-if="showExperimentDetail && experimentDetail" class="modal-mask" @click.self="showExperimentDetail = false">
         <div class="modal modal-detail">
-          <h3 class="modal-title">实验详情 · {{ experimentDetail.strategy }}</h3>
+          <h3 class="modal-title">实验详情 · {{ strategyLabelMap[experimentDetail.strategy] || experimentDetail.strategy }}</h3>
           <div class="eval-metrics">
             <div class="eval-card">
               <div class="card-label">题目数</div>
@@ -323,7 +377,7 @@
               <div class="card-value">{{ formatRate(experimentDetail.top3HitRate) }}</div>
             </div>
             <div class="eval-card">
-              <div class="card-label">MRR</div>
+              <div class="card-label">MRR 平均倒数排名</div>
               <div class="card-value">{{ formatMrr(experimentDetail.mrr) }}</div>
             </div>
             <div class="eval-card">
@@ -336,7 +390,7 @@
           <div class="bar-chart">
             <div v-for="exp in compareExperiments" :key="exp.id" class="bar-col">
               <div class="bar" :style="{ height: `${Math.max(8, Number(exp.top3HitRate || 0) * 100)}px` }"></div>
-              <div class="bar-label">{{ exp.strategy }}</div>
+              <div class="bar-label">{{ strategyLabelMap[exp.strategy] || exp.strategy }}</div>
               <div class="bar-pct">{{ formatRate(exp.top3HitRate) }}</div>
             </div>
           </div>
@@ -382,6 +436,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   batchCreateEvalQuestions,
   createEvalDataset,
@@ -398,11 +453,22 @@ import {
 import { listKb } from '../api/kb'
 import { search as searchApi } from '../api/search'
 
+const route = useRoute()
+
 const activeTab = ref('datasets')
 const datasets = ref([])
 const kbList = ref([])
 const loadingDatasets = ref(false)
 const expandedDatasetId = ref(null)
+const showAdvanced = ref(false)
+
+const strategyLabelMap = {
+  vector: '向量检索',
+  keyword: '关键词检索',
+  hybrid: '混合检索',
+  full: '全链路',
+  rewrite: 'Query改写',
+}
 
 const questionsMap = reactive({})
 const questionsLoading = reactive({})
@@ -715,6 +781,30 @@ const compareExperiments = computed(() => {
   return experiments.value.filter((item) => item.datasetId === dsId).slice(0, 6)
 })
 
+const totalQuestions = computed(() =>
+  datasets.value.reduce((sum, ds) => sum + (ds.questionCount ?? 0), 0)
+)
+
+const totalExperiments = computed(() => experiments.value.length)
+
+const bestTop3Rate = computed(() => {
+  if (!experiments.value.length) return '—'
+  const best = Math.max(...experiments.value.map(e => Number(e.top3HitRate ?? 0)))
+  return `${(best * 100).toFixed(1)}%`
+})
+
+const avgMrr = computed(() => {
+  if (!experiments.value.length) return '—'
+  const sum = experiments.value.reduce((s, e) => s + Number(e.mrr ?? 0), 0)
+  return (sum / experiments.value.length).toFixed(4)
+})
+
+const avgLatency = computed(() => {
+  if (!experiments.value.length) return '—'
+  const sum = experiments.value.reduce((s, e) => s + Number(e.avgLatencyMs ?? 0), 0)
+  return Math.round(sum / experiments.value.length)
+})
+
 onMounted(async () => {
   try {
     const res = await listKb()
@@ -724,6 +814,18 @@ onMounted(async () => {
   }
   await loadDatasets()
   await loadExperiments()
+
+  // 从调试台保存用例后跳转过来，自动展开目标数据集
+  const datasetId = route.query.datasetId
+  const tab = route.query.tab
+  if (tab) activeTab.value = tab
+  if (datasetId) {
+    const id = Number(datasetId)
+    if (!Number.isNaN(id) && datasets.value.some(ds => ds.id === id)) {
+      expandedDatasetId.value = id
+      await loadQuestions(id, 1)
+    }
+  }
 })
 </script>
 
@@ -732,34 +834,37 @@ onMounted(async () => {
 
 .tab-bar {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 0;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--border);
 }
 
 .tab-btn {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  color: var(--slate);
+  color: var(--text-muted);
+  transition: all 0.15s;
 }
+.tab-btn:hover { color: var(--slate); }
 .tab-btn.active {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
+  color: var(--blue);
+  border-bottom-color: var(--blue);
 }
 
 .top-toolbar { margin-bottom: 12px; }
-.toolbar-left { display: flex; gap: 10px; }
+.toolbar-left { display: flex; gap: 10px; align-items: center; }
 
 .btn-primary {
   background: var(--blue);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
@@ -770,24 +875,138 @@ onMounted(async () => {
 .btn-ghost {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 14px;
   font-size: 13px;
   cursor: pointer;
+  color: var(--text);
 }
 .btn-ghost:disabled { opacity: 0.5; }
+
+.btn-sm { padding: 6px 10px; font-size: 12px; }
 .btn-ghost-small { padding: 6px 10px; font-size: 12px; }
 
-.state-hint {
-  text-align: center;
-  color: var(--text-muted);
-  padding: 48px 0;
-  font-size: 14px;
+.btn-outline-sm {
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
 }
+.btn-outline-sm:hover { background: #eff6ff; }
+
+/* Summary Cards */
+.summary-cards {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.summary-card {
+  flex: 1;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  padding: 14px 18px;
+  min-width: 0;
+}
+.summary-num {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--slate);
+  letter-spacing: -0.5px;
+}
+.summary-num.accent-green { color: #10b981; }
+.summary-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Strategy Badge */
+.strategy-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--light);
+  color: var(--gray);
+}
+.strategy-badge.strategy-vector { background: #dbeafe; color: #1d4ed8; }
+.strategy-badge.strategy-keyword { background: #fef3c7; color: #92400e; }
+.strategy-badge.strategy-hybrid { background: #ede9fe; color: #6d28d9; }
+.strategy-badge.strategy-full { background: #dcfce7; color: #166534; }
+.strategy-badge.strategy-rewrite { background: #fce7f3; color: #9d174d; }
+
+/* Metric cells */
+.metric-cell { font-weight: 600; font-variant-numeric: tabular-nums; }
+.metric-accent { color: #10b981; }
+
+/* Actions cell */
+.actions-cell { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+
+/* Danger subtle */
+.link-action.danger-subtle { color: var(--text-muted); font-size: 11px; }
+.link-action.danger-subtle:hover { color: var(--red); }
+
+/* Ablation Toggle */
+.ablation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: border-color 0.2s;
+}
+.ablation-toggle:hover { border-color: var(--blue); }
+.toggle-track {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: #cbd5e1;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle-track.on { background: var(--blue); }
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: transform 0.2s;
+}
+.toggle-track.on .toggle-thumb { transform: translateX(18px); }
+.toggle-label { font-size: 13px; font-weight: 600; color: var(--slate); }
+.toggle-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Advanced Toggle */
+.advanced-toggle {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px 0;
+  user-select: none;
+}
+.advanced-toggle:hover { color: var(--blue); }
+
 
 .table-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: #fff;
 }
@@ -860,7 +1079,6 @@ onMounted(async () => {
 }
 .question-text { line-height: 1.5; word-break: break-word; }
 .chunk-ids { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
-.empty-hint { color: var(--text-muted); text-align: center; padding: 20px 12px; }
 
 .pager {
   display: flex;
@@ -897,7 +1115,7 @@ onMounted(async () => {
 }
 .modal {
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 24px;
   width: min(420px, 92vw);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
@@ -992,6 +1210,18 @@ onMounted(async () => {
 
 /* ====== 移动端响应式 ====== */
 @media (max-width: 768px) {
+  .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .summary-card {
+    padding: 10px 12px;
+  }
+  .summary-num {
+    font-size: 20px;
+  }
+
   .table-card {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -1044,6 +1274,15 @@ onMounted(async () => {
 
   .toolbar-left {
     flex-wrap: wrap;
+  }
+
+  .ablation-toggle {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .actions-cell {
+    gap: 8px;
   }
 }
 </style>

@@ -88,25 +88,31 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     long latencySum = 0;
     double mrrSum = 0.0;
 
-    for (EvalQuestion question : questions) {
-      List<Long> expectedChunkIds = parseLongList(question.getExpectedDocIds());
-      long start = System.currentTimeMillis();
-      List<SearchResult> results =
-          search(question.getQuestion(), dataset.getKbId(), normalizedStrategy, runTopK, runVectorWeight);
-      int latencyMs = (int) (System.currentTimeMillis() - start);
+    try {
+      for (EvalQuestion question : questions) {
+        List<Long> expectedChunkIds = parseLongList(question.getExpectedDocIds());
+        long start = System.currentTimeMillis();
+        List<SearchResult> results =
+            search(question.getQuestion(), dataset.getKbId(), normalizedStrategy, runTopK, runVectorWeight);
+        int latencyMs = (int) (System.currentTimeMillis() - start);
 
-      EvalResult evalResult = buildEvalResult(experiment.getId(), question.getId(), expectedChunkIds, results, runTopK);
-      evalResult.setLatencyMs(latencyMs);
-      evalResultMapper.insert(evalResult);
+        EvalResult evalResult = buildEvalResult(experiment.getId(), question.getId(), expectedChunkIds, results, runTopK);
+        evalResult.setLatencyMs(latencyMs);
+        evalResultMapper.insert(evalResult);
 
-      if (evalResult.getHitAt() != null && evalResult.getHitAt() == 1) {
-        top1HitCount++;
+        if (evalResult.getHitAt() != null && evalResult.getHitAt() == 1) {
+          top1HitCount++;
+        }
+        if (Boolean.TRUE.equals(evalResult.getHit())) {
+          top3HitCount++;
+        }
+        latencySum += latencyMs;
+        mrrSum += mrrFromHitAt(evalResult.getHitAt());
       }
-      if (Boolean.TRUE.equals(evalResult.getHit())) {
-        top3HitCount++;
-      }
-      latencySum += latencyMs;
-      mrrSum += mrrFromHitAt(evalResult.getHitAt());
+    } catch (Exception e) {
+      experiment.setStatus("failed");
+      evalExperimentMapper.updateById(experiment);
+      throw new BizException(500, "实验运行失败: " + e.getMessage());
     }
 
     experiment.setTotalQuestions(total);
@@ -200,6 +206,8 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     if (experiment == null) {
       throw new BizException(404, "评测实验不存在");
     }
+    evalResultMapper.delete(
+        new LambdaQueryWrapper<EvalResult>().eq(EvalResult::getExperimentId, id));
     evalExperimentMapper.deleteById(id);
   }
 
@@ -258,10 +266,11 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       String query, Long kbId, String strategy, int topK, double vectorWeight) {
     List<Long> kbIds = kbId == null ? null : List.of(kbId);
     return switch (strategy) {
-      case "keyword" -> esSearchService.search(query, kbIds, topK);
-      case "hybrid" -> hybridSearchService.search(query, kbIds, topK, vectorWeight);
-      case "full" -> rerank(hybridSearchService.search(query, kbIds, topK, vectorWeight), query, topK);
-      default -> vectorSearchService.search(query, kbIds, topK);
+      case "keyword" -> esSearchService.search(query, kbIds, null, topK);
+      case "hybrid" -> hybridSearchService.search(query, kbIds, null, topK, vectorWeight);
+      case "full" -> rerank(
+          hybridSearchService.search(query, kbIds, null, topK, vectorWeight), query, topK);
+      default -> vectorSearchService.search(query, kbIds, null, topK);
     };
   }
 

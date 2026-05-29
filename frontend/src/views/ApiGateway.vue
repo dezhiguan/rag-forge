@@ -180,39 +180,39 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.api-layout { display: grid; grid-template-columns: 200px 1fr; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; min-height: 400px; }
+.api-layout { display: grid; grid-template-columns: 200px 1fr; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; min-height: 400px; }
 .api-left { background: #f8fafc; border-right: 1px solid var(--border); padding: 16px; font-size: 10px; }
 .api-right { padding: 18px; font-size: 12px; }
 .api-section-title { font-weight: 700; font-size: 12px; margin-bottom: 10px; }
-.api-nav-item { padding: 7px 8px; border-radius: 5px; margin-bottom: 3px; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--text-muted); transition: all 0.1s ease; }
+.api-nav-item { padding: 7px 8px; border-radius: var(--radius-sm); margin-bottom: 3px; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--text-muted); transition: all 0.1s ease; }
 .api-nav-item:hover { background: rgba(0,0,0,0.03); }
 .api-nav-item.active { background: #eff6ff; color: var(--blue); }
-.api-method { font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 3px; font-family: 'SF Mono', Monaco, monospace; }
+.api-method { font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: var(--radius-sm); font-family: 'SF Mono', Monaco, monospace; }
 .api-method.POST { background: #dbeafe; color: #1d4ed8; }
 .api-method.GET { background: #d1fae5; color: #065f46; }
 .api-key-box { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
 .api-key-title { font-weight: 600; font-size: 10px; margin-bottom: 8px; }
 .key-loading { font-size: 10px; color: var(--text-muted); }
-.key-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; padding: 6px; background: #fff; border: 1px solid var(--border); border-radius: 5px; }
+.key-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; padding: 6px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .key-info { min-width: 0; }
 .key-name { font-size: 9px; font-weight: 600; color: var(--slate); }
 .key-value { font-size: 8px; font-family: 'SF Mono', Monaco, monospace; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .key-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.key-toggle { cursor: pointer; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 10px; background: rgba(148,163,184,0.18); color: #64748b; }
+.key-toggle { cursor: pointer; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: var(--radius-md); background: rgba(148,163,184,0.18); color: #64748b; }
 .key-toggle.on { background: #dcfce7; color: #166534; }
 .key-copy { cursor: pointer; font-size: 10px; opacity: 0.6; }
 .key-copy:hover { opacity: 1; }
 .key-del { cursor: pointer; font-size: 11px; color: var(--red); font-weight: 700; }
 .key-del:hover { opacity: 0.7; }
-.key-gen-btn { width: 100%; margin-top: 8px; padding: 5px 0; background: #fff; border: 1px dashed var(--blue); border-radius: 5px; font-size: 10px; color: var(--blue); cursor: pointer; transition: background 0.15s; }
+.key-gen-btn { width: 100%; margin-top: 8px; padding: 5px 0; background: #fff; border: 1px dashed var(--blue); border-radius: var(--radius-sm); font-size: 10px; color: var(--blue); cursor: pointer; transition: background 0.15s; }
 .key-gen-btn:hover { background: #eff6ff; }
 .key-gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .api-detail-title { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
 .api-detail-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
-.code-block { background: var(--navy); border-radius: 8px; padding: 14px; font-family: 'SF Mono', Monaco, monospace; font-size: 10px; color: #e2e8f0; margin-bottom: 14px; line-height: 1.7; overflow-x: auto; }
+.code-block { background: var(--navy); border-radius: var(--radius-sm); padding: 14px; font-family: 'SF Mono', Monaco, monospace; font-size: 10px; color: #e2e8f0; margin-bottom: 14px; line-height: 1.7; overflow-x: auto; }
 .code-comment { color: var(--cyan); }
 .code-json { margin: 0; white-space: pre-wrap; word-break: break-all; }
-.integration-box { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--purple); border-radius: 7px; font-size: 11px; background: #faf5ff; }
+.integration-box { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--purple); border-radius: var(--radius-sm); font-size: 11px; background: #faf5ff; }
 .integration-box strong { color: var(--purple); }
 
 /* ====== 移动端响应式 ====== */

@@ -1,12 +1,12 @@
 package com.ragforge.service.impl;
 
 import com.ragforge.common.BizException;
+import com.ragforge.config.ApiKeyInterceptor;
 import com.ragforge.mapper.ApiKeyMapper;
 import com.ragforge.model.entity.ApiKey;
 import com.ragforge.service.ApiKeyService;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.HexFormat;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,10 +17,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class ApiKeyServiceImpl implements ApiKeyService {
 
   private final ApiKeyMapper apiKeyMapper;
+  private final ApiKeyInterceptor apiKeyInterceptor;
 
   @Override
   public List<ApiKey> listAll() {
-    return apiKeyMapper.selectList(null);
+    List<ApiKey> keys = apiKeyMapper.selectList(null);
+    for (ApiKey key : keys) {
+      key.setApiKey(maskKey(key.getApiKey()));
+    }
+    return keys;
+  }
+
+  private static String maskKey(String key) {
+    if (key == null || key.length() <= 12) return key;
+    return key.substring(0, 8) + "****" + key.substring(key.length() - 4);
   }
 
   @Override
@@ -29,7 +39,11 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     SecureRandom random = new SecureRandom();
     byte[] bytes = new byte[24];
     random.nextBytes(bytes);
-    String key = "sk-rf-" + HexFormat.of().formatHex(bytes);
+    StringBuilder hex = new StringBuilder();
+    for (byte b : bytes) {
+      hex.append(String.format("%02x", b));
+    }
+    String key = "sk-rf-" + hex;
 
     ApiKey apiKey = new ApiKey();
     apiKey.setKeyName(keyName);
@@ -38,6 +52,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     apiKey.setRateLimit(100);
     apiKey.setCreatedAt(LocalDateTime.now());
     apiKeyMapper.insert(apiKey);
+    apiKeyInterceptor.resetKeyCache();
     return apiKey;
   }
 
@@ -61,5 +76,6 @@ public class ApiKeyServiceImpl implements ApiKeyService {
       throw new BizException(404, "API Key 不存在");
     }
     apiKeyMapper.deleteById(id);
+    apiKeyInterceptor.resetKeyCache();
   }
 }

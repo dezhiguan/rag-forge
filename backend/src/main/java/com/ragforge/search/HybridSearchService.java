@@ -1,17 +1,22 @@
 package com.ragforge.search;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.CompletableFuture;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class HybridSearchService {
@@ -70,8 +75,26 @@ public class HybridSearchService {
               return result;
             });
 
-    List<SearchResult> vectorResults = vectorFuture.join();
-    List<SearchResult> keywordResults = keywordFuture.join();
+    List<SearchResult> vectorResults;
+    List<SearchResult> keywordResults;
+    try {
+      vectorResults = vectorFuture.get(30, TimeUnit.SECONDS);
+    } catch (TimeoutException e) {
+      log.error("向量检索超时 (30s)，降级为空结果");
+      vectorResults = Collections.emptyList();
+    } catch (Exception e) {
+      log.error("向量检索异常: {}", e.getMessage());
+      vectorResults = Collections.emptyList();
+    }
+    try {
+      keywordResults = keywordFuture.get(30, TimeUnit.SECONDS);
+    } catch (TimeoutException e) {
+      log.error("关键词检索超时 (30s)，降级为空结果");
+      keywordResults = Collections.emptyList();
+    } catch (Exception e) {
+      log.error("关键词检索异常: {}", e.getMessage());
+      keywordResults = Collections.emptyList();
+    }
 
     Map<Long, SearchResult> merged = new LinkedHashMap<>();
     Map<Long, Double> rrfScores = new HashMap<>();

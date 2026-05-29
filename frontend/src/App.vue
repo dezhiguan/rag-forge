@@ -63,6 +63,9 @@ watch(() => route.path, () => {
   --border: #e2e8f0;
   --text: #1e293b;
   --text-muted: #64748b;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-full: 999px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -70,7 +73,7 @@ watch(() => route.path, () => {
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color: var(--text);
-  background: #fff;
+  background: #f8fafc;
   line-height: 1.75;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
@@ -94,7 +97,7 @@ body {
   gap: 8px;
   padding: 0 28px;
   height: 44px;
-  background: #f1f5f9;
+  background: #fff;
   border-bottom: 1px solid var(--border);
 }
 .top-bar-icon { font-size: 14px; }
@@ -109,13 +112,38 @@ body {
 .badge {
   display: inline-block;
   padding: 2px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 600;
 }
 .badge-green { background: #d1fae5; color: #065f46; }
 .badge-amber { background: #fef3c7; color: #92400e; }
 .badge-red { background: #fee2e2; color: #991b1b; }
+
+/* 全局表格表头基础样式 */
+.data-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: #f8fafc;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* 全局空状态/加载态 */
+.state-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 56px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.state-hint .state-icon { font-size: 32px; opacity: 0.4; }
+.state-hint .state-title { font-weight: 600; color: var(--slate); }
+.state-hint .state-desc { font-size: 12px; }
 
 .page-body { padding: 20px 28px 40px; }
 

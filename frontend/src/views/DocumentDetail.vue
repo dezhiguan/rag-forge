@@ -1,7 +1,10 @@
 <template>
   <div>
     <div class="page-body">
-      <div v-if="loading && !doc" class="empty-hint">加载中…</div>
+      <div v-if="loading && !doc" class="state-hint">
+        <div class="state-icon">⏳</div>
+        <div class="state-title">加载中...</div>
+      </div>
 
       <template v-else-if="doc">
         <header class="doc-header">
@@ -28,7 +31,9 @@
         <div v-if="doc.parseStatus === 'completed'" class="doc-layout">
           <div class="doc-left">
             <div class="section-title">📄 Chunks（{{ doc.chunks?.length ?? 0 }}）</div>
-            <div v-if="!(doc.chunks?.length > 0)" class="empty-hint">暂无分块数据</div>
+            <div v-if="!(doc.chunks?.length > 0)" class="state-hint" style="padding:24px 0">
+              <div class="state-desc">文档处理完成后将显示分块数据</div>
+            </div>
             <div v-else>
               <div v-for="c in doc.chunks" :key="c.chunkIndex" class="chunk-card">
                 <div class="chunk-head">
@@ -114,7 +119,11 @@
         </div>
       </template>
 
-      <div v-else class="empty-hint">文档不存在或加载失败</div>
+      <div v-else class="state-hint">
+        <div class="state-icon">📄</div>
+        <div class="state-title">文档不存在</div>
+        <div class="state-desc">请检查链接或返回知识库列表</div>
+      </div>
     </div>
   </div>
 </template>
@@ -233,7 +242,7 @@ function formatBytes(bytes) {
   padding: 16px 20px;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 .doc-title {
@@ -262,7 +271,7 @@ function formatBytes(bytes) {
   grid-template-columns: 1fr 1fr;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -287,7 +296,7 @@ function formatBytes(bytes) {
 
 .chunk-card {
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   margin-bottom: 8px;
   font-size: 12px;
   line-height: 1.6;
@@ -345,7 +354,7 @@ function formatBytes(bytes) {
   align-items: center;
   gap: 4px;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 11px;
   font-weight: 700;
   border: 1px solid transparent;
@@ -392,7 +401,7 @@ function formatBytes(bytes) {
 .search-action {
   padding: 10px;
   border: 1px solid var(--blue);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   text-align: center;
   color: var(--blue);
   font-size: 12px;
@@ -414,7 +423,7 @@ function formatBytes(bytes) {
   min-height: 280px;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 40px 20px;
 }
 
@@ -455,7 +464,7 @@ function formatBytes(bytes) {
   margin-top: 8px;
   padding: 8px 24px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -468,11 +477,6 @@ function formatBytes(bytes) {
   cursor: not-allowed;
 }
 
-.empty-hint {
-  color: var(--text-muted);
-  padding: 48px 0;
-  text-align: center;
-}
 
 /* ====== 移动端响应式 ====== */
 @media (max-width: 768px) {

@@ -33,7 +33,7 @@
             </select>
           </div>
           <div class="param-row">
-            <div class="param-label">Top-K</div>
+            <div class="param-label">Top-K <span style="color:var(--text-muted);font-weight:400;font-size:10px">返回结果数</span></div>
             <div class="param-slider">
               <input type="range" v-model.number="config.topK" min="1" max="20">
               <span class="param-val">{{ config.topK }}</span>
@@ -56,7 +56,7 @@
             </div>
           </template>
           <div class="param-row">
-            <div class="param-label">Rerank TopN</div>
+            <div class="param-label">Rerank TopN <span style="color:var(--text-muted);font-weight:400;font-size:10px">重排序数量</span></div>
             <div class="param-slider">
               <input type="range" v-model.number="config.rerankTopN" min="1" max="10">
               <span class="param-val">{{ config.rerankTopN }}</span>
@@ -134,9 +134,14 @@
             </div>
           </div>
 
-          <div v-if="searching" class="state-hint">检索中…</div>
+          <div v-if="searching" class="state-hint">
+            <div class="state-icon">⏳</div>
+            <div class="state-title">检索中...</div>
+          </div>
           <div v-else-if="searched && displayResults.length === 0" class="state-hint">
-            未找到匹配的文档块
+            <div class="state-icon">🔍</div>
+            <div class="state-title">未找到匹配的文档块</div>
+            <div class="state-desc">尝试调整检索策略或扩大 Top-K</div>
           </div>
           <template v-else>
             <div
@@ -234,13 +239,14 @@
 
 <script setup>
 import { onMounted, ref, reactive, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { listKb } from '../api/kb'
 import { listDocuments } from '../api/document'
 import { search as searchApi } from '../api/search'
 import { listEvalDatasets, saveQuestionFromSearch } from '../api/eval'
 
 const route = useRoute()
+const router = useRouter()
 const docList = ref([])
 const pendingDocIdFromRoute = ref(null)
 
@@ -318,11 +324,12 @@ const promptTokens = computed(() => {
   const source = compareResults.value.length > 1
     ? (compareResults.value[activeCompareTab.value]?.results ?? [])
     : results.value
+  if (!source.length) return 0
   return source.slice(0, config.rerankTopN).reduce((s, r) => s + Math.floor((r.content?.length || 0) / 2), 0) + 180
 })
 
 const estimatedCompletionTokens = computed(() => {
-  // 粗略估算：根据检索到的上下文量，预估 LLM 回答长度
+  if (promptTokens.value === 0) return 0
   return Math.max(80, Math.floor(promptTokens.value * 0.25))
 })
 
@@ -638,9 +645,8 @@ async function onSaveCase() {
       strategy: strategy.value || config.strategy,
       selectedChunkIds: selectedChunkIds.value,
     })
-    const ds = evalDatasets.value.find((d) => d.id === saveDatasetId.value)
-    alert(`已保存到数据集「${ds?.name || saveDatasetId.value}」`)
     closeSaveModal()
+    router.push({ path: '/eval', query: { datasetId: saveDatasetId.value, tab: 'datasets' } })
   } finally {
     savingCase.value = false
   }
@@ -674,7 +680,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.debug-layout { display: grid; grid-template-columns: 220px 1fr 200px; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; min-height: 420px; }
+.debug-layout { display: grid; grid-template-columns: 220px 1fr 240px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; min-height: 420px; }
 .debug-left { background: #f8fafc; border-right: 1px solid var(--border); padding: 16px; font-size: 11px; }
 .debug-center { padding: 16px; font-size: 11px; }
 .debug-right { background: #f8fafc; border-left: 1px solid var(--border); padding: 16px; font-size: 10px; font-family: 'SF Mono', Monaco, monospace; }
@@ -682,17 +688,17 @@ onMounted(async () => {
 .debug-right .panel-title { font-family: -apple-system, sans-serif; }
 .param-row { margin-bottom: 10px; }
 .param-label { font-size: 10px; color: var(--text-muted); margin-bottom: 3px; }
-.param-select { width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 10px; background: #fff; color: var(--text); outline: none; }
+.param-select { width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 10px; background: #fff; color: var(--text); outline: none; }
 .param-slider { display: flex; align-items: center; gap: 8px; }
 .param-slider input[type="range"] { flex: 1; height: 4px; -webkit-appearance: none; background: var(--border); border-radius: 2px; outline: none; }
 .param-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--blue); border-radius: 50%; cursor: pointer; }
 .param-val { font-size: 11px; font-weight: 600; color: var(--text); min-width: 28px; text-align: right; }
 .divider { border-top: 1px solid var(--border); margin: 12px 0; }
 .radio-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; font-size: 11px; }
-.search-btn { width: 100%; margin-top: 12px; padding: 7px 0; background: var(--blue); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+.search-btn { width: 100%; margin-top: 12px; padding: 7px 0; background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
 .search-btn:hover { background: #2563eb; }
 .search-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; font-size: 12px; margin-bottom: 10px; outline: none; }
+.search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; margin-bottom: 10px; outline: none; }
 .search-input:focus { border-color: var(--blue); }
 .results-info { font-weight: 600; margin-bottom: 10px; font-size: 11px; }
 .time-text { color: var(--text-muted); font-weight: 400; }
@@ -701,8 +707,7 @@ onMounted(async () => {
   color: var(--text-muted);
   font-size: 11px;
 }
-.state-hint { text-align: center; color: var(--text-muted); padding: 32px 0; font-size: 12px; }
-.result-card { background: var(--light); border: 1px solid var(--border); border-radius: 7px; padding: 10px; margin-bottom: 8px; }
+.result-card { background: var(--light); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 8px; }
 .result-card.top { background: #f0fdf4; border-color: #bbf7d0; }
 .result-card.selected { border-color: #93c5fd; background: #eff6ff; }
 .result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; }
@@ -713,12 +718,12 @@ onMounted(async () => {
 .result-text { color: var(--gray); line-height: 1.5; margin-bottom: 4px; word-break: break-word; }
 .result-text :deep(mark.hl) { background: #fef08a; color: inherit; padding: 0 2px; border-radius: 2px; }
 .result-meta { color: var(--text-muted); font-size: 9px; }
-.save-case { margin-top: 12px; padding: 8px; border: 1px dashed var(--blue); border-radius: 7px; text-align: center; color: var(--blue); font-size: 11px; cursor: pointer; transition: background 0.15s; }
+.save-case { margin-top: 12px; padding: 8px; border: 1px dashed var(--blue); border-radius: var(--radius-sm); text-align: center; color: var(--blue); font-size: 11px; cursor: pointer; transition: background 0.15s; }
 .save-case:hover { background: #eff6ff; }
 .compare-summary { margin-bottom: 12px; }
 .compare-title { font-weight: 600; font-size: 11px; margin-bottom: 8px; }
 .compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; margin-bottom: 8px; }
-.compare-cell { background: var(--light); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+.compare-cell { background: var(--light); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; text-align: center; }
 .compare-cell.best { background: #f0fdf4; border-color: #bbf7d0; }
 .compare-label { font-weight: 700; font-size: 10px; color: var(--slate); margin-bottom: 4px; }
 .compare-metric { font-weight: 700; font-size: 13px; color: var(--blue); }
@@ -745,7 +750,7 @@ onMounted(async () => {
 }
 .modal {
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 24px;
   width: min(420px, 92vw);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
@@ -761,7 +766,7 @@ onMounted(async () => {
   background: var(--blue);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
@@ -771,7 +776,7 @@ onMounted(async () => {
 .btn-ghost {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 14px;
   font-size: 13px;
   cursor: pointer;

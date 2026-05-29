@@ -8,8 +8,15 @@
         </div>
       </div>
 
-      <div v-if="loadingKb" class="state-hint">加载中…</div>
-      <div v-else-if="!kbList.length" class="state-hint">暂无知识库，点击上方按钮创建</div>
+      <div v-if="loadingKb" class="state-hint">
+        <div class="state-icon">⏳</div>
+        <div class="state-title">加载中...</div>
+      </div>
+      <div v-else-if="!kbList.length" class="state-hint">
+        <div class="state-icon">📁</div>
+        <div class="state-title">暂无知识库</div>
+        <div class="state-desc">创建知识库并上传文档，开始构建检索能力</div>
+      </div>
 
       <div v-else class="content">
         <div class="upload-layout">
@@ -148,7 +155,11 @@
                         </thead>
                         <tbody>
                           <tr v-if="(docsMap[kb.id]?.list || []).length === 0">
-                            <td colspan="6" class="empty-hint">暂无文档</td>
+                            <td colspan="6">
+                              <div class="state-hint" style="padding:20px 0">
+                                <div class="state-desc">上传文档后自动解析并建立索引</div>
+                              </div>
+                            </td>
                           </tr>
                           <tr v-for="doc in docsMap[kb.id]?.list || []" :key="doc.id">
                             <td class="doc-filename">
@@ -670,7 +681,7 @@ onMounted(async () => {
   background: var(--blue);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
@@ -681,7 +692,7 @@ onMounted(async () => {
 .btn-ghost {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 14px;
   font-size: 13px;
   cursor: pointer;
@@ -691,13 +702,6 @@ onMounted(async () => {
 .btn-ghost-small {
   padding: 6px 10px;
   font-size: 12px;
-}
-
-.state-hint {
-  text-align: center;
-  color: var(--text-muted);
-  padding: 48px 0;
-  font-size: 14px;
 }
 
 .content {
@@ -729,7 +733,7 @@ onMounted(async () => {
 
 .select {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   font-size: 13px;
   background: #fff;
@@ -744,7 +748,7 @@ onMounted(async () => {
 
 .upload-zone {
   border: 2px dashed #e2e8f0;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 20px;
   text-align: center;
   background: #fafbfc;
@@ -785,7 +789,7 @@ onMounted(async () => {
   flex: 1;
   text-align: center;
   padding: 12px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: #f1f5f9;
   border: 2px solid #e2e8f0;
   transition: all 0.3s;
@@ -821,7 +825,7 @@ onMounted(async () => {
 
 .table-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: #fff;
 }
@@ -837,9 +841,9 @@ onMounted(async () => {
   padding: 12px 16px;
   background: var(--light);
   color: var(--slate);
-  font-weight: 700;
-  font-size: 11px;
-  text-transform: uppercase;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: none;
   border-bottom: 1px solid var(--border);
 }
 
@@ -870,7 +874,7 @@ onMounted(async () => {
 .badge {
   display: inline-block;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 11px;
   font-weight: 700;
   border: 1px solid transparent;
@@ -942,9 +946,9 @@ onMounted(async () => {
   text-align: left;
   padding: 10px 12px;
   color: var(--slate);
-  font-weight: 700;
-  font-size: 11px;
-  text-transform: uppercase;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: none;
   border-bottom: 1px solid var(--border);
 }
 .docs-table tbody td {
@@ -952,7 +956,6 @@ onMounted(async () => {
   border-bottom: 1px solid var(--border);
   color: var(--gray);
 }
-.empty-hint { color: var(--text-muted); text-align: center; padding: 20px 12px; }
 .doc-filename { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-version {
   margin-left: 6px;
@@ -971,7 +974,7 @@ onMounted(async () => {
 }
 .modal {
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 24px;
   width: min(420px, 92vw);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
@@ -982,7 +985,7 @@ onMounted(async () => {
 .field input, .field textarea {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   font-size: 13px;
   font-family: inherit;

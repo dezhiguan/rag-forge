@@ -22,12 +22,8 @@
       </router-link>
     </div>
     <div class="sidebar-footer" v-show="!collapsed || isMobile">
-      <div class="api-key-info">
-        <div class="api-key-label">🔑 API Key</div>
-        <div class="api-key-value">sk-ragforge-xxxx</div>
-      </div>
       <div class="status-dot"></div>
-      <span class="status-text">运行中</span>
+      <span class="status-text">服务运行中</span>
     </div>
     <div v-if="!isMobile" class="collapse-btn" @click="toggleCollapse" :title="collapsed ? '展开' : '收起'">
       {{ collapsed ? '▶' : '◀' }}
@@ -136,22 +132,19 @@ const navItems = [
 .nav-label { flex: 1; }
 
 .sidebar-footer {
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.api-key-info { flex: 1; }
-.api-key-label { font-size: 9px; color: var(--text-muted); margin-bottom: 2px; }
-.api-key-value { font-family: 'SF Mono', Monaco, monospace; font-size: 9px; color: var(--text-muted); }
 .status-dot {
   width: 7px; height: 7px;
   background: #10b981;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.status-text { font-size: 10px; color: var(--text-muted); }
+.status-text { font-size: 11px; color: var(--text-muted); }
 
 .collapse-btn {
   position: absolute;

@@ -145,7 +145,7 @@ onMounted(loadMetrics)
 
 .metric-card {
   background: #0f172a;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 16px;
   color: #fff;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -194,7 +194,7 @@ onMounted(loadMetrics)
   align-items: center;
   justify-content: center;
   background: var(--light);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 14px;
   border: none;
   cursor: pointer;
@@ -224,7 +224,7 @@ onMounted(loadMetrics)
 
 .activity-panel {
   background: var(--light);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 12px;
 }
 
