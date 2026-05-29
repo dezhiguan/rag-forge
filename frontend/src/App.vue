@@ -1,8 +1,14 @@
 <template>
   <div class="app-layout">
-    <Sidebar @toggle="sidebarCollapsed = !sidebarCollapsed" />
+    <div v-if="mobileMenuOpen" class="mobile-overlay" @click="closeMobileMenu" />
+    <Sidebar
+      :mobile-open="mobileMenuOpen"
+      @toggle="sidebarCollapsed = !sidebarCollapsed"
+      @close-mobile="closeMobileMenu"
+    />
     <main class="main-content" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="top-bar">
+        <span class="hamburger" @click="toggleMobileMenu">☰</span>
         <span class="top-bar-icon">{{ currentPage.icon }}</span>
         <span class="top-bar-title">{{ currentPage.label }}</span>
       </div>
@@ -16,17 +22,30 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/Sidebar.vue'
 
 const sidebarCollapsed = ref(true)
+const mobileMenuOpen = ref(false)
 const route = useRoute()
 
 const currentPage = computed(() => ({
   icon: route.meta?.icon || '',
   label: route.meta?.label || '',
 }))
+
+function toggleMobileMenu() {
+  mobileMenuOpen.value = !mobileMenuOpen.value
+}
+
+function closeMobileMenu() {
+  mobileMenuOpen.value = false
+}
+
+watch(() => route.path, () => {
+  mobileMenuOpen.value = false
+})
 </script>
 
 <style>
@@ -108,4 +127,49 @@ body {
 .link-action:hover { color: #2563eb; text-decoration: underline; }
 .link-action.danger { color: var(--red); }
 .link-action.danger:hover { color: #dc2626; }
+
+.hamburger {
+  display: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin-right: 4px;
+  border-radius: 4px;
+  user-select: none;
+}
+.hamburger:hover { background: rgba(0,0,0,0.06); }
+
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 99;
+}
+
+/* ====== 移动端响应式 ====== */
+@media (max-width: 768px) {
+  .hamburger { display: inline-block; }
+
+  .mobile-overlay { display: block; }
+
+  .main-content {
+    margin-left: 0 !important;
+  }
+
+  .top-bar {
+    padding: 0 16px;
+    justify-content: flex-start;
+  }
+
+  .page-body {
+    padding: 16px 12px 32px;
+  }
+
+  .data-table thead th,
+  .data-table tbody td {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+}
 </style>

@@ -924,4 +924,55 @@ onMounted(async () => {
   font-family: inherit;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+
+/* ====== 移动端响应式 ====== */
+@media (max-width: 768px) {
+  .table-card {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table {
+    min-width: 650px;
+  }
+
+  .docs-panel {
+    padding: 10px;
+  }
+
+  .docs-table {
+    min-width: 550px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .upload-settings {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pipeline-bar {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .pipeline-step {
+    flex: 1 1 auto;
+    min-width: 50px;
+    padding: 8px 4px;
+  }
+
+  .pipe-arrow {
+    font-size: 14px;
+    padding: 0 2px;
+  }
+
+  .step-sub {
+    display: none;
+  }
+
+  .toolbar-left {
+    flex-wrap: wrap;
+  }
+}
 </style>

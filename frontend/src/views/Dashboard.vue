@@ -255,4 +255,37 @@ onMounted(loadMetrics)
   color: var(--blue);
   cursor: pointer;
 }
+
+/* ====== 移动端响应式 ====== */
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .metric-card {
+    padding: 12px;
+  }
+
+  .metric-value {
+    font-size: 22px;
+  }
+
+  .quick-actions {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .action-card {
+    padding: 10px 6px;
+  }
+
+  .action-icon {
+    font-size: 20px;
+  }
+
+  .action-text {
+    font-size: 11px;
+  }
+}
 </style>

@@ -2,8 +2,8 @@
   <div>
     <div class="page-body">
       <div class="debug-layout">
-        <div class="debug-left">
-          <div class="panel-title">⚙️ 检索参数</div>
+        <div class="debug-left" :class="{ 'debug-params-collapsed': !mobileParamsOpen }">
+          <div class="panel-title" @click="toggleParams">⚙️ 检索参数</div>
           <div class="param-row">
             <div class="param-label">知识库</div>
             <select v-model="config.kbId" class="param-select">
@@ -190,6 +190,13 @@ const kbList = ref([])
 const results = ref([])
 const searching = ref(false)
 const searched = ref(false)
+const mobileParamsOpen = ref(true)
+const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
+
+function toggleParams() {
+  if (typeof window === 'undefined' || window.innerWidth > 768) return
+  mobileParamsOpen.value = !mobileParamsOpen.value
+}
 const latencyMs = ref(0)
 const strategy = ref('')
 const rewrittenQueries = ref([])
@@ -515,5 +522,55 @@ onMounted(async () => {
   padding: 8px 14px;
   font-size: 13px;
   cursor: pointer;
+}
+
+/* ====== 移动端响应式 ====== */
+@media (max-width: 768px) {
+  .debug-layout {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .debug-left {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+  }
+
+  .debug-left .panel-title {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .debug-left .panel-title::after {
+    content: '▼';
+    font-size: 10px;
+    margin-left: 4px;
+  }
+
+  .debug-params-collapsed .param-row,
+  .debug-params-collapsed .divider,
+  .debug-params-collapsed .radio-row,
+  .debug-params-collapsed .search-btn {
+    display: none;
+  }
+
+  .debug-center {
+    padding: 10px 12px;
+    min-height: 200px;
+  }
+
+  .debug-right {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding: 10px 12px;
+  }
+
+  .search-input {
+    font-size: 16px; /* 防止 iOS 缩放 */
+  }
 }
 </style>

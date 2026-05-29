@@ -982,4 +982,61 @@ onMounted(async () => {
   line-height: 1.5;
   word-break: break-word;
 }
+
+/* ====== 移动端响应式 ====== */
+@media (max-width: 768px) {
+  .table-card {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table {
+    min-width: 600px;
+  }
+
+  .questions-panel {
+    padding: 10px;
+  }
+
+  .questions-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .questions-table {
+    min-width: 400px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .eval-metrics {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .eval-card {
+    padding: 12px;
+  }
+
+  .card-value {
+    font-size: 22px;
+  }
+
+  .bar-chart {
+    gap: 10px;
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding-bottom: 4px;
+  }
+
+  .modal-detail {
+    width: 95vw;
+    max-height: 90vh;
+    padding: 16px;
+  }
+
+  .toolbar-left {
+    flex-wrap: wrap;
+  }
+}
 </style>

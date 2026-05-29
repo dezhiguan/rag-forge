@@ -1,8 +1,8 @@
 <template>
-  <nav class="sidebar" :class="{ collapsed }">
+  <nav class="sidebar" :class="{ collapsed: collapsed && !isMobile, 'mobile-open': isMobile && mobileOpen }">
     <div class="sidebar-brand" @click="$router.push('/')">
       <div class="brand-icon">⚡</div>
-      <div class="brand-text" v-show="!collapsed">
+      <div class="brand-text" v-show="!collapsed || isMobile">
         <span class="brand-name">RAGForge</span>
         <span class="brand-ver">v1.0</span>
       </div>
@@ -14,13 +14,14 @@
         :to="item.path"
         class="nav-item"
         :class="{ active: $route.path === item.path || (item.path !== '/' && $route.path.startsWith(item.path)) }"
-        :title="collapsed ? item.label : ''"
+        :title="collapsed && !isMobile ? item.label : ''"
+        @click="onNavClick"
       >
         <span class="nav-icon">{{ item.icon }}</span>
-        <span class="nav-label" v-show="!collapsed">{{ item.label }}</span>
+        <span class="nav-label" v-show="!collapsed || isMobile">{{ item.label }}</span>
       </router-link>
     </div>
-    <div class="sidebar-footer" v-show="!collapsed">
+    <div class="sidebar-footer" v-show="!collapsed || isMobile">
       <div class="api-key-info">
         <div class="api-key-label">🔑 API Key</div>
         <div class="api-key-value">sk-ragforge-xxxx</div>
@@ -28,25 +29,45 @@
       <div class="status-dot"></div>
       <span class="status-text">运行中</span>
     </div>
-    <div class="collapse-btn" @click="toggleCollapse" :title="collapsed ? '展开' : '收起'">
+    <div v-if="!isMobile" class="collapse-btn" @click="toggleCollapse" :title="collapsed ? '展开' : '收起'">
       {{ collapsed ? '▶' : '◀' }}
     </div>
   </nav>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 const collapsed = ref(true)
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
-const emit = defineEmits(['toggle'])
+const props = defineProps({
+  mobileOpen: { type: Boolean, default: false },
+})
+
+const emit = defineEmits(['toggle', 'close-mobile'])
+
+const isMobile = computed(() => windowWidth.value <= 768)
+
+function onResize() {
+  windowWidth.value = window.innerWidth
+}
+
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
 
 function toggleCollapse() {
   collapsed.value = !collapsed.value
   emit('toggle')
+}
+
+function onNavClick() {
+  if (isMobile.value) {
+    emit('close-mobile')
+  }
 }
 
 const navItems = [
@@ -150,4 +171,19 @@ const navItems = [
   z-index: 10;
 }
 .collapse-btn:hover { background: var(--light); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+
+/* ====== 移动端响应式 ====== */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 220px;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 101;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+}
 </style>

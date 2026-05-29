@@ -457,4 +457,25 @@ function formatBytes(bytes) {
   padding: 48px 0;
   text-align: center;
 }
+
+/* ====== 移动端响应式 ====== */
+@media (max-width: 768px) {
+  .doc-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-left {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: none;
+  }
+
+  .doc-header {
+    padding: 12px 16px;
+  }
+
+  .doc-title {
+    font-size: 16px;
+  }
+}
 </style>

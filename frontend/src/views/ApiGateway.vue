@@ -122,4 +122,47 @@ function formatJson(obj) {
 .code-json { margin: 0; white-space: pre-wrap; word-break: break-all; }
 .integration-box { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--purple); border-radius: 7px; font-size: 11px; background: #faf5ff; }
 .integration-box strong { color: var(--purple); }
+
+/* ====== 移动端响应式 ====== */
+@media (max-width: 768px) {
+  .api-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .api-left {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    padding: 10px;
+  }
+
+  .api-section-title {
+    display: none;
+  }
+
+  .api-nav-item {
+    font-size: 9px;
+    padding: 5px 7px;
+    margin-bottom: 0;
+  }
+
+  .api-key-box {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+    margin-left: auto;
+  }
+
+  .api-right {
+    padding: 14px;
+  }
+
+  .code-block {
+    padding: 10px;
+    font-size: 9px;
+  }
+}
 </style>
