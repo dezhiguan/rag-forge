@@ -27,13 +27,13 @@ public class QueryRewriter {
   private final RestTemplate restTemplate;
   private final ObjectMapper objectMapper;
 
-  @Value("${deepseek.api-key:}")
+  @Value("${app.dashscope.api-key:}")
   private String apiKey;
 
-  @Value("${deepseek.base-url:https://api.deepseek.com}")
+  @Value("${app.dashscope.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}")
   private String baseUrl;
 
-  @Value("${deepseek.model:deepseek-chat}")
+  @Value("${app.dashscope.rewrite-model:qwen-turbo}")
   private String model;
 
   public List<String> rewrite(String originalQuery) {
@@ -96,7 +96,7 @@ public class QueryRewriter {
       }
       return new ArrayList<>(dedup);
     } catch (Exception e) {
-      log.warn("DeepSeek query rewrite failed, fallback to original query: {}", e.getMessage());
+      log.warn("Query rewrite failed, fallback to original query: {}", e.getMessage());
       return fallback;
     }
   }
