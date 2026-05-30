@@ -281,7 +281,7 @@ const config = reactive({
   compareStrategyB: 'hybrid',
 })
 
-const compareModes = ['单策略', 'A/B 对比', '四路对比']
+const compareModes = ['单策略', 'A/B 对比', '五路对比']
 const compareResults = ref([])
 const activeCompareTab = ref(0)
 
@@ -600,14 +600,14 @@ function resolveStrategies() {
   if (config.compareMode === 'A/B 对比') {
     return [config.strategy, config.compareStrategyB]
   }
-  if (config.compareMode === '四路对比') {
-    return ['vector', 'keyword', 'hybrid', 'full']
+  if (config.compareMode === '五路对比') {
+    return ['vector', 'keyword', 'hybrid', 'full', 'rewrite']
   }
   return [config.strategy]
 }
 
 function strategyLabel(s) {
-  const map = { vector: '向量检索', keyword: '关键词检索', hybrid: '混合检索', full: '全链路Reranker' }
+  const map = { vector: '向量检索', keyword: '关键词检索', hybrid: '混合检索', full: '全链路Reranker', rewrite: 'Query改写' }
   return map[s] ?? s
 }
 

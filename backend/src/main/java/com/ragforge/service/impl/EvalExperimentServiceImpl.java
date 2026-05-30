@@ -18,6 +18,7 @@ import com.ragforge.model.vo.EvalFailureSampleVO;
 import com.ragforge.model.vo.EvalResultDetailVO;
 import com.ragforge.search.EsSearchService;
 import com.ragforge.search.HybridSearchService;
+import com.ragforge.search.QueryRewriter;
 import com.ragforge.search.RerankerClient;
 import com.ragforge.search.RerankerClient.RerankResult;
 import com.ragforge.search.SearchResult;
@@ -37,7 +38,10 @@ import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -56,7 +60,12 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   private final EsSearchService esSearchService;
   private final HybridSearchService hybridSearchService;
   private final RerankerClient rerankerClient;
+  private final QueryRewriter queryRewriter;
   private final ObjectMapper objectMapper;
+
+  @Lazy
+  @Autowired
+  private EvalExperimentServiceImpl self;
 
   @Override
   @Transactional
@@ -112,8 +121,8 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
         mrrSum += mrrFromHitAt(evalResult.getHitAt());
       }
     } catch (Exception e) {
-      experiment.setStatus("failed");
-      evalExperimentMapper.updateById(experiment);
+      log.error("Experiment run failed: {}", e.getMessage(), e);
+      self.markAsFailed(experiment);
       throw new BizException(500, "实验运行失败: " + e.getMessage());
     }
 
@@ -285,8 +294,33 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       case "hybrid" -> hybridSearchService.search(query, kbIds, null, topK, vectorWeight);
       case "full" -> rerank(
           hybridSearchService.search(query, kbIds, null, topK, vectorWeight), query, topK);
+      case "rewrite" -> searchByRewrittenQueries(
+          queryRewriter.rewrite(query), kbIds, topK);
       default -> vectorSearchService.search(query, kbIds, null, topK);
     };
+  }
+
+  private List<SearchResult> searchByRewrittenQueries(
+      List<String> queries, List<Long> kbIds, int topK) {
+    Map<Long, SearchResult> dedup = new LinkedHashMap<>();
+    for (String q : queries) {
+      List<SearchResult> partial = vectorSearchService.search(q, kbIds, null, topK);
+      for (SearchResult item : partial) {
+        if (item.getChunkId() == null) {
+          continue;
+        }
+        SearchResult existing = dedup.get(item.getChunkId());
+        if (existing == null || item.getVectorScore() > existing.getVectorScore()) {
+          dedup.put(item.getChunkId(), item);
+        }
+      }
+    }
+    List<SearchResult> merged = new ArrayList<>(dedup.values());
+    merged.sort(Comparator.comparingDouble(SearchResult::getVectorScore).reversed());
+    if (merged.size() > topK) {
+      return merged.subList(0, topK);
+    }
+    return merged;
   }
 
   private List<SearchResult> rerank(List<SearchResult> source, String query, int topK) {
@@ -342,6 +376,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     if ("keyword".equalsIgnoreCase(strategy)) return "keyword";
     if ("hybrid".equalsIgnoreCase(strategy)) return "hybrid";
     if ("full".equalsIgnoreCase(strategy)) return "full";
+    if ("rewrite".equalsIgnoreCase(strategy)) return "rewrite";
     return "vector";
   }
 
@@ -393,9 +428,20 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   }
 
   private static double primaryScore(SearchResult r) {
-    if (r.getFinalScore() != 0) return r.getFinalScore();
-    if (r.getBm25Score() != 0) return r.getBm25Score();
-    return r.getVectorScore();
+    double raw;
+    if (r.getFinalScore() != 0) raw = r.getFinalScore();
+    else if (r.getBm25Score() != 0) raw = r.getBm25Score();
+    else raw = r.getVectorScore();
+    // BM25 分数可能 > 10，DECIMAL(5,4) 只能存 0~9.9999，做归一化
+    if (raw > 1) raw = raw / (1 + raw);
+    return raw;
+  }
+
+  /** 在新事务中标记实验失败，避免被已中止的事务影响 */
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void markAsFailed(EvalExperiment experiment) {
+    experiment.setStatus("failed");
+    evalExperimentMapper.updateById(experiment);
   }
 }
 

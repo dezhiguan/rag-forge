@@ -79,7 +79,8 @@
           </div>
           <div class="onboard-actions">
             <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
-            <button class="btn-accent" @click="openQuickStart">⚡ 快速体验（简历测试用例）</button>
+            <button class="btn-accent" @click="openQuickStart('resume')">⚡ 快速体验（简历测试用例）</button>
+            <button class="btn-accent" @click="openQuickStart('extreme')">🧪 极限测试用例</button>
           </div>
         </div>
 
@@ -357,6 +358,7 @@
               <option value="keyword">关键词检索 BM25（keyword）</option>
               <option value="hybrid">混合检索（hybrid）</option>
               <option value="full">全链路 Reranker（full）</option>
+              <option value="rewrite">Query改写（rewrite）</option>
             </select>
           </label>
 
@@ -367,7 +369,7 @@
             </div>
             <div class="toggle-body">
               <div class="toggle-label">消融实验</div>
-              <div class="toggle-desc">自动对比向量检索 / 关键词检索 / 混合检索 / 全链路 四种策略</div>
+              <div class="toggle-desc">自动对比向量检索 / 关键词检索 / 混合检索 / 全链路 / Query改写 五种策略</div>
             </div>
           </div>
 
@@ -502,7 +504,7 @@
                 <td>
                   <span class="badge" :class="failureBadgeClass(item.failureReason)">{{ item.failureReason }}</span>
                 </td>
-                <td>{{ failureSuggestion(item.failureReason) }}</td>
+                <td>{{ failureSuggestion(item.failureReason, experimentDetail.strategy) }}</td>
               </tr>
             </tbody>
           </table>
@@ -511,7 +513,7 @@
 
       <div v-if="showQuickStart" class="modal-mask" @click.self="showQuickStart = false">
         <div class="modal modal-wide">
-          <h3 class="modal-title">⚡ 快速体验 — 基于简历的测试用例</h3>
+          <h3 class="modal-title">{{ quickStartPreset === 'extreme' ? '🧪 极限测试用例' : '⚡ 快速体验 — 基于简历的测试用例' }}</h3>
           <div class="field">
             <span>选择知识库（包含你简历的 KB）*</span>
             <select v-model="quickStartKbId" class="select">
@@ -523,13 +525,13 @@
           </div>
           <div class="field">
             <span>数据集名称</span>
-            <input v-model="quickStartName" type="text" placeholder="简历检索评测集" />
+            <input v-model="quickStartName" type="text" />
           </div>
           <div class="quick-questions-label">
-            预置题目（{{ quickStartQuestions.length }} 道，基于你的简历内容）：
+            预置题目（{{ currentQuickStartQuestions.length }} 道）：
           </div>
           <div class="quick-questions-list">
-            <div v-for="(q, i) in quickStartQuestions" :key="i" class="quick-q-item">
+            <div v-for="(q, i) in currentQuickStartQuestions" :key="i" class="quick-q-item">
               <span class="quick-q-num">{{ i + 1 }}</span>
               <span>{{ q }}</span>
             </div>
@@ -623,7 +625,8 @@ const selectedChunkIds = ref([])
 const showQuickStart = ref(false)
 const creatingQuickStart = ref(false)
 const quickStartKbId = ref(null)
-const quickStartName = ref('简历检索评测集')
+const quickStartName = ref('')
+const quickStartPreset = ref('resume')
 
 const quickStartQuestions = [
   '官德志在影子科技主导了什么核心架构设计？',
@@ -635,6 +638,34 @@ const quickStartQuestions = [
   'ELK+SkyWalking全链路监控体系带来了什么具体效果？',
   'RocketMQ事务消息在智能体平台中解决了什么分布式难题？',
 ]
+
+const extremeQuestions = [
+  // 一、语义理解类
+  '小关在影子科技的时候，是怎么防止秒杀系统超卖的？',
+  '那个让人等齐了再一起跑的 Java 工具，在海量数据项目里怎么用的？',
+  '如果不把边缘端从 Java 改成 Go，会有什么后果？',
+  // 二、关键词匹配类
+  'ELK 那套东西加上 SkyWalking，到底解决了啥实际问题？',
+  'RocketMQ 的 transactional message 在 agent 平台里解决的是什么 distributed 问题？',
+  '官德志用过哪些中间件？给我全部列出来。',
+  // 三、精确匹配类
+  '官德志在铂涛信息的年度绩效是什么等级？',
+  'SDD 是什么，解决了什么问题？',
+  // 四、负样本
+  '官德志用过 Python 做机器学习吗？',
+  '官德志在阿里巴巴工作的时候负责什么项目？',
+  '官德志会前端开发吗？',
+  // 五、多 chunk 综合类
+  '官德志在影子科技做的所有项目，分别用了哪些技术方案？',
+  '官德志从哪年开始工作，各段经历的时间顺序是怎样的？',
+  // 六、Input 鲁棒性
+  '高并发',
+  '我最近在面一家做企业级 SaaS 的公司，他们技术负责人问我有没有做过大规模数据处理和高并发系统的经验，我想知道官德志的简历里有哪些相关经验可以借鉴参考？',
+]
+
+const currentQuickStartQuestions = computed(() =>
+  quickStartPreset.value === 'extreme' ? extremeQuestions : quickStartQuestions
+)
 
 const showBatchImport = ref(false)
 const submittingBatch = ref(false)
@@ -751,11 +782,14 @@ async function onSearchCandidates() {
   }
   searchingCandidates.value = true
   try {
+    // 限定在数据集关联的知识库内检索
+    const ds = datasets.value.find((d) => d.id === addQuestionDatasetId.value)
     const res = await searchApi({
       query: questionForm.value.question.trim(),
       strategy: 'full',
       topK: 8,
       rerankTopN: 5,
+      kbIds: ds?.kbId != null ? [ds.kbId] : undefined,
     })
     candidateChunks.value = (res.data?.results ?? []).map((item) => ({
       chunkId: item.chunkId,
@@ -764,10 +798,7 @@ async function onSearchCandidates() {
       content: item.content || '',
       score: item.finalScore ?? item.vectorScore ?? item.bm25Score ?? 0,
     }))
-    selectedChunkIds.value = candidateChunks.value
-      .filter((item) => item.chunkId != null)
-      .slice(0, 3)
-      .map((item) => item.chunkId)
+    selectedChunkIds.value = []
     addQuestionStep.value = 2
   } catch {
     alert('检索候选 Chunk 失败，请稍后重试')
@@ -807,9 +838,10 @@ function openBatchImport(datasetId) {
   showBatchImport.value = true
 }
 
-function openQuickStart() {
+function openQuickStart(preset) {
+  quickStartPreset.value = preset || 'resume'
   quickStartKbId.value = kbList.value.length ? kbList.value[0].id : null
-  quickStartName.value = '简历检索评测集'
+  quickStartName.value = preset === 'extreme' ? '极限检索评测集' : '简历检索评测集'
   showQuickStart.value = true
 }
 
@@ -837,7 +869,7 @@ async function onCreateQuickStart() {
 
     // 2. 逐题检索，自动取 Top-3 作为期望 Chunk
     const questionsWithChunks = []
-    for (const question of quickStartQuestions) {
+    for (const question of currentQuickStartQuestions.value) {
       try {
         const res = await searchApi({
           query: question,
@@ -921,7 +953,7 @@ async function onRunExperiment() {
   runningExperiment.value = true
   try {
     if (runForm.value.ablation) {
-      const strategies = ['vector', 'keyword', 'hybrid', 'full']
+      const strategies = ['vector', 'keyword', 'hybrid', 'full', 'rewrite']
       for (const strategy of strategies) {
         await runExperiment({
           datasetId: runForm.value.datasetId,
@@ -985,10 +1017,21 @@ function failureBadgeClass(reason) {
   return 'badge-blue'
 }
 
-function failureSuggestion(reason) {
-  if (reason === '召回不足') return '提高 TopK（如从 8→15）、补充知识库相关文档'
-  if (reason === '排序错误') return '尝试切换到 hybrid 或 full 策略，利用 Reranker 精排'
-  if (reason === '标注缺失') return '未检索到足够结果，检查文档是否已处理完成、分块是否正常'
+function failureSuggestion(reason, strategy) {
+  if (reason === '召回不足') {
+    if (strategy === 'vector') return '提高 TopK、补充知识库中相关文档'
+    if (strategy === 'keyword') return 'BM25 可能遗漏了重要术语，尝试 hybrid 或补充文档关键词'
+    if (strategy === 'rewrite') return '改写后的查询可能偏离原意，检查 Query改写 质量或提高 TopK'
+    return '提高 TopK（如 8→15）、补充知识库相关文档'
+  }
+  if (reason === '排序错误') {
+    if (strategy === 'vector') return '向量语义匹配不够精准，尝试 hybrid 或 full 引入 Reranker'
+    if (strategy === 'keyword') return 'BM25 排序依赖词频，无法理解语义，升级到 hybrid 或 full'
+    if (strategy === 'full') return '全链路已启用 Reranker 但仍然排错，可能是 Reranker 不理解该领域术语，检查知识库文档质量'
+    if (strategy === 'rewrite') return '改写查询召回了正确 chunk 但排在后面，可叠加 hybrid 提升排序质量'
+    return '尝试切换到 hybrid 或 full 策略'
+  }
+  if (reason === '标注缺失') return '未检索到足够结果，检查文档是否已处理完成、分块是否正常，或提高 TopK'
   return '补充相关文档或修正标注'
 }
 

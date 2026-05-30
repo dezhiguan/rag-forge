@@ -1,13 +1,13 @@
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import torch
 
-MODEL_NAME = "BAAI/bge-reranker-v2-m3"
+MODEL_NAME = "jinaai/jina-reranker-v3"
 
 
 class Reranker:
     def __init__(self):
-        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        self.model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+        self.model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, trust_remote_code=True)
         self.model.eval()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
