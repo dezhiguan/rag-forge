@@ -26,46 +26,99 @@ public class EsIndexRepairJob {
   @Scheduled(fixedDelayString = "${ragforge.maintenance.es-repair-interval-ms:1800000}")
   public void repairMissingIndexes() {
     long start = System.currentTimeMillis();
+    EsRepairReport report = repairAllMissingIndexes();
+    log.info(
+        "ES index repair completed: checked={} repaired={} skipped={} failed={} items={} elapsedMs={}",
+        report.getCheckedDocuments(),
+        report.getRepairedDocuments(),
+        report.getSkippedDocuments(),
+        report.getFailedDocuments(),
+        report.getItems().size(),
+        System.currentTimeMillis() - start);
+  }
+
+  public EsRepairReport repairAllMissingIndexes() {
+    long start = System.currentTimeMillis();
+    EsRepairReport report = new EsRepairReport();
     List<Document> docs =
         documentMapper.selectList(
             new LambdaQueryWrapper<Document>().eq(Document::getParseStatus, STATUS_COMPLETED));
-    int checked = 0;
-    int repaired = 0;
-    int skipped = 0;
     for (Document doc : docs) {
-      checked++;
-      long esCount = esIndexService.countByDocId(doc.getId());
-      if (esCount < 0) {
-        skipped++;
-        continue;
-      }
-      int pgCount = doc.getChunkCount() == null ? 0 : doc.getChunkCount();
-      if (esCount == pgCount) {
-        continue;
-      }
-      List<DocumentChunk> chunks =
-          documentChunkMapper.selectList(
-              new LambdaQueryWrapper<DocumentChunk>()
-                  .eq(DocumentChunk::getDocId, doc.getId())
-                  .orderByAsc(DocumentChunk::getChunkIndex));
-      boolean ok = esIndexService.indexChunks(chunks, doc);
-      if (ok) {
-        repaired++;
-      } else {
-        skipped++;
-      }
-      log.warn(
-          "ES index repaired: docId={} pgChunks={} esChunksBefore={} success={}",
+      repairDocument(doc, report);
+    }
+    report.setElapsedMs(System.currentTimeMillis() - start);
+    return report;
+  }
+
+  public EsRepairReport repairDocument(Long docId) {
+    EsRepairReport report = new EsRepairReport();
+    long start = System.currentTimeMillis();
+    Document doc = documentMapper.selectById(docId);
+    if (doc == null) {
+      report.setSkippedDocuments(1);
+      report.addItem(docId, null, 0, -1, "SKIPPED", "document not found");
+    } else {
+      repairDocument(doc, report);
+    }
+    report.setElapsedMs(System.currentTimeMillis() - start);
+    return report;
+  }
+
+  private void repairDocument(Document doc, EsRepairReport report) {
+    report.setCheckedDocuments(report.getCheckedDocuments() + 1);
+    if (!STATUS_COMPLETED.equals(doc.getParseStatus())) {
+      report.setSkippedDocuments(report.getSkippedDocuments() + 1);
+      report.addItem(
           doc.getId(),
+          doc.getFilename(),
+          doc.getChunkCount() == null ? 0 : doc.getChunkCount(),
+          -1,
+          "SKIPPED",
+          "document status is " + doc.getParseStatus());
+      return;
+    }
+
+    long esCount = esIndexService.countByDocId(doc.getId());
+    int pgCount = doc.getChunkCount() == null ? 0 : doc.getChunkCount();
+    if (esCount < 0) {
+      report.setSkippedDocuments(report.getSkippedDocuments() + 1);
+      report.addItem(doc.getId(), doc.getFilename(), pgCount, esCount, "SKIPPED", "ES count failed");
+      return;
+    }
+    if (esCount == pgCount) {
+      return;
+    }
+
+    List<DocumentChunk> chunks =
+        documentChunkMapper.selectList(
+            new LambdaQueryWrapper<DocumentChunk>()
+                .eq(DocumentChunk::getDocId, doc.getId())
+                .orderByAsc(DocumentChunk::getChunkIndex));
+    boolean ok = esIndexService.indexChunks(chunks, doc);
+    if (ok) {
+      report.setRepairedDocuments(report.getRepairedDocuments() + 1);
+      report.addItem(
+          doc.getId(),
+          doc.getFilename(),
           chunks.size(),
           esCount,
-          ok);
+          "REPAIRED",
+          "ES index rebuilt from PG chunks");
+    } else {
+      report.setFailedDocuments(report.getFailedDocuments() + 1);
+      report.addItem(
+          doc.getId(),
+          doc.getFilename(),
+          chunks.size(),
+          esCount,
+          "FAILED",
+          "ES bulk index failed");
     }
-    log.info(
-        "ES index repair completed: checked={} repaired={} skipped={} elapsedMs={}",
-        checked,
-        repaired,
-        skipped,
-        System.currentTimeMillis() - start);
+    log.warn(
+        "ES index repair attempted: docId={} pgChunks={} esChunksBefore={} success={}",
+        doc.getId(),
+        chunks.size(),
+        esCount,
+        ok);
   }
 }

@@ -8,6 +8,7 @@ const apiKey = process.env.API_KEY || 'sk-ragforge-dev'
 const pollIntervalMs = Number(process.env.POLL_INTERVAL_MS || 2000)
 const timeoutMs = Number(process.env.TIMEOUT_MS || 180000)
 const kbName = process.env.KB_NAME || `导入验证-${new Date().toISOString().slice(0, 19)}`
+const skipMaintenance = process.env.SKIP_MAINTENANCE === 'true'
 
 const files = process.argv.slice(2)
 if (!files.length) {
@@ -87,6 +88,26 @@ async function pollDocument(item) {
   }
 }
 
+async function runMaintenanceChecks() {
+  if (skipMaintenance) {
+    return
+  }
+  const calibration = await request('/admin/maintenance/calibrate', { method: 'POST' })
+  const calibrationData = calibration?.data ?? {}
+  console.log(
+    `calibration checkedDocs=${calibrationData.checkedDocuments ?? 0} fixedDocs=${calibrationData.fixedDocuments ?? 0} missingVectorDocs=${calibrationData.documentsMissingVector ?? 0} statusMismatchDocs=${calibrationData.documentsStatusMismatch ?? 0} fixedKbs=${calibrationData.fixedKnowledgeBases ?? 0} issues=${calibrationData.issues?.length ?? 0}`,
+  )
+
+  const repair = await request('/admin/maintenance/repair-es', { method: 'POST' })
+  const repairData = repair?.data ?? {}
+  console.log(
+    `esRepair checkedDocs=${repairData.checkedDocuments ?? 0} repairedDocs=${repairData.repairedDocuments ?? 0} skippedDocs=${repairData.skippedDocuments ?? 0} failedDocs=${repairData.failedDocuments ?? 0} items=${repairData.items?.length ?? 0}`,
+  )
+  if ((repairData.failedDocuments ?? 0) > 0) {
+    process.exitCode = 3
+  }
+}
+
 async function main() {
   console.log(`API_BASE=${apiBase}`)
   const health = await request('/health')
@@ -125,6 +146,7 @@ async function main() {
   if (!ok) {
     process.exitCode = 2
   }
+  await runMaintenanceChecks()
 }
 
 main().catch((err) => {

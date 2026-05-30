@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -26,23 +27,37 @@ public class DataCalibrationJob {
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper documentChunkMapper;
+  private final JdbcTemplate jdbcTemplate;
 
   @Scheduled(fixedDelayString = "${ragforge.maintenance.calibration-interval-ms:1800000}")
   public void calibrateCounters() {
     long start = System.currentTimeMillis();
-    int fixedDocs = calibrateDocumentChunkCounts();
-    int fixedKbs = calibrateKnowledgeBaseCounts();
+    DataCalibrationReport report = calibrate();
     log.info(
-        "Data calibration completed: fixedDocs={} fixedKbs={} elapsedMs={}",
-        fixedDocs,
-        fixedKbs,
+        "Data calibration completed: checkedDocs={} fixedDocs={} missingVectorDocs={} statusMismatchDocs={} checkedKbs={} fixedKbs={} issues={} elapsedMs={}",
+        report.getCheckedDocuments(),
+        report.getFixedDocuments(),
+        report.getDocumentsMissingVector(),
+        report.getDocumentsStatusMismatch(),
+        report.getCheckedKnowledgeBases(),
+        report.getFixedKnowledgeBases(),
+        report.getIssues().size(),
         System.currentTimeMillis() - start);
   }
 
-  private int calibrateDocumentChunkCounts() {
+  public DataCalibrationReport calibrate() {
+    long start = System.currentTimeMillis();
+    DataCalibrationReport report = new DataCalibrationReport();
+    calibrateDocumentChunkCounts(report);
+    calibrateKnowledgeBaseCounts(report);
+    report.setElapsedMs(System.currentTimeMillis() - start);
+    return report;
+  }
+
+  private void calibrateDocumentChunkCounts(DataCalibrationReport report) {
     List<Document> docs = documentMapper.selectList(null);
-    int fixed = 0;
     for (Document doc : docs) {
+      report.setCheckedDocuments(report.getCheckedDocuments() + 1);
       Long actual =
           documentChunkMapper.selectCount(
               new LambdaQueryWrapper<DocumentChunk>().eq(DocumentChunk::getDocId, doc.getId()));
@@ -53,18 +68,50 @@ public class DataCalibrationJob {
             new LambdaUpdateWrapper<Document>()
                 .eq(Document::getId, doc.getId())
                 .set(Document::getChunkCount, actualCount));
-        fixed++;
+        report.setFixedDocuments(report.getFixedDocuments() + 1);
+        report.addIssue(
+            "DOCUMENT_CHUNK_COUNT_FIXED",
+            doc.getKbId(),
+            doc.getId(),
+            "document.chunk_count="
+                + doc.getChunkCount()
+                + " corrected to actual chunk count "
+                + actualCount);
+      }
+      if (STATUS_COMPLETED.equals(doc.getParseStatus()) && actualCount == 0) {
+        report.setDocumentsStatusMismatch(report.getDocumentsStatusMismatch() + 1);
+        report.addIssue(
+            "DOCUMENT_STATUS_MISMATCH",
+            doc.getKbId(),
+            doc.getId(),
+            "document is completed but has no chunks");
+      }
+      if (!STATUS_COMPLETED.equals(doc.getParseStatus()) && actualCount > 0) {
+        report.setDocumentsStatusMismatch(report.getDocumentsStatusMismatch() + 1);
+        report.addIssue(
+            "DOCUMENT_STATUS_MISMATCH",
+            doc.getKbId(),
+            doc.getId(),
+            "document status is " + doc.getParseStatus() + " but has " + actualCount + " chunks");
+      }
+      long missingVectorCount = countMissingVectors(doc.getId());
+      if (missingVectorCount > 0) {
+        report.setDocumentsMissingVector(report.getDocumentsMissingVector() + 1);
+        report.addIssue(
+            "CHUNK_VECTOR_MISSING",
+            doc.getKbId(),
+            doc.getId(),
+            missingVectorCount + " chunks have null content_vector");
       }
     }
-    return fixed;
   }
 
-  private int calibrateKnowledgeBaseCounts() {
+  private void calibrateKnowledgeBaseCounts(DataCalibrationReport report) {
     List<KnowledgeBase> kbs =
         knowledgeBaseMapper.selectList(
             new LambdaQueryWrapper<KnowledgeBase>().ne(KnowledgeBase::getStatus, STATUS_DELETED));
-    int fixed = 0;
     for (KnowledgeBase kb : kbs) {
+      report.setCheckedKnowledgeBases(report.getCheckedKnowledgeBases() + 1);
       Long docCount =
           documentMapper.selectCount(
               new LambdaQueryWrapper<Document>()
@@ -84,9 +131,29 @@ public class DataCalibrationJob {
                 .set(KnowledgeBase::getDocCount, actualDocCount)
                 .set(KnowledgeBase::getChunkCount, actualChunkCount)
                 .set(KnowledgeBase::getUpdatedAt, LocalDateTime.now()));
-        fixed++;
+        report.setFixedKnowledgeBases(report.getFixedKnowledgeBases() + 1);
+        report.addIssue(
+            "KB_COUNTER_FIXED",
+            kb.getId(),
+            null,
+            "kb counters corrected: docCount "
+                + kb.getDocCount()
+                + " -> "
+                + actualDocCount
+                + ", chunkCount "
+                + kb.getChunkCount()
+                + " -> "
+                + actualChunkCount);
       }
     }
-    return fixed;
+  }
+
+  private long countMissingVectors(Long docId) {
+    Long count =
+        jdbcTemplate.queryForObject(
+            "select count(*) from document_chunks where doc_id = ? and content_vector is null",
+            Long.class,
+            docId);
+    return count == null ? 0 : count;
   }
 }

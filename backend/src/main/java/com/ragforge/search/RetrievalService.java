@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,7 @@ public class RetrievalService {
   private final HybridSearchService hybridSearchService;
   private final QueryRewriter queryRewriter;
   private final RerankerClient rerankerClient;
+  private final MeterRegistry meterRegistry;
 
   public RetrievalOutput retrieve(
       String query,
@@ -109,6 +112,14 @@ public class RetrievalService {
 
     long latencyMs = System.currentTimeMillis() - start;
     log.info("检索完成 resultCount={} totalLatency={}ms", results.size(), latencyMs);
+    recordMetrics(
+        normalizedStrategy,
+        latencyMs,
+        rewriteLatencyMs,
+        vectorLatencyMs,
+        keywordLatencyMs,
+        rerankLatencyMs,
+        results.size());
 
     return new RetrievalOutput(
         results,
@@ -119,6 +130,36 @@ public class RetrievalService {
         vectorLatencyMs,
         keywordLatencyMs,
         rerankLatencyMs);
+  }
+
+  private void recordMetrics(
+      String strategy,
+      long totalLatencyMs,
+      Long rewriteLatencyMs,
+      Long vectorLatencyMs,
+      Long keywordLatencyMs,
+      Long rerankLatencyMs,
+      int resultCount) {
+    meterRegistry
+        .timer("ragforge.retrieval.latency", "strategy", strategy, "stage", "total")
+        .record(totalLatencyMs, TimeUnit.MILLISECONDS);
+    recordStageMetric(strategy, "rewrite", rewriteLatencyMs);
+    recordStageMetric(strategy, "vector", vectorLatencyMs);
+    recordStageMetric(strategy, "keyword", keywordLatencyMs);
+    recordStageMetric(strategy, "rerank", rerankLatencyMs);
+    meterRegistry.counter("ragforge.retrieval.requests", "strategy", strategy).increment();
+    meterRegistry
+        .summary("ragforge.retrieval.result.count", "strategy", strategy)
+        .record(resultCount);
+  }
+
+  private void recordStageMetric(String strategy, String stage, Long latencyMs) {
+    if (latencyMs == null) {
+      return;
+    }
+    meterRegistry
+        .timer("ragforge.retrieval.latency", "strategy", strategy, "stage", stage)
+        .record(latencyMs, TimeUnit.MILLISECONDS);
   }
 
   private List<SearchResult> searchByRewrittenQueries(
