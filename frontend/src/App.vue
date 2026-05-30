@@ -83,6 +83,7 @@ body {
 
 .main-content {
   flex: 1;
+  min-width: 0;
   margin-left: 200px;
   min-height: 100vh;
   background: #fafbfc;
@@ -101,7 +102,15 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .top-bar-icon { font-size: 14px; }
-.top-bar-title { font-size: 15px; font-weight: 600; color: #334155; }
+.top-bar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  color: #334155;
+}
 
 .page-fade-enter-active, .page-fade-leave-active {
   transition: opacity 0.2s ease, transform 0.2s ease;
@@ -177,6 +186,10 @@ body {
 
 /* ====== 移动端响应式 ====== */
 @media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+
   .hamburger { display: inline-block; }
 
   .mobile-overlay { display: block; }
@@ -186,12 +199,25 @@ body {
   }
 
   .top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
     padding: 0 16px;
     justify-content: flex-start;
   }
 
+  .hamburger {
+    min-width: 36px;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .page-body {
     padding: 16px 12px 32px;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   .data-table thead th,

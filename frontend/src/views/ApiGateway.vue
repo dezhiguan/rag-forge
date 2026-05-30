@@ -235,12 +235,33 @@ onMounted(() => {
     min-width: 0;
   }
 
+  .api-key-title {
+    font-size: 12px;
+  }
+
   .api-key-usage {
     font-size: 11px;
   }
 
   .key-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: flex-start;
+    gap: 10px;
+  }
+
+  .key-actions {
+    gap: 8px;
+  }
+
+  .key-toggle,
+  .key-copy,
+  .key-del {
+    min-width: 28px;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .key-name {
@@ -257,6 +278,7 @@ onMounted(() => {
   }
 
   .code-block {
+    max-width: 100%;
     padding: 10px;
     font-size: 10px;
   }
@@ -268,6 +290,7 @@ onMounted(() => {
 
   .integration-box {
     font-size: 12px;
+    line-height: 1.6;
   }
 }
 </style>

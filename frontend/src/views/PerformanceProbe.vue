@@ -421,10 +421,12 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   gap: 16px;
+  max-width: 100%;
 }
 
 .probe-controls,
 .probe-main {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: #fff;
@@ -574,6 +576,10 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
+.top-strip > div {
+  min-width: 0;
+}
+
 .top-strip h1 {
   margin: 0 0 4px;
   color: var(--slate);
@@ -638,6 +644,9 @@ onMounted(async () => {
 
 .stage-panel,
 .table-panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: #fff;
@@ -708,6 +717,8 @@ onMounted(async () => {
 }
 
 .table-wrap {
+  display: block;
+  max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -806,6 +817,73 @@ th {
   .stage-label,
   .stage-value {
     font-size: 10px;
+  }
+
+  table {
+    min-width: 0;
+  }
+
+  table,
+  thead,
+  tbody,
+  tr,
+  td {
+    display: block;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    overflow: hidden;
+  }
+
+  td {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-height: 34px;
+    border-bottom: 1px solid #eef2f7;
+    padding: 7px 10px;
+    white-space: normal;
+    word-break: break-word;
+    font-size: 12px;
+  }
+
+  td:last-child {
+    border-bottom: none;
+  }
+
+  td::before {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  td:nth-child(1)::before { content: '#'; }
+  td:nth-child(2)::before { content: '策略'; }
+  td:nth-child(3)::before { content: '总耗时'; }
+  td:nth-child(4)::before { content: '浏览器'; }
+  td:nth-child(5)::before { content: 'Rewrite'; }
+  td:nth-child(6)::before { content: 'Vector'; }
+  td:nth-child(7)::before { content: 'Keyword'; }
+  td:nth-child(8)::before { content: 'Rerank'; }
+  td:nth-child(9)::before { content: '未拆分'; }
+  td:nth-child(10)::before { content: '结果'; }
+  td:nth-child(11)::before { content: '状态'; }
+
+  .row-status {
+    justify-self: start;
   }
 }
 </style>

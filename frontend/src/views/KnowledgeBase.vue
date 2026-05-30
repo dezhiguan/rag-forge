@@ -1006,7 +1006,74 @@ onMounted(async () => {
   }
 
   .data-table {
-    min-width: 650px;
+    min-width: 0;
+  }
+
+  .data-table,
+  .data-table thead,
+  .data-table tbody,
+  .data-table tr,
+  .data-table td {
+    display: block;
+  }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tbody {
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .data-table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .data-table tbody td {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #eef2f7;
+    padding: 8px 10px;
+    word-break: break-word;
+  }
+
+  .data-table tbody td:last-child {
+    border-bottom: none;
+  }
+
+  .data-table tbody td::before {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .data-table tbody td:nth-child(1)::before { content: '知识库'; }
+  .data-table tbody td:nth-child(2)::before { content: '文档'; }
+  .data-table tbody td:nth-child(3)::before { content: 'Chunk'; }
+  .data-table tbody td:nth-child(4)::before { content: '状态'; }
+  .data-table tbody td:nth-child(5)::before { content: '创建'; }
+  .data-table tbody td:nth-child(6)::before { content: '操作'; }
+
+  .docs-row {
+    border: none !important;
+    background: transparent !important;
+  }
+
+  .docs-row > td {
+    display: block !important;
+    padding: 0 !important;
+    border-bottom: none !important;
+  }
+
+  .docs-row > td::before {
+    display: none;
   }
 
   .docs-panel {
@@ -1014,9 +1081,82 @@ onMounted(async () => {
   }
 
   .docs-table {
-    min-width: 550px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    min-width: 0;
+  }
+
+  .docs-table,
+  .docs-table thead,
+  .docs-table tbody,
+  .docs-table tr,
+  .docs-table td {
+    display: block;
+  }
+
+  .docs-table thead {
+    display: none;
+  }
+
+  .docs-table tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  .docs-table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .docs-table td {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #eef2f7;
+    padding: 8px 10px;
+    word-break: break-word;
+  }
+
+  .docs-table td:last-child {
+    border-bottom: none;
+  }
+
+  .docs-table td::before {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .docs-table td:nth-child(1)::before { content: '文件'; }
+  .docs-table td:nth-child(2)::before { content: '大小'; }
+  .docs-table td:nth-child(3)::before { content: '状态'; }
+  .docs-table td:nth-child(4)::before { content: 'Chunk'; }
+  .docs-table td:nth-child(5)::before { content: '上传'; }
+  .docs-table td:nth-child(6)::before { content: '操作'; }
+
+  .docs-table td[colspan] {
+    display: block;
+  }
+
+  .docs-table td[colspan]::before {
+    display: none;
+  }
+
+  .doc-filename {
+    max-width: none;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .doc-status-cell {
+    flex-wrap: wrap;
+  }
+
+  .docs-table .link-action {
+    display: inline-block;
+    min-height: 28px;
+    line-height: 28px;
   }
 
   .upload-settings {

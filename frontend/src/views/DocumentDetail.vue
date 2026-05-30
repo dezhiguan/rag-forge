@@ -501,11 +501,39 @@ function formatBytes(bytes) {
 
   .doc-title {
     font-size: 16px;
+    line-height: 1.45;
   }
 
   .doc-sub {
     gap: 6px;
     font-size: 12px;
+  }
+
+  .dot {
+    display: none;
+  }
+
+  .doc-sub > span {
+    max-width: 100%;
+  }
+
+  .chunk-card {
+    padding: 10px;
+  }
+
+  .chunk-head {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .chunk-tokens {
+    flex-shrink: 0;
+  }
+
+  .chunk-text {
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 2px;
   }
 
   .meta-row {
@@ -526,6 +554,11 @@ function formatBytes(bytes) {
   .search-action,
   .btn-retry {
     min-height: 42px;
+  }
+
+  .processing-panel {
+    min-height: 220px;
+    padding: 28px 16px;
   }
 }
 </style>

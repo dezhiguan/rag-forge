@@ -308,8 +308,21 @@ onMounted(loadMetrics)
   }
 
   .activity-item {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.24);
     font-size: 12px;
     line-height: 1.6;
+    word-break: break-word;
+  }
+
+  .activity-item:last-child {
+    border-bottom: none;
+  }
+
+  .link-action {
+    display: inline-block;
+    margin-left: 0;
+    margin-top: 4px;
   }
 }
 </style>

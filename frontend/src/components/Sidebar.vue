@@ -173,7 +173,17 @@ const navItems = [
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     z-index: 101;
+    overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom);
     box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+  }
+
+  .sidebar-brand {
+    padding-top: calc(18px + env(safe-area-inset-top));
+  }
+
+  .nav-item {
+    min-height: 42px;
   }
 
   .sidebar.mobile-open {

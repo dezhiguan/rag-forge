@@ -247,7 +247,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="exp in experiments" :key="exp.id">
+              <tr v-for="exp in experiments" :key="exp.id" class="experiment-row">
                 <td>{{ exp.datasetName || `#${exp.datasetId}` }}</td>
                 <td><span class="strategy-badge" :class="`strategy-${exp.strategy}`">{{ strategyLabelMap[exp.strategy] || exp.strategy }}</span></td>
                 <td>{{ exp.totalQuestions ?? 0 }}</td>
@@ -1908,6 +1908,46 @@ onMounted(async () => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
+
+  .tab-bar {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    margin: -16px -12px 14px;
+    padding: 8px 12px 0;
+    background: #fafbfc;
+  }
+
+  .tab-btn {
+    flex: 1;
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .top-toolbar,
+  .toolbar-left {
+    width: 100%;
+  }
+
+  .toolbar-left {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 78px;
+    gap: 8px;
+  }
+
+  .btn-primary,
+  .btn-ghost,
+  .btn-accent,
+  .btn-outline-sm {
+    min-height: 38px;
+  }
+
+  .btn-sm,
+  .btn-ghost-small {
+    min-height: 34px;
+  }
+
   .summary-card {
     padding: 10px 12px;
   }
@@ -1916,12 +1956,86 @@ onMounted(async () => {
   }
 
   .table-card {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow: visible;
   }
 
-  .data-table {
-    min-width: 600px;
+  .table-card > .data-table {
+    min-width: 0;
+  }
+
+  .table-card > .data-table,
+  .table-card > .data-table > thead,
+  .table-card > .data-table > tbody,
+  .table-card > .data-table > tbody > tr,
+  .table-card > .data-table > tbody > tr > td {
+    display: block;
+  }
+
+  .table-card > .data-table > thead {
+    display: none;
+  }
+
+  .table-card > .data-table > tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .dataset-row,
+  .experiment-row {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .table-card > .data-table > tbody > tr > td {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #eef2f7;
+    padding: 8px 10px;
+    word-break: break-word;
+  }
+
+  .table-card > .data-table > tbody > tr > td:last-child {
+    border-bottom: none;
+  }
+
+  .table-card > .data-table > tbody > tr > td::before {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .dataset-row > td:nth-child(1)::before { content: '数据集'; }
+  .dataset-row > td:nth-child(2)::before { content: '题目'; }
+  .dataset-row > td:nth-child(3)::before { content: '创建'; }
+  .dataset-row > td:nth-child(4)::before { content: '操作'; }
+
+  .experiment-row > td:nth-child(1)::before { content: '数据集'; }
+  .experiment-row > td:nth-child(2)::before { content: '策略'; }
+  .experiment-row > td:nth-child(3)::before { content: '题目'; }
+  .experiment-row > td:nth-child(4)::before { content: 'Top1'; }
+  .experiment-row > td:nth-child(5)::before { content: 'Top3'; }
+  .experiment-row > td:nth-child(6)::before { content: 'MRR'; }
+  .experiment-row > td:nth-child(7)::before { content: '耗时'; }
+  .experiment-row > td:nth-child(8)::before { content: '时间'; }
+  .experiment-row > td:nth-child(9)::before { content: '操作'; }
+
+  .questions-row {
+    border: none;
+    background: transparent;
+  }
+
+  .table-card > .data-table > tbody > .questions-row > td {
+    display: block;
+    padding: 0;
+    border-bottom: none;
+  }
+
+  .table-card > .data-table > tbody > .questions-row > td::before {
+    display: none;
   }
 
   .questions-panel {
@@ -1933,10 +2047,69 @@ onMounted(async () => {
     align-items: flex-start;
   }
 
+  .questions-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
   .questions-table {
-    min-width: 400px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    min-width: 0;
+  }
+
+  .questions-table,
+  .questions-table thead,
+  .questions-table tbody,
+  .questions-table tr,
+  .questions-table td {
+    display: block;
+  }
+
+  .questions-table thead {
+    display: none;
+  }
+
+  .questions-table tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  .questions-table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .questions-table td {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 8px;
+    border-bottom: 1px solid #eef2f7;
+    padding: 8px 10px;
+  }
+
+  .questions-table td:last-child {
+    border-bottom: none;
+  }
+
+  .questions-table td::before {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .questions-table td:nth-child(1)::before { content: '问题'; }
+  .questions-table td:nth-child(2)::before { content: 'Chunk'; }
+  .questions-table td:nth-child(3)::before { content: '操作'; }
+
+  .questions-table td[colspan] {
+    display: block;
+  }
+
+  .questions-table td[colspan]::before {
+    display: none;
   }
 
   .eval-metrics {
@@ -1958,8 +2131,18 @@ onMounted(async () => {
   }
 
   .onboard-actions {
-    flex-direction: column;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .eval-onboard {
+    padding: 22px 14px;
+  }
+
+  .onboard-desc br {
+    display: none;
   }
 
   .bar-chart {
@@ -1983,10 +2166,7 @@ onMounted(async () => {
 
   .per-question-table {
     max-height: 50vh;
-  }
-
-  .toolbar-left {
-    flex-wrap: wrap;
+    overflow: auto;
   }
 
   .ablation-toggle {
@@ -1995,7 +2175,42 @@ onMounted(async () => {
   }
 
   .actions-cell {
+    justify-content: flex-start;
+    flex-wrap: wrap;
     gap: 8px;
+    white-space: normal;
+  }
+
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+    gap: 8px;
+  }
+
+  .pager-info {
+    order: -1;
+    text-align: center;
+  }
+
+  .chunk-detail-modal {
+    width: 100vw;
+    max-width: none;
+  }
+
+  .chunk-detail-head {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .chunk-detail-close {
+    width: 100%;
+    min-height: 36px;
+  }
+
+  .chunk-detail-content {
+    max-height: 58vh;
+    padding: 10px;
   }
 
   .candidate-item {

@@ -106,7 +106,6 @@
             >
               {{ llmLoading ? '生成中…' : '模拟 LLM 输出' }}
             </button>
-            <button class="mobile-llm-link" @click="rightTab = 'prompt'">Prompt</button>
             <button class="mobile-llm-link" @click="rightTab = 'llm'">输出</button>
           </div>
           <div v-if="currentRewrittenQueries.length" class="rewritten-queries">
@@ -864,10 +863,10 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.debug-layout { display: grid; grid-template-columns: 220px 1fr 240px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; min-height: 420px; }
-.debug-left { background: #f8fafc; border-right: 1px solid var(--border); padding: 16px; font-size: 11px; }
-.debug-center { padding: 16px; font-size: 11px; }
-.debug-right { background: #f8fafc; border-left: 1px solid var(--border); padding: 16px; font-size: 10px; font-family: 'SF Mono', Monaco, monospace; }
+.debug-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 240px; max-width: 100%; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; min-height: 420px; }
+.debug-left { min-width: 0; background: #f8fafc; border-right: 1px solid var(--border); padding: 16px; font-size: 11px; }
+.debug-center { min-width: 0; padding: 16px; font-size: 11px; }
+.debug-right { min-width: 0; background: #f8fafc; border-left: 1px solid var(--border); padding: 16px; font-size: 10px; font-family: 'SF Mono', Monaco, monospace; }
 .panel-title { font-weight: 700; font-size: 12px; margin-bottom: 10px; color: var(--slate); }
 .debug-right .panel-title { font-family: -apple-system, sans-serif; }
 .right-tab-bar {
@@ -925,7 +924,7 @@ onMounted(async () => {
   color: var(--text-muted);
   font-size: 11px;
 }
-.result-card { background: var(--light); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 8px; }
+.result-card { min-width: 0; overflow: hidden; background: var(--light); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 8px; }
 .result-card.top { background: #f0fdf4; border-color: #bbf7d0; }
 .result-card.selected { border-color: #93c5fd; background: #eff6ff; }
 .result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; }
@@ -935,7 +934,7 @@ onMounted(async () => {
 .result-score { font-weight: 700; font-size: 13px; flex-shrink: 0; }
 .result-text { color: var(--gray); line-height: 1.5; margin-bottom: 4px; word-break: break-word; }
 .result-text :deep(mark.hl) { background: #fef08a; color: inherit; padding: 0 2px; border-radius: 2px; }
-.result-meta { color: var(--text-muted); font-size: 9px; }
+.result-meta { color: var(--text-muted); font-size: 9px; line-height: 1.5; word-break: break-word; }
 .save-case { margin-top: 12px; padding: 8px; border: 1px dashed var(--blue); border-radius: var(--radius-sm); text-align: center; color: var(--blue); font-size: 11px; cursor: pointer; transition: background 0.15s; }
 .save-case:hover { background: #eff6ff; }
 .compare-summary { margin-bottom: 12px; }
@@ -1070,6 +1069,7 @@ onMounted(async () => {
   .debug-layout {
     grid-template-columns: 1fr;
     min-height: auto;
+    max-width: 100%;
   }
 
   .debug-left {
@@ -1102,6 +1102,7 @@ onMounted(async () => {
   .debug-center {
     padding: 10px 12px;
     min-height: 200px;
+    overflow: hidden;
   }
 
   .debug-right {
@@ -1109,6 +1110,7 @@ onMounted(async () => {
     border-top: 1px solid var(--border);
     padding: 10px 12px;
     background: #fff;
+    overflow: hidden;
   }
 
   .compare-grid {
@@ -1124,7 +1126,7 @@ onMounted(async () => {
     top: 0;
     z-index: 8;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     margin: 0 0 10px;
     padding: 8px;
@@ -1155,10 +1157,87 @@ onMounted(async () => {
   }
 
   .mobile-llm-link {
-    padding: 0 10px;
+    padding: 0 14px;
     color: var(--blue);
     background: #fff;
     border: 1px solid var(--border);
+  }
+
+  .result-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .result-doc {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .result-score {
+    font-size: 11px;
+  }
+
+  .compare-summary,
+  .prompt-block,
+  .llm-output-section,
+  .save-case {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .compare-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compare-cell {
+    min-width: 0;
+    padding: 7px 6px;
+  }
+
+  .compare-label,
+  .compare-metric,
+  .compare-sub {
+    word-break: break-word;
+  }
+
+  .compare-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 3px;
+  }
+
+  .compare-tab {
+    flex: 0 0 auto;
+  }
+
+  .rewritten-queries {
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #f8fafc;
+    line-height: 1.6;
+    word-break: break-word;
+  }
+
+  .result-text {
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
+  .result-meta {
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 163, 184, 0.25);
+  }
+
+  .llm-meta {
+    gap: 6px;
+  }
+
+  .llm-meta span {
+    max-width: 100%;
+    word-break: break-word;
   }
 
   .right-tab {
