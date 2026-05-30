@@ -21,16 +21,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
 
   @Override
   public List<ApiKey> listAll() {
-    List<ApiKey> keys = apiKeyMapper.selectList(null);
-    for (ApiKey key : keys) {
-      key.setApiKey(maskKey(key.getApiKey()));
-    }
-    return keys;
-  }
-
-  private static String maskKey(String key) {
-    if (key == null || key.length() <= 12) return key;
-    return key.substring(0, 8) + "****" + key.substring(key.length() - 4);
+    return apiKeyMapper.selectList(null);
   }
 
   @Override

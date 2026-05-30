@@ -90,15 +90,25 @@ public class MetricsServiceImpl implements MetricsService {
   }
 
   private double latestTop3HitRate() {
+    // 取最近一次评测的数据集，返回该数据集下所有策略中的最优 Top3 命中率
     EvalExperiment latest =
         evalExperimentMapper.selectOne(
             new LambdaQueryWrapper<EvalExperiment>()
                 .orderByDesc(EvalExperiment::getCreatedAt)
                 .last("LIMIT 1"));
-    if (latest == null) return 0.0;
-    BigDecimal rate = latest.getTop3HitRate();
-    if (rate == null) return 0.0;
-    return rate.doubleValue();
+    if (latest == null || latest.getDatasetId() == null) return 0.0;
+
+    List<EvalExperiment> sameDataset =
+        evalExperimentMapper.selectList(
+            new LambdaQueryWrapper<EvalExperiment>()
+                .eq(EvalExperiment::getDatasetId, latest.getDatasetId())
+                .isNotNull(EvalExperiment::getTop3HitRate));
+    if (sameDataset.isEmpty()) return 0.0;
+
+    return sameDataset.stream()
+        .mapToDouble(e -> e.getTop3HitRate() == null ? 0.0 : e.getTop3HitRate().doubleValue())
+        .max()
+        .orElse(0.0);
   }
 
   private List<DashboardActivityVO> getRecentActivities(int limit) {

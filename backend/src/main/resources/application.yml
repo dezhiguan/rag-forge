@@ -19,6 +19,8 @@ app:
       - /api/v1/health
       - /api/v1/admin/api-keys
       - /api/v1/admin/api-keys/
+      - /api/v1/admin/api-keys
+      - /api/v1/admin/api-keys/
   file:
     storage-path: ./data/files
   dashscope:

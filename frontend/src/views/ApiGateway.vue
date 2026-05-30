@@ -69,52 +69,17 @@ const apiKeyLoading = ref(false)
 const apis = [
   {
     method: 'POST', path: '/search',
-    description: '检索接口 —— 支持 vector / keyword / hybrid / full（全链路 reranker）。',
-    integration: 'CareerMate Agent 调用此接口获取 JD 要求 → 与简历匹配 → 生成个性化建议',
-    request: { query: '2026年后端需要掌握哪些AI技能？', kbIds: [1], strategy: 'hybrid', topK: 8, vectorWeight: 0.55, rerankTopN: 5 },
-    response: { results: [{ chunkId: 12, docId: 3, filename: '字节JD.pdf', chunkIndex: 2, content: '...有大模型应用开发经验...', finalScore: 0.0942 }], latencyMs: 452, strategy: 'hybrid' }
+    description: '核心检索接口，支持 vector / keyword / hybrid / full / rewrite 五种策略。',
+    integration: '外部 Agent 调用此接口检索知识库，获取相关 Chunk 后组装 Prompt 回答用户问题。',
+    request: { query: '什么是RocketMQ事务消息？', kbIds: [1], strategy: 'hybrid', topK: 5, vectorWeight: 0.55, rerankTopN: 5 },
+    response: { results: [{ chunkId: 12, filename: '面试题库.pdf', chunkIndex: 2, content: '...RocketMQ事务消息...', finalScore: 0.0942 }], latencyMs: 452, strategy: 'hybrid' }
   },
   {
     method: 'GET', path: '/kb',
-    description: '知识库列表 —— 获取知识库及文档/Chunk 计数。',
-    integration: '管理后台用于展示知识库、上传文档、查看处理状态。',
+    description: '获取全部知识库列表，包含文档数、Chunk 数等统计。',
+    integration: '调用方先查知识库列表拿到 kbId，再传参给 /search 限定检索范围。',
     request: null,
-    response: [{ id: 1, name: '面试题库', docCount: 156, chunkCount: 8200, status: 'active', createdAt: '2026-05-27 12:30:00' }]
-  },
-  {
-    method: 'POST', path: '/kb',
-    description: '创建知识库。',
-    integration: '管理后台创建知识库并配置分块策略。',
-    request: { name: '产品文档库', description: '可选', chunkSize: 512, chunkOverlap: 64 },
-    response: { id: 1, name: '产品文档库', docCount: 0, chunkCount: 0, status: 'active' }
-  },
-  {
-    method: 'POST', path: '/kb/1/documents',
-    description: '上传文档到知识库（multipart/form-data）。支持 MD5 去重并提示覆盖。',
-    integration: '管理后台上传 PDF/Markdown/Word/HTML，触发异步解析与索引。',
-    request: null,
-    response: { exists: false, documentId: 123, status: 'processing', message: '上传成功，正在处理' }
-  },
-  {
-    method: 'GET', path: '/documents/123',
-    description: '文档详情 + chunks 列表。',
-    integration: '用于文档详情页展示分块结果与处理状态。',
-    request: null,
-    response: { id: 123, kbId: 1, filename: '某公司面经.pdf', parseStatus: 'completed', chunkCount: 80, chunks: [{ chunkIndex: 0, tokenCount: 512, content: '...' }] }
-  },
-  {
-    method: 'GET', path: '/eval/datasets',
-    description: '评测数据集列表。',
-    integration: '评测实验室用于管理评测题库与实验。',
-    request: null,
-    response: [{ id: 1, name: '后端检索基准集', kbId: 1, questionCount: 100, createdAt: '2026-05-27 12:30:00' }]
-  },
-  {
-    method: 'GET', path: '/metrics/dashboard',
-    description: '驾驶舱指标（知识库、文档、Chunk、今日调用、平均延迟、Top3 命中率）。',
-    integration: '管理后台驾驶舱展示运行态指标。',
-    request: null,
-    response: { kbCount: 6, documentCount: 1280, chunkCount: 52000, todayApiCalls: 3240, avgLatencyMs: 2800, hitRate: 0.912 }
+    response: [{ id: 1, name: '面试题库', docCount: 156, chunkCount: 8200, status: 'active' }]
   },
 ]
 

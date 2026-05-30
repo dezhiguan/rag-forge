@@ -187,18 +187,70 @@
         </div>
 
         <div class="debug-right">
-          <div class="panel-title">Prompt 预览</div>
-          <div class="prompt-block" v-if="displayResults.length">
-            <pre class="prompt-full">{{ fullPrompt }}</pre>
+          <div class="right-tab-bar">
+            <button
+              class="right-tab"
+              :class="{ active: rightTab === 'prompt' }"
+              @click="rightTab = 'prompt'"
+            >
+              Prompt 预览
+            </button>
+            <button
+              class="right-tab"
+              :class="{ active: rightTab === 'llm' }"
+              @click="rightTab = 'llm'"
+            >
+              LLM 输出
+            </button>
           </div>
-          <div v-else class="prompt-block">
-            <div class="prompt-line dim">执行检索后将展示完整 Prompt 输入</div>
-          </div>
-          <div class="prompt-cost">
-            <div class="cost-row"><span>输入 Prompt</span><span>{{ promptTokens }} tk</span></div>
-            <div class="cost-row"><span>预计输出 Completion</span><span>{{ estimatedCompletionTokens }} tk</span></div>
-            <div class="cost-row total"><span>预估成本</span><span>¥{{ estimatedCost }}</span></div>
-          </div>
+
+          <template v-if="rightTab === 'prompt'">
+            <div v-if="compareResults.length > 1" class="right-strategy-label">
+              {{ strategyLabel(activeCompareStrategy) }}
+            </div>
+            <div class="prompt-block" v-if="displayResults.length">
+              <pre class="prompt-full">{{ fullPrompt }}</pre>
+            </div>
+            <div v-else class="prompt-block">
+              <div class="prompt-line dim">执行检索后将展示完整 Prompt 输入</div>
+            </div>
+            <div class="prompt-cost">
+              <div class="cost-row"><span>输入 Prompt</span><span>{{ promptTokens }} tk</span></div>
+              <div class="cost-row"><span>预计输出 Completion</span><span>{{ estimatedCompletionTokens }} tk</span></div>
+              <div class="cost-row total"><span>预估成本</span><span>¥{{ estimatedCost }}</span></div>
+            </div>
+          </template>
+
+          <template v-else>
+            <div v-if="compareResults.length > 1" class="right-strategy-label">
+              {{ strategyLabel(activeCompareStrategy) }}
+            </div>
+            <template v-if="displayResults.length">
+              <button
+                class="llm-btn"
+                :disabled="llmLoading"
+                @click="doLlmGenerate"
+              >
+                {{ llmLoading ? '⏳ 生成中…' : '🤖 模拟 LLM 输出' }}
+              </button>
+            </template>
+            <div v-else class="prompt-block">
+              <div class="prompt-line dim">执行检索后，切换到此 Tab 调用 LLM 生成回答</div>
+            </div>
+
+            <div v-if="llmError" class="llm-error">{{ llmError }}</div>
+
+            <div v-if="llmOutput" class="llm-output-section">
+              <div class="llm-output-text">{{ llmOutput }}</div>
+              <div class="llm-meta">
+                <span v-if="llmModel">模型 {{ llmModel }}</span>
+                <span>⏱ {{ llmTotalMs }}ms</span>
+                <span>📥 {{ llmPromptTokens }}tk</span>
+                <span>📤 {{ llmCompletionTokens }}tk</span>
+                <span style="font-weight:600;color:var(--cyan);">¥{{ llmCost }}</span>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -239,6 +291,7 @@ import { listKb } from '../api/kb'
 import { listDocuments } from '../api/document'
 import { search as searchApi } from '../api/search'
 import { listEvalDatasets, saveQuestionFromSearch } from '../api/eval'
+import { llmGenerate } from '../api/llm'
 
 const route = useRoute()
 const router = useRouter()
@@ -270,11 +323,20 @@ const saveDatasetId = ref(null)
 const selectedChunkIds = ref([])
 const savingCase = ref(false)
 
+const rightTab = ref('prompt')
+const llmLoading = ref(false)
+const llmOutput = ref('')
+const llmError = ref('')
+const llmModel = ref('')
+const llmTotalMs = ref(0)
+const llmPromptTokens = ref(0)
+const llmCompletionTokens = ref(0)
+
 const config = reactive({
   kbId: null,
   docId: null,
   strategy: 'vector',
-  topK: 8,
+  topK: 5,
   vectorWeight: 0.55,
   rerankTopN: 5,
   compareMode: '单策略',
@@ -306,6 +368,13 @@ const bestCompareLabel = computed(() => {
   if (compareResults.value.length <= 1) return null
   const sorted = [...compareResults.value].sort((a, b) => b.topScore - a.topScore)
   return sorted[0]?.label ?? null
+})
+
+const activeCompareStrategy = computed(() => {
+  if (compareResults.value.length > 1) {
+    return compareResults.value[activeCompareTab.value]?.strategy ?? ''
+  }
+  return strategy.value
 })
 
 const displayResults = computed(() => {
@@ -352,6 +421,13 @@ const estimatedCost = computed(() => {
   // DeepSeek-V3 定价：输入 ¥1/M tk，输出 ¥2/M tk
   const inputCost = promptTokens.value * 0.000001
   const outputCost = estimatedCompletionTokens.value * 0.000002
+  return (inputCost + outputCost).toFixed(4)
+})
+
+const llmCost = computed(() => {
+  // qwen-plus 定价：输入 ¥0.8/M tk，输出 ¥2/M tk
+  const inputCost = llmPromptTokens.value * 0.0000008
+  const outputCost = llmCompletionTokens.value * 0.000002
   return (inputCost + outputCost).toFixed(4)
 })
 
@@ -596,6 +672,36 @@ async function doSearch() {
   }
 }
 
+async function doLlmGenerate() {
+  rightTab.value = 'llm'
+  llmLoading.value = true
+  llmError.value = ''
+  llmOutput.value = ''
+  try {
+    const messages = [
+      {
+        role: 'system',
+        content: '你是一个智能助手，根据提供的资料回答用户问题。如果资料中没有明确提到相关内容，用自然的语气告诉用户"从现有资料来看，没有找到相关的信息"，可以适当推测可能的原因，但不要编造不存在的事实。回答尽量口语化，不要用"根据提供的资料"这种生硬的表述。',
+      },
+      {
+        role: 'user',
+        content: fullPrompt.value,
+      },
+    ]
+    const res = await llmGenerate(messages, 'qwen-plus', 0.3)
+    const data = res.data
+    llmOutput.value = data.content || '(空响应)'
+    llmModel.value = data.model || ''
+    llmTotalMs.value = data.totalMs || 0
+    llmPromptTokens.value = data.promptTokens || 0
+    llmCompletionTokens.value = data.completionTokens || 0
+  } catch (e) {
+    llmError.value = '调用失败: ' + (e?.response?.data?.msg || e?.message || '未知错误')
+  } finally {
+    llmLoading.value = false
+  }
+}
+
 function resolveStrategies() {
   if (config.compareMode === 'A/B 对比') {
     return [config.strategy, config.compareStrategyB]
@@ -701,6 +807,39 @@ onMounted(async () => {
 .debug-right { background: #f8fafc; border-left: 1px solid var(--border); padding: 16px; font-size: 10px; font-family: 'SF Mono', Monaco, monospace; }
 .panel-title { font-weight: 700; font-size: 12px; margin-bottom: 10px; color: var(--slate); }
 .debug-right .panel-title { font-family: -apple-system, sans-serif; }
+.right-tab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+}
+.right-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-muted);
+  text-align: center;
+  font-family: -apple-system, sans-serif;
+  transition: all 0.15s;
+}
+.right-tab:hover { color: var(--slate); }
+.right-tab.active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+.right-strategy-label {
+  font-size: 10px;
+  color: var(--blue);
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-family: -apple-system, sans-serif;
+}
 .param-row { margin-bottom: 10px; }
 .param-label { font-size: 10px; color: var(--text-muted); margin-bottom: 3px; }
 .param-select { width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 10px; background: #fff; color: var(--text); outline: none; }
@@ -760,13 +899,64 @@ onMounted(async () => {
   word-break: break-word;
   white-space: pre-wrap;
   font-size: 9px;
-  max-height: 360px;
+  max-height: 280px;
   overflow-y: auto;
 }
 .prompt-line.dim { color: var(--text-muted); font-size: 9px; }
 .prompt-cost { border-top: 1px solid var(--border); padding-top: 10px; font-family: -apple-system, sans-serif; }
 .cost-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 10px; color: var(--text-muted); }
 .cost-row.total { font-weight: 600; color: var(--cyan); }
+.llm-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.llm-btn:hover { opacity: 0.9; }
+.llm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.llm-error {
+  margin-top: 8px;
+  padding: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #991b1b;
+  font-size: 11px;
+}
+.llm-output-section {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.llm-output-text {
+  padding: 10px;
+  font-size: 11px;
+  color: var(--gray);
+  line-height: 1.8;
+  word-break: break-word;
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #fff;
+}
+.llm-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: var(--light);
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+}
 .modal-mask {
   position: fixed;
   inset: 0;

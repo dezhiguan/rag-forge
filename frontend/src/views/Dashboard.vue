@@ -10,19 +10,19 @@
           </div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">检索命中率</div>
+          <div class="metric-label">最优 Top3 命中率</div>
           <div class="metric-value metric-value--hit">{{ formatHitRate(metrics.hitRate) }}</div>
-          <div class="metric-desc">最近一次评测实验 Top3</div>
+          <div class="metric-desc">当前数据集中最佳策略</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">P95 延迟</div>
+          <div class="metric-label">今日平均延迟</div>
           <div class="metric-value">{{ formatLatency(metrics.avgLatencyMs) }}</div>
-          <div class="metric-desc">今日平均检索延迟</div>
+          <div class="metric-desc">所有检索请求均值</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">今日 API 调用</div>
+          <div class="metric-label">今日检索请求</div>
           <div class="metric-value">{{ formatNumber(metrics.todayApiCalls ?? 0) }}</div>
-          <div class="metric-desc">来自 retrieval_logs</div>
+          <div class="metric-desc">/api/v1/search 调用次数</div>
         </div>
       </div>
       <div class="quick-actions">
