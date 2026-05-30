@@ -4,6 +4,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.mapping.Property;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
+import co.elastic.clients.elasticsearch.core.CountResponse;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
 import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
 import com.ragforge.model.entity.Document;
@@ -94,22 +95,25 @@ public class EsIndexService {
     return msg != null && (msg.contains("ik_max_word") || msg.contains("ik_smart"));
   }
 
-  public void indexChunks(List<DocumentChunk> chunks, Document doc) {
+  public boolean indexChunks(List<DocumentChunk> chunks, Document doc) {
     if (chunks == null || chunks.isEmpty() || doc == null) {
-      return;
+      return true;
     }
 
     try {
+      boolean success = true;
       for (int i = 0; i < chunks.size(); i += BULK_BATCH_SIZE) {
         List<DocumentChunk> batch = chunks.subList(i, Math.min(i + BULK_BATCH_SIZE, chunks.size()));
-        bulkIndex(batch, doc);
+        success = bulkIndex(batch, doc) && success;
       }
+      return success;
     } catch (Exception e) {
       log.warn("Failed to index chunks to ES for docId={}: {}", doc.getId(), e.getMessage());
+      return false;
     }
   }
 
-  private void bulkIndex(List<DocumentChunk> chunks, Document doc) {
+  private boolean bulkIndex(List<DocumentChunk> chunks, Document doc) {
     long start = System.currentTimeMillis();
 
     List<BulkOperation> ops = new ArrayList<>(chunks.size());
@@ -129,7 +133,7 @@ public class EsIndexService {
     }
 
     if (ops.isEmpty()) {
-      return;
+      return true;
     }
 
     try {
@@ -143,12 +147,14 @@ public class EsIndexService {
             doc.getId(),
             ops.size(),
             elapsed);
+        return false;
       } else {
         log.info(
             "ES bulk indexed chunks (docId={}, batchSize={}, elapsedMs={})",
             doc.getId(),
             ops.size(),
             elapsed);
+        return true;
       }
     } catch (Exception e) {
       log.warn(
@@ -156,6 +162,24 @@ public class EsIndexService {
           doc.getId(),
           ops.size(),
           e.getMessage());
+      return false;
+    }
+  }
+
+  public long countByDocId(Long docId) {
+    if (docId == null) {
+      return 0;
+    }
+    try {
+      CountResponse response =
+          client.count(
+              r ->
+                  r.index(INDEX_NAME)
+                      .query(q -> q.term(t -> t.field("doc_id").value(v -> v.longValue(docId)))));
+      return response.count();
+    } catch (Exception e) {
+      log.warn("ES countByDocId failed: docId={}, err={}", docId, e.getMessage());
+      return -1;
     }
   }
 

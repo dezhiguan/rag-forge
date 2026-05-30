@@ -288,4 +288,28 @@ onMounted(loadMetrics)
     font-size: 11px;
   }
 }
+
+@media (max-width: 420px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .action-card {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 12px;
+    text-align: left;
+  }
+
+  .activity-item {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+}
 </style>

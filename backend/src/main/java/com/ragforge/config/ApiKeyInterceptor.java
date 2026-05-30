@@ -7,6 +7,8 @@ import com.ragforge.mapper.ApiKeyMapper;
 import com.ragforge.model.entity.ApiKey;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -23,6 +25,7 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
   private final ObjectMapper objectMapper;
 
   private volatile Boolean hasAnyKeys;
+  private final ConcurrentMap<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
   @Override
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
@@ -42,7 +45,15 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     if (DEV_KEY.equals(apiKey)) {
       return true;
     }
-    if (apiKey != null && isValidApiKey(apiKey)) {
+    ApiKey keyRecord = apiKey != null ? findValidApiKey(apiKey) : null;
+    if (keyRecord != null) {
+      if (!consumeRateLimit(keyRecord)) {
+        response.setStatus(429);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getWriter(), Result.fail(429, "API Key rate limit exceeded"));
+        return false;
+      }
       return true;
     }
 
@@ -78,13 +89,40 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     }
   }
 
-  private boolean isValidApiKey(String apiKey) {
-    ApiKey record =
-        apiKeyMapper.selectOne(
-            new LambdaQueryWrapper<ApiKey>()
-                .eq(ApiKey::getApiKey, apiKey)
-                .eq(ApiKey::getEnabled, true)
-                .last("LIMIT 1"));
-    return record != null;
+  private ApiKey findValidApiKey(String apiKey) {
+    return apiKeyMapper.selectOne(
+        new LambdaQueryWrapper<ApiKey>()
+            .eq(ApiKey::getApiKey, apiKey)
+            .eq(ApiKey::getEnabled, true)
+            .last("LIMIT 1"));
+  }
+
+  private boolean consumeRateLimit(ApiKey apiKey) {
+    int limit = apiKey.getRateLimit() == null ? 100 : apiKey.getRateLimit();
+    if (limit <= 0) {
+      return false;
+    }
+    long nowMinute = System.currentTimeMillis() / 60_000L;
+    RateWindow window =
+        rateWindows.compute(
+            apiKey.getApiKey(),
+            (key, existing) -> {
+              if (existing == null || existing.minute != nowMinute) {
+                return new RateWindow(nowMinute, 1);
+              }
+              existing.count++;
+              return existing;
+            });
+    return window.count <= limit;
+  }
+
+  private static class RateWindow {
+    private final long minute;
+    private int count;
+
+    private RateWindow(long minute, int count) {
+      this.minute = minute;
+      this.count = count;
+    }
   }
 }

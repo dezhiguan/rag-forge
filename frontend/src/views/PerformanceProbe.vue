@@ -709,10 +709,12 @@ onMounted(async () => {
 
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
   width: 100%;
+  min-width: 860px;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -777,6 +779,33 @@ th {
   .section-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .probe-controls,
+  .probe-main,
+  .stage-panel,
+  .table-panel {
+    padding: 12px;
+  }
+
+  .panel-title,
+  .top-strip h1 {
+    font-size: 22px;
+  }
+
+  .run-btn,
+  .clear-btn {
+    min-height: 42px;
+  }
+
+  .stage-row {
+    grid-template-columns: 64px minmax(0, 1fr) 58px;
+    gap: 8px;
+  }
+
+  .stage-label,
+  .stage-value {
+    font-size: 10px;
   }
 }
 </style>

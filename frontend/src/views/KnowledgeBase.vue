@@ -254,7 +254,7 @@
             <span>描述</span>
             <textarea v-model="editForm.description" rows="3" placeholder="可选" />
           </label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="edit-grid">
             <label class="field">
               <span>分块大小（字符）</span>
               <input v-model.number="editForm.chunkSize" type="number" min="100" step="100" />
@@ -991,12 +991,18 @@ onMounted(async () => {
   font-family: inherit;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
 
 /* ====== 移动端响应式 ====== */
 @media (max-width: 768px) {
   .table-card {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-sm);
   }
 
   .data-table {
@@ -1016,6 +1022,39 @@ onMounted(async () => {
   .upload-settings {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .top-toolbar,
+  .toolbar-left,
+  .select-label {
+    width: 100%;
+  }
+
+  .toolbar-left {
+    display: grid;
+    grid-template-columns: 1fr 88px;
+    gap: 8px;
+  }
+
+  .btn-primary,
+  .btn-ghost,
+  .select {
+    min-height: 40px;
+  }
+
+  .select-label {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .upload-zone {
+    padding: 18px 12px;
+  }
+
+  .upload-text {
+    font-size: 12px;
+    line-height: 1.5;
   }
 
   .pipeline-bar {
@@ -1040,6 +1079,19 @@ onMounted(async () => {
 
   .toolbar-left {
     flex-wrap: wrap;
+  }
+
+  .edit-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .modal-actions {
+    justify-content: stretch;
+  }
+
+  .modal-actions button {
+    flex: 1;
   }
 }
 </style>

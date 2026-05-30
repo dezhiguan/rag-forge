@@ -100,7 +100,13 @@
                   <td>
                     <div class="dataset-cell">
                       <span class="expander">{{ expandedDatasetId === ds.id ? '▾' : '▸' }}</span>
-                      <strong>{{ ds.name }}</strong>
+                      <div class="dataset-title-wrap">
+                        <strong>{{ ds.name }}</strong>
+                        <div class="dataset-kb-line">
+                          <span class="dataset-kb-label">关联知识库</span>
+                          <span>{{ kbNameOf(ds) }}</span>
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td>{{ ds.questionCount ?? 0 }}</td>
@@ -347,7 +353,7 @@
             <select v-model="runForm.datasetId" class="select">
               <option :value="null" disabled>请选择数据集</option>
               <option v-for="ds in datasets" :key="ds.id" :value="ds.id">
-                {{ ds.name }}（{{ ds.questionCount ?? 0 }}题）
+                {{ ds.name }} - 知识库：{{ kbNameOf(ds) }}（{{ ds.questionCount ?? 0 }}题）
               </option>
             </select>
           </label>
@@ -449,7 +455,12 @@
                   <td class="question-cell" :title="r.question">{{ r.question }}</td>
                   <td class="chunk-cell">
                     <div v-if="(r.expectedChunks || []).length" class="chunk-preview-list">
-                      <div v-for="chunk in (r.expectedChunks || []).slice(0, 3)" :key="chunk.chunkId" class="chunk-preview-item">
+                      <div
+                        v-for="chunk in (r.expectedChunks || []).slice(0, 3)"
+                        :key="chunk.chunkId"
+                        class="chunk-preview-item"
+                        @click="openChunkDetail(chunk, '期望 Chunk')"
+                      >
                         <div class="chunk-preview-head">
                           <span class="chunk-preview-id">#{{ chunk.chunkId }}</span>
                           <span class="chunk-preview-meta">chunk {{ chunk.chunkIndex ?? '-' }}</span>
@@ -462,7 +473,12 @@
                   </td>
                   <td class="chunk-cell">
                     <div v-if="(r.recalledChunks || []).length" class="chunk-preview-list">
-                      <div v-for="chunk in (r.recalledChunks || []).slice(0, 3)" :key="chunk.chunkId" class="chunk-preview-item">
+                      <div
+                        v-for="chunk in (r.recalledChunks || []).slice(0, 3)"
+                        :key="chunk.chunkId"
+                        class="chunk-preview-item"
+                        @click="openChunkDetail(chunk, '实际召回 Chunk')"
+                      >
                         <div class="chunk-preview-head">
                           <span class="chunk-preview-id">#{{ chunk.chunkId }}</span>
                           <span class="chunk-preview-meta">chunk {{ chunk.chunkIndex ?? '-' }}</span>
@@ -531,7 +547,12 @@
                 <td>{{ failureRankText(item) }}</td>
                 <td class="chunk-cell">
                   <div v-if="(item.expectedChunks || []).length" class="chunk-preview-list">
-                    <div v-for="chunk in (item.expectedChunks || []).slice(0, 2)" :key="chunk.chunkId" class="chunk-preview-item">
+                    <div
+                      v-for="chunk in (item.expectedChunks || []).slice(0, 2)"
+                      :key="chunk.chunkId"
+                      class="chunk-preview-item"
+                      @click="openChunkDetail(chunk, '期望 Chunk')"
+                    >
                       <div class="chunk-preview-head">
                         <span class="chunk-preview-id">#{{ chunk.chunkId }}</span>
                         <span class="chunk-preview-meta">chunk {{ chunk.chunkIndex ?? '-' }}</span>
@@ -544,7 +565,12 @@
                 </td>
                 <td class="chunk-cell">
                   <div v-if="(item.recalledChunks || []).length" class="chunk-preview-list">
-                    <div v-for="chunk in (item.recalledChunks || []).slice(0, 2)" :key="chunk.chunkId" class="chunk-preview-item">
+                    <div
+                      v-for="chunk in (item.recalledChunks || []).slice(0, 2)"
+                      :key="chunk.chunkId"
+                      class="chunk-preview-item"
+                      @click="openChunkDetail(chunk, '实际召回 Chunk')"
+                    >
                       <div class="chunk-preview-head">
                         <span class="chunk-preview-id">#{{ chunk.chunkId }}</span>
                         <span class="chunk-preview-meta">chunk {{ chunk.chunkIndex ?? '-' }}</span>
@@ -598,6 +624,23 @@
               {{ creatingQuickStart ? '创建中…' : '一键创建数据集和题目' }}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div v-if="showChunkDetail && selectedChunkDetail" class="modal-mask" @click.self="showChunkDetail = false">
+        <div class="modal chunk-detail-modal">
+          <div class="chunk-detail-head">
+            <div>
+              <h3 class="modal-title">{{ selectedChunkDetail.title }}</h3>
+              <div class="chunk-detail-meta">
+                #{{ selectedChunkDetail.chunk.chunkId }}
+                <span>chunk {{ selectedChunkDetail.chunk.chunkIndex ?? '-' }}</span>
+                <span v-if="selectedChunkDetail.chunk.tokenCount != null">{{ selectedChunkDetail.chunk.tokenCount }} tokens</span>
+              </div>
+            </div>
+            <button class="chunk-detail-close" @click="showChunkDetail = false">关闭</button>
+          </div>
+          <pre class="chunk-detail-content">{{ selectedChunkDetail.chunk.content || '—' }}</pre>
         </div>
       </div>
 
@@ -729,6 +772,8 @@ const showRunExperiment = ref(false)
 const runningExperiment = ref(false)
 const showExperimentDetail = ref(false)
 const experimentDetail = ref(null)
+const showChunkDetail = ref(false)
+const selectedChunkDetail = ref(null)
 const runForm = ref({
   datasetId: null,
   strategy: 'full',
@@ -837,7 +882,7 @@ async function onSearchCandidates() {
     const ds = datasets.value.find((d) => d.id === addQuestionDatasetId.value)
     const res = await searchApi({
       query: questionForm.value.question.trim(),
-      strategy: 'full',
+      strategy: 'hybrid',
       topK: 8,
       rerankTopN: 5,
       kbIds: ds?.kbId != null ? [ds.kbId] : undefined,
@@ -1051,10 +1096,21 @@ function formatChunkIds(ids) {
   return ids.join(', ')
 }
 
+function kbNameOf(ds) {
+  if (!ds) return '—'
+  const kb = kbList.value.find((item) => item.id === ds.kbId)
+  return kb?.name || (ds.kbId != null ? `KB #${ds.kbId}` : '未关联知识库')
+}
+
 function previewChunk(content) {
   const text = (content || '').replace(/\s+/g, ' ').trim()
   if (!text) return '—'
   return text.length <= 120 ? text : `${text.slice(0, 120)}…`
+}
+
+function openChunkDetail(chunk, title) {
+  selectedChunkDetail.value = { chunk, title }
+  showChunkDetail.value = true
 }
 
 function formatRate(v) {
@@ -1305,6 +1361,12 @@ onMounted(async () => {
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 6px;
   padding: 6px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.chunk-preview-item:hover {
+  background: #fff;
+  border-color: rgba(37, 99, 235, 0.35);
 }
 .chunk-preview-head {
   display: flex;
@@ -1331,6 +1393,50 @@ onMounted(async () => {
   color: var(--text-muted);
   font-size: 9px;
   padding-left: 2px;
+}
+.chunk-detail-modal {
+  max-width: 780px;
+  width: min(780px, calc(100vw - 32px));
+}
+.chunk-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.chunk-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 10px;
+}
+.chunk-detail-close {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+.chunk-detail-content {
+  max-height: 56vh;
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.75;
 }
 .hit-badge {
   display: inline-block;
@@ -1550,6 +1656,32 @@ onMounted(async () => {
 .dataset-row { cursor: pointer; background: #fff; }
 .dataset-row:hover { background: #f8fafc; }
 .dataset-cell { display: flex; align-items: center; gap: 10px; }
+.dataset-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.dataset-kb-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+.dataset-kb-label {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .expander { font-size: 16px; color: var(--text-muted); }
 
 .link-action { cursor: pointer; font-size: 12px; color: var(--blue); margin-right: 10px; }
@@ -1773,7 +1905,7 @@ onMounted(async () => {
 @media (max-width: 768px) {
   .summary-cards {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
   .summary-card {
@@ -1808,7 +1940,7 @@ onMounted(async () => {
   }
 
   .eval-metrics {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
 
@@ -1838,9 +1970,15 @@ onMounted(async () => {
   }
 
   .modal-detail {
-    width: 95vw;
+    width: 100vw;
     max-height: 90vh;
     padding: 16px;
+  }
+
+  .modal-question,
+  .modal-wide {
+    width: 100vw;
+    max-height: 92vh;
   }
 
   .per-question-table {
@@ -1858,6 +1996,30 @@ onMounted(async () => {
 
   .actions-cell {
     gap: 8px;
+  }
+
+  .candidate-item {
+    gap: 8px;
+  }
+
+  .candidate-head {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .modal-actions {
+    justify-content: stretch;
+  }
+
+  .modal-actions button {
+    flex: 1;
+  }
+}
+
+@media (max-width: 420px) {
+  .summary-cards,
+  .eval-metrics {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -98,6 +98,17 @@
               · {{ currentStrategyLabel }} · {{ formattedLatency }}
             </span>
           </div>
+          <div v-if="displayResults.length" class="mobile-llm-actions">
+            <button
+              class="mobile-llm-btn"
+              :disabled="llmLoading"
+              @click="doLlmGenerate"
+            >
+              {{ llmLoading ? '生成中…' : '模拟 LLM 输出' }}
+            </button>
+            <button class="mobile-llm-link" @click="rightTab = 'prompt'">Prompt</button>
+            <button class="mobile-llm-link" @click="rightTab = 'llm'">输出</button>
+          </div>
           <div v-if="currentRewrittenQueries.length" class="rewritten-queries">
             改写查询：{{ currentRewrittenQueries.join(' | ') }}
           </div>
@@ -974,6 +985,7 @@ onMounted(async () => {
 }
 .llm-btn:hover { opacity: 0.9; }
 .llm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.mobile-llm-actions { display: none; }
 .llm-error {
   margin-top: 8px;
   padding: 8px;
@@ -1096,6 +1108,7 @@ onMounted(async () => {
     border-left: none;
     border-top: 1px solid var(--border);
     padding: 10px 12px;
+    background: #fff;
   }
 
   .compare-grid {
@@ -1104,6 +1117,72 @@ onMounted(async () => {
 
   .search-input {
     font-size: 16px; /* 防止 iOS 缩放 */
+  }
+
+  .mobile-llm-actions {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding: 8px;
+    background: rgba(248, 250, 252, 0.96);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    backdrop-filter: blur(8px);
+  }
+
+  .mobile-llm-btn,
+  .mobile-llm-link {
+    min-height: 36px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .mobile-llm-btn {
+    border: none;
+    color: #fff;
+    background: var(--slate);
+  }
+
+  .mobile-llm-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .mobile-llm-link {
+    padding: 0 10px;
+    color: var(--blue);
+    background: #fff;
+    border: 1px solid var(--border);
+  }
+
+  .right-tab {
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  .llm-btn {
+    margin-top: 0;
+    min-height: 40px;
+  }
+
+  .prompt-full,
+  .llm-output-text {
+    max-height: 42vh;
+    font-size: 11px;
+  }
+
+  .modal-actions {
+    justify-content: stretch;
+  }
+
+  .modal-actions button {
+    flex: 1;
   }
 }
 </style>

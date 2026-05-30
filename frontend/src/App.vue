@@ -199,5 +199,40 @@ body {
     padding: 8px 10px;
     font-size: 11px;
   }
+
+  .table-card,
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .modal-mask {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal {
+    width: 100vw;
+    max-width: none;
+    max-height: 92vh;
+    overflow-y: auto;
+    border-radius: 12px 12px 0 0;
+    padding: 18px 16px;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    margin: 16px -16px -18px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: #fff;
+    border-top: 1px solid var(--border);
+  }
 }
 </style>

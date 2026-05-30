@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +57,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   private final DocumentChunkMapper documentChunkMapper;
   private final RetrievalService retrievalService;
   private final ObjectMapper objectMapper;
+  private final JdbcTemplate jdbcTemplate;
 
   @Lazy
   @Autowired
@@ -91,8 +94,10 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     int top3HitCount = 0;
     long latencySum = 0;
     double mrrSum = 0.0;
+    List<EvalResult> evalResults = new ArrayList<>(total);
 
     try {
+      long searchStart = System.currentTimeMillis();
       for (EvalQuestion question : questions) {
         List<Long> expectedChunkIds = parseLongList(question.getExpectedDocIds());
         long start = System.currentTimeMillis();
@@ -102,7 +107,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
 
         EvalResult evalResult = buildEvalResult(experiment.getId(), question.getId(), expectedChunkIds, results, runTopK);
         evalResult.setLatencyMs(latencyMs);
-        evalResultMapper.insert(evalResult);
+        evalResults.add(evalResult);
 
         if (evalResult.getHitAt() != null && evalResult.getHitAt() == 1) {
           top1HitCount++;
@@ -113,6 +118,15 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
         latencySum += latencyMs;
         mrrSum += mrrFromHitAt(evalResult.getHitAt());
       }
+      long searchElapsed = System.currentTimeMillis() - searchStart;
+      long insertStart = System.currentTimeMillis();
+      insertEvalResultsBatch(evalResults);
+      log.info(
+          "Eval experiment questions completed: experimentId={} questions={} searchElapsedMs={} batchInsertElapsedMs={}",
+          experiment.getId(),
+          total,
+          searchElapsed,
+          System.currentTimeMillis() - insertStart);
     } catch (Exception e) {
       log.error("Experiment run failed: {}", e.getMessage(), e);
       self.markAsFailed(experiment);
@@ -309,6 +323,40 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     return retrievalService
         .retrieve(query, kbIds, null, strategy, vectorWeight, topK, topK)
         .getResults();
+  }
+
+  private void insertEvalResultsBatch(List<EvalResult> evalResults) {
+    if (evalResults == null || evalResults.isEmpty()) {
+      return;
+    }
+    String sql =
+        """
+        INSERT INTO eval_results
+          (experiment_id, question_id, hit, hit_at, recalled_chunk_ids, score, latency_ms, failure_reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """;
+    jdbcTemplate.batchUpdate(
+        sql,
+        evalResults,
+        100,
+        (ps, item) -> {
+          ps.setLong(1, item.getExperimentId());
+          ps.setLong(2, item.getQuestionId());
+          ps.setBoolean(3, Boolean.TRUE.equals(item.getHit()));
+          if (item.getHitAt() == null) {
+            ps.setObject(4, null);
+          } else {
+            ps.setInt(4, item.getHitAt());
+          }
+          ps.setString(5, item.getRecalledChunkIds());
+          ps.setBigDecimal(6, item.getScore());
+          if (item.getLatencyMs() == null) {
+            ps.setObject(7, null);
+          } else {
+            ps.setInt(7, item.getLatencyMs());
+          }
+          ps.setString(8, item.getFailureReason());
+        });
   }
 
   private String classifyFailure(

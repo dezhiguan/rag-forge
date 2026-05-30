@@ -209,10 +209,10 @@ onMounted(() => {
   .api-left {
     border-right: none;
     border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: stretch;
     padding: 10px;
   }
 
@@ -221,16 +221,35 @@ onMounted(() => {
   }
 
   .api-nav-item {
-    font-size: 9px;
-    padding: 5px 7px;
+    min-height: 36px;
+    font-size: 11px;
+    padding: 7px 9px;
     margin-bottom: 0;
   }
 
   .api-key-box {
-    border-top: none;
-    margin-top: 0;
-    padding-top: 0;
-    margin-left: auto;
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+    padding-top: 10px;
+    margin-left: 0;
+    min-width: 0;
+  }
+
+  .api-key-usage {
+    font-size: 11px;
+  }
+
+  .key-row {
+    align-items: flex-start;
+  }
+
+  .key-name {
+    font-size: 11px;
+  }
+
+  .key-value {
+    max-width: calc(100vw - 126px);
+    font-size: 10px;
   }
 
   .api-right {
@@ -239,7 +258,16 @@ onMounted(() => {
 
   .code-block {
     padding: 10px;
-    font-size: 9px;
+    font-size: 10px;
+  }
+
+  .code-json {
+    white-space: pre;
+    word-break: normal;
+  }
+
+  .integration-box {
+    font-size: 12px;
   }
 }
 </style>

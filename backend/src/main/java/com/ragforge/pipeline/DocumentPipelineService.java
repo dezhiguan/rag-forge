@@ -130,8 +130,11 @@ public class DocumentPipelineService {
       pgInsertLatencyMs = System.currentTimeMillis() - stageStart;
 
       stageStart = System.currentTimeMillis();
-      esIndexService.indexChunks(documentChunks, doc);
+      boolean esIndexed = esIndexService.indexChunks(documentChunks, doc);
       esIndexLatencyMs = System.currentTimeMillis() - stageStart;
+      if (!esIndexed) {
+        throw new BizException("ES 索引写入失败，等待重试或补偿");
+      }
 
       stageStart = System.currentTimeMillis();
       self.updateStatus(documentId, STATUS_COMPLETED);

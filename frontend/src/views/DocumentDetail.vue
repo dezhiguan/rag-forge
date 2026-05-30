@@ -488,6 +488,11 @@ function formatBytes(bytes) {
     border-right: none;
     border-bottom: 1px solid var(--border);
     max-height: none;
+    padding: 14px;
+  }
+
+  .doc-right {
+    padding: 14px;
   }
 
   .doc-header {
@@ -496,6 +501,31 @@ function formatBytes(bytes) {
 
   .doc-title {
     font-size: 16px;
+  }
+
+  .doc-sub {
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .meta-row {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .meta-key {
+    width: auto;
+  }
+
+  .meta-val {
+    min-width: 0;
+    word-break: break-word;
+  }
+
+  .search-action,
+  .btn-retry {
+    min-height: 42px;
   }
 }
 </style>
