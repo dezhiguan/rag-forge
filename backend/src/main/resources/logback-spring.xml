@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <!-- 默认（dev）: 可读文本，含 traceId -->
+  <springProfile name="default | dev">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [traceId=%X{traceId}] %logger{36} - %msg%n</pattern>
+      </encoder>
+    </appender>
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+
+  <!-- docker / prod: JSON 格式，方便 Filebeat 采集灌 ES -->
+  <springProfile name="docker | prod">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <includeMdcKeyName>traceId</includeMdcKeyName>
+        <fieldNames>
+          <timestamp>@timestamp</timestamp>
+        </fieldNames>
+      </encoder>
+    </appender>
+    <root level="DEBUG">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+</configuration>

@@ -22,11 +22,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
@@ -44,6 +46,8 @@ public class SearchController {
     String strategy = normalizeStrategy(req.getStrategy());
     long start = System.currentTimeMillis();
 
+    log.info("检索请求  strategy={} topK={} query=\"{}\"", strategy, req.getTopK(), req.getQuery());
+
     List<String> rewrittenQueries = null;
     Long vectorLatencyMs = null;
     Long keywordLatencyMs = null;
@@ -52,11 +56,13 @@ public class SearchController {
     List<Long> docIds = req.getDocIds();
     if ("rewrite".equals(strategy)) {
       rewrittenQueries = queryRewriter.rewrite(req.getQuery());
+      log.info("Query改写完成 变体数={}", rewrittenQueries.size());
       long vectorStart = System.currentTimeMillis();
       results = searchByRewrittenQueries(rewrittenQueries, req.getKbIds(), docIds, req.getTopK());
       vectorLatencyMs = System.currentTimeMillis() - vectorStart;
     } else if ("full".equals(strategy)) {
       rewrittenQueries = queryRewriter.rewrite(req.getQuery());
+      log.info("Query改写完成 变体数={}", rewrittenQueries.size());
       HybridSearchOutput output =
           searchByRewrittenHybrid(
               rewrittenQueries, req.getKbIds(), docIds, req.getTopK(), normalizeVectorWeight(req));
@@ -64,6 +70,8 @@ public class SearchController {
       vectorLatencyMs = output.getVectorLatencyMs();
       keywordLatencyMs = output.getKeywordLatencyMs();
       strategy = "full";
+      log.info("混合召回完成 候选数={} vectorLatency={}ms keywordLatency={}ms",
+          results.size(), vectorLatencyMs, keywordLatencyMs);
 
       List<String> documents = results.stream().map(SearchResult::getContent).toList();
       long rerankStart = System.currentTimeMillis();
@@ -74,6 +82,7 @@ public class SearchController {
         rerankLatencyMs = System.currentTimeMillis() - rerankStart;
       }
       results = applyRerankResults(results, rerankOutput.getResults(), req.getTopK());
+      log.info("Reranker完成 topK={} rerankLatency={}ms", results.size(), rerankLatencyMs);
     } else if ("hybrid".equals(strategy)) {
       HybridSearchOutput output =
           hybridSearchService.searchWithMetrics(
@@ -82,17 +91,22 @@ public class SearchController {
       vectorLatencyMs = output.getVectorLatencyMs();
       keywordLatencyMs = output.getKeywordLatencyMs();
       strategy = output.getEffectiveStrategy();
+      log.info("混合检索完成 结果数={} vectorLatency={}ms keywordLatency={}ms",
+          results.size(), vectorLatencyMs, keywordLatencyMs);
     } else if ("keyword".equals(strategy)) {
       long keywordStart = System.currentTimeMillis();
       results = esSearchService.search(req.getQuery(), req.getKbIds(), docIds, req.getTopK());
       keywordLatencyMs = System.currentTimeMillis() - keywordStart;
+      log.info("关键词检索完成 结果数={} latency={}ms", results.size(), keywordLatencyMs);
     } else {
       long vectorStart = System.currentTimeMillis();
       results = vectorSearchService.search(req.getQuery(), req.getKbIds(), docIds, req.getTopK());
       vectorLatencyMs = System.currentTimeMillis() - vectorStart;
+      log.info("向量检索完成 结果数={} latency={}ms", results.size(), vectorLatencyMs);
     }
 
     long latencyMs = System.currentTimeMillis() - start;
+    log.info("检索完成  resultCount={} totalLatency={}ms", results.size(), latencyMs);
 
     retrievalLogService.logAsync(
         req.getQuery(),

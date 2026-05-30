@@ -97,8 +97,8 @@
               · {{ currentStrategyLabel }} · {{ formattedLatency }}
             </span>
           </div>
-          <div v-if="rewrittenQueries.length" class="rewritten-queries">
-            改写查询：{{ rewrittenQueries.join(' | ') }}
+          <div v-if="currentRewrittenQueries.length" class="rewritten-queries">
+            改写查询：{{ currentRewrittenQueries.join(' | ') }}
           </div>
 
           <!-- 对比模式摘要 -->
@@ -382,6 +382,13 @@ const displayResults = computed(() => {
     return compareResults.value[activeCompareTab.value]?.results ?? []
   }
   return results.value
+})
+
+const currentRewrittenQueries = computed(() => {
+  if (compareResults.value.length > 1) {
+    return compareResults.value[activeCompareTab.value]?.rewrittenQueries ?? []
+  }
+  return rewrittenQueries.value
 })
 
 const promptTokens = computed(() => {

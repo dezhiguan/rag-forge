@@ -94,7 +94,9 @@ public class QueryRewriter {
           dedup.add(cleaned);
         }
       }
-      return new ArrayList<>(dedup);
+      List<String> result = new ArrayList<>(dedup);
+      log.info("Query改写成功 original=\"{}\" variants={}", originalQuery, result);
+      return result;
     } catch (Exception e) {
       log.warn("Query rewrite failed, fallback to original query: {}", e.getMessage());
       return fallback;

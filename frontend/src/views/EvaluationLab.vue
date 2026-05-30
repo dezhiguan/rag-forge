@@ -1551,6 +1551,7 @@ onMounted(async () => {
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .badge-amber { background: #fef3c7; color: #92400e; }
 .badge-red { background: #fee2e2; color: #991b1b; }
+.badge-gray { background: #f1f5f9; color: #475569; }
 .badge-blue { background: #dbeafe; color: #1d4ed8; }
 
 .modal-mask {
