@@ -13,6 +13,9 @@
           </div>
           <div class="api-key-box">
             <div class="api-key-title">🔑 API Keys</div>
+            <div class="api-key-usage">
+              请求头携带 <code>X-API-Key: &lt;Key&gt;</code> 即可调用
+            </div>
             <div v-if="apiKeyLoading" class="key-loading">加载中…</div>
             <div v-for="key in apiKeys" :key="key.id" class="key-row">
               <div class="key-info">
@@ -156,6 +159,23 @@ onMounted(() => {
 .api-method.POST { background: #dbeafe; color: #1d4ed8; }
 .api-method.GET { background: #d1fae5; color: #065f46; }
 .api-key-box { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.api-key-usage {
+  margin-bottom: 6px;
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.api-key-usage code {
+  background: var(--light);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 8px;
+}
 .api-key-title { font-weight: 600; font-size: 10px; margin-bottom: 8px; }
 .key-loading { font-size: 10px; color: var(--text-muted); }
 .key-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; padding: 6px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); }
