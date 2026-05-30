@@ -8,7 +8,11 @@ public class EvalFailureSampleVO {
   private Long questionId;
   private String question;
   private String failureReason;
+  private String suggestion;
   private List<Long> expectedChunkIds;
   private List<Long> recalledChunkIds;
+  private Integer expectedBestRank;
+  private Boolean expectedInTopK;
+  private Boolean expectedInTop3;
+  private Integer recalledCount;
 }
-

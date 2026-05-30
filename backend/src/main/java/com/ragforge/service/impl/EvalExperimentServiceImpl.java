@@ -87,7 +87,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     EvalExperiment experiment = new EvalExperiment();
     experiment.setDatasetId(datasetId);
     experiment.setStrategy(normalizedStrategy);
-    experiment.setEnableQueryRewrite(false);
+    experiment.setEnableQueryRewrite("rewrite".equals(normalizedStrategy) || "full".equals(normalizedStrategy));
     experiment.setEnableReranker("full".equals(normalizedStrategy));
     experiment.setStatus("running");
     experiment.setCreatedAt(LocalDateTime.now());
@@ -191,6 +191,14 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       detail.setMrr(mrrFromHitAt(result.getHitAt()));
       detail.setLatencyMs(result.getLatencyMs());
       detail.setFailureReason(result.getFailureReason());
+      Integer expectedBestRank = bestRank(recalled, expected);
+      detail.setExpectedBestRank(expectedBestRank);
+      detail.setExpectedInTopK(expectedBestRank != null);
+      detail.setExpectedInTop3(expectedBestRank != null && expectedBestRank <= 3);
+      detail.setRecalledCount(recalled.size());
+      detail.setSuggestion(
+          buildFailureSuggestion(
+              result.getFailureReason(), experiment.getStrategy(), expectedBestRank, recalled.size()));
       details.add(detail);
 
       if (!Boolean.TRUE.equals(result.getHit())) {
@@ -198,8 +206,13 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
         sample.setQuestionId(result.getQuestionId());
         sample.setQuestion(detail.getQuestion());
         sample.setFailureReason(result.getFailureReason());
+        sample.setSuggestion(detail.getSuggestion());
         sample.setExpectedChunkIds(expected);
         sample.setRecalledChunkIds(recalled);
+        sample.setExpectedBestRank(expectedBestRank);
+        sample.setExpectedInTopK(expectedBestRank != null);
+        sample.setExpectedInTop3(expectedBestRank != null && expectedBestRank <= 3);
+        sample.setRecalledCount(recalled.size());
         failureSamples.add(sample);
       }
     }
@@ -253,10 +266,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
             .filter(id -> id != null && id > 0)
             .toList();
 
-    // 转为 Set<Long> 避免 Jackson 反序列化可能产生的 Integer/Long 类型不匹配
-    java.util.Set<Long> expectedSet = expectedChunkIds.stream()
-        .map(Number::longValue)
-        .collect(java.util.stream.Collectors.toSet());
+    Set<Long> expectedSet = toLongSet(expectedChunkIds);
 
     int hitAt = 0;
     for (int i = 0; i < Math.min(3, recalledChunkIds.size()); i++) {
@@ -282,7 +292,8 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     row.setHitAt(hitAt == 0 ? null : hitAt);
     row.setRecalledChunkIds(writeJson(recalledChunkIds));
     row.setScore(results.isEmpty() ? BigDecimal.ZERO : BigDecimal.valueOf(primaryScore(results.get(0))));
-    row.setFailureReason(top3Hit ? null : classifyFailure(results, topK));
+    row.setFailureReason(
+        top3Hit ? null : classifyFailure(expectedChunkIds, recalledChunkIds, bestRank(recalledChunkIds, expectedSet)));
     return row;
   }
 
@@ -293,7 +304,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       case "keyword" -> esSearchService.search(query, kbIds, null, topK);
       case "hybrid" -> hybridSearchService.search(query, kbIds, null, topK, vectorWeight);
       case "full" -> rerank(
-          hybridSearchService.search(query, kbIds, null, topK, vectorWeight), query, topK);
+          searchByRewrittenHybrid(queryRewriter.rewrite(query), kbIds, topK, vectorWeight), query, topK);
       case "rewrite" -> searchByRewrittenQueries(
           queryRewriter.rewrite(query), kbIds, topK);
       default -> vectorSearchService.search(query, kbIds, null, topK);
@@ -321,6 +332,26 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       return merged.subList(0, topK);
     }
     return merged;
+  }
+
+  private List<SearchResult> searchByRewrittenHybrid(
+      List<String> queries, List<Long> kbIds, int topK, double vectorWeight) {
+    Map<Long, SearchResult> dedup = new LinkedHashMap<>();
+    for (String q : queries) {
+      List<SearchResult> partial = hybridSearchService.search(q, kbIds, null, topK * 2, vectorWeight);
+      for (SearchResult item : partial) {
+        if (item.getChunkId() == null) {
+          continue;
+        }
+        SearchResult existing = dedup.get(item.getChunkId());
+        if (existing == null || item.getFinalScore() > existing.getFinalScore()) {
+          dedup.put(item.getChunkId(), item);
+        }
+      }
+    }
+    List<SearchResult> merged = new ArrayList<>(dedup.values());
+    merged.sort(Comparator.comparingDouble(SearchResult::getFinalScore).reversed());
+    return merged.size() > topK ? merged.subList(0, topK) : merged;
   }
 
   private List<SearchResult> rerank(List<SearchResult> source, String query, int topK) {
@@ -354,22 +385,87 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     return reordered.size() > topK ? reordered.subList(0, topK) : reordered;
   }
 
-  private String classifyFailure(List<SearchResult> results, int topK) {
-    int actual = Math.min(3, results.size());
-    if (results.size() < topK) {
+  private String classifyFailure(
+      List<Long> expectedChunkIds, List<Long> recalledChunkIds, Integer expectedBestRank) {
+    if (expectedChunkIds == null || expectedChunkIds.isEmpty()) {
       return "标注缺失";
     }
-    if (actual == 0) {
+    if (recalledChunkIds == null || recalledChunkIds.isEmpty()) {
+      return "无召回结果";
+    }
+    if (expectedBestRank == null) {
       return "召回不足";
     }
-    boolean allLow = true;
-    for (int i = 0; i < actual; i++) {
-      if (primaryScore(results.get(i)) >= 0.1) {
-        allLow = false;
-        break;
+    if (expectedBestRank > 3) {
+      return "排序不足";
+    }
+    return "未知失败";
+  }
+
+  private static Integer bestRank(List<Long> recalledChunkIds, List<Long> expectedChunkIds) {
+    return bestRank(recalledChunkIds, toLongSet(expectedChunkIds));
+  }
+
+  private static Integer bestRank(List<Long> recalledChunkIds, Set<Long> expectedSet) {
+    if (recalledChunkIds == null || recalledChunkIds.isEmpty() || expectedSet == null || expectedSet.isEmpty()) {
+      return null;
+    }
+    for (int i = 0; i < recalledChunkIds.size(); i++) {
+      Long chunkId = recalledChunkIds.get(i);
+      if (chunkId != null && expectedSet.contains(chunkId.longValue())) {
+        return i + 1;
       }
     }
-    return allLow ? "召回不足" : "排序错误";
+    return null;
+  }
+
+  private static Set<Long> toLongSet(List<Long> values) {
+    if (values == null || values.isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<Long> result = new HashSet<>();
+    for (Long value : values) {
+      if (value != null) {
+        result.add(value.longValue());
+      }
+    }
+    return result;
+  }
+
+  private static String buildFailureSuggestion(
+      String reason, String strategy, Integer expectedBestRank, int recalledCount) {
+    if ("标注缺失".equals(reason)) {
+      return "该题没有标准 Chunk，实验无法判断命中。请人工选择期望 Chunk；快速体验自动生成的数据集也需要复核标注。";
+    }
+    if ("无召回结果".equals(reason)) {
+      return "当前策略没有返回任何 Chunk。先确认文档已处理完成且知识库范围正确，再尝试提高 TopK 或切换到 hybrid/full。";
+    }
+    if ("召回不足".equals(reason)) {
+      if ("keyword".equals(strategy)) {
+        return "期望 Chunk 未进入 TopK。BM25 可能缺少同义词或关键词，建议补充问题关键词、改用 hybrid，或提高 TopK 后复测。";
+      }
+      if ("vector".equals(strategy)) {
+        return "期望 Chunk 未进入 TopK。向量召回语义不够接近，建议检查分块内容、提高 TopK，或改用 hybrid 结合关键词召回。";
+      }
+      if ("rewrite".equals(strategy)) {
+        return "期望 Chunk 未进入 TopK。Query 改写可能偏离原意，建议查看改写结果，减少过度改写或改用 hybrid/full。";
+      }
+      return "期望 Chunk 未进入 TopK。建议检查标注是否正确、提高 TopK、优化分块，或补充文档中的关键词表达。";
+    }
+    if ("排序不足".equals(reason)) {
+      String rankText = expectedBestRank == null ? "TopK 内较靠后位置" : "第 " + expectedBestRank + " 位";
+      if ("full".equals(strategy)) {
+        return "期望 Chunk 已进入 TopK 但位于" + rankText + "，未进 Top3。full 已启用 Rerank，建议检查标注 Chunk 内容是否足够完整，或扩大 Rerank TopN。";
+      }
+      if ("hybrid".equals(strategy)) {
+        return "期望 Chunk 已进入 TopK 但位于" + rankText + "，未进 Top3。建议微调向量/BM25 权重，或切换 full 引入 Rerank。";
+      }
+      return "期望 Chunk 已进入 TopK 但位于" + rankText + "，未进 Top3。建议使用 hybrid/full 改善排序，或提高 TopK 观察命中位置。";
+    }
+    if ("排序错误".equals(reason)) {
+      return "旧实验使用了粗粒度失败分类。建议重新运行实验，使用新版原因分析。";
+    }
+    return "建议检查标准 Chunk 标注、实际召回列表和文档分块内容后重新运行实验。当前召回数：" + recalledCount + "。";
   }
 
   private static String normalizeStrategy(String strategy) {
@@ -444,4 +540,3 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     evalExperimentMapper.updateById(experiment);
   }
 }
-

@@ -15,5 +15,9 @@ public class EvalResultDetailVO {
   private Double mrr;
   private Integer latencyMs;
   private String failureReason;
+  private String suggestion;
+  private Integer expectedBestRank;
+  private Boolean expectedInTopK;
+  private Boolean expectedInTop3;
+  private Integer recalledCount;
 }
-

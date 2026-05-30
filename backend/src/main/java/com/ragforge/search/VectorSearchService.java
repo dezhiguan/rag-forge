@@ -4,9 +4,11 @@ import com.pgvector.PGvector;
 import com.ragforge.pipeline.embedder.EmbeddingService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class VectorSearchService {
@@ -15,7 +17,10 @@ public class VectorSearchService {
   private final JdbcTemplate jdbcTemplate;
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
+    long start = System.currentTimeMillis();
+    long embedStart = System.currentTimeMillis();
     float[] queryVector = embedder.embed(query);
+    long embedLatencyMs = System.currentTimeMillis() - embedStart;
     PGvector pgVector = new PGvector(queryVector);
 
     StringBuilder sql =
@@ -44,33 +49,47 @@ public class VectorSearchService {
 
     sql.append(" ORDER BY dc.content_vector <=> ?::vector LIMIT ?");
 
-    return jdbcTemplate.query(
-        sql.toString(),
-        ps -> {
-          int idx = 1;
-          ps.setObject(idx++, pgVector);
-          if (kbIds != null) {
-            for (Long kbId : kbIds) {
-              ps.setLong(idx++, kbId);
-            }
-          }
-          if (docIds != null) {
-            for (Long docId : docIds) {
-              ps.setLong(idx++, docId);
-            }
-          }
-          ps.setObject(idx++, pgVector);
-          ps.setInt(idx, topK);
-        },
-        (rs, rowNum) -> {
-          SearchResult result = new SearchResult();
-          result.setChunkId(rs.getLong("id"));
-          result.setContent(rs.getString("content"));
-          result.setDocId(rs.getLong("doc_id"));
-          result.setFilename(rs.getString("filename"));
-          result.setChunkIndex(rs.getInt("chunk_index"));
-          result.setVectorScore(rs.getDouble("similarity"));
-          return result;
-        });
+    long dbStart = System.currentTimeMillis();
+    List<SearchResult> results =
+        jdbcTemplate.query(
+            sql.toString(),
+            ps -> {
+              int idx = 1;
+              ps.setObject(idx++, pgVector);
+              if (kbIds != null) {
+                for (Long kbId : kbIds) {
+                  ps.setLong(idx++, kbId);
+                }
+              }
+              if (docIds != null) {
+                for (Long docId : docIds) {
+                  ps.setLong(idx++, docId);
+                }
+              }
+              ps.setObject(idx++, pgVector);
+              ps.setInt(idx, topK);
+            },
+            (rs, rowNum) -> {
+              SearchResult result = new SearchResult();
+              result.setChunkId(rs.getLong("id"));
+              result.setContent(rs.getString("content"));
+              result.setDocId(rs.getLong("doc_id"));
+              result.setFilename(rs.getString("filename"));
+              result.setChunkIndex(rs.getInt("chunk_index"));
+              result.setVectorScore(rs.getDouble("similarity"));
+              return result;
+            });
+    long dbLatencyMs = System.currentTimeMillis() - dbStart;
+    long totalLatencyMs = System.currentTimeMillis() - start;
+    log.info(
+        "Vector search stage completed: topK={} kbCount={} docFilterCount={} resultCount={} embedLatency={}ms pgLatency={}ms totalLatency={}ms",
+        topK,
+        kbIds == null ? 0 : kbIds.size(),
+        docIds == null ? 0 : docIds.size(),
+        results.size(),
+        embedLatencyMs,
+        dbLatencyMs,
+        totalLatencyMs);
+    return results;
   }
 }

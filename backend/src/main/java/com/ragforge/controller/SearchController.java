@@ -49,20 +49,25 @@ public class SearchController {
     log.info("检索请求  strategy={} topK={} query=\"{}\"", strategy, req.getTopK(), req.getQuery());
 
     List<String> rewrittenQueries = null;
+    Long rewriteLatencyMs = null;
     Long vectorLatencyMs = null;
     Long keywordLatencyMs = null;
     Long rerankLatencyMs = null;
     List<SearchResult> results;
     List<Long> docIds = req.getDocIds();
     if ("rewrite".equals(strategy)) {
+      long rewriteStart = System.currentTimeMillis();
       rewrittenQueries = queryRewriter.rewrite(req.getQuery());
-      log.info("Query改写完成 变体数={}", rewrittenQueries.size());
+      rewriteLatencyMs = System.currentTimeMillis() - rewriteStart;
+      log.info("Query改写完成 变体数={} latency={}ms", rewrittenQueries.size(), rewriteLatencyMs);
       long vectorStart = System.currentTimeMillis();
       results = searchByRewrittenQueries(rewrittenQueries, req.getKbIds(), docIds, req.getTopK());
       vectorLatencyMs = System.currentTimeMillis() - vectorStart;
     } else if ("full".equals(strategy)) {
+      long rewriteStart = System.currentTimeMillis();
       rewrittenQueries = queryRewriter.rewrite(req.getQuery());
-      log.info("Query改写完成 变体数={}", rewrittenQueries.size());
+      rewriteLatencyMs = System.currentTimeMillis() - rewriteStart;
+      log.info("Query改写完成 变体数={} latency={}ms", rewrittenQueries.size(), rewriteLatencyMs);
       HybridSearchOutput output =
           searchByRewrittenHybrid(
               rewrittenQueries, req.getKbIds(), docIds, req.getTopK(), normalizeVectorWeight(req));
@@ -123,6 +128,7 @@ public class SearchController {
             latencyMs,
             strategy,
             rewrittenQueries,
+            rewriteLatencyMs,
             vectorLatencyMs,
             keywordLatencyMs,
             rerankLatencyMs));

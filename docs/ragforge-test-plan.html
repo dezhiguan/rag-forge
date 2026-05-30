@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RAGForge 性能与容量测试计划</title>
+  <style>
+    :root {
+      --ink: #18202a;
+      --muted: #5f6975;
+      --line: #d9dee5;
+      --paper: #fbfaf6;
+      --panel: #ffffff;
+      --green: #2f7d5c;
+      --blue: #315f9d;
+      --red: #b84a43;
+      --gold: #9a6b24;
+      --code: #243447;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(49, 95, 157, 0.06) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(47, 125, 92, 0.05) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: "Avenir Next", "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
+      line-height: 1.68;
+    }
+
+    a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 48px 28px 72px;
+    }
+
+    .cover {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+      padding: 42px;
+      box-shadow: 0 24px 70px rgba(24, 32, 42, 0.10);
+    }
+
+    .eyebrow {
+      margin: 0 0 18px;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3 {
+      font-family: "Iowan Old Style", "Songti SC", "Noto Serif CJK SC", serif;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: 46px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      max-width: 840px;
+      margin: 22px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 34px;
+    }
+
+    .meta div {
+      min-height: 88px;
+      border-left: 4px solid var(--green);
+      background: #f4f6f2;
+      padding: 14px 16px;
+    }
+
+    .meta strong {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .meta span {
+      display: block;
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .toc {
+      margin: 28px 0 0;
+      padding: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .toc h2 {
+      margin: 0 0 10px;
+      font-size: 22px;
+    }
+
+    .toc ol {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 24px;
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    section {
+      margin-top: 34px;
+      padding: 30px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--ink);
+      font-size: 30px;
+    }
+
+    h3 {
+      margin: 26px 0 10px;
+      font-size: 22px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    .lead {
+      font-size: 17px;
+      color: var(--ink);
+    }
+
+    .callout {
+      margin: 18px 0;
+      border-left: 5px solid var(--gold);
+      background: #fff7e8;
+      padding: 16px 18px;
+    }
+
+    .callout strong {
+      color: var(--gold);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 18px 0;
+    }
+
+    .tile {
+      border: 1px solid var(--line);
+      background: #f7f9fb;
+      padding: 18px;
+      min-height: 140px;
+    }
+
+    .tile b {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--blue);
+      font-size: 16px;
+    }
+
+    table {
+      width: 100%;
+      margin: 18px 0;
+      border-collapse: collapse;
+      background: var(--panel);
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: #e9eef4;
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    .status {
+      display: inline-block;
+      min-width: 78px;
+      padding: 2px 8px;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .status.green {
+      color: var(--green);
+    }
+
+    .status.blue {
+      color: var(--blue);
+    }
+
+    .status.red {
+      color: var(--red);
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 18px;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    code {
+      color: var(--code);
+      background: #edf1f4;
+      border: 1px solid #d6dde4;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .timeline {
+      counter-reset: step;
+      display: grid;
+      gap: 12px;
+      margin: 18px 0;
+    }
+
+    .step {
+      position: relative;
+      border: 1px solid var(--line);
+      background: #f8faf7;
+      padding: 14px 16px 14px 52px;
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 16px;
+      top: 16px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 24px;
+      text-align: center;
+    }
+
+    .footer {
+      margin-top: 28px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        padding: 24px 14px 48px;
+      }
+
+      .cover,
+      section {
+        padding: 22px;
+      }
+
+      h1 {
+        font-size: 32px;
+      }
+
+      h2 {
+        font-size: 24px;
+      }
+
+      .meta,
+      .toc ol,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+
+    @media print {
+      @page {
+        size: A4;
+        margin: 16mm 14mm;
+      }
+
+      body {
+        background: #fff;
+        color: #000;
+      }
+
+      .page {
+        max-width: none;
+        padding: 0;
+      }
+
+      .cover,
+      section,
+      .toc,
+      .tile,
+      .step {
+        box-shadow: none;
+        background: #fff;
+      }
+
+      section {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      a {
+        color: #000;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="cover">
+      <p class="eyebrow">RAGForge QA / Performance Plan</p>
+      <h1>RAGForge 性能、并发、QPS 极限与万级文档导入测试计划</h1>
+      <p class="subtitle">
+        本计划基于当前项目代码结构和现有云服务器部署规格制定：4C8G ECS 承载 PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ，2C4G 轻量服务器承载 Nginx、前端和 RAG Java 后端。测试目标已按该资源约束重新校准。
+      </p>
+      <div class="meta">
+        <div><strong>系统定位</strong><span>RAG 检索服务</span></div>
+        <div><strong>目标规模</strong><span>10,000 文档 / 50k-80k chunk</span></div>
+        <div><strong>核心指标</strong><span>QPS / P95 / 资源水位</span></div>
+        <div><strong>输出日期</strong><span>2026-05-30</span></div>
+      </div>
+    </header>
+
+    <nav class="toc">
+      <h2>目录</h2>
+      <ol>
+        <li><a href="#summary">核心结论</a></li>
+        <li><a href="#system">系统链路理解</a></li>
+        <li><a href="#deployment">当前部署约束</a></li>
+        <li><a href="#scope">测试范围与目标</a></li>
+        <li><a href="#dataset">万级文档数据规划</a></li>
+        <li><a href="#generation">文档生成方案</a></li>
+        <li><a href="#import">导入方案与耗时估算</a></li>
+        <li><a href="#performance">性能与并发测试设计</a></li>
+        <li><a href="#observability">观测与验收标准</a></li>
+        <li><a href="#risks">风险与优化建议</a></li>
+        <li><a href="#roadmap">执行路线</a></li>
+      </ol>
+    </nav>
+
+    <section id="summary">
+      <h2>1. 核心结论</h2>
+      <p class="lead">
+        10,000 份文档对于中小型公司的知识库是合理规模，属于“中等偏真实”的测试集。但在当前 4C8G 数据层和 2C4G 应用层配置下，测试目标需要从“泛化极限压测”调整为“受资源约束的容量验收 + 渐进式极限探索”。
+      </p>
+      <div class="callout">
+        <strong>建议基准：</strong>
+        以 10,000 文档、50,000 到 80,000 chunk 作为当前部署的目标容量；100,000 chunk 以上先作为探索档，不建议一开始直接冲 500,000 chunk。
+      </div>
+      <div class="grid">
+        <div class="tile">
+          <b>小规模验证</b>
+          100 到 500 文档。用于验证文件格式、上传脚本、异步处理、索引和检索闭环。
+        </div>
+        <div class="tile">
+          <b>目标规模</b>
+          10,000 文档，约 50,000 到 80,000 chunk。用于确认当前服务器规格下的稳定性和可承载 QPS。
+        </div>
+        <div class="tile">
+          <b>极限规模</b>
+          先从 100,000 chunk 开始探索，再决定是否扩到更高容量。核心瓶颈预计是 ES/PG 同机 IO、embedding 调用和应用层 JVM。
+        </div>
+      </div>
+    </section>
+
+    <section id="system">
+      <h2>2. 系统链路理解</h2>
+      <p>当前项目的文档导入链路是异步架构：</p>
+      <ol>
+        <li>上传接口接收文件：<code>POST /api/v1/kb/{kbId}/documents</code>。</li>
+        <li>后端校验文件类型和大小，计算 MD5，写入本地文件系统。</li>
+        <li>写入 <code>documents</code> 表，发送 RocketMQ 文档处理消息。</li>
+        <li>Consumer 拉取消息，执行 <code>DocumentPipelineService</code>。</li>
+        <li>Tika 解析文件文本，按知识库配置执行 512 字符切分、64 overlap。</li>
+        <li>调用 DashScope <code>text-embedding-v4</code> 批量生成 1024 维向量。</li>
+        <li>写入 <code>document_chunks</code> 表，并写入 ES 索引 <code>ragforge_chunks</code>。</li>
+        <li>文档状态更新为 <code>completed</code> 或 <code>failed</code>。</li>
+      </ol>
+      <p>检索链路由 <code>POST /api/v1/search</code> 承载，支持以下策略：</p>
+      <table>
+        <thead>
+          <tr>
+            <th>策略</th>
+            <th>链路</th>
+            <th>性能特征</th>
+            <th>测试重点</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>keyword</code></td>
+            <td>ES BM25</td>
+            <td>通常 QPS 最高</td>
+            <td>ES 查询延迟、分词效果、索引体积</td>
+          </tr>
+          <tr>
+            <td><code>vector</code></td>
+            <td>query embedding + pgvector</td>
+            <td>受 embedding API 和 PG 向量索引影响</td>
+            <td>embedding 延迟、PG 慢查询、向量索引命中</td>
+          </tr>
+          <tr>
+            <td><code>hybrid</code></td>
+            <td>vector + keyword 并行 + RRF 融合</td>
+            <td>耗时取决于更慢的一侧</td>
+            <td>并发任务池、PG/ES 同时受压</td>
+          </tr>
+          <tr>
+            <td><code>rewrite</code></td>
+            <td>LLM 改写 + 多次 vector</td>
+            <td>比 vector 明显更重</td>
+            <td>改写模型延迟、放大后的向量查询次数</td>
+          </tr>
+          <tr>
+            <td><code>full</code></td>
+            <td>rewrite + hybrid + rerank</td>
+            <td>最重链路，适合质量优先场景</td>
+            <td>端到端 P95、rerank 外部调用、降级行为</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="deployment">
+      <h2>3. 当前部署约束</h2>
+      <p>
+        现有部署采用两台云服务器：数据与检索层集中在 4C8G ECS，应用入口层集中在 2C4G 轻量服务器。这个部署对于演示、轻量生产和中等规模知识库是可用的，但在万级文档导入和混合检索压测时，需要重点控制 ES、PG、RocketMQ 和 Java 后端的资源竞争。
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>服务器</th>
+            <th>规格</th>
+            <th>公网 IP</th>
+            <th>内网 IP</th>
+            <th>承载组件</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ECS 云服务器</td>
+            <td>4 vCPU / 8 GiB / 40 GiB 系统盘</td>
+            <td>8.163.30.216</td>
+            <td>172.25.90.183</td>
+            <td>PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ</td>
+          </tr>
+          <tr>
+            <td>轻量级服务器</td>
+            <td>2 vCPU / 4 GiB / 50 GiB 系统盘</td>
+            <td>8.163.63.222</td>
+            <td>172.19.40.32</td>
+            <td>Nginx、前端服务、RAG Java 后端；后续可能部署 AI 求职 Agent 前后端</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>当前内存占用参考</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>组件</th>
+            <th>当前占用 / 限制</th>
+            <th>判断</th>
+            <th>测试影响</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Elasticsearch</td>
+            <td>约 1.96 GiB / 3 GiB</td>
+            <td>已是数据层最大内存消费者</td>
+            <td>导入大量 chunk 后要重点观察 heap、GC、segment merge 和磁盘 IO。</td>
+          </tr>
+          <tr>
+            <td>RocketMQ Broker</td>
+            <td>386 MiB / 512 MiB</td>
+            <td>配置较紧</td>
+            <td>上传速度高于消费速度时，需要观察队列积压和重试。</td>
+          </tr>
+          <tr>
+            <td>RocketMQ NameServer</td>
+            <td>185 MiB / 256 MiB</td>
+            <td>轻量可接受</td>
+            <td>通常不是瓶颈，但仍需保留基础内存余量。</td>
+          </tr>
+          <tr>
+            <td>PostgreSQL</td>
+            <td>约 66 MiB</td>
+            <td>当前为空载或轻载状态</td>
+            <td>导入向量后占用会来自表、索引、连接、查询缓存和 checkpoint IO，不能按当前值乐观估算。</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>部署校准结论：</strong>
+        当前压测应优先验证 50,000 到 80,000 chunk 的稳定容量。ES heap 当前 3GiB 上限可以先保留，但 ECS 总内存超过 75% 或 ES GC 频繁时，应考虑降到 2GiB，并减少同机组件压力。
+      </div>
+    </section>
+
+    <section id="scope">
+      <h2>4. 测试范围与目标</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>测试项</th>
+            <th>目标</th>
+            <th>关键指标</th>
+            <th>通过标准</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>上传接口压测</td>
+            <td>验证同步上传、落盘、写 DB、发 MQ 的吞吐</td>
+            <td>上传 QPS、P95/P99、失败率、文件落盘耗时</td>
+            <td>错误率 &lt; 0.5%，无明显文件丢失</td>
+          </tr>
+          <tr>
+            <td>异步导入压测</td>
+            <td>验证文档从 pending 到 completed 的处理能力</td>
+            <td>文档/分钟、chunk/分钟、MQ 堆积、失败重试率</td>
+            <td>completed &gt;= 99%，failed 可定位并可重试</td>
+          </tr>
+          <tr>
+            <td>检索 QPS 压测</td>
+            <td>验证不同检索策略的极限 QPS</td>
+            <td>QPS、P50/P95/P99、错误率、CPU、PG/ES 慢查询</td>
+            <td>达到目标 QPS 时错误率 &lt; 1%</td>
+          </tr>
+          <tr>
+            <td>混合链路压测</td>
+            <td>验证 rewrite、hybrid、rerank 组合下的端到端表现</td>
+            <td>rewrite/vector/es/rerank 分段耗时</td>
+            <td>full 策略 P95 &lt; 6s 或有明确降级策略</td>
+          </tr>
+          <tr>
+            <td>稳定性测试</td>
+            <td>验证长时间运行下是否出现资源泄漏或队列积压</td>
+            <td>8h 到 24h 错误率、内存、连接池、MQ lag</td>
+            <td>资源曲线稳定，无持续上升的积压</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="dataset">
+      <h2>5. 万级文档数据规划</h2>
+      <p>
+        中小型公司真实知识库通常包含制度、流程、研发文档、产品资料、客户材料、会议纪要、FAQ、培训手册和故障复盘。10,000 份文档是合理的测试目标，但要控制文档长度分布，避免全部是短 FAQ 或全部是长 PDF。
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>类型</th>
+            <th>比例</th>
+            <th>数量</th>
+            <th>内容示例</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Markdown</td>
+            <td>30%</td>
+            <td>3,000</td>
+            <td>研发规范、接口说明、故障复盘、FAQ</td>
+            <td>模拟内部 wiki 和工程知识库</td>
+          </tr>
+          <tr>
+            <td>PDF</td>
+            <td>30%</td>
+            <td>3,000</td>
+            <td>培训材料、产品手册、制度文件、合同模板</td>
+            <td>覆盖 Tika/PDF 解析和版式文本抽取</td>
+          </tr>
+          <tr>
+            <td>HTML</td>
+            <td>25%</td>
+            <td>2,500</td>
+            <td>内部门户页面、帮助中心、SOP 页面</td>
+            <td>模拟网页知识沉淀</td>
+          </tr>
+          <tr>
+            <td>DOC/DOCX</td>
+            <td>15%</td>
+            <td>1,500</td>
+            <td>HR、法务、财务、销售材料</td>
+            <td>覆盖办公文档解析</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>注意：</strong>
+        当前后端文件白名单支持 <code>pdf/doc/docx/md/markdown/html/htm</code>，不支持 <code>.txt</code>。如果需要 text 文件，应先扩展文件类型校验；否则建议将纯文本保存为 <code>.md</code>。
+      </div>
+      <h3>文档长度分布</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>分档</th>
+            <th>数量</th>
+            <th>单篇长度</th>
+            <th>预估 chunk</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>短文档</td>
+            <td>7,000</td>
+            <td>800 到 2,000 中文字符</td>
+            <td>约 2 到 5 个</td>
+          </tr>
+          <tr>
+            <td>中文档</td>
+            <td>2,500</td>
+            <td>2,000 到 8,000 中文字符</td>
+            <td>约 5 到 18 个</td>
+          </tr>
+          <tr>
+            <td>长文档</td>
+            <td>500</td>
+            <td>8,000 到 30,000 中文字符</td>
+            <td>约 18 到 70 个</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>建议额外加入 5% 重复或近重复文档，用于测试 MD5 去重和覆盖上传；加入 2% 异常文档，用于测试空文件、损坏 PDF、错误 MIME、超大文件等健壮性场景。</p>
+    </section>
+
+    <section id="generation">
+      <h2>6. 文档生成方案</h2>
+      <p>
+        不建议完全依赖 Ollama 逐篇自由生成 10,000 篇正文。这样耗时长、主题分布不可控、重复率难控制。更合理的方式是“少量 LLM 种子文档 + 结构化模板 + 程序化变体”。
+      </p>
+      <h3>推荐生成流程</h3>
+      <div class="timeline">
+        <div class="step">用 Ollama 生成 200 到 500 篇高质量种子文档，覆盖 HR、财务、研发、产品、销售、客服、运维、法务等部门。</div>
+        <div class="step">Python 根据模板扩展部门、岗位、项目名、产品名、日期、条款编号、客户行业、故障类型等变量。</div>
+        <div class="step">生成 Markdown 和 HTML 原始文本，保证标题、段落、表格、列表、FAQ、流程编号等结构丰富。</div>
+        <div class="step">将部分 Markdown/HTML 转换为 PDF 和 DOCX，模拟真实企业知识库的文件形态。</div>
+        <div class="step">生成一份 manifest，例如 <code>documents-manifest.jsonl</code>，记录文件路径、业务域、预期关键词、关联问题和异常标记。</div>
+      </div>
+      <h3>耗时估算</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>方案</th>
+            <th>估算耗时</th>
+            <th>优点</th>
+            <th>缺点</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Ollama 全量逐篇生成</td>
+            <td>8 小时到 5 天，取决于 GPU/CPU 和模型</td>
+            <td>内容自然度较高</td>
+            <td>慢，分布不可控，重跑成本高</td>
+          </tr>
+          <tr>
+            <td>LLM 种子 + 模板扩展</td>
+            <td>30 分钟到 3 小时</td>
+            <td>速度快，可控，可复现</td>
+            <td>需要设计模板和变量池</td>
+          </tr>
+          <tr>
+            <td>纯模板生成</td>
+            <td>10 到 30 分钟</td>
+            <td>最快，最稳定</td>
+            <td>语义自然度不足，不适合质量评测</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>推荐采用第二种方案：先用 Ollama 生成种子，再由 Python 扩展到 10,000 份。这样既能控制领域覆盖，也能把生成耗时压到可接受范围。</p>
+    </section>
+
+    <section id="import">
+      <h2>7. 导入方案与耗时估算</h2>
+      <p>
+        不建议通过前端手工上传。应编写导入压测脚本，批量调用上传接口，并独立统计上传成功率、文档状态变化、MQ 堆积和最终 chunk 数。
+      </p>
+      <h3>导入流程</h3>
+      <ol>
+        <li>调用知识库接口创建测试知识库，记录 <code>kbId</code>。</li>
+        <li>扫描生成目录和 manifest，按文件类型、业务域、长度分层打乱。</li>
+        <li>多线程调用 <code>POST /api/v1/kb/{kbId}/documents</code> 上传。</li>
+        <li>上传并发从 2、5 逐步升高；当前服务器配置下不建议一开始使用 10+ 并发。</li>
+        <li>周期性查询 <code>/api/v1/documents/{id}/status</code> 或直接查询 DB 统计状态。</li>
+        <li>等待 pending/parsing/chunking/embedding/indexing 全部收敛，再启动检索压测。</li>
+      </ol>
+      <h3>按当前服务器配置调整后的导入批次</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>文档数</th>
+            <th>预估 chunk</th>
+            <th>目标</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Smoke</td>
+            <td>100</td>
+            <td>500 到 1,000</td>
+            <td>验证所有文件格式可解析，确认上传脚本和状态统计可用。</td>
+          </tr>
+          <tr>
+            <td>Batch 1</td>
+            <td>500</td>
+            <td>2,500 到 5,000</td>
+            <td>验证上传并发 2 到 5 时是否稳定。</td>
+          </tr>
+          <tr>
+            <td>Batch 2</td>
+            <td>2,000</td>
+            <td>10,000 到 20,000</td>
+            <td>观察 ES/PG 磁盘增长、ES heap 和 RocketMQ lag。</td>
+          </tr>
+          <tr>
+            <td>Batch 3</td>
+            <td>5,000</td>
+            <td>25,000 到 50,000</td>
+            <td>第一次正式容量压测，确认导入耗时和检索 P95。</td>
+          </tr>
+          <tr>
+            <td>Batch 4</td>
+            <td>10,000</td>
+            <td>50,000 到 80,000</td>
+            <td>当前部署的目标容量验收。</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>导入耗时估算</h3>
+      <p>当前 embedding batch size 最大为 10。如果 10,000 文档平均 5 到 8 个 chunk，总计约 50,000 到 80,000 chunk，需要约 5,000 到 8,000 次 embedding batch 调用。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>单 batch embedding 耗时</th>
+            <th>纯 embedding 时间</th>
+            <th>加解析/DB/ES 后现实估算</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>0.5s</td>
+            <td>约 42 分钟</td>
+            <td>约 2 到 4 小时</td>
+          </tr>
+          <tr>
+            <td>1s</td>
+            <td>约 83 分钟</td>
+            <td>约 3 到 8 小时</td>
+          </tr>
+          <tr>
+            <td>2s</td>
+            <td>约 2.8 小时</td>
+            <td>约 6 到 14 小时</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>关键判断：</strong>
+        当前导入瓶颈大概率不是上传接口，而是 embedding API 限流、单 Consumer 串行处理、PG 单条 insert、ES bulk 写入，以及 ES/PG/RocketMQ 同机运行带来的磁盘 IO 竞争。
+      </div>
+    </section>
+
+    <section id="performance">
+      <h2>8. 性能与并发测试设计</h2>
+      <h3>检索压测阶梯</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>负载</th>
+            <th>持续时间</th>
+            <th>观察项</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>预热</td>
+            <td>2 到 5 QPS</td>
+            <td>5 分钟</td>
+            <td>连接池、JIT、ES/PG 缓存预热</td>
+          </tr>
+          <tr>
+            <td>低压</td>
+            <td>5 到 10 QPS</td>
+            <td>每档 10 分钟</td>
+            <td>P95、错误率、外部 API 响应</td>
+          </tr>
+          <tr>
+            <td>中压</td>
+            <td>20 到 50 QPS</td>
+            <td>每档 10 分钟</td>
+            <td>PG CPU、ES heap、应用线程</td>
+          </tr>
+          <tr>
+            <td>高压</td>
+            <td>50 QPS 以上按策略逐步探索</td>
+            <td>每档 10 分钟</td>
+            <td>错误率、超时、连接池耗尽、降级行为</td>
+          </tr>
+          <tr>
+            <td>稳定性</td>
+            <td>目标 QPS 的 70%</td>
+            <td>8 到 24 小时</td>
+            <td>内存泄漏、日志体积、慢查询增长、MQ lag</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>不同策略的目标建议</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>策略</th>
+            <th>建议目标</th>
+            <th>起测 QPS</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>keyword</code></td>
+            <td>30 到 50 QPS，P95 &lt; 500ms，错误率 &lt; 0.5%</td>
+            <td>10 QPS</td>
+            <td>作为最高吞吐基线，主要压 ES。</td>
+          </tr>
+          <tr>
+            <td><code>vector</code></td>
+            <td>10 到 20 QPS，P95 &lt; 2s，错误率 &lt; 0.5%</td>
+            <td>2 QPS</td>
+            <td>重点看 query embedding 和 pgvector 查询。</td>
+          </tr>
+          <tr>
+            <td><code>hybrid</code></td>
+            <td>8 到 15 QPS，P95 &lt; 3s</td>
+            <td>2 QPS</td>
+            <td>同时压 PG 和 ES，观察并行检索的线程资源。</td>
+          </tr>
+          <tr>
+            <td><code>rewrite</code></td>
+            <td>3 到 8 QPS，P95 &lt; 4s</td>
+            <td>1 QPS</td>
+            <td>适合质量增强，不建议作为高 QPS 默认链路。</td>
+          </tr>
+          <tr>
+            <td><code>full</code></td>
+            <td>3 到 5 QPS，P95 &lt; 6s</td>
+            <td>1 QPS</td>
+            <td>最重链路，主要用于质量优先和评测场景。</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>压测 query 集</h3>
+      <p>准备 1,000 到 5,000 个 query，不能只用固定 query，避免缓存和热点导致数据失真。query 应覆盖：</p>
+      <ul>
+        <li>精确词查询，例如制度名称、接口名称、项目代号。</li>
+        <li>模糊语义查询，例如“员工离职后账号怎么处理”。</li>
+        <li>部门流程查询，例如“销售合同审批需要哪些材料”。</li>
+        <li>跨文档归纳查询，例如“线上事故复盘通常需要包含哪些部分”。</li>
+        <li>负样本查询，即知识库中没有答案的问题。</li>
+      </ul>
+    </section>
+
+    <section id="observability">
+      <h2>9. 观测与验收标准</h2>
+      <p>当前项目已有检索日志表和基础 dashboard，但缺少完整的性能观测指标。压测前建议补齐以下指标。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>观测维度</th>
+            <th>指标</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>HTTP</td>
+            <td>请求量、P50/P95/P99、状态码、超时数</td>
+            <td>判断用户可见性能和错误率</td>
+          </tr>
+          <tr>
+            <td>Pipeline</td>
+            <td>parse/chunk/embed/pg_insert/es_index 分段耗时</td>
+            <td>定位导入瓶颈</td>
+          </tr>
+          <tr>
+            <td>Embedding</td>
+            <td>batch size、耗时、失败率、重试数、限流响应</td>
+            <td>判断外部模型调用容量</td>
+          </tr>
+          <tr>
+            <td>检索</td>
+            <td>rewrite/vector/es/rerank/log 分段耗时</td>
+            <td>定位不同策略的瓶颈</td>
+          </tr>
+          <tr>
+            <td>RocketMQ</td>
+            <td>队列积压、消费速率、重试次数、死信</td>
+            <td>判断异步导入是否跟得上上传速度</td>
+          </tr>
+          <tr>
+            <td>数据库</td>
+            <td>PG CPU、连接池、慢查询、索引扫描、表大小</td>
+            <td>判断 pgvector 查询和 chunk 写入瓶颈</td>
+          </tr>
+          <tr>
+            <td>Elasticsearch</td>
+            <td>heap、GC、bulk 延迟、search latency、slowlog</td>
+            <td>判断关键词检索和索引写入瓶颈</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>通过标准</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>资源指标</th>
+            <th>警戒线</th>
+            <th>停止压测线</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ECS 总内存</td>
+            <td>&gt; 75%</td>
+            <td>&gt; 85% 持续 5 分钟</td>
+          </tr>
+          <tr>
+            <td>ES heap</td>
+            <td>&gt; 70%</td>
+            <td>&gt; 85% 或频繁 GC</td>
+          </tr>
+          <tr>
+            <td>系统盘/数据盘</td>
+            <td>可用空间 &lt; 25%</td>
+            <td>可用空间 &lt; 15%</td>
+          </tr>
+          <tr>
+            <td>PG / ES CPU</td>
+            <td>&gt; 70%</td>
+            <td>&gt; 90% 持续 5 分钟</td>
+          </tr>
+          <tr>
+            <td>RocketMQ lag</td>
+            <td>持续增长</td>
+            <td>30 分钟内没有下降趋势</td>
+          </tr>
+          <tr>
+            <td>文档 failed 比例</td>
+            <td>&gt; 1%</td>
+            <td>&gt; 3%</td>
+          </tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>10,000 文档导入后，最终 <code>completed</code> 比例 &gt;= 99%。</li>
+        <li>知识库 <code>doc_count</code>、<code>chunk_count</code> 与实际表统计一致。</li>
+        <li>导入期间 RocketMQ 无不可恢复堆积，失败文档可定位、可重试。</li>
+        <li>目标 QPS 下错误率 &lt; 1%，P95 达到各策略目标。</li>
+        <li>稳定性测试期间 CPU、内存、连接池、ES heap 无持续恶化趋势。</li>
+      </ul>
+    </section>
+
+    <section id="risks">
+      <h2>10. 风险与优化建议</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>风险</th>
+            <th>影响</th>
+            <th>建议</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>40 GiB 系统盘空间不足</td>
+            <td>ES 索引、PG 向量表、上传文件和 Docker 日志共同增长，可能导致服务异常</td>
+            <td>建议挂独立数据盘，至少 100GB 起步；压测前清理日志并持续监控磁盘水位。</td>
+          </tr>
+          <tr>
+            <td>ES 与 PG 同机抢 IO</td>
+            <td>导入时 PG 写 chunk、ES bulk index 和 segment merge 同时打磁盘</td>
+            <td>分批导入，控制上传并发；必要时错峰执行大批量导入和检索压测。</td>
+          </tr>
+          <tr>
+            <td>外部 embedding API 限流</td>
+            <td>导入吞吐下降，大量文档卡在 embedding</td>
+            <td>增加限流器、重试退避、失败队列；压测时记录每批 embedding 耗时。</td>
+          </tr>
+          <tr>
+            <td>单 Consumer 串行处理</td>
+            <td>10,000 文档导入时间偏长</td>
+            <td>增加 Consumer 并发或分区消费，但要同步控制 embedding 并发上限。</td>
+          </tr>
+          <tr>
+            <td>PG 单条 insert chunk</td>
+            <td>chunk 多时写入慢</td>
+            <td>改为 batch insert，降低事务和网络往返开销。</td>
+          </tr>
+          <tr>
+            <td>pgvector 索引参数固定</td>
+            <td>数据量升高后召回延迟或质量变化</td>
+            <td>对 50k、100k、500k chunk 分别测试 ivfflat lists/probes。</td>
+          </tr>
+          <tr>
+            <td>full 策略外部调用过多</td>
+            <td>QPS 低且尾延迟高</td>
+            <td>将 full 定位为质量优先链路，生产默认使用 hybrid 或 vector。</td>
+          </tr>
+          <tr>
+            <td>2C4G 应用层后续继续部署 Agent</td>
+            <td>RAG Java 后端与 AI 求职 Agent 后端竞争 CPU、内存和连接</td>
+            <td>RAG 压测和 Agent 压测应分开执行；RAG Java 后端建议设置 <code>-Xms512m -Xmx1536m</code>。</td>
+          </tr>
+          <tr>
+            <td>缺少 Actuator/Micrometer</td>
+            <td>瓶颈定位依赖日志，效率低</td>
+            <td>补充 HTTP/JVM/DB/自定义 pipeline 指标。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="roadmap">
+      <h2>11. 执行路线</h2>
+      <div class="timeline">
+        <div class="step">
+          <span class="status blue">阶段一</span>
+          生成 100 到 500 文档，跑通生成、上传、异步导入、状态统计、检索压测脚本，确保闭环可重复。
+        </div>
+        <div class="step">
+          <span class="status green">阶段二</span>
+          扩展到 2,000 文档，记录每 1,000 文档带来的磁盘增长、chunk 增长、导入耗时和 MQ 消费速率。
+        </div>
+        <div class="step">
+          <span class="status green">阶段三</span>
+          扩展到 5,000 文档，第一次正式容量压测；分别测试 <code>keyword</code>、<code>vector</code>、<code>hybrid</code>、<code>rewrite</code>、<code>full</code>。
+        </div>
+        <div class="step">
+          <span class="status red">阶段四</span>
+          扩到 10,000 文档，完成当前部署目标容量验收；如资源水位稳定，再探索 100,000 chunk 以上边界。
+        </div>
+      </div>
+      <p>
+        推荐先不要直接冲 10,000 文档。第一阶段用 100 到 500 文档把脚本、指标、数据质量、导入状态统计全部跑通，再按 2,000、5,000、10,000 分档扩大规模。否则一旦出现 embedding 限流、PDF 解析异常、ES heap 压力或磁盘空间问题，很难快速定位问题。
+      </p>
+    </section>
+
+    <p class="footer">RAGForge 性能与容量测试计划 · HTML 可直接打印为 PDF</p>
+  </main>
+</body>
+</html>

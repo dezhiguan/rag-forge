@@ -39,7 +39,7 @@
               <span class="param-val">{{ config.topK }}</span>
             </div>
           </div>
-          <template v-if="config.strategy === 'hybrid' || config.strategy === 'full'">
+          <template v-if="showVectorWeight">
             <div class="param-row">
               <div class="param-label">向量权重</div>
               <div class="param-slider">
@@ -55,13 +55,14 @@
               </div>
             </div>
           </template>
-          <div class="param-row">
+          <div v-if="showRerankTopN" class="param-row">
             <div class="param-label">Rerank TopN <span style="color:var(--text-muted);font-weight:400;font-size:10px">重排序数量</span></div>
             <div class="param-slider">
               <input type="range" v-model.number="config.rerankTopN" min="1" max="10">
               <span class="param-val">{{ config.rerankTopN }}</span>
             </div>
           </div>
+          <div class="param-hint">{{ strategyParamHint }}</div>
           <div class="divider"></div>
           <div class="panel-title">对比模式</div>
           <label class="radio-row" v-for="m in compareModes" :key="m">
@@ -358,6 +359,50 @@ const allStrategies = [
 const availableStrategiesB = computed(() =>
   allStrategies.filter(s => s.value !== config.strategy)
 )
+
+const comparedStrategyValues = computed(() => {
+  if (config.compareMode === '五路对比') {
+    return allStrategies.map(s => s.value)
+  }
+  if (config.compareMode === 'A/B 对比') {
+    return [config.strategy, config.compareStrategyB]
+  }
+  return [config.strategy]
+})
+
+const showVectorWeight = computed(() =>
+  comparedStrategyValues.value.some(s => s === 'hybrid' || s === 'full')
+)
+
+const showRerankTopN = computed(() =>
+  comparedStrategyValues.value.includes('full')
+)
+
+const strategyParamHint = computed(() => {
+  if (config.compareMode === '五路对比') {
+    return '五路对比时：向量/BM25 权重只作用于 hybrid/full，Rerank TopN 只作用于 full。'
+  }
+  if (config.compareMode === 'A/B 对比') {
+    const names = comparedStrategyValues.value.map(strategyLabel).join(' + ')
+    if (showVectorWeight.value && showRerankTopN.value) {
+      return `${names}：当前只对 hybrid/full 使用权重，只对 full 使用 Rerank TopN。`
+    }
+    if (showVectorWeight.value) {
+      return `${names}：当前只对 hybrid/full 使用权重。`
+    }
+    return `${names}：当前策略组合不使用权重和 Rerank TopN。`
+  }
+  if (config.strategy === 'full') {
+    return 'full 策略会执行 Query 改写、混合召回和 Rerank，并使用权重与 Rerank TopN。'
+  }
+  if (config.strategy === 'hybrid') {
+    return 'hybrid 策略会并行执行向量与关键词召回，只使用向量/BM25 权重。'
+  }
+  if (config.strategy === 'rewrite') {
+    return 'rewrite 策略会先改写 Query，再执行多路向量检索，不使用权重和 Rerank TopN。'
+  }
+  return `${strategyLabel(config.strategy)} 策略不使用权重和 Rerank TopN。`
+})
 
 const currentStrategyLabel = computed(() => {
   const s = strategy.value || config.strategy
@@ -854,6 +899,7 @@ onMounted(async () => {
 .param-slider input[type="range"] { flex: 1; height: 4px; -webkit-appearance: none; background: var(--border); border-radius: 2px; outline: none; }
 .param-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--blue); border-radius: 50%; cursor: pointer; }
 .param-val { font-size: 11px; font-weight: 600; color: var(--text); min-width: 28px; text-align: right; }
+.param-hint { margin: -2px 0 10px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
 .divider { border-top: 1px solid var(--border); margin: 12px 0; }
 .radio-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; font-size: 11px; }
 .search-btn { width: 100%; margin-top: 12px; padding: 7px 0; background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; }

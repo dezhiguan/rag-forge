@@ -70,6 +70,7 @@ const navItems = [
   { path: '/', icon: '🏠', label: '驾驶舱' },
   { path: '/knowledge', icon: '📁', label: '知识库管理' },
   { path: '/debug', icon: '🔍', label: '检索调试台' },
+  { path: '/perf-probe', icon: '⏱', label: '性能诊断' },
   { path: '/eval', icon: '🧪', label: '评测实验室' },
   { path: '/api', icon: '🔌', label: 'API 网关' },
 ]

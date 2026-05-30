@@ -497,14 +497,15 @@
             失败样本分析
           </div>
           <table v-if="(experimentDetail.failureSamples || []).length" class="data-table" style="margin-top:8px;">
-            <thead><tr><th>问题</th><th>失败原因</th><th>优化建议</th></tr></thead>
+            <thead><tr><th>问题</th><th>失败原因</th><th>命中情况</th><th>优化建议</th></tr></thead>
             <tbody>
               <tr v-for="item in experimentDetail.failureSamples || []" :key="item.questionId">
                 <td>{{ item.question }}</td>
                 <td>
                   <span class="badge" :class="failureBadgeClass(item.failureReason)">{{ item.failureReason }}</span>
                 </td>
-                <td>{{ failureSuggestion(item.failureReason, experimentDetail.strategy) }}</td>
+                <td>{{ failureRankText(item) }}</td>
+                <td>{{ item.suggestion || failureSuggestion(item.failureReason, experimentDetail.strategy) }}</td>
               </tr>
             </tbody>
           </table>
@@ -1012,17 +1013,37 @@ function formatMrr(v) {
 
 function failureBadgeClass(reason) {
   if (reason === '召回不足') return 'badge-amber'
+  if (reason === '无召回结果') return 'badge-red'
+  if (reason === '排序不足') return 'badge-red'
   if (reason === '排序错误') return 'badge-red'
   if (reason === '标注缺失') return 'badge-gray'
   return 'badge-blue'
 }
 
+function failureRankText(item) {
+  if (!item) return '—'
+  const recalledCount = item.recalledCount ?? item.recalledChunkIds?.length ?? 0
+  if (!item.expectedChunkIds?.length) return `未标注标准 Chunk，召回 ${recalledCount} 条`
+  if (!item.recalledChunkIds?.length) return '没有召回结果'
+  if (item.expectedBestRank != null) {
+    return `标准 Chunk 在第 ${item.expectedBestRank} 位，未进入 Top3`
+  }
+  return `标准 Chunk 未进入 TopK，召回 ${recalledCount} 条`
+}
+
 function failureSuggestion(reason, strategy) {
+  if (reason === '无召回结果') {
+    return '没有返回任何 Chunk。确认文档已处理完成、知识库范围正确后，提高 TopK 或切换 hybrid/full 重试'
+  }
   if (reason === '召回不足') {
     if (strategy === 'vector') return '提高 TopK、补充知识库中相关文档'
     if (strategy === 'keyword') return 'BM25 可能遗漏了重要术语，尝试 hybrid 或补充文档关键词'
     if (strategy === 'rewrite') return '改写后的查询可能偏离原意，检查 Query改写 质量或提高 TopK'
     return '提高 TopK（如 8→15）、补充知识库相关文档'
+  }
+  if (reason === '排序不足') {
+    if (strategy === 'full') return '标准 Chunk 已进 TopK 但未进 Top3，检查标注内容或扩大 Rerank TopN'
+    return '标准 Chunk 已进 TopK 但排序靠后，尝试 hybrid/full 或调整权重'
   }
   if (reason === '排序错误') {
     if (strategy === 'vector') return '向量语义匹配不够精准，尝试 hybrid 或 full 引入 Reranker'

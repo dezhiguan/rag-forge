@@ -37,11 +37,14 @@ public class QueryRewriter {
   private String model;
 
   public List<String> rewrite(String originalQuery) {
+    long start = System.currentTimeMillis();
     List<String> fallback = List.of(originalQuery);
     if (originalQuery == null || originalQuery.isBlank()) {
+      log.info("Query rewrite skipped: reason=blank latency={}ms", System.currentTimeMillis() - start);
       return fallback;
     }
     if (apiKey == null || apiKey.isBlank()) {
+      log.info("Query rewrite skipped: reason=missing_api_key latency={}ms", System.currentTimeMillis() - start);
       return fallback;
     }
 
@@ -76,6 +79,7 @@ public class QueryRewriter {
           restTemplate.postForEntity(baseUrl + "/chat/completions", entity, String.class);
       String body = response.getBody();
       if (body == null || body.isBlank()) {
+        log.info("Query rewrite fallback: reason=empty_response latency={}ms", System.currentTimeMillis() - start);
         return fallback;
       }
 
@@ -83,6 +87,7 @@ public class QueryRewriter {
       String content =
           root.path("choices").path(0).path("message").path("content").asText("").trim();
       if (content.isBlank()) {
+        log.info("Query rewrite fallback: reason=empty_content latency={}ms", System.currentTimeMillis() - start);
         return fallback;
       }
 
@@ -95,10 +100,18 @@ public class QueryRewriter {
         }
       }
       List<String> result = new ArrayList<>(dedup);
-      log.info("Query改写成功 original=\"{}\" variants={}", originalQuery, result);
+      log.info(
+          "Query rewrite completed: variantCount={} latency={}ms original=\"{}\" variants={}",
+          result.size(),
+          System.currentTimeMillis() - start,
+          originalQuery,
+          result);
       return result;
     } catch (Exception e) {
-      log.warn("Query rewrite failed, fallback to original query: {}", e.getMessage());
+      log.warn(
+          "Query rewrite failed, fallback to original query: latency={}ms err={}",
+          System.currentTimeMillis() - start,
+          e.getMessage());
       return fallback;
     }
   }

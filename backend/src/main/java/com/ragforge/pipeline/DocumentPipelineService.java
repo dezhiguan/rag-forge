@@ -53,62 +53,123 @@ public class DocumentPipelineService {
 
   /** Main flow — no transaction; each step commits in its own REQUIRES_NEW transaction. */
   public void processDocument(Long documentId) {
+    long totalStart = System.currentTimeMillis();
+    long loadLatencyMs = 0;
+    long cleanupLatencyMs = 0;
+    long parseLatencyMs = 0;
+    long chunkLatencyMs = 0;
+    long embeddingLatencyMs = 0;
+    long pgInsertLatencyMs = 0;
+    long esIndexLatencyMs = 0;
+    long finalizeLatencyMs = 0;
+    Long kbId = null;
+    String fileType = null;
+    int textLength = 0;
+    int chunkCount = 0;
     try {
+      long stageStart = System.currentTimeMillis();
       Document doc = documentMapper.selectById(documentId);
       if (doc == null) {
         throw new BizException(404, "文档不存在: " + documentId);
       }
+      kbId = doc.getKbId();
+      fileType = doc.getFileType();
 
       KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
       if (kb == null) {
         throw new BizException(404, "知识库不存在: " + doc.getKbId());
       }
+      loadLatencyMs = System.currentTimeMillis() - stageStart;
 
       String statusAtStart = doc.getParseStatus();
       boolean incrementDocCount =
           STATUS_PENDING.equals(statusAtStart) && coalesce(doc.getVersion(), 1) == 1;
 
+      stageStart = System.currentTimeMillis();
       self.cleanupArtifacts(documentId);
+      cleanupLatencyMs = System.currentTimeMillis() - stageStart;
 
       int chunkSize = coalesce(kb.getChunkSize(), TextChunker.DEFAULT_CHUNK_SIZE);
       int chunkOverlap = coalesce(kb.getChunkOverlap(), TextChunker.DEFAULT_CHUNK_OVERLAP);
 
       self.updateStatus(documentId, STATUS_PARSING);
 
+      stageStart = System.currentTimeMillis();
       ParseResult parseResult = documentParser.parse(doc.getFilePath(), doc.getFileType());
       String text = parseResult.getText() == null ? "" : parseResult.getText();
+      textLength = text.length();
+      parseLatencyMs = System.currentTimeMillis() - stageStart;
 
       self.updateStatus(documentId, STATUS_CHUNKING);
 
+      stageStart = System.currentTimeMillis();
       List<Chunk> chunks = textChunker.chunk(text, chunkSize, chunkOverlap);
+      chunkCount = chunks.size();
+      chunkLatencyMs = System.currentTimeMillis() - stageStart;
 
       self.updateStatus(documentId, STATUS_EMBEDDING);
 
       List<String> contents = chunks.stream().map(Chunk::getContent).toList();
+      stageStart = System.currentTimeMillis();
       List<float[]> vectors =
           contents.isEmpty() ? List.of() : embeddingService.embedBatch(contents);
+      embeddingLatencyMs = System.currentTimeMillis() - stageStart;
       if (vectors.size() != contents.size()) {
         throw new BizException("Embedding 数量与分块数量不一致");
       }
 
       self.updateStatus(documentId, STATUS_INDEXING);
 
+      stageStart = System.currentTimeMillis();
       List<DocumentChunk> documentChunks =
           self.insertChunks(documentId, doc.getKbId(), chunks, vectors);
+      pgInsertLatencyMs = System.currentTimeMillis() - stageStart;
 
+      stageStart = System.currentTimeMillis();
       esIndexService.indexChunks(documentChunks, doc);
+      esIndexLatencyMs = System.currentTimeMillis() - stageStart;
 
+      stageStart = System.currentTimeMillis();
       self.updateStatus(documentId, STATUS_COMPLETED);
       self.updateDocumentChunkCount(documentId, chunks.size());
       self.incrementKbCount(doc.getKbId(), chunks.size(), incrementDocCount);
+      finalizeLatencyMs = System.currentTimeMillis() - stageStart;
 
       log.info(
-          "Document pipeline completed: docId={}, chunks={}, incrementDocCount={}",
+          "Document pipeline completed: docId={} kbId={} fileType={} textLength={} chunks={} incrementDocCount={} loadLatency={}ms cleanupLatency={}ms parseLatency={}ms chunkLatency={}ms embeddingLatency={}ms pgInsertLatency={}ms esIndexLatency={}ms finalizeLatency={}ms totalLatency={}ms",
           documentId,
-          chunks.size(),
-          incrementDocCount);
+          kbId,
+          fileType,
+          textLength,
+          chunkCount,
+          incrementDocCount,
+          loadLatencyMs,
+          cleanupLatencyMs,
+          parseLatencyMs,
+          chunkLatencyMs,
+          embeddingLatencyMs,
+          pgInsertLatencyMs,
+          esIndexLatencyMs,
+          finalizeLatencyMs,
+          System.currentTimeMillis() - totalStart);
     } catch (Exception e) {
-      log.error("文档处理失败: docId={}", documentId, e);
+      log.error(
+          "Document pipeline failed: docId={} kbId={} fileType={} textLength={} chunks={} loadLatency={}ms cleanupLatency={}ms parseLatency={}ms chunkLatency={}ms embeddingLatency={}ms pgInsertLatency={}ms esIndexLatency={}ms finalizeLatency={}ms totalLatency={}ms",
+          documentId,
+          kbId,
+          fileType,
+          textLength,
+          chunkCount,
+          loadLatencyMs,
+          cleanupLatencyMs,
+          parseLatencyMs,
+          chunkLatencyMs,
+          embeddingLatencyMs,
+          pgInsertLatencyMs,
+          esIndexLatencyMs,
+          finalizeLatencyMs,
+          System.currentTimeMillis() - totalStart,
+          e);
       self.updateStatusWithError(documentId, STATUS_FAILED, e.getMessage());
       throw e;
     }

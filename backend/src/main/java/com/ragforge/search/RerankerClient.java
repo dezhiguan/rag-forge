@@ -1,6 +1,5 @@
 package com.ragforge.search;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,8 +31,10 @@ public class RerankerClient {
   private String model;
 
   public RerankOutput rerank(String query, List<String> documents, int topN) {
+    long start = System.currentTimeMillis();
     if (documents == null || documents.isEmpty()) {
-      return new RerankOutput(List.of(), null);
+      log.info("Reranker skipped: reason=empty_documents latency=0ms");
+      return new RerankOutput(List.of(), 0L);
     }
 
     try {
@@ -54,19 +55,23 @@ public class RerankerClient {
       Map<String, Object> respBody = response.getBody();
 
       if (respBody == null) {
-        log.warn("Reranker returned empty response, fallback to original order");
-        return new RerankOutput(fallback(topN, documents.size()), null);
+        long latencyMs = System.currentTimeMillis() - start;
+        log.warn("Reranker returned empty response, fallback to original order: latency={}ms", latencyMs);
+        return new RerankOutput(fallback(topN, documents.size()), latencyMs);
       }
 
       Map<String, Object> output = (Map<String, Object>) respBody.get("output");
       if (output == null) {
-        log.warn("Reranker output is null, fallback: {}", respBody);
-        return new RerankOutput(fallback(topN, documents.size()), null);
+        long latencyMs = System.currentTimeMillis() - start;
+        log.warn("Reranker output is null, fallback: latency={}ms body={}", latencyMs, respBody);
+        return new RerankOutput(fallback(topN, documents.size()), latencyMs);
       }
 
       List<Map<String, Object>> rawResults = (List<Map<String, Object>>) output.get("results");
       if (rawResults == null || rawResults.isEmpty()) {
-        return new RerankOutput(fallback(topN, documents.size()), null);
+        long latencyMs = System.currentTimeMillis() - start;
+        log.info("Reranker fallback: reason=empty_results latency={}ms", latencyMs);
+        return new RerankOutput(fallback(topN, documents.size()), latencyMs);
       }
 
       List<RerankResult> results = new ArrayList<>();
@@ -77,13 +82,17 @@ public class RerankerClient {
         results.add(item);
       }
 
-      log.info("Reranker返回 topN={} scores={}",
+      long latencyMs = System.currentTimeMillis() - start;
+      log.info("Reranker completed: docCount={} topN={} latency={}ms scores={}",
+          documents.size(),
           results.size(),
+          latencyMs,
           results.stream().map(r -> String.format("%.4f", r.getScore())).toList());
-      return new RerankOutput(results, null);
+      return new RerankOutput(results, latencyMs);
     } catch (Exception e) {
-      log.warn("Reranker unavailable, fallback to original order: {}", e.getMessage());
-      return new RerankOutput(fallback(topN, documents.size()), null);
+      long latencyMs = System.currentTimeMillis() - start;
+      log.warn("Reranker unavailable, fallback to original order: latency={}ms err={}", latencyMs, e.getMessage());
+      return new RerankOutput(fallback(topN, documents.size()), latencyMs);
     }
   }
 
