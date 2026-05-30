@@ -18,11 +18,14 @@ import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +51,7 @@ public class DocumentPipelineService {
   private final TextChunker textChunker;
   private final EmbeddingService embeddingService;
   private final EsIndexService esIndexService;
+  private final JdbcTemplate jdbcTemplate;
 
   @Lazy @Autowired private DocumentPipelineService self;
 
@@ -207,20 +211,81 @@ public class DocumentPipelineService {
       Long docId, Long kbId, List<Chunk> chunks, List<float[]> vectors) {
     LocalDateTime now = LocalDateTime.now();
     List<DocumentChunk> inserted = new ArrayList<>(chunks.size());
-    for (int i = 0; i < chunks.size(); i++) {
+    int batchSize = 50;
+    for (int offset = 0; offset < chunks.size(); offset += batchSize) {
+      int end = Math.min(offset + batchSize, chunks.size());
+      inserted.addAll(insertChunkBatch(docId, kbId, chunks, vectors, offset, end, now));
+    }
+    return inserted;
+  }
+
+  private List<DocumentChunk> insertChunkBatch(
+      Long docId,
+      Long kbId,
+      List<Chunk> chunks,
+      List<float[]> vectors,
+      int start,
+      int end,
+      LocalDateTime now) {
+    StringBuilder sql =
+        new StringBuilder(
+            """
+            INSERT INTO document_chunks (doc_id, kb_id, chunk_index, content, content_vector, token_count, created_at)
+            VALUES
+            """);
+    for (int i = start; i < end; i++) {
+      if (i > start) {
+        sql.append(", ");
+      }
+      sql.append("(?, ?, ?, ?, ?::vector, ?, ?)");
+    }
+    sql.append(" RETURNING id, chunk_index");
+
+    Map<Integer, DocumentChunk> chunkByIndex = new HashMap<>();
+    jdbcTemplate.query(
+        connection -> {
+          var ps = connection.prepareStatement(sql.toString());
+          int idx = 1;
+          for (int i = start; i < end; i++) {
+            Chunk chunk = chunks.get(i);
+            ps.setLong(idx++, docId);
+            ps.setLong(idx++, kbId);
+            ps.setInt(idx++, chunk.getIndex());
+            ps.setString(idx++, chunk.getContent());
+            ps.setObject(idx++, new PGvector(vectors.get(i)));
+            ps.setInt(idx++, chunk.getTokenCount());
+            ps.setObject(idx++, now);
+          }
+          return ps;
+        },
+        rs -> {
+          long id = rs.getLong("id");
+          int chunkIndex = rs.getInt("chunk_index");
+          DocumentChunk entity = new DocumentChunk();
+          entity.setId(id);
+          entity.setDocId(docId);
+          entity.setKbId(kbId);
+          entity.setChunkIndex(chunkIndex);
+          chunkByIndex.put(chunkIndex, entity);
+        });
+
+    for (int i = start; i < end; i++) {
       Chunk chunk = chunks.get(i);
-      DocumentChunk entity = new DocumentChunk();
-      entity.setDocId(docId);
-      entity.setKbId(kbId);
-      entity.setChunkIndex(chunk.getIndex());
+      DocumentChunk entity = chunkByIndex.get(chunk.getIndex());
+      if (entity == null) {
+        throw new BizException("批量插入 chunk 失败，缺少返回记录: chunkIndex=" + chunk.getIndex());
+      }
       entity.setContent(chunk.getContent());
       entity.setContentVector(new PGvector(vectors.get(i)));
       entity.setTokenCount(chunk.getTokenCount());
       entity.setCreatedAt(now);
-      documentChunkMapper.insert(entity);
-      inserted.add(entity);
     }
-    return inserted;
+
+    List<DocumentChunk> ordered = new ArrayList<>(end - start);
+    for (int i = start; i < end; i++) {
+      ordered.add(chunkByIndex.get(chunks.get(i).getIndex()));
+    }
+    return ordered;
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)

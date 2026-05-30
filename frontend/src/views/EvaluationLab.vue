@@ -66,20 +66,20 @@
               <div class="step-num">2</div>
               <div class="step-body">
                 <div class="step-title">创建评测数据集</div>
-                <div class="step-desc">添加问题 + 标注期望命中的 Chunk（"标准答案"），点击下方按钮快速体验</div>
+                <div class="step-desc">添加问题 + 标注期望命中的 Chunk；快速体验数据集属于自动弱标注，后续建议人工复核</div>
               </div>
             </div>
             <div class="onboard-step">
               <div class="step-num">3</div>
               <div class="step-body">
                 <div class="step-title">运行实验，对比策略</div>
-                <div class="step-desc">一键对比四种检索策略的 Top1/Top3/MRR，找到最优方案</div>
+                <div class="step-desc">一键对比五种检索策略的 Top1/Top3/MRR，找到更稳定的检索方案</div>
               </div>
             </div>
           </div>
           <div class="onboard-actions">
             <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
-            <button class="btn-accent" @click="openQuickStart('resume')">⚡ 快速体验（简历测试用例）</button>
+            <button class="btn-accent" @click="openQuickStart('resume')">⚡ 快速体验（自动弱标注）</button>
             <button class="btn-accent" @click="openQuickStart('extreme')">🧪 极限测试用例</button>
           </div>
         </div>
@@ -357,8 +357,8 @@
               <option value="vector">向量检索（vector）</option>
               <option value="keyword">关键词检索 BM25（keyword）</option>
               <option value="hybrid">混合检索（hybrid）</option>
-              <option value="full">全链路 Reranker（full）</option>
-              <option value="rewrite">Query改写（rewrite）</option>
+              <option value="full">全链路（full）</option>
+              <option value="rewrite">Query 改写（rewrite）</option>
             </select>
           </label>
 
@@ -369,7 +369,7 @@
             </div>
             <div class="toggle-body">
               <div class="toggle-label">消融实验</div>
-              <div class="toggle-desc">自动对比向量检索 / 关键词检索 / 混合检索 / 全链路 / Query改写 五种策略</div>
+              <div class="toggle-desc">自动对比向量检索 / 关键词检索 / 混合检索 / 全链路 / Query 改写 五种策略</div>
             </div>
           </div>
 
@@ -427,7 +427,7 @@
           <div class="section-title">
             逐题检索结果
             <span style="font-weight:400;font-size:11px;color:var(--text-muted);margin-left:8px;">
-              期望 Chunk = 标注的标准答案，实际召回 = 检索策略返回的 Top-K
+              期望 Chunk = 人工或弱标注的标准 Chunk，实际召回 = 检索策略返回的 Top-K
             </span>
           </div>
           <div v-if="(experimentDetail.results || []).length" class="per-question-table">
@@ -447,8 +447,32 @@
               <tbody>
                 <tr v-for="r in experimentDetail.results" :key="r.questionId" :class="{ 'row-fail': r.failureReason }">
                   <td class="question-cell" :title="r.question">{{ r.question }}</td>
-                  <td class="chunk-cell" :title="formatChunkIds(r.expectedChunkIds)">{{ formatChunkIds(r.expectedChunkIds) }}</td>
-                  <td class="chunk-cell" :title="formatChunkIds(r.recalledChunkIds)">{{ formatChunkIds(r.recalledChunkIds) }}</td>
+                  <td class="chunk-cell">
+                    <div v-if="(r.expectedChunks || []).length" class="chunk-preview-list">
+                      <div v-for="chunk in (r.expectedChunks || []).slice(0, 3)" :key="chunk.chunkId" class="chunk-preview-item">
+                        <div class="chunk-preview-head">
+                          <span class="chunk-preview-id">#{{ chunk.chunkId }}</span>
+                          <span class="chunk-preview-meta">chunk {{ chunk.chunkIndex ?? '-' }}</span>
+                        </div>
+                        <div class="chunk-preview-text" :title="chunk.content">{{ previewChunk(chunk.content) }}</div>
+                      </div>
+                      <div v-if="(r.expectedChunks || []).length > 3" class="chunk-preview-more">+{{ (r.expectedChunks || []).length - 3 }} 条</div>
+                    </div>
+                    <span v-else :title="formatChunkIds(r.expectedChunkIds)">{{ formatChunkIds(r.expectedChunkIds) }}</span>
+                  </td>
+                  <td class="chunk-cell">
+                    <div v-if="(r.recalledChunks || []).length" class="chunk-preview-list">
+                      <div v-for="chunk in (r.recalledChunks || []).slice(0, 3)" :key="chunk.chunkId" class="chunk-preview-item">
+                        <div class="chunk-preview-head">
+                          <span class="chunk-preview-id">#{{ chunk.chunkId }}</span>
+                          <span class="chunk-preview-meta">chunk {{ chunk.chunkIndex ?? '-' }}</span>
+                        </div>
+                        <div class="chunk-preview-text" :title="chunk.content">{{ previewChunk(chunk.content) }}</div>
+                      </div>
+                      <div v-if="(r.recalledChunks || []).length > 3" class="chunk-preview-more">+{{ (r.recalledChunks || []).length - 3 }} 条</div>
+                    </div>
+                    <span v-else :title="formatChunkIds(r.recalledChunkIds)">{{ formatChunkIds(r.recalledChunkIds) }}</span>
+                  </td>
                   <td>
                     <span v-if="r.hitAt != null && r.hitAt >= 0" class="hit-badge hit-ok">#{{ r.hitAt }}</span>
                     <span v-else class="hit-badge hit-miss">未命中</span>
@@ -497,7 +521,7 @@
             失败样本分析
           </div>
           <table v-if="(experimentDetail.failureSamples || []).length" class="data-table" style="margin-top:8px;">
-            <thead><tr><th>问题</th><th>失败原因</th><th>命中情况</th><th>优化建议</th></tr></thead>
+            <thead><tr><th>问题</th><th>失败原因</th><th>命中情况</th><th>期望 Chunk</th><th>实际召回 Chunk</th><th>优化建议</th></tr></thead>
             <tbody>
               <tr v-for="item in experimentDetail.failureSamples || []" :key="item.questionId">
                 <td>{{ item.question }}</td>
@@ -505,6 +529,32 @@
                   <span class="badge" :class="failureBadgeClass(item.failureReason)">{{ item.failureReason }}</span>
                 </td>
                 <td>{{ failureRankText(item) }}</td>
+                <td class="chunk-cell">
+                  <div v-if="(item.expectedChunks || []).length" class="chunk-preview-list">
+                    <div v-for="chunk in (item.expectedChunks || []).slice(0, 2)" :key="chunk.chunkId" class="chunk-preview-item">
+                      <div class="chunk-preview-head">
+                        <span class="chunk-preview-id">#{{ chunk.chunkId }}</span>
+                        <span class="chunk-preview-meta">chunk {{ chunk.chunkIndex ?? '-' }}</span>
+                      </div>
+                      <div class="chunk-preview-text" :title="chunk.content">{{ previewChunk(chunk.content) }}</div>
+                    </div>
+                    <div v-if="(item.expectedChunks || []).length > 2" class="chunk-preview-more">+{{ (item.expectedChunks || []).length - 2 }} 条</div>
+                  </div>
+                  <span v-else :title="formatChunkIds(item.expectedChunkIds)">{{ formatChunkIds(item.expectedChunkIds) }}</span>
+                </td>
+                <td class="chunk-cell">
+                  <div v-if="(item.recalledChunks || []).length" class="chunk-preview-list">
+                    <div v-for="chunk in (item.recalledChunks || []).slice(0, 2)" :key="chunk.chunkId" class="chunk-preview-item">
+                      <div class="chunk-preview-head">
+                        <span class="chunk-preview-id">#{{ chunk.chunkId }}</span>
+                        <span class="chunk-preview-meta">chunk {{ chunk.chunkIndex ?? '-' }}</span>
+                      </div>
+                      <div class="chunk-preview-text" :title="chunk.content">{{ previewChunk(chunk.content) }}</div>
+                    </div>
+                    <div v-if="(item.recalledChunks || []).length > 2" class="chunk-preview-more">+{{ (item.recalledChunks || []).length - 2 }} 条</div>
+                  </div>
+                  <span v-else :title="formatChunkIds(item.recalledChunkIds)">{{ formatChunkIds(item.recalledChunkIds) }}</span>
+                </td>
                 <td>{{ item.suggestion || failureSuggestion(item.failureReason, experimentDetail.strategy) }}</td>
               </tr>
             </tbody>
@@ -514,7 +564,7 @@
 
       <div v-if="showQuickStart" class="modal-mask" @click.self="showQuickStart = false">
         <div class="modal modal-wide">
-          <h3 class="modal-title">{{ quickStartPreset === 'extreme' ? '🧪 极限测试用例' : '⚡ 快速体验 — 基于简历的测试用例' }}</h3>
+          <h3 class="modal-title">{{ quickStartPreset === 'extreme' ? '🧪 极限测试用例' : '⚡ 快速体验 — 自动弱标注简历用例' }}</h3>
           <div class="field">
             <span>选择知识库（包含你简历的 KB）*</span>
             <select v-model="quickStartKbId" class="select">
@@ -1001,6 +1051,12 @@ function formatChunkIds(ids) {
   return ids.join(', ')
 }
 
+function previewChunk(content) {
+  const text = (content || '').replace(/\s+/g, ' ').trim()
+  if (!text) return '—'
+  return text.length <= 120 ? text : `${text.slice(0, 120)}…`
+}
+
 function formatRate(v) {
   const n = Number(v ?? 0)
   return `${(n * 100).toFixed(1)}%`
@@ -1235,12 +1291,46 @@ onMounted(async () => {
   line-height: 1.4;
 }
 .chunk-cell {
-  font-family: 'SF Mono', Monaco, monospace;
   font-size: 10px;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 260px;
+  vertical-align: top;
+}
+.chunk-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chunk-preview-item {
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.chunk-preview-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 3px;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+.chunk-preview-id {
+  color: var(--blue);
+  font-weight: 700;
+}
+.chunk-preview-meta {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+.chunk-preview-text {
+  color: var(--text);
+  line-height: 1.45;
+  white-space: normal;
+  word-break: break-word;
+}
+.chunk-preview-more {
+  color: var(--text-muted);
+  font-size: 9px;
+  padding-left: 2px;
 }
 .hit-badge {
   display: inline-block;

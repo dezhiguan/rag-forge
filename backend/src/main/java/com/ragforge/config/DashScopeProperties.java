@@ -20,4 +20,10 @@ public class DashScopeProperties {
   private int timeout = 30000;
 
   private int dimension = 1024;
+
+  /** Minimum interval between two embedding API calls. */
+  private int minRequestIntervalMs = 0;
+
+  /** Maximum concurrent embedding API calls allowed inside the JVM. */
+  private int maxConcurrentRequests = 1;
 }

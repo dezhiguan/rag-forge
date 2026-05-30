@@ -72,8 +72,8 @@ const apiKeyLoading = ref(false)
 const apis = [
   {
     method: 'POST', path: '/search',
-    description: '核心检索接口，支持 vector / keyword / hybrid / full / rewrite 五种策略。',
-    integration: '外部 Agent 调用此接口检索知识库，获取相关 Chunk 后组装 Prompt 回答用户问题。',
+    description: '核心检索接口，返回 chunks、分段耗时和策略信息；不直接生成最终答案。',
+    integration: '外部 Agent 调用此接口检索知识库，拿到相关 Chunk 后自行组装上下文并生成回答。',
     request: { query: '什么是RocketMQ事务消息？', kbIds: [1], strategy: 'hybrid', topK: 5, vectorWeight: 0.55, rerankTopN: 5 },
     response: { results: [{ chunkId: 12, filename: '面试题库.pdf', chunkIndex: 2, content: '...RocketMQ事务消息...', finalScore: 0.0942 }], latencyMs: 452, strategy: 'hybrid' }
   },

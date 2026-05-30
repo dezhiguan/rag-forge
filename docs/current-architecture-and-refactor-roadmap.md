@@ -4,6 +4,21 @@
 > 视角：架构体检 / 当前实现校准 / 后续重构路线  
 > 说明：本文不替代 `docs/architecture.md` 的历史设计价值，但以后讨论系统现状、问题和重构优先级时，应优先参考本文。
 
+## 0. 结论先行
+
+这个项目值得继续做，但应该从“AI 生成堆功能”转向“架构收敛”。
+
+三条底线：
+
+1. RAGForge 只做知识检索基础设施，不做聊天应用。
+2. 检索链路必须可解释、可观测、可评测。
+3. 文档、代码、页面、API 的口径必须一致。
+
+重构原则：
+
+- 不推倒重来。
+- 先统一口径，再补可信度，再收敛检索链路，最后做工程化增强。
+
 ---
 
 ## 1. 当前定位
@@ -241,7 +256,7 @@ PerformanceProbe
 
 ## 8. 重构路线
 
-### 阶段 1：统一口径，不推倒重来
+### 第一步：统一口径，不动大架构
 
 目标：让文档、页面、API、代码语义一致。
 
@@ -254,7 +269,7 @@ PerformanceProbe
 - 明确当前部署规格和容量目标。
 - 更新 API Gateway，确保展示真实接口。
 
-### 阶段 2：修评测可信度
+### 第二步：修评测可信度
 
 目标：让评测结果能支撑真实判断。
 
@@ -266,7 +281,7 @@ PerformanceProbe
 - 将失败原因和建议统一由后端生成。
 - 增加标注质量检查。
 
-### 阶段 3：统一检索引擎
+### 第三步：打磨核心检索链路
 
 目标：避免调试台、API、评测实验室策略不一致。
 
@@ -287,32 +302,23 @@ RetrievalService.search(SearchCommand command) -> SearchResponse
 - latency breakdown
 - retrieval log
 
-### 阶段 4：导入与索引工程化
+### 第四步：工程化增强
 
-目标：支撑 10,000 文档稳定导入。
+目标：把当前版本从“能跑”推进到“可持续用”。
 
 任务：
 
-- document_chunks batch insert。
-- embedding 限流和退避。
+- PG batch insert。
+- embedding 限流。
 - ES 写入失败补偿。
-- 文档索引状态细化。
-- KB/doc/chunk 计数校准任务。
-- RocketMQ lag 和失败重试观测。
+- Actuator / Micrometer。
+- API Key rate limit 真正生效。
+- 数据校准任务。
 
-### 阶段 5：可观测性与运维
+补充说明：
 
-目标：线上能定位问题。
-
-任务：
-
-- Spring Actuator。
-- Micrometer/Prometheus 指标。
-- HTTP latency、JVM、线程池、DB pool。
-- pipeline 分段指标。
-- search 分段指标。
-- ES/PG/RocketMQ 资源水位面板。
-- PerformanceProbe 增加管理员权限控制。
+- 导入与索引工程化是第四步的重点落点之一。
+- 10,000 文档的目标应作为第四步里的阶段性验收，不要单独拆成新的架构阶段。
 
 ---
 
@@ -371,4 +377,3 @@ full 是 Query 改写 + 混合召回 + Rerank。
 4. 修正 API Gateway 页面。
 5. 加 Actuator/Micrometer。
 6. 做 document_chunks batch insert 和 embedding 限流。
-

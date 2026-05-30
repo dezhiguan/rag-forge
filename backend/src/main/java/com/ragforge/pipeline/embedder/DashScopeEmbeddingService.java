@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -27,10 +29,13 @@ public class DashScopeEmbeddingService implements EmbeddingService {
   private final DashScopeProperties properties;
   private final HttpClient httpClient;
   private final ObjectMapper objectMapper;
+  private final Semaphore requestSemaphore;
+  private final AtomicLong nextAvailableAtMs = new AtomicLong(0L);
 
   public DashScopeEmbeddingService(DashScopeProperties properties, ObjectMapper objectMapper) {
     this.properties = properties;
     this.objectMapper = objectMapper;
+    this.requestSemaphore = new Semaphore(Math.max(1, properties.getMaxConcurrentRequests()));
     this.httpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(properties.getTimeout()))
@@ -79,7 +84,11 @@ public class DashScopeEmbeddingService implements EmbeddingService {
         sleepBeforeRetry();
       }
       long start = System.currentTimeMillis();
+      boolean acquired = false;
       try {
+        requestSemaphore.acquire();
+        acquired = true;
+        waitForRateLimitSlot();
         List<float[]> vectors = doCall(texts);
         long elapsed = System.currentTimeMillis() - start;
         log.info(
@@ -89,11 +98,39 @@ public class DashScopeEmbeddingService implements EmbeddingService {
         lastError = e;
         log.warn(
             "DashScope embedding failed (attempt {}): {}", attempt + 1, e.getMessage());
+      } finally {
+        if (acquired) {
+          requestSemaphore.release();
+        }
       }
     }
     throw new BizException(
         "Embedding 调用失败："
             + (lastError != null ? lastError.getMessage() : "unknown error"));
+  }
+
+  private void waitForRateLimitSlot() {
+    long interval = Math.max(0, properties.getMinRequestIntervalMs());
+    if (interval <= 0) {
+      return;
+    }
+    while (true) {
+      long now = System.currentTimeMillis();
+      long expected = nextAvailableAtMs.get();
+      long waitMs = expected - now;
+      if (waitMs <= 0) {
+        if (nextAvailableAtMs.compareAndSet(expected, now + interval)) {
+          return;
+        }
+        continue;
+      }
+      try {
+        Thread.sleep(waitMs);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new BizException("Embedding 限流等待被中断");
+      }
+    }
   }
 
   private List<float[]> doCall(List<String> texts) throws IOException, InterruptedException {

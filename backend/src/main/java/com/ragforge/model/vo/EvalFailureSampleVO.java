@@ -11,6 +11,8 @@ public class EvalFailureSampleVO {
   private String suggestion;
   private List<Long> expectedChunkIds;
   private List<Long> recalledChunkIds;
+  private List<ChunkPreviewVO> expectedChunks;
+  private List<ChunkPreviewVO> recalledChunks;
   private Integer expectedBestRank;
   private Boolean expectedInTopK;
   private Boolean expectedInTop3;

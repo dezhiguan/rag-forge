@@ -7,31 +7,27 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.EvalDatasetMapper;
 import com.ragforge.mapper.EvalExperimentMapper;
+import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.EvalQuestionMapper;
 import com.ragforge.mapper.EvalResultMapper;
+import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.EvalDataset;
 import com.ragforge.model.entity.EvalExperiment;
 import com.ragforge.model.entity.EvalQuestion;
 import com.ragforge.model.entity.EvalResult;
+import com.ragforge.model.vo.ChunkPreviewVO;
 import com.ragforge.model.vo.EvalExperimentVO;
 import com.ragforge.model.vo.EvalFailureSampleVO;
 import com.ragforge.model.vo.EvalResultDetailVO;
-import com.ragforge.search.EsSearchService;
-import com.ragforge.search.HybridSearchService;
-import com.ragforge.search.QueryRewriter;
-import com.ragforge.search.RerankerClient;
-import com.ragforge.search.RerankerClient.RerankResult;
+import com.ragforge.search.RetrievalService;
 import com.ragforge.search.SearchResult;
-import com.ragforge.search.VectorSearchService;
 import com.ragforge.service.EvalExperimentService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,11 +52,8 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   private final EvalResultMapper evalResultMapper;
   private final EvalQuestionMapper evalQuestionMapper;
   private final EvalDatasetMapper evalDatasetMapper;
-  private final VectorSearchService vectorSearchService;
-  private final EsSearchService esSearchService;
-  private final HybridSearchService hybridSearchService;
-  private final RerankerClient rerankerClient;
-  private final QueryRewriter queryRewriter;
+  private final DocumentChunkMapper documentChunkMapper;
+  private final RetrievalService retrievalService;
   private final ObjectMapper objectMapper;
 
   @Lazy
@@ -174,6 +167,14 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
             .stream()
             .collect(LinkedHashMap::new, (m, q) -> m.put(q.getId(), q), LinkedHashMap::putAll);
 
+    Set<Long> allChunkIds = new java.util.LinkedHashSet<>();
+    for (EvalResult result : evalResults) {
+      allChunkIds.addAll(parseLongList(result.getRecalledChunkIds()));
+      EvalQuestion q = questionMap.get(result.getQuestionId());
+      allChunkIds.addAll(parseLongList(q != null ? q.getExpectedDocIds() : null));
+    }
+    Map<Long, ChunkPreviewVO> chunkMap = loadChunkPreviews(allChunkIds);
+
     List<EvalResultDetailVO> details = new ArrayList<>();
     List<EvalFailureSampleVO> failureSamples = new ArrayList<>();
     for (EvalResult result : evalResults) {
@@ -183,8 +184,12 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       detail.setQuestion(q != null ? q.getQuestion() : "");
       List<Long> expected = q != null ? parseLongList(q.getExpectedDocIds()) : List.of();
       List<Long> recalled = parseLongList(result.getRecalledChunkIds());
+      List<ChunkPreviewVO> expectedChunks = buildChunkPreviews(expected, chunkMap);
+      List<ChunkPreviewVO> recalledChunks = buildChunkPreviews(recalled, chunkMap);
       detail.setExpectedChunkIds(expected);
       detail.setRecalledChunkIds(recalled);
+      detail.setExpectedChunks(expectedChunks);
+      detail.setRecalledChunks(recalledChunks);
       detail.setHitAt(result.getHitAt());
       detail.setTop1Hit(result.getHitAt() != null && result.getHitAt() == 1);
       detail.setTop3Hit(Boolean.TRUE.equals(result.getHit()));
@@ -209,6 +214,8 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
         sample.setSuggestion(detail.getSuggestion());
         sample.setExpectedChunkIds(expected);
         sample.setRecalledChunkIds(recalled);
+        sample.setExpectedChunks(expectedChunks);
+        sample.setRecalledChunks(recalledChunks);
         sample.setExpectedBestRank(expectedBestRank);
         sample.setExpectedInTopK(expectedBestRank != null);
         sample.setExpectedInTop3(expectedBestRank != null && expectedBestRank <= 3);
@@ -297,92 +304,11 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     return row;
   }
 
-  private List<SearchResult> search(
-      String query, Long kbId, String strategy, int topK, double vectorWeight) {
+  private List<SearchResult> search(String query, Long kbId, String strategy, int topK, double vectorWeight) {
     List<Long> kbIds = kbId == null ? null : List.of(kbId);
-    return switch (strategy) {
-      case "keyword" -> esSearchService.search(query, kbIds, null, topK);
-      case "hybrid" -> hybridSearchService.search(query, kbIds, null, topK, vectorWeight);
-      case "full" -> rerank(
-          searchByRewrittenHybrid(queryRewriter.rewrite(query), kbIds, topK, vectorWeight), query, topK);
-      case "rewrite" -> searchByRewrittenQueries(
-          queryRewriter.rewrite(query), kbIds, topK);
-      default -> vectorSearchService.search(query, kbIds, null, topK);
-    };
-  }
-
-  private List<SearchResult> searchByRewrittenQueries(
-      List<String> queries, List<Long> kbIds, int topK) {
-    Map<Long, SearchResult> dedup = new LinkedHashMap<>();
-    for (String q : queries) {
-      List<SearchResult> partial = vectorSearchService.search(q, kbIds, null, topK);
-      for (SearchResult item : partial) {
-        if (item.getChunkId() == null) {
-          continue;
-        }
-        SearchResult existing = dedup.get(item.getChunkId());
-        if (existing == null || item.getVectorScore() > existing.getVectorScore()) {
-          dedup.put(item.getChunkId(), item);
-        }
-      }
-    }
-    List<SearchResult> merged = new ArrayList<>(dedup.values());
-    merged.sort(Comparator.comparingDouble(SearchResult::getVectorScore).reversed());
-    if (merged.size() > topK) {
-      return merged.subList(0, topK);
-    }
-    return merged;
-  }
-
-  private List<SearchResult> searchByRewrittenHybrid(
-      List<String> queries, List<Long> kbIds, int topK, double vectorWeight) {
-    Map<Long, SearchResult> dedup = new LinkedHashMap<>();
-    for (String q : queries) {
-      List<SearchResult> partial = hybridSearchService.search(q, kbIds, null, topK * 2, vectorWeight);
-      for (SearchResult item : partial) {
-        if (item.getChunkId() == null) {
-          continue;
-        }
-        SearchResult existing = dedup.get(item.getChunkId());
-        if (existing == null || item.getFinalScore() > existing.getFinalScore()) {
-          dedup.put(item.getChunkId(), item);
-        }
-      }
-    }
-    List<SearchResult> merged = new ArrayList<>(dedup.values());
-    merged.sort(Comparator.comparingDouble(SearchResult::getFinalScore).reversed());
-    return merged.size() > topK ? merged.subList(0, topK) : merged;
-  }
-
-  private List<SearchResult> rerank(List<SearchResult> source, String query, int topK) {
-    if (source.isEmpty()) {
-      return source;
-    }
-    List<RerankResult> reranked =
-        rerankerClient.rerank(query, source.stream().map(SearchResult::getContent).toList(), Math.min(topK, source.size()))
-            .getResults();
-    if (reranked == null || reranked.isEmpty()) {
-      return source;
-    }
-    List<SearchResult> reordered = new ArrayList<>();
-    Set<Integer> used = new HashSet<>();
-    for (RerankResult rank : reranked) {
-      int idx = rank.getIndex();
-      if (idx < 0 || idx >= source.size()) {
-        continue;
-      }
-      SearchResult item = source.get(idx);
-      item.setFinalScore(rank.getScore());
-      reordered.add(item);
-      used.add(idx);
-    }
-    for (int i = 0; i < source.size(); i++) {
-      if (!used.contains(i)) {
-        reordered.add(source.get(i));
-      }
-    }
-    reordered.sort(Comparator.comparingDouble(SearchResult::getFinalScore).reversed());
-    return reordered.size() > topK ? reordered.subList(0, topK) : reordered;
+    return retrievalService
+        .retrieve(query, kbIds, null, strategy, vectorWeight, topK, topK)
+        .getResults();
   }
 
   private String classifyFailure(
@@ -511,6 +437,43 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     } catch (JsonProcessingException e) {
       return "[]";
     }
+  }
+
+  private Map<Long, ChunkPreviewVO> loadChunkPreviews(Set<Long> chunkIds) {
+    if (chunkIds == null || chunkIds.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    return documentChunkMapper.selectBatchIds(chunkIds).stream()
+        .collect(
+            LinkedHashMap::new,
+            (m, chunk) -> m.put(chunk.getId(), toChunkPreview(chunk)),
+            LinkedHashMap::putAll);
+  }
+
+  private List<ChunkPreviewVO> buildChunkPreviews(List<Long> chunkIds, Map<Long, ChunkPreviewVO> chunkMap) {
+    if (chunkIds == null || chunkIds.isEmpty() || chunkMap == null || chunkMap.isEmpty()) {
+      return Collections.emptyList();
+    }
+    List<ChunkPreviewVO> result = new ArrayList<>();
+    for (Long chunkId : chunkIds) {
+      if (chunkId == null) {
+        continue;
+      }
+      ChunkPreviewVO preview = chunkMap.get(chunkId);
+      if (preview != null) {
+        result.add(preview);
+      }
+    }
+    return result;
+  }
+
+  private static ChunkPreviewVO toChunkPreview(DocumentChunk chunk) {
+    ChunkPreviewVO vo = new ChunkPreviewVO();
+    vo.setChunkId(chunk.getId());
+    vo.setChunkIndex(chunk.getChunkIndex());
+    vo.setContent(chunk.getContent());
+    vo.setTokenCount(chunk.getTokenCount());
+    return vo;
   }
 
   private static BigDecimal rate(int hit, int total) {

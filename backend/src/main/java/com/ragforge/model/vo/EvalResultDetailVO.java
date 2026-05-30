@@ -9,6 +9,8 @@ public class EvalResultDetailVO {
   private String question;
   private List<Long> expectedChunkIds;
   private List<Long> recalledChunkIds;
+  private List<ChunkPreviewVO> expectedChunks;
+  private List<ChunkPreviewVO> recalledChunks;
   private Integer hitAt;
   private boolean top1Hit;
   private boolean top3Hit;
