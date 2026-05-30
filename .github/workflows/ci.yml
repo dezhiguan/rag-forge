@@ -1,13 +1,20 @@
-name: CI
+name: CI/CD
 
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "nginx.conf"
+      - "docker-compose-app.yml"
+      - "deploy.sh"
+      - ".github/workflows/ci.yml"
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: cicd-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -47,3 +54,48 @@ jobs:
         run: |
           npm ci
           npm run build
+
+      - name: Upload build artifacts
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          retention-days: 1
+          path: |
+            backend/target/rag-forge-*.jar
+            frontend/dist
+
+  deploy:
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: .
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy to app server
+        env:
+          APP_HOST: ${{ secrets.APP_HOST }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
+          SKIP_BUILD: "1"
+        run: ./deploy.sh
