@@ -22,6 +22,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class RetrievalService {
 
+  private static final int RRF_K = 10;
+
   private final VectorSearchService vectorSearchService;
   private final EsSearchService esSearchService;
   private final HybridSearchService hybridSearchService;
@@ -164,50 +166,100 @@ public class RetrievalService {
 
   private List<SearchResult> searchByRewrittenQueries(
       List<String> queries, List<Long> kbIds, List<Long> docIds, int topK) {
-    Map<Long, SearchResult> dedup = new LinkedHashMap<>();
-    for (String q : queries) {
-      List<SearchResult> partial = vectorSearchService.search(q, kbIds, docIds, topK);
-      for (SearchResult item : partial) {
-        if (item.getChunkId() == null) {
-          continue;
-        }
-        SearchResult existing = dedup.get(item.getChunkId());
-        if (existing == null || item.getVectorScore() > existing.getVectorScore()) {
-          dedup.put(item.getChunkId(), item);
-        }
-      }
-    }
-    List<SearchResult> merged = new ArrayList<>(dedup.values());
-    merged.sort(Comparator.comparingDouble(SearchResult::getVectorScore).reversed());
-    return merged.size() > topK ? merged.subList(0, topK) : merged;
+    return vectorSearchService.searchByQueries(queries, kbIds, docIds, topK);
   }
 
   private HybridSearchOutput searchByRewrittenHybrid(
       List<String> queries, List<Long> kbIds, List<Long> docIds, int topK, double vectorWeight) {
+    int recallTopK = Math.max(topK * 2, topK);
     Map<Long, SearchResult> dedup = new LinkedHashMap<>();
+    Map<Long, Double> rrfScores = new LinkedHashMap<>();
     long vectorLatency = 0;
     long keywordLatency = 0;
-    for (String q : queries) {
-      HybridSearchOutput output =
-          hybridSearchService.searchWithMetrics(q, kbIds, docIds, topK * 2, vectorWeight);
-      vectorLatency += output.getVectorLatencyMs() == null ? 0 : output.getVectorLatencyMs();
-      keywordLatency += output.getKeywordLatencyMs() == null ? 0 : output.getKeywordLatencyMs();
-      for (SearchResult item : output.getResults()) {
+
+    if (vectorWeight > 0) {
+      long vectorStart = System.currentTimeMillis();
+      List<SearchResult> vectorResults =
+          vectorSearchService.searchByQueries(queries, kbIds, docIds, recallTopK);
+      vectorLatency = System.currentTimeMillis() - vectorStart;
+      for (int i = 0; i < vectorResults.size(); i++) {
+        SearchResult item = vectorResults.get(i);
         if (item.getChunkId() == null) {
           continue;
         }
-        SearchResult existing = dedup.get(item.getChunkId());
-        if (existing == null || item.getFinalScore() > existing.getFinalScore()) {
-          dedup.put(item.getChunkId(), item);
+        SearchResult base = dedup.computeIfAbsent(item.getChunkId(), id -> cloneResult(item));
+        base.setVectorScore(Math.max(base.getVectorScore(), item.getVectorScore()));
+        if (vectorWeight >= 1.0) {
+          base.setFinalScore(base.getVectorScore());
+        } else {
+          rrfScores.merge(item.getChunkId(), 1.0 / (RRF_K + i + 1), Double::sum);
         }
       }
     }
+
+    if (vectorWeight >= 1.0) {
+      List<SearchResult> vectorOnly = new ArrayList<>(dedup.values());
+      vectorOnly.sort(Comparator.comparingDouble(SearchResult::getFinalScore).reversed());
+      if (vectorOnly.size() > topK) {
+        vectorOnly = new ArrayList<>(vectorOnly.subList(0, topK));
+      }
+      return new HybridSearchOutput(vectorOnly, vectorLatency, null, "vector");
+    }
+
+    for (String q : queries) {
+      long keywordStart = System.currentTimeMillis();
+      List<SearchResult> keywordResults = esSearchService.search(q, kbIds, docIds, recallTopK);
+      keywordLatency += System.currentTimeMillis() - keywordStart;
+      for (int i = 0; i < keywordResults.size(); i++) {
+        SearchResult item = keywordResults.get(i);
+        if (item.getChunkId() == null) {
+          continue;
+        }
+        SearchResult base = dedup.computeIfAbsent(item.getChunkId(), id -> cloneResult(item));
+        base.setBm25Score(Math.max(base.getBm25Score(), item.getBm25Score()));
+        if (base.getFilename() == null || base.getFilename().isBlank()) {
+          base.setFilename(item.getFilename());
+        }
+        if (base.getContent() == null || base.getContent().isBlank()) {
+          base.setContent(item.getContent());
+        }
+        if (base.getDocId() == null) {
+          base.setDocId(item.getDocId());
+        }
+        if (base.getChunkIndex() == 0 && item.getChunkIndex() != 0) {
+          base.setChunkIndex(item.getChunkIndex());
+        }
+        rrfScores.merge(item.getChunkId(), 1.0 / (RRF_K + i + 1), Double::sum);
+      }
+    }
+
     List<SearchResult> merged = new ArrayList<>(dedup.values());
+    for (SearchResult result : merged) {
+      if (vectorWeight <= 0) {
+        result.setFinalScore(result.getBm25Score());
+      } else {
+        result.setFinalScore(rrfScores.getOrDefault(result.getChunkId(), 0.0));
+      }
+    }
     merged.sort(Comparator.comparingDouble(SearchResult::getFinalScore).reversed());
     if (merged.size() > topK) {
-      merged = merged.subList(0, topK);
+      merged = new ArrayList<>(merged.subList(0, topK));
     }
-    return new HybridSearchOutput(merged, vectorLatency, keywordLatency, "hybrid");
+    return new HybridSearchOutput(
+        merged, vectorWeight <= 0 ? null : vectorLatency, keywordLatency, vectorWeight <= 0 ? "keyword" : "hybrid");
+  }
+
+  private static SearchResult cloneResult(SearchResult src) {
+    SearchResult copy = new SearchResult();
+    copy.setChunkId(src.getChunkId());
+    copy.setDocId(src.getDocId());
+    copy.setFilename(src.getFilename());
+    copy.setContent(src.getContent());
+    copy.setChunkIndex(src.getChunkIndex());
+    copy.setVectorScore(src.getVectorScore());
+    copy.setBm25Score(src.getBm25Score());
+    copy.setFinalScore(src.getFinalScore());
+    return copy;
   }
 
   private static List<SearchResult> applyRerankResults(
