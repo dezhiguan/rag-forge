@@ -26,7 +26,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/Sidebar.vue'
 
-const sidebarCollapsed = ref(true)
+const sidebarCollapsed = ref(false)
 const mobileMenuOpen = ref(false)
 const route = useRoute()
 
