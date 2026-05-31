@@ -16,6 +16,17 @@
         <header class="doc-header">
           <div class="doc-header-main">
             <h1 class="doc-title">{{ doc.filename }}</h1>
+            <div class="doc-header-actions">
+              <button
+                type="button"
+                class="link-btn danger"
+                :disabled="!deleteEnabled"
+                :title="deleteEnabled ? '删除文档' : '演示环境已禁用删除'"
+                @click="onDeleteDoc"
+              >
+                删除
+              </button>
+            </div>
             <div class="doc-sub">
               <span>{{ formatBytes(doc.fileSize) }}</span>
               <span class="dot">·</span>
@@ -155,7 +166,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
-import { getDocument, listDocumentChunks, reprocessDocument } from '../api/document'
+import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
+import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument } from '../api/document'
+
+const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import { navigateBackFromDocument } from '../composables/useDocumentNav'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import {
@@ -299,6 +313,13 @@ onUnmounted(() => {
   if (id) stopPolling(id)
 })
 
+async function onDeleteDoc() {
+  if (!deleteEnabled || !doc.value?.id) return
+  if (!confirm(`确定删除文档「${doc.value.filename}」？`)) return
+  await deleteDocument(doc.value.id)
+  onBack()
+}
+
 async function onReprocess() {
   if (!doc.value) return
   retrying.value = true
@@ -366,8 +387,46 @@ function formatBytes(bytes) {
   border-radius: var(--radius-md);
 }
 
+.doc-header-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.doc-header-actions {
+  flex-shrink: 0;
+}
+
+.link-btn {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--blue);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.link-btn.danger {
+  color: var(--red);
+  border-color: #fecaca;
+}
+
+.link-btn:disabled,
+.link-btn.danger:disabled {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: #f8fafc;
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .doc-title {
   margin: 0 0 8px;
+  flex: 1;
+  min-width: 0;
   font-size: 18px;
   font-weight: 700;
   color: var(--slate);

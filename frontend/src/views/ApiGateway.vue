@@ -23,16 +23,43 @@
                 <div class="key-value" :title="key.apiKey">{{ key.apiKey }}</div>
               </div>
               <div class="key-actions">
-                <span
-                  class="key-toggle"
-                  :class="{ on: key.enabled }"
-                  @click="onToggleKey(key)"
-                  :title="key.enabled ? '点击停用' : '点击启用'"
-                >
-                  {{ key.enabled ? '✓' : '—' }}
+                <span class="key-action-wrap">
+                  <Transition name="key-tip">
+                    <span
+                      v-if="keyTip?.keyId === key.id && keyTip.target === 'toggle'"
+                      class="key-action-tip"
+                    >
+                      {{ keyTip.text }}
+                    </span>
+                  </Transition>
+                  <span
+                    class="key-toggle"
+                    :class="{ on: key.enabled }"
+                    @click="onToggleKey(key)"
+                    :title="key.enabled ? '点击停用' : '点击启用'"
+                  >
+                    {{ key.enabled ? '✓' : '—' }}
+                  </span>
                 </span>
-                <span class="key-copy" @click="onCopyKey(key.apiKey)" title="复制">📋</span>
-                <span class="key-del" @click="onDeleteKey(key)" title="删除">✗</span>
+                <span class="key-action-wrap">
+                  <Transition name="key-tip">
+                    <span
+                      v-if="keyTip?.keyId === key.id && keyTip.target === 'copy'"
+                      class="key-action-tip"
+                    >
+                      {{ keyTip.text }}
+                    </span>
+                  </Transition>
+                  <span class="key-copy" @click="onCopyKey(key)" title="复制">📋</span>
+                </span>
+                <span
+                  class="key-del"
+                  :class="{ 'is-disabled': !deleteEnabled }"
+                  :title="deleteEnabled ? '删除' : '演示环境已禁用删除'"
+                  @click="onDeleteKey(key)"
+                >
+                  ✗
+                </span>
               </div>
             </div>
             <button class="key-gen-btn" :disabled="apiKeyLoading" @click="onCreateKey">
@@ -63,11 +90,15 @@
 
 <script setup>
 import { onMounted, ref, computed } from 'vue'
+import { API_KEY_DELETE_ENABLED } from '../config/uiPolicy'
 import { listApiKeys, createApiKey, enableApiKey, deleteApiKey } from '../api/apikey'
 
+const deleteEnabled = API_KEY_DELETE_ENABLED
 const activeApi = ref('/search')
 const apiKeys = ref([])
 const apiKeyLoading = ref(false)
+const keyTip = ref(null)
+let keyTipTimer = null
 
 const apis = [
   {
@@ -115,16 +146,28 @@ async function onCreateKey() {
   }
 }
 
+function showKeyTip(keyId, text, target) {
+  keyTip.value = { keyId, text, target }
+  if (keyTipTimer) clearTimeout(keyTipTimer)
+  keyTipTimer = setTimeout(() => {
+    keyTip.value = null
+    keyTipTimer = null
+  }, 1500)
+}
+
 async function onToggleKey(key) {
+  const nextEnabled = !key.enabled
   try {
-    await enableApiKey(key.id, !key.enabled)
-    key.enabled = !key.enabled
+    await enableApiKey(key.id, nextEnabled)
+    key.enabled = nextEnabled
+    showKeyTip(key.id, nextEnabled ? '已启用' : '已禁用', 'toggle')
   } catch {
-    // error handled by interceptor
+    showKeyTip(key.id, '操作失败', 'toggle')
   }
 }
 
 async function onDeleteKey(key) {
+  if (!deleteEnabled) return
   if (!confirm(`确定删除 API Key「${key.keyName}」？`)) return
   try {
     await deleteApiKey(key.id)
@@ -134,11 +177,34 @@ async function onDeleteKey(key) {
   }
 }
 
-async function onCopyKey(text) {
-  try {
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text)
+    return
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  if (!ok) throw new Error('copy failed')
+}
+
+async function onCopyKey(key) {
+  const text = key?.apiKey
+  if (!text) {
+    showKeyTip(key.id, '无内容', 'copy')
+    return
+  }
+  try {
+    await copyTextToClipboard(text)
+    showKeyTip(key.id, '复制成功', 'copy')
   } catch {
-    // fallback silently
+    showKeyTip(key.id, '复制失败', 'copy')
   }
 }
 
@@ -185,10 +251,56 @@ onMounted(() => {
 .key-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .key-toggle { cursor: pointer; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: var(--radius-md); background: rgba(148,163,184,0.18); color: #64748b; }
 .key-toggle.on { background: #dcfce7; color: #166534; }
+.key-action-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.key-action-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.3;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+.key-action-tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: rgba(15, 23, 42, 0.92);
+}
 .key-copy { cursor: pointer; font-size: 10px; opacity: 0.6; }
 .key-copy:hover { opacity: 1; }
+.key-tip-enter-active,
+.key-tip-leave-active {
+  transition: opacity 0.15s ease;
+}
+.key-tip-enter-from,
+.key-tip-leave-to {
+  opacity: 0;
+}
 .key-del { cursor: pointer; font-size: 11px; color: var(--red); font-weight: 700; }
 .key-del:hover { opacity: 0.7; }
+.key-del.is-disabled {
+  color: var(--text-muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.key-del.is-disabled:hover { opacity: 0.45; }
 .key-gen-btn { width: 100%; margin-top: 8px; padding: 5px 0; background: #fff; border: 1px dashed var(--blue); border-radius: var(--radius-sm); font-size: 10px; color: var(--blue); cursor: pointer; transition: background 0.15s; }
 .key-gen-btn:hover { background: #eff6ff; }
 .key-gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }

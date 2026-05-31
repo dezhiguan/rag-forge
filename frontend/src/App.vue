@@ -164,6 +164,22 @@ body {
 .link-action:hover { color: #2563eb; text-decoration: underline; }
 .link-action.danger { color: var(--red); }
 .link-action.danger:hover { color: #dc2626; }
+.link-action.is-disabled,
+.link-action.danger.is-disabled {
+  color: var(--text-muted);
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+  text-decoration: none;
+}
+.link-btn:disabled,
+.link-btn.danger:disabled {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: #f8fafc;
+  opacity: 0.65;
+  cursor: not-allowed;
+}
 
 .hamburger {
   display: none;

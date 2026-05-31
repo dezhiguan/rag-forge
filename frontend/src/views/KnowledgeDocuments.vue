@@ -48,7 +48,14 @@
               <button class="link-btn" @click="goDoc(doc.id)">详情</button>
               <button class="link-btn" @click="onDownloadDoc(doc)">下载</button>
               <button v-if="doc.parseStatus === 'failed'" class="link-btn" @click="onReprocessDoc(doc)">重试</button>
-              <button class="link-btn danger" @click="onDeleteDoc(doc)">删除</button>
+              <button
+                class="link-btn danger"
+                :disabled="!deleteEnabled"
+                :title="deleteEnabled ? '删除文档' : '演示环境已禁用删除'"
+                @click="onDeleteDoc(doc)"
+              >
+                删除
+              </button>
             </div>
           </article>
         </div>
@@ -69,8 +76,11 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
 import DocumentStatusBadge from '../components/DocumentStatusBadge.vue'
+import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
 import { listKb } from '../api/kb'
 import { deleteDocument, downloadDocument, listDocuments, reprocessDocument } from '../api/document'
+
+const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import { documentDetailRoute } from '../composables/useDocumentNav'
 
 const route = useRoute()
@@ -119,6 +129,7 @@ async function onReprocessDoc(doc) {
 }
 
 async function onDeleteDoc(doc) {
+  if (!deleteEnabled) return
   if (!confirm(`确定删除文档「${doc.filename}」？`)) return
   await deleteDocument(doc.id)
   const nextPage = docs.value.length === 1 && page.value > 1 ? page.value - 1 : page.value

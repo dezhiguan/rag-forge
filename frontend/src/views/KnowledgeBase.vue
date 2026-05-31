@@ -122,7 +122,12 @@
                   <td>{{ formatTime(kb.createdAt) }}</td>
                   <td>
                     <span class="link-action" @click.stop="openEdit(kb)">编辑</span>
-                    <span class="link-action danger" @click.stop="onDeleteKb(kb)">
+                    <span
+                      class="link-action danger"
+                      :class="{ 'is-disabled': !deleteEnabled }"
+                      :title="deleteEnabled ? '删除知识库' : '演示环境已禁用删除'"
+                      @click.stop="onDeleteKb(kb)"
+                    >
                       删除
                     </span>
                   </td>
@@ -184,7 +189,14 @@
                               <span class="link-action" @click.stop="goDoc(doc.id, doc.kbId)">详情</span>
                               <span class="link-action" @click.stop="onDownloadDoc(doc)">下载</span>
                               <span v-if="doc.parseStatus === 'failed'" class="link-action" @click.stop="onReprocessDoc(doc)">重试</span>
-                              <span class="link-action danger" @click.stop="onDeleteDoc(doc)">删除</span>
+                              <span
+                                class="link-action danger"
+                                :class="{ 'is-disabled': !deleteEnabled }"
+                                :title="deleteEnabled ? '删除文档' : '演示环境已禁用删除'"
+                                @click.stop="onDeleteDoc(doc)"
+                              >
+                                删除
+                              </span>
                             </div>
                           </div>
                         </article>
@@ -254,6 +266,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
 import { createKb, deleteKb, listKb, updateKb } from '../api/kb'
 import {
   deleteDocument,
@@ -265,6 +278,8 @@ import {
 } from '../api/document'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import { documentDetailRoute } from '../composables/useDocumentNav'
+
+const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import {
   docStatusClass,
   docStatusLabel,
@@ -487,6 +502,7 @@ async function onUpdateKb() {
 }
 
 async function onDeleteKb(kb) {
+  if (!deleteEnabled) return
   if (!confirm(`确定删除知识库「${kb.name}」？`)) return
   await deleteKb(kb.id)
   await loadKbs()
@@ -586,6 +602,7 @@ async function onReprocessDoc(doc) {
 }
 
 async function onDeleteDoc(doc) {
+  if (!deleteEnabled) return
   if (!confirm(`确定删除文档「${doc.filename}」？`)) return
   stopDocPolling(doc.id)
   if (activeDocId.value === doc.id) {
