@@ -81,8 +81,7 @@
             <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
             <button
               class="btn-accent"
-              :disabled="!kbList.length"
-              @click="openQuickStart"
+              @click="kbList.length ? openQuickStart() : goToKnowledge()"
             >
               {{ kbList.length ? '⚡ 快速体验（自动弱标注）' : '先创建知识库后体验' }}
             </button>
@@ -684,7 +683,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   batchCreateEvalQuestions,
   createEvalDataset,
@@ -703,6 +702,11 @@ import { listKb } from '../api/kb'
 import { search as searchApi } from '../api/search'
 
 const route = useRoute()
+const router = useRouter()
+
+function goToKnowledge() {
+  router.push('/knowledge')
+}
 
 const activeTab = ref('datasets')
 const datasets = ref([])
