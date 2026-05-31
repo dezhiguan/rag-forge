@@ -79,8 +79,13 @@
           </div>
           <div class="onboard-actions">
             <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
-            <button class="btn-accent" @click="openQuickStart('resume')">⚡ 快速体验（自动弱标注）</button>
-            <button class="btn-accent" @click="openQuickStart('extreme')">🧪 极限测试用例</button>
+            <button
+              class="btn-accent"
+              :disabled="!kbList.length"
+              @click="openQuickStart"
+            >
+              {{ kbList.length ? '⚡ 快速体验（自动弱标注）' : '先创建知识库后体验' }}
+            </button>
           </div>
         </div>
 
@@ -151,6 +156,9 @@
                               {{ formatChunkIds(q.expectedChunkIds) }}
                             </td>
                             <td>
+                              <span class="link-action" @click.stop="openEditQuestion(ds.id, q)">
+                                编辑
+                              </span>
                               <span class="link-action danger" @click.stop="onDeleteQuestion(ds.id, q)">
                                 删除
                               </span>
@@ -293,7 +301,7 @@
 
       <div v-if="showAddQuestion" class="modal-mask" @click.self="showAddQuestion = false">
         <div class="modal modal-question">
-          <h3 class="modal-title">添加题目</h3>
+          <h3 class="modal-title">{{ editingQuestionId ? '编辑题目' : '添加题目' }}</h3>
           <template v-if="addQuestionStep === 1">
             <label class="field">
               <span>问题 *</span>
@@ -338,7 +346,7 @@
             <div class="modal-actions">
               <button class="btn-ghost" @click="addQuestionStep = 1">上一步</button>
               <button class="btn-primary" :disabled="submittingQuestion" @click="onAddQuestion">
-                {{ submittingQuestion ? '保存中…' : '确认保存' }}
+                {{ submittingQuestion ? '保存中…' : editingQuestionId ? '保存标注' : '确认保存' }}
               </button>
             </div>
           </template>
@@ -590,10 +598,10 @@
 
       <div v-if="showQuickStart" class="modal-mask" @click.self="showQuickStart = false">
         <div class="modal modal-wide">
-          <h3 class="modal-title">{{ quickStartPreset === 'extreme' ? '🧪 极限测试用例' : '⚡ 快速体验 — 自动弱标注简历用例' }}</h3>
+          <h3 class="modal-title">⚡ 快速体验 — 自动弱标注</h3>
           <div class="field">
-            <span>选择知识库（包含你简历的 KB）*</span>
-            <select v-model="quickStartKbId" class="select">
+            <span>选择知识库（必须已上传并完成解析文档）*</span>
+            <select v-model="quickStartKbId" class="select" @change="preloadQuickStartChunks">
               <option :value="null" disabled>请选择知识库</option>
               <option v-for="kb in kbList" :key="kb.id" :value="kb.id">
                 {{ kb.name }}
@@ -605,22 +613,33 @@
             <input v-model="quickStartName" type="text" />
           </div>
           <div class="quick-questions-label">
-            预置题目（{{ currentQuickStartQuestions.length }} 道）：
+            预置题目与自动标注 Chunk（{{ currentQuickStartQuestions.length }} 道）：
           </div>
           <div class="quick-questions-list">
-            <div v-for="(q, i) in currentQuickStartQuestions" :key="i" class="quick-q-item">
+            <div v-for="(item, i) in quickStartItems" :key="item.question" class="quick-q-item">
               <span class="quick-q-num">{{ i + 1 }}</span>
-              <span>{{ q }}</span>
+              <div class="quick-q-body">
+                <div class="quick-q-title">{{ item.question }}</div>
+                <div v-if="quickStartLoading" class="quick-chunk-muted">正在用混合检索选择期望 Chunk…</div>
+                <div v-else-if="item.chunk" class="quick-chunk-card" @click="openChunkDetail(item.chunk, '自动标注 Chunk')">
+                  <div class="quick-chunk-head">
+                    <span>{{ item.chunk.filename || '未知文档' }} #{{ item.chunk.chunkIndex ?? '-' }}</span>
+                    <span class="quick-chunk-score">{{ Number(item.chunk.score || 0).toFixed(4) }}</span>
+                  </div>
+                  <div class="quick-chunk-text" :title="item.chunk.content">{{ candidatePreview(item.chunk.content) }}</div>
+                </div>
+                <div v-else class="quick-chunk-muted">未检索到可标注 Chunk</div>
+              </div>
             </div>
           </div>
           <div class="field" style="margin-top:12px;">
             <span style="color:var(--text-muted);font-size:11px;">
-              {{ creatingQuickStart ? '正在逐题检索并自动标注期望 Chunk…' : '题目导入后自动检索知识库，取 Top-3 作为期望 Chunk' }}
+              {{ quickStartHint }}
             </span>
           </div>
           <div class="modal-actions">
             <button class="btn-ghost" @click="showQuickStart = false">取消</button>
-            <button class="btn-accent" :disabled="creatingQuickStart" @click="onCreateQuickStart">
+            <button class="btn-accent" :disabled="creatingQuickStart || quickStartLoading || !quickStartReady" @click="onCreateQuickStart">
               {{ creatingQuickStart ? '创建中…' : '一键创建数据集和题目' }}
             </button>
           </div>
@@ -678,6 +697,7 @@ import {
   listExperiments,
   listEvalQuestions,
   runExperiment,
+  updateEvalQuestion,
 } from '../api/eval'
 import { listKb } from '../api/kb'
 import { search as searchApi } from '../api/search'
@@ -711,6 +731,7 @@ const showAddQuestion = ref(false)
 const submittingQuestion = ref(false)
 const searchingCandidates = ref(false)
 const addQuestionDatasetId = ref(null)
+const editingQuestionId = ref(null)
 const addQuestionStep = ref(1)
 const questionForm = ref({ question: '' })
 const candidateChunks = ref([])
@@ -718,48 +739,29 @@ const selectedChunkIds = ref([])
 
 const showQuickStart = ref(false)
 const creatingQuickStart = ref(false)
+const quickStartLoading = ref(false)
 const quickStartKbId = ref(null)
 const quickStartName = ref('')
-const quickStartPreset = ref('resume')
+const quickStartItems = ref([])
 
 const quickStartQuestions = [
-  '官德志在影子科技主导了什么核心架构设计？',
-  'B2B抢购系统中是如何解决高并发超卖问题的？',
-  'CountDownLatch在海量数据平台中起到了什么关键作用？',
-  '边缘端运行时为什么要从Java重构到Go语言？',
-  'AI协同开发模式中，SDD（标准化开发规范）解决了什么问题？',
-  '官德志在铂涛信息公司的年度绩效评价如何？',
-  'ELK+SkyWalking全链路监控体系带来了什么具体效果？',
-  'RocketMQ事务消息在智能体平台中解决了什么分布式难题？',
+  '这份知识库主要讲了哪些内容？',
+  '文档中有哪些关键能力、经验或结论？',
+  '请找出和项目实践、技术方案或业务结果相关的内容。',
 ]
 
-const extremeQuestions = [
-  // 一、语义理解类
-  '小关在影子科技的时候，是怎么防止秒杀系统超卖的？',
-  '那个让人等齐了再一起跑的 Java 工具，在海量数据项目里怎么用的？',
-  '如果不把边缘端从 Java 改成 Go，会有什么后果？',
-  // 二、关键词匹配类
-  'ELK 那套东西加上 SkyWalking，到底解决了啥实际问题？',
-  'RocketMQ 的 transactional message 在 agent 平台里解决的是什么 distributed 问题？',
-  '官德志用过哪些中间件？给我全部列出来。',
-  // 三、精确匹配类
-  '官德志在铂涛信息的年度绩效是什么等级？',
-  'SDD 是什么，解决了什么问题？',
-  // 四、负样本
-  '官德志用过 Python 做机器学习吗？',
-  '官德志在阿里巴巴工作的时候负责什么项目？',
-  '官德志会前端开发吗？',
-  // 五、多 chunk 综合类
-  '官德志在影子科技做的所有项目，分别用了哪些技术方案？',
-  '官德志从哪年开始工作，各段经历的时间顺序是怎样的？',
-  // 六、Input 鲁棒性
-  '高并发',
-  '我最近在面一家做企业级 SaaS 的公司，他们技术负责人问我有没有做过大规模数据处理和高并发系统的经验，我想知道官德志的简历里有哪些相关经验可以借鉴参考？',
-]
-
-const currentQuickStartQuestions = computed(() =>
-  quickStartPreset.value === 'extreme' ? extremeQuestions : quickStartQuestions
+const currentQuickStartQuestions = computed(() => quickStartQuestions)
+const quickStartReady = computed(() =>
+  quickStartItems.value.length === currentQuickStartQuestions.value.length
+  && quickStartItems.value.every((item) => item.chunk?.chunkId != null)
 )
+const quickStartHint = computed(() => {
+  if (creatingQuickStart.value) return '正在创建数据集并保存自动弱标注题目…'
+  if (quickStartLoading.value) return '正在用混合检索从所选知识库预选期望 Chunk…'
+  if (!quickStartKbId.value) return '请先选择一个已上传并完成解析文档的知识库。'
+  if (!quickStartReady.value) return '当前知识库没有检索到足够的可标注 Chunk，请先上传并解析文档。'
+  return '已完成自动弱标注，创建时会直接保存当前展示的 Chunk，不会再次检索；建议后续人工复核。'
+})
 
 const showBatchImport = ref(false)
 const submittingBatch = ref(false)
@@ -864,10 +866,21 @@ async function onDeleteDataset(ds) {
 
 function openAddQuestion(datasetId) {
   addQuestionDatasetId.value = datasetId
+  editingQuestionId.value = null
   addQuestionStep.value = 1
   questionForm.value = { question: '' }
   candidateChunks.value = []
   selectedChunkIds.value = []
+  showAddQuestion.value = true
+}
+
+function openEditQuestion(datasetId, question) {
+  addQuestionDatasetId.value = datasetId
+  editingQuestionId.value = question.id
+  addQuestionStep.value = 1
+  questionForm.value = { question: question.question || '' }
+  candidateChunks.value = []
+  selectedChunkIds.value = [...(question.expectedChunkIds || [])]
   showAddQuestion.value = true
 }
 
@@ -894,7 +907,6 @@ async function onSearchCandidates() {
       content: item.content || '',
       score: item.finalScore ?? item.vectorScore ?? item.bm25Score ?? 0,
     }))
-    selectedChunkIds.value = []
     addQuestionStep.value = 2
   } catch {
     alert('检索候选 Chunk 失败，请稍后重试')
@@ -916,10 +928,15 @@ async function onAddQuestion() {
   }
   submittingQuestion.value = true
   try {
-    await createEvalQuestion(addQuestionDatasetId.value, {
+    const payload = {
       question: questionForm.value.question.trim(),
       expectedChunkIds: selectedChunkIds.value,
-    })
+    }
+    if (editingQuestionId.value) {
+      await updateEvalQuestion(addQuestionDatasetId.value, editingQuestionId.value, payload)
+    } else {
+      await createEvalQuestion(addQuestionDatasetId.value, payload)
+    }
     showAddQuestion.value = false
     await loadDatasets()
     await loadQuestions(addQuestionDatasetId.value, questionPage[addQuestionDatasetId.value] || 1)
@@ -934,11 +951,50 @@ function openBatchImport(datasetId) {
   showBatchImport.value = true
 }
 
-function openQuickStart(preset) {
-  quickStartPreset.value = preset || 'resume'
+async function openQuickStart() {
   quickStartKbId.value = kbList.value.length ? kbList.value[0].id : null
-  quickStartName.value = preset === 'extreme' ? '极限检索评测集' : '简历检索评测集'
+  quickStartName.value = '快速体验评测集'
+  quickStartItems.value = currentQuickStartQuestions.value.map((question) => ({ question, chunk: null }))
   showQuickStart.value = true
+  await preloadQuickStartChunks()
+}
+
+async function preloadQuickStartChunks() {
+  quickStartItems.value = currentQuickStartQuestions.value.map((question) => ({ question, chunk: null }))
+  if (!quickStartKbId.value) return
+  quickStartLoading.value = true
+  try {
+    const loadedItems = []
+    for (const question of currentQuickStartQuestions.value) {
+      try {
+        const res = await searchApi({
+          query: question,
+          strategy: 'hybrid',
+          topK: 3,
+          rerankTopN: 3,
+          kbIds: [quickStartKbId.value],
+        })
+        const first = (res.data?.results ?? []).find((item) => item.chunkId != null)
+        loadedItems.push({
+          question,
+          chunk: first
+            ? {
+                chunkId: first.chunkId,
+                filename: first.filename || '未知文档',
+                chunkIndex: first.chunkIndex ?? '-',
+                content: first.content || '',
+                score: first.finalScore ?? first.vectorScore ?? first.bm25Score ?? 0,
+              }
+            : null,
+        })
+      } catch {
+        loadedItems.push({ question, chunk: null })
+      }
+    }
+    quickStartItems.value = loadedItems
+  } finally {
+    quickStartLoading.value = false
+  }
 }
 
 async function onCreateQuickStart() {
@@ -948,6 +1004,10 @@ async function onCreateQuickStart() {
   }
   if (!quickStartName.value?.trim()) {
     alert('请填写数据集名称')
+    return
+  }
+  if (!quickStartReady.value) {
+    alert('当前知识库没有检索到足够的可标注 Chunk，暂不能创建快速体验数据集')
     return
   }
   creatingQuickStart.value = true
@@ -963,27 +1023,11 @@ async function onCreateQuickStart() {
       return
     }
 
-    // 2. 逐题检索，自动取 Top-3 作为期望 Chunk
-    const questionsWithChunks = []
-    for (const question of currentQuickStartQuestions.value) {
-      try {
-        const res = await searchApi({
-          query: question,
-          strategy: 'full',
-          topK: 8,
-          kbIds: [quickStartKbId.value],
-          rerankTopN: 5,
-        })
-        const top3Ids = (res.data?.results ?? [])
-          .slice(0, 3)
-          .map((r) => r.chunkId)
-          .filter((id) => id != null)
-        questionsWithChunks.push({ question, expectedChunkIds: top3Ids })
-      } catch {
-        // 检索失败也创建，只是没有期望 Chunk
-        questionsWithChunks.push({ question, expectedChunkIds: [] })
-      }
-    }
+    // 2. 直接复用弹窗中已经预检索出的自动弱标注 Chunk，不再重复检索。
+    const questionsWithChunks = quickStartItems.value.map((item) => ({
+      question: item.question,
+      expectedChunkIds: [item.chunk.chunkId],
+    }))
 
     // 3. 批量导入
     await batchCreateEvalQuestions(datasetId, questionsWithChunks)
@@ -1327,6 +1371,50 @@ onMounted(async () => {
   font-weight: 600;
   flex-shrink: 0;
   font-size: 11px;
+}
+.quick-q-body {
+  flex: 1;
+  min-width: 0;
+}
+.quick-q-title {
+  color: var(--slate);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.quick-chunk-card {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px;
+  cursor: pointer;
+}
+.quick-chunk-card:hover {
+  border-color: #c4b5fd;
+}
+.quick-chunk-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.quick-chunk-score {
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, monospace;
+  flex-shrink: 0;
+}
+.quick-chunk-text {
+  color: var(--gray);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.quick-chunk-muted {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 /* ====== Per-Question Results ====== */

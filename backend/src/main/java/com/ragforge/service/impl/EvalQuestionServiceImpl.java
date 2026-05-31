@@ -96,6 +96,20 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
 
   @Override
   @Transactional
+  public EvalQuestionVO update(Long datasetId, Long questionId, CreateEvalQuestionDTO dto) {
+    evalDatasetService.requireDataset(datasetId);
+    EvalQuestion question = evalQuestionMapper.selectById(questionId);
+    if (question == null || !datasetId.equals(question.getDatasetId())) {
+      throw new BizException(404, "评测问题不存在");
+    }
+    question.setQuestion(dto.getQuestion().trim());
+    question.setExpectedDocIds(serializeChunkIds(dto.getExpectedChunkIds()));
+    evalQuestionMapper.updateById(question);
+    return toVO(question);
+  }
+
+  @Override
+  @Transactional
   public void delete(Long datasetId, Long questionId) {
     evalDatasetService.requireDataset(datasetId);
 

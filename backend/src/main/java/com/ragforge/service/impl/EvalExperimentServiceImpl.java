@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
+import com.ragforge.config.EvalProperties;
 import com.ragforge.mapper.EvalDatasetMapper;
 import com.ragforge.mapper.EvalExperimentMapper;
 import com.ragforge.mapper.DocumentChunkMapper;
@@ -33,9 +34,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -58,6 +64,9 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   private final RetrievalService retrievalService;
   private final ObjectMapper objectMapper;
   private final JdbcTemplate jdbcTemplate;
+  private final EvalProperties evalProperties;
+  @Qualifier("evalExperimentExecutor")
+  private final Executor evalExperimentExecutor;
 
   @Lazy
   @Autowired
@@ -90,33 +99,15 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     evalExperimentMapper.insert(experiment);
 
     int total = questions.size();
-    int top1HitCount = 0;
-    int top3HitCount = 0;
-    long latencySum = 0;
-    double mrrSum = 0.0;
     List<EvalResult> evalResults = new ArrayList<>(total);
 
     try {
       long searchStart = System.currentTimeMillis();
-      for (EvalQuestion question : questions) {
-        List<Long> expectedChunkIds = parseLongList(question.getExpectedDocIds());
-        long start = System.currentTimeMillis();
-        List<SearchResult> results =
-            search(question.getQuestion(), dataset.getKbId(), normalizedStrategy, runTopK, runVectorWeight);
-        int latencyMs = (int) (System.currentTimeMillis() - start);
-
-        EvalResult evalResult = buildEvalResult(experiment.getId(), question.getId(), expectedChunkIds, results, runTopK);
-        evalResult.setLatencyMs(latencyMs);
-        evalResults.add(evalResult);
-
-        if (evalResult.getHitAt() != null && evalResult.getHitAt() == 1) {
-          top1HitCount++;
-        }
-        if (Boolean.TRUE.equals(evalResult.getHit())) {
-          top3HitCount++;
-        }
-        latencySum += latencyMs;
-        mrrSum += mrrFromHitAt(evalResult.getHitAt());
+      List<EvalQuestionRunResult> runResults =
+          runQuestionsConcurrently(
+              questions, experiment.getId(), dataset.getKbId(), normalizedStrategy, runTopK, runVectorWeight);
+      for (EvalQuestionRunResult runResult : runResults) {
+        evalResults.add(runResult.getResult());
       }
       long searchElapsed = System.currentTimeMillis() - searchStart;
       long insertStart = System.currentTimeMillis();
@@ -133,6 +124,20 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       throw new BizException(500, "实验运行失败: " + e.getMessage());
     }
 
+    int top1HitCount = 0;
+    int top3HitCount = 0;
+    long latencySum = 0;
+    double mrrSum = 0.0;
+    for (EvalResult item : evalResults) {
+      if (item.getHitAt() != null && item.getHitAt() == 1) {
+        top1HitCount++;
+      }
+      if (Boolean.TRUE.equals(item.getHit())) {
+        top3HitCount++;
+      }
+      latencySum += item.getLatencyMs() == null ? 0 : item.getLatencyMs();
+      mrrSum += mrrFromHitAt(item.getHitAt());
+    }
     experiment.setTotalQuestions(total);
     experiment.setTop1HitCount(top1HitCount);
     experiment.setTop3HitCount(top3HitCount);
@@ -323,6 +328,104 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     return retrievalService
         .retrieve(query, kbIds, null, strategy, vectorWeight, topK, topK)
         .getResults();
+  }
+
+  private List<EvalQuestionRunResult> runQuestionsConcurrently(
+      List<EvalQuestion> questions,
+      Long experimentId,
+      Long kbId,
+      String strategy,
+      int topK,
+      double vectorWeight) {
+    List<CompletableFuture<EvalQuestionRunResult>> futures =
+        questions.stream()
+            .map(
+                question ->
+                    CompletableFuture.supplyAsync(
+                        () -> runOneQuestion(experimentId, kbId, strategy, topK, vectorWeight, question),
+                        evalExperimentExecutor))
+            .toList();
+
+    List<EvalQuestionRunResult> results = new ArrayList<>(questions.size());
+    long timeoutMs = Math.max(1000, evalProperties.getQuestionTimeoutMs());
+    for (int i = 0; i < futures.size(); i++) {
+      CompletableFuture<EvalQuestionRunResult> future = futures.get(i);
+      EvalQuestion question = questions.get(i);
+      try {
+        results.add(future.get(timeoutMs, TimeUnit.MILLISECONDS));
+      } catch (TimeoutException e) {
+        future.cancel(true);
+        log.warn(
+            "Eval question timed out: experimentId={} questionId={} timeoutMs={}",
+            experimentId,
+            question.getId(),
+            timeoutMs);
+        results.add(buildFailedQuestionResult(experimentId, question, (int) timeoutMs, "检索超时"));
+      } catch (Exception e) {
+        log.warn(
+            "Eval question future failed: experimentId={} questionId={} err={}",
+            experimentId,
+            question.getId(),
+            e.getMessage());
+        results.add(buildFailedQuestionResult(experimentId, question, 0, "检索异常"));
+      }
+    }
+    return results;
+  }
+
+  private EvalQuestionRunResult runOneQuestion(
+      Long experimentId,
+      Long kbId,
+      String strategy,
+      int topK,
+      double vectorWeight,
+      EvalQuestion question) {
+    List<Long> expectedChunkIds = parseLongList(question.getExpectedDocIds());
+    long start = System.currentTimeMillis();
+    try {
+      List<SearchResult> results = search(question.getQuestion(), kbId, strategy, topK, vectorWeight);
+      int latencyMs = (int) (System.currentTimeMillis() - start);
+      EvalResult evalResult =
+          buildEvalResult(experimentId, question.getId(), expectedChunkIds, results, topK);
+      evalResult.setLatencyMs(latencyMs);
+      return new EvalQuestionRunResult(
+          evalResult,
+          evalResult.getHitAt() != null && evalResult.getHitAt() == 1,
+          Boolean.TRUE.equals(evalResult.getHit()),
+          mrrFromHitAt(evalResult.getHitAt()),
+          latencyMs);
+    } catch (Exception e) {
+      int latencyMs = (int) (System.currentTimeMillis() - start);
+      log.warn(
+          "Eval question search failed: experimentId={} questionId={} err={}",
+          experimentId,
+          question.getId(),
+          e.getMessage());
+      return buildFailedQuestionResult(experimentId, question, latencyMs, "检索异常");
+    }
+  }
+
+  private EvalQuestionRunResult buildFailedQuestionResult(
+      Long experimentId, EvalQuestion question, int latencyMs, String reason) {
+    EvalResult result = new EvalResult();
+    result.setExperimentId(experimentId);
+    result.setQuestionId(question.getId());
+    result.setHit(false);
+    result.setHitAt(null);
+    result.setRecalledChunkIds("[]");
+    result.setScore(BigDecimal.ZERO);
+    result.setLatencyMs(latencyMs);
+    result.setFailureReason(reason);
+    return new EvalQuestionRunResult(result, false, false, 0.0, latencyMs);
+  }
+
+  @lombok.Value
+  private static class EvalQuestionRunResult {
+    EvalResult result;
+    boolean top1Hit;
+    boolean top3Hit;
+    double mrr;
+    int latencyMs;
   }
 
   private void insertEvalResultsBatch(List<EvalResult> evalResults) {

@@ -2,6 +2,7 @@ package com.ragforge.controller;
 
 import com.ragforge.common.PageResult;
 import com.ragforge.common.Result;
+import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
@@ -69,6 +70,14 @@ public class DocumentController {
     return Result.ok(documentService.getById(id));
   }
 
+  @GetMapping("/documents/{id}/chunks")
+  public Result<PageResult<DocumentChunkVO>> listChunks(
+      @PathVariable Long id,
+      @RequestParam(defaultValue = "1") @Min(1) int page,
+      @RequestParam(defaultValue = "20") @Min(1) int size) {
+    return Result.ok(documentService.listChunks(id, page, size));
+  }
+
   @GetMapping("/documents/{id}/status")
   public Result<DocumentStatusVO> getStatus(@PathVariable Long id) {
     return Result.ok(documentService.getStatus(id));
@@ -91,4 +100,3 @@ public class DocumentController {
     return Result.ok();
   }
 }
-

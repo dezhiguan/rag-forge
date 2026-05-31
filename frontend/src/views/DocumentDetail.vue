@@ -29,18 +29,30 @@
         </header>
 
         <div v-if="doc.parseStatus === 'completed'" class="doc-layout">
-          <div class="doc-left">
-            <div class="section-title">📄 Chunks（{{ doc.chunks?.length ?? 0 }}）</div>
-            <div v-if="!(doc.chunks?.length > 0)" class="state-hint" style="padding:24px 0">
+          <div class="doc-left" @scroll="onChunksScroll">
+            <div class="section-title">
+              📄 Chunks（{{ chunks.length }} / {{ chunkTotal }}）
+            </div>
+            <div v-if="!chunks.length && loadingChunks" class="state-hint" style="padding:24px 0">
+              <div class="state-desc">正在加载分块数据...</div>
+            </div>
+            <div v-else-if="!chunks.length" class="state-hint" style="padding:24px 0">
               <div class="state-desc">文档处理完成后将显示分块数据</div>
             </div>
             <div v-else>
-              <div v-for="c in doc.chunks" :key="c.chunkIndex" class="chunk-card">
+              <div v-for="c in chunks" :key="c.chunkIndex" class="chunk-card">
                 <div class="chunk-head">
                   <span class="chunk-title">#{{ c.chunkIndex }}</span>
                   <span class="chunk-tokens">{{ c.tokenCount ?? 0 }} tokens</span>
                 </div>
                 <div class="chunk-text" :title="c.content">{{ summarizeContent(c.content) }}</div>
+              </div>
+              <div class="chunk-load-state">
+                <button v-if="chunkError" class="chunk-load-btn" @click="loadChunksPage(chunkPage)">
+                  加载失败，点击重试
+                </button>
+                <span v-else-if="loadingChunks">加载中...</span>
+                <span v-else-if="!hasMoreChunks">已加载全部</span>
               </div>
             </div>
           </div>
@@ -129,9 +141,9 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getDocument, reprocessDocument } from '../api/document'
+import { getDocument, listDocumentChunks, reprocessDocument } from '../api/document'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import {
   docStatusClass,
@@ -145,7 +157,15 @@ const route = useRoute()
 const loading = ref(false)
 const retrying = ref(false)
 const doc = ref(null)
+const chunks = ref([])
+const chunkPage = ref(1)
+const chunkSize = 20
+const chunkTotal = ref(0)
+const loadingChunks = ref(false)
+const chunkError = ref(false)
 const { start: startPolling, stop: stopPolling } = useDocumentPolling()
+
+const hasMoreChunks = computed(() => chunks.value.length < chunkTotal.value)
 
 async function loadDetail() {
   loading.value = true
@@ -153,8 +173,46 @@ async function loadDetail() {
     const id = route.params.id
     const res = await getDocument(id)
     doc.value = res.data ?? null
+    resetChunks()
+    if (doc.value?.parseStatus === 'completed') {
+      await loadChunksPage(1)
+    }
   } finally {
     loading.value = false
+  }
+}
+
+function resetChunks() {
+  chunks.value = []
+  chunkPage.value = 1
+  chunkTotal.value = doc.value?.chunkCount ?? 0
+  chunkError.value = false
+}
+
+async function loadChunksPage(page = chunkPage.value) {
+  if (!doc.value || loadingChunks.value) return
+  if (page > 1 && !hasMoreChunks.value) return
+  loadingChunks.value = true
+  chunkError.value = false
+  try {
+    const res = await listDocumentChunks(doc.value.id, page, chunkSize)
+    const data = res.data ?? {}
+    const list = data.list ?? []
+    chunkTotal.value = data.total ?? chunkTotal.value
+    chunks.value = page === 1 ? list : [...chunks.value, ...list]
+    chunkPage.value = page + 1
+  } catch {
+    chunkError.value = true
+  } finally {
+    loadingChunks.value = false
+  }
+}
+
+function onChunksScroll(event) {
+  if (loadingChunks.value || chunkError.value || !hasMoreChunks.value) return
+  const el = event.target
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+    loadChunksPage(chunkPage.value)
   }
 }
 
@@ -208,6 +266,7 @@ async function onReprocess() {
     doc.value.parseStatus = 'pending'
     doc.value.errorMsg = null
     doc.value.chunkCount = 0
+    resetChunks()
     setupPolling()
   } catch (e) {
     alert(e?.response?.data?.message || e?.message || '重试失败')
@@ -326,6 +385,27 @@ function formatBytes(bytes) {
   color: var(--gray);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chunk-load-state {
+  padding: 10px 0 2px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.chunk-load-btn {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--blue);
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chunk-load-btn:hover {
+  background: #eff6ff;
 }
 
 .meta-list {

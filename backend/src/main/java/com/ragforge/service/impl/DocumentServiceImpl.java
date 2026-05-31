@@ -207,23 +207,6 @@ public class DocumentServiceImpl implements DocumentService {
       throw new BizException(404, "文档不存在");
     }
 
-    List<DocumentChunkVO> chunks =
-        documentChunkMapper
-            .selectList(
-                new LambdaQueryWrapper<DocumentChunk>()
-                    .eq(DocumentChunk::getDocId, id)
-                    .orderByAsc(DocumentChunk::getChunkIndex))
-            .stream()
-            .map(
-                c -> {
-                  DocumentChunkVO vo = new DocumentChunkVO();
-                  vo.setChunkIndex(c.getChunkIndex());
-                  vo.setContent(c.getContent());
-                  vo.setTokenCount(c.getTokenCount());
-                  return vo;
-                })
-            .toList();
-
     KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
     DocumentDetailVO vo = new DocumentDetailVO();
     vo.setId(doc.getId());
@@ -243,8 +226,28 @@ public class DocumentServiceImpl implements DocumentService {
       vo.setChunkSize(kb.getChunkSize());
       vo.setChunkOverlap(kb.getChunkOverlap());
     }
-    vo.setChunks(chunks);
+    vo.setChunks(List.of());
     return vo;
+  }
+
+  @Override
+  public PageResult<DocumentChunkVO> listChunks(Long id, int page, int size) {
+    Document doc = documentMapper.selectById(id);
+    if (doc == null) {
+      throw new BizException(404, "文档不存在");
+    }
+
+    int pageSize = Math.min(size, 100);
+    Page<DocumentChunk> mpPage = new Page<>(page, pageSize);
+    IPage<DocumentChunk> result =
+        documentChunkMapper.selectPage(
+            mpPage,
+            new LambdaQueryWrapper<DocumentChunk>()
+                .eq(DocumentChunk::getDocId, id)
+                .orderByAsc(DocumentChunk::getChunkIndex));
+
+    List<DocumentChunkVO> list = result.getRecords().stream().map(this::toChunkVO).toList();
+    return PageResult.of(result.getTotal(), (int) mpPage.getCurrent(), pageSize, list);
   }
 
   @Override
@@ -439,8 +442,15 @@ public class DocumentServiceImpl implements DocumentService {
     return vo;
   }
 
+  private DocumentChunkVO toChunkVO(DocumentChunk chunk) {
+    DocumentChunkVO vo = new DocumentChunkVO();
+    vo.setChunkIndex(chunk.getChunkIndex());
+    vo.setContent(chunk.getContent());
+    vo.setTokenCount(chunk.getTokenCount());
+    return vo;
+  }
+
   private int coalesce(Integer v, int defaultValue) {
     return v == null ? defaultValue : v;
   }
 }
-

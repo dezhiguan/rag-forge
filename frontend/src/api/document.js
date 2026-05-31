@@ -18,6 +18,9 @@ export const listDocuments = (kbId, page = 1, size = 20) =>
 
 export const getDocument = (id) => request.get(`/documents/${id}`)
 
+export const listDocumentChunks = (id, page = 1, size = 20) =>
+  request.get(`/documents/${id}/chunks`, { params: { page, size } })
+
 export const getDocumentStatus = (id) => request.get(`/documents/${id}/status`)
 
 export const deleteDocument = (id) => request.delete(`/documents/${id}`)
@@ -26,4 +29,3 @@ export const reprocessDocument = (id) => request.post(`/documents/${id}/reproces
 
 export const downloadDocument = (id) =>
   request.get(`/documents/${id}/download`, { responseType: 'blob' })
-

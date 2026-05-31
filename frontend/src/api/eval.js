@@ -9,6 +9,8 @@ export const listEvalQuestions = (datasetId, page = 1, size = 20) =>
   request.get(`/eval/datasets/${datasetId}/questions`, { params: { page, size } })
 export const createEvalQuestion = (datasetId, data) =>
   request.post(`/eval/datasets/${datasetId}/questions`, data)
+export const updateEvalQuestion = (datasetId, questionId, data) =>
+  request.put(`/eval/datasets/${datasetId}/questions/${questionId}`, data)
 export const batchCreateEvalQuestions = (datasetId, questions) =>
   request.post(`/eval/datasets/${datasetId}/questions/batch`, questions)
 export const saveQuestionFromSearch = (datasetId, data) =>

@@ -1,6 +1,7 @@
 package com.ragforge.service;
 
 import com.ragforge.common.PageResult;
+import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
@@ -21,6 +22,8 @@ public interface DocumentService {
 
   DocumentDetailVO getById(Long id);
 
+  PageResult<DocumentChunkVO> listChunks(Long id, int page, int size);
+
   DocumentStatusVO getStatus(Long id);
 
   ResponseEntity<Resource> download(Long id);
@@ -29,4 +32,3 @@ public interface DocumentService {
 
   void reprocess(Long id);
 }
-

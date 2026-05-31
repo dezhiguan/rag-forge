@@ -23,6 +23,9 @@ management:
 ragforge:
   files:
     upload-path: /data/files/
+  eval:
+    max-concurrent-questions: 4
+    question-timeout-ms: 30000
 
 app:
   api-key:

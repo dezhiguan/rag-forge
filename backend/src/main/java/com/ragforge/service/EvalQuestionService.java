@@ -16,5 +16,7 @@ public interface EvalQuestionService {
 
   EvalQuestionVO createFromSearch(Long datasetId, SaveQuestionFromSearchDTO dto);
 
+  EvalQuestionVO update(Long datasetId, Long questionId, CreateEvalQuestionDTO dto);
+
   void delete(Long datasetId, Long questionId);
 }
