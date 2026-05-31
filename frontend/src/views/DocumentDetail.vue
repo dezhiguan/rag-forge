@@ -1,6 +1,12 @@
 <template>
   <div>
     <div class="page-body">
+      <div class="detail-nav">
+        <button class="btn-ghost" type="button" @click="onBack">← 返回上一页</button>
+      </div>
+
+      <PageBreadcrumb :items="breadcrumbItems" />
+
       <div v-if="loading && !doc" class="state-hint">
         <div class="state-icon">⏳</div>
         <div class="state-title">加载中...</div>
@@ -103,7 +109,9 @@
               <div class="meta-row">
                 <span class="meta-key">状态</span>
                 <span class="meta-val">
-                  <span class="badge badge-green">已完成</span>
+                  <span class="badge" :class="docStatusClass(doc.parseStatus)">
+                    {{ docStatusLabel(doc.parseStatus) }}
+                  </span>
                 </span>
               </div>
             </div>
@@ -134,7 +142,10 @@
       <div v-else class="state-hint">
         <div class="state-icon">📄</div>
         <div class="state-title">文档不存在</div>
-        <div class="state-desc">请检查链接或返回知识库列表</div>
+        <div class="state-desc">请检查链接或从知识库管理重新进入</div>
+        <button class="btn-ghost state-back" type="button" @click="$router.push('/knowledge')">
+          返回知识库管理
+        </button>
       </div>
     </div>
   </div>
@@ -142,8 +153,10 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import PageBreadcrumb from '../components/PageBreadcrumb.vue'
 import { getDocument, listDocumentChunks, reprocessDocument } from '../api/document'
+import { navigateBackFromDocument } from '../composables/useDocumentNav'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import {
   docStatusClass,
@@ -154,6 +167,7 @@ import {
 } from '../composables/useDocumentStatus'
 
 const route = useRoute()
+const router = useRouter()
 const loading = ref(false)
 const retrying = ref(false)
 const doc = ref(null)
@@ -166,6 +180,33 @@ const chunkError = ref(false)
 const { start: startPolling, stop: stopPolling } = useDocumentPolling()
 
 const hasMoreChunks = computed(() => chunks.value.length < chunkTotal.value)
+
+const breadcrumbItems = computed(() => {
+  if (loading.value && !doc.value) {
+    return [
+      { label: '知识库管理', to: '/knowledge' },
+      { label: '…', current: true },
+      { label: '…', current: true },
+    ]
+  }
+  if (!doc.value) {
+    return [
+      { label: '知识库管理', to: '/knowledge' },
+      { label: '文档不存在', current: true },
+    ]
+  }
+  const kbId = doc.value.kbId
+  const kbName = doc.value.kbName || '知识库'
+  return [
+    { label: '知识库管理', to: '/knowledge' },
+    ...(kbId ? [{ label: kbName, to: `/knowledge/${kbId}/documents` }] : [{ label: kbName, current: true }]),
+    { label: doc.value.filename, current: true },
+  ]
+})
+
+function onBack() {
+  navigateBackFromDocument(router, route, doc.value?.kbId)
+}
 
 async function loadDetail() {
   loading.value = true
@@ -294,6 +335,27 @@ function formatBytes(bytes) {
 <style scoped>
 .page-body {
   padding: 20px 28px 32px;
+}
+
+.detail-nav {
+  margin-bottom: 10px;
+}
+
+.page-body :deep(.page-breadcrumb) {
+  margin-bottom: 14px;
+}
+
+.btn-ghost {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.state-back {
+  margin-top: 12px;
 }
 
 .doc-header {

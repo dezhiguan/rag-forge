@@ -27,7 +27,9 @@ elasticsearch:
   username: ${ELASTICSEARCH_USERNAME:}
   password: ${ELASTICSEARCH_PASSWORD:}
 
-# 本机 RocketMQ（需先启动 NameServer，例如 ~/rocketmq-5.5.0/bin/mqnamesrv）
+# 本机 RocketMQ：需同时启动 NameServer + Broker，否则会出现 No route info of this topic
+#   cd ~/rocketmq-5.5.0 && sh bin/mqnamesrv
+#   cd ~/rocketmq-5.5.0 && sh bin/mqbroker -n 127.0.0.1:9876 -c conf/broker.conf autoCreateTopicEnable=true
 rocketmq:
   name-server: ${ROCKETMQ_NAMESRV_ADDR:127.0.0.1:9876}
   producer:

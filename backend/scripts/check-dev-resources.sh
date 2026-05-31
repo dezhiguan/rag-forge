@@ -22,9 +22,17 @@ echo "== RocketMQ NameServer ${ROCKETMQ_ADDR} =="
 MQ_HOST="${ROCKETMQ_ADDR%%:*}"
 MQ_PORT="${ROCKETMQ_ADDR##*:}"
 if nc -z -w 2 "${MQ_HOST}" "${MQ_PORT}" 2>/dev/null; then
-  echo "OK (port open)"
+  echo "OK (NameServer port open)"
 else
   echo "FAIL — 可先执行: cd ~/rocketmq-5.5.0 && sh bin/mqnamesrv"
+fi
+
+echo "== RocketMQ Broker 127.0.0.1:10911 =="
+if nc -z -w 2 127.0.0.1 10911 2>/dev/null; then
+  echo "OK (Broker port open)"
+else
+  echo "FAIL — NameServer 在但 Broker 未启动会导致 No route info of this topic"
+  echo "       可先执行: cd ~/rocketmq-5.5.0 && sh bin/mqbroker -n 127.0.0.1:9876 -c conf/broker.conf autoCreateTopicEnable=true"
 fi
 
 echo "== Elasticsearch http://${ES_HOST}:${ES_PORT} =="

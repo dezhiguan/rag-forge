@@ -132,88 +132,63 @@
                   <td colspan="6">
                     <div class="docs-panel">
                       <div class="docs-head">
-                        <div class="docs-title">文档列表</div>
-                        <button
-                          class="btn-ghost btn-ghost-small"
-                          :disabled="docsLoading[kb.id]"
-                          @click.stop="loadDocs(kb.id)"
-                        >
-                          刷新
-                        </button>
+                        <div>
+                          <div class="docs-title">最近上传文档</div>
+                          <div class="docs-sub">默认展示最新 3 条，完整列表可分页查看</div>
+                        </div>
+                        <div class="docs-actions">
+                          <button
+                            class="btn-ghost btn-ghost-small"
+                            :disabled="docsLoading[kb.id]"
+                            @click.stop="loadDocs(kb.id)"
+                          >
+                            刷新
+                          </button>
+                          <button class="btn-ghost btn-ghost-small" @click.stop="goDocuments(kb.id)">
+                            查看更多文档
+                          </button>
+                        </div>
                       </div>
 
-                      <table class="docs-table">
-                        <thead>
-                          <tr>
-                            <th>文件名</th>
-                            <th>大小</th>
-                            <th>状态</th>
-                            <th>Chunk</th>
-                            <th>上传时间</th>
-                            <th style="width: 180px;">操作</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr v-if="(docsMap[kb.id]?.list || []).length === 0">
-                            <td colspan="6">
-                              <div class="state-hint" style="padding:20px 0">
-                                <div class="state-desc">上传文档后自动解析并建立索引</div>
-                              </div>
-                            </td>
-                          </tr>
-                          <tr v-for="doc in docsMap[kb.id]?.list || []" :key="doc.id">
-                            <td class="doc-filename">
-                              {{ doc.filename }}
-                              <span class="doc-version">v{{ doc.version ?? 1 }}</span>
-                            </td>
-                            <td>{{ formatBytes(doc.fileSize) }}</td>
-                            <td>
+                      <div v-if="docsLoading[kb.id]" class="state-hint" style="padding:20px 0">
+                        <div class="state-desc">加载文档中...</div>
+                      </div>
+                      <div v-else-if="(docsMap[kb.id]?.list || []).length === 0" class="state-hint" style="padding:20px 0">
+                        <div class="state-desc">上传文档后自动解析并建立索引</div>
+                      </div>
+                      <div v-else class="recent-doc-list">
+                        <article v-for="doc in docsMap[kb.id]?.list || []" :key="doc.id" class="recent-doc-card">
+                          <div class="doc-type">{{ fileTypeLabel(doc.filename) }}</div>
+                          <div class="doc-main">
+                            <div class="doc-title-row">
+                              <div class="doc-name">{{ doc.filename }}</div>
                               <div
                                 class="doc-status-cell"
                                 :title="doc.parseStatus === 'failed' ? doc.errorMsg || '处理失败' : undefined"
                               >
-                                <span
-                                  v-if="isProcessing(doc.parseStatus)"
-                                  class="status-icon spin"
-                                  aria-hidden="true"
-                                >⟳</span>
-                                <span
-                                  v-else-if="doc.parseStatus === 'completed'"
-                                  class="status-icon ok"
-                                  aria-hidden="true"
-                                >✓</span>
-                                <span
-                                  v-else-if="doc.parseStatus === 'failed'"
-                                  class="status-icon fail"
-                                  aria-hidden="true"
-                                >✗</span>
+                                <span v-if="isProcessing(doc.parseStatus)" class="status-icon spin">⟳</span>
+                                <span v-else-if="doc.parseStatus === 'completed'" class="status-icon ok">✓</span>
+                                <span v-else-if="doc.parseStatus === 'failed'" class="status-icon fail">✗</span>
                                 <span class="badge" :class="docStatusClass(doc.parseStatus)">
                                   {{ docStatusLabel(doc.parseStatus) }}
                                 </span>
                               </div>
-                            </td>
-                            <td>{{ doc.chunkCount ?? 0 }}</td>
-                            <td>{{ formatTime(doc.createdAt) }}</td>
-                            <td>
-                              <span class="link-action" @click.stop="goDoc(doc.id)">详情</span>
+                            </div>
+                            <div class="doc-meta">
+                              {{ formatBytes(doc.fileSize) }} · v{{ doc.version ?? 1 }} · {{ doc.chunkCount ?? 0 }} chunks · {{ formatTime(doc.createdAt) }}
+                            </div>
+                            <div v-if="doc.parseStatus === 'failed' && doc.errorMsg" class="doc-error">
+                              {{ doc.errorMsg }}
+                            </div>
+                            <div class="doc-links">
+                              <span class="link-action" @click.stop="goDoc(doc.id, doc.kbId)">详情</span>
                               <span class="link-action" @click.stop="onDownloadDoc(doc)">下载</span>
-                              <span
-                                v-if="doc.parseStatus === 'failed'"
-                                class="link-action"
-                                @click.stop="onReprocessDoc(doc)"
-                              >
-                                重试
-                              </span>
-                              <span
-                                class="link-action danger"
-                                @click.stop="onDeleteDoc(doc)"
-                              >
-                                删除
-                              </span>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
+                              <span v-if="doc.parseStatus === 'failed'" class="link-action" @click.stop="onReprocessDoc(doc)">重试</span>
+                              <span class="link-action danger" @click.stop="onDeleteDoc(doc)">删除</span>
+                            </div>
+                          </div>
+                        </article>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -289,6 +264,7 @@ import {
   uploadDocument,
 } from '../api/document'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
+import { documentDetailRoute } from '../composables/useDocumentNav'
 import {
   docStatusClass,
   docStatusLabel,
@@ -417,7 +393,7 @@ function watchProcessingDocs(kbId) {
 async function loadDocs(kbId) {
   docsLoading[kbId] = true
   try {
-    const res = await listDocuments(kbId, 1, 20)
+    const res = await listDocuments(kbId, 1, 3)
     docsMap[kbId] = {
       list: res.data?.list ?? [],
     }
@@ -578,8 +554,20 @@ async function onDrop(e) {
   handleFiles(files)
 }
 
-function goDoc(id) {
-  router.push(`/document/${id}`)
+function goDoc(id, kbId) {
+  router.push(documentDetailRoute(id, { from: 'knowledge', kbId }))
+}
+
+function goDocuments(kbId) {
+  if (!kbId) return
+  router.push(`/knowledge/${kbId}/documents`)
+}
+
+function fileTypeLabel(filename) {
+  const ext = (filename || '').split('.').pop()?.toUpperCase()
+  if (!ext || ext === filename) return 'DOC'
+  if (ext === 'MARKDOWN') return 'MD'
+  return ext.slice(0, 4)
 }
 
 async function onReprocessDoc(doc) {
@@ -936,6 +924,82 @@ onMounted(async () => {
   margin-bottom: 10px;
 }
 .docs-title { font-size: 13px; color: var(--slate); font-weight: 800; }
+.docs-sub {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.docs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.recent-doc-list {
+  display: grid;
+  gap: 8px;
+}
+
+.recent-doc-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 10px;
+}
+
+.doc-type {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: var(--slate);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.doc-main {
+  min-width: 0;
+}
+
+.doc-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.doc-name {
+  color: var(--slate);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.doc-meta {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.doc-error {
+  margin-top: 4px;
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.doc-links {
+  margin-top: 6px;
+}
 
 .docs-table {
   width: 100%;
@@ -1078,6 +1142,24 @@ onMounted(async () => {
 
   .docs-panel {
     padding: 10px;
+  }
+
+  .docs-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .docs-actions {
+    justify-content: flex-start;
+  }
+
+  .recent-doc-card {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-title-row {
+    flex-direction: column;
+    gap: 6px;
   }
 
   .docs-table {
