@@ -35,7 +35,7 @@
           </div>
         </div>
 
-        <div class="top-toolbar">
+        <div v-if="datasets.length" class="top-toolbar">
           <div class="toolbar-left">
             <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
             <button class="btn-ghost btn-sm" :disabled="loadingDatasets" @click="loadDatasets">刷新</button>
@@ -1991,6 +1991,10 @@ onMounted(async () => {
 
 /* ====== 移动端响应式 ====== */
 @media (max-width: 768px) {
+  .page-body {
+    padding: 14px 12px 24px;
+  }
+
   .summary-cards {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1998,19 +2002,20 @@ onMounted(async () => {
   }
 
   .tab-bar {
-    position: sticky;
-    top: 0;
-    z-index: 6;
-    margin: -16px -12px 14px;
-    padding: 8px 12px 0;
-    background: #fafbfc;
+    position: static;
+    margin: 0 0 12px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #fff;
   }
 
   .tab-btn {
     flex: 1;
     min-height: 40px;
-    padding: 8px 10px;
+    padding: 8px 12px;
     font-size: 13px;
+    white-space: nowrap;
   }
 
   .top-toolbar,
@@ -2018,10 +2023,23 @@ onMounted(async () => {
     width: 100%;
   }
 
+  .top-toolbar {
+    margin-bottom: 14px;
+  }
+
   .toolbar-left {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 78px;
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
+    align-items: center;
+  }
+
+  .toolbar-left .btn-primary {
+    flex: 1 1 100%;
+  }
+
+  .toolbar-left .btn-ghost {
+    margin-left: auto;
   }
 
   .btn-primary,
