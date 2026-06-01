@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAGForge - 企业级 RAG 知识引擎设计方案</title>
+<style>
+  :root {
+    --navy: #0f172a; --slate: #1e293b; --gray: #475569;
+    --light: #f1f5f9; --blue: #3b82f6; --cyan: #06b6d4;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444;
+    --purple: #8b5cf6; --border: #e2e8f0; --text: #1e293b;
+    --text-muted: #64748b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--text); background: #fff; line-height: 1.75; font-size: 15px;
+  }
+
+  .cover {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 40%, #0f172a 100%);
+    color: #fff; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; text-align: center;
+    padding: 60px 40px; page-break-after: always;
+  }
+  .cover .tag {
+    display: inline-block; border: 1px solid rgba(255,255,255,.3);
+    border-radius: 20px; padding: 6px 20px; font-size: 13px;
+    letter-spacing: 2px; color: var(--cyan); margin-bottom: 32px;
+  }
+  .cover h1 {
+    font-size: 48px; font-weight: 800; letter-spacing: -1px; margin-bottom: 12px;
+    background: linear-gradient(135deg, #fff, #93c5fd);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .cover .subtitle { font-size: 18px; color: rgba(255,255,255,.6); margin-bottom: 40px; max-width: 600px; }
+  .cover .meta { font-size: 13px; color: rgba(255,255,255,.35); }
+
+  .page { max-width: 960px; margin: 0 auto; padding: 60px 40px; }
+  .page-break { page-break-before: always; }
+  h2 { font-size: 28px; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+  h2 .num { color: var(--blue); font-size: 16px; display: block; font-weight: 500; margin-bottom: 4px; }
+  h3 { font-size: 20px; font-weight: 600; color: var(--slate); margin: 32px 0 10px; }
+  h4 { font-size: 15px; font-weight: 600; color: var(--slate); margin: 18px 0 6px; }
+  p { margin-bottom: 10px; color: var(--gray); }
+  .section-desc { font-size: 15px; color: var(--text-muted); margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+
+  .mockup { background: #fff; border: 2px solid var(--border); border-radius: 14px; overflow: hidden; margin: 20px 0; box-shadow: 0 4px 20px rgba(0,0,0,.05); }
+  .mockup-header { background: var(--navy); color: #fff; padding: 10px 18px; font-size: 11px; display: flex; align-items: center; gap: 8px; }
+  .mockup-header .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .mockup-header .dot.r { background: #ff5f57; } .mockup-header .dot.y { background: #febc2e; } .mockup-header .dot.g { background: #28c840; }
+  .mockup-header .title { flex: 1; text-align: center; opacity: .7; }
+  .mockup-body { min-height: 320px; font-size: 12px; }
+
+  /* ===== FLOW DIAGRAM ===== */
+  .flow-diagram {
+    background: var(--navy); border-radius: 14px; padding: 28px; margin: 20px 0;
+    overflow-x: auto;
+  }
+  .flow-row { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; margin: 10px 0; }
+  .flow-node {
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;
+    color: #e2e8f0; font-size: 12px;
+  }
+  .flow-node.entry { border-color: var(--cyan); background: rgba(6,182,212,.15); }
+  .flow-node.entry .label { color: var(--cyan); }
+  .flow-node .icon { font-size: 20px; margin-bottom: 4px; }
+  .flow-node .label { font-weight: 600; font-size: 11px; }
+  .flow-node .sub { font-size: 10px; color: rgba(255,255,255,.4); margin-top: 2px; }
+  .flow-arrow {
+    color: rgba(255,255,255,.35); font-size: 18px; padding: 0 10px;
+    font-family: monospace; white-space: nowrap;
+  }
+  .flow-arrow-down { text-align: center; color: rgba(255,255,255,.25); font-size: 14px; padding: 4px; }
+
+  /* ===== SIDEBAR LAYOUT (for mockups) ===== */
+  .sidebar-layout { display: grid; gap: 0; }
+  .sidebar { background: #f8fafc; border-right: 1px solid var(--border); padding: 14px; }
+  .main-area { padding: 16px; }
+  .right-panel { background: #f8fafc; border-left: 1px solid var(--border); padding: 14px; }
+
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--light); border-radius: 10px; padding: 20px; border: 1px solid var(--border); }
+  .card .icon { font-size: 22px; margin-bottom: 8px; }
+  .card h4 { margin: 0 0 4px; font-size: 14px; }
+  .card p { font-size: 12px; margin: 0; }
+
+  .feature-list { list-style: none; margin: 10px 0; }
+  .feature-list li { padding: 5px 0 5px 22px; position: relative; color: var(--gray); font-size: 13px; }
+  .feature-list li::before { content: "→"; position: absolute; left: 0; color: var(--blue); font-weight: 600; }
+
+  .tip-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+  .tip-box .tip-title { font-weight: 600; color: var(--blue); margin-bottom: 6px; font-size: 13px; }
+
+  .arch-diagram { background: var(--navy); border-radius: 14px; padding: 28px; margin: 16px 0; color: #e2e8f0; font-size: 12px; line-height: 1.6; }
+  .arch-layer { border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; }
+  .arch-layer .layer-name { color: var(--cyan); font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .arch-layer .layer-items { display: flex; flex-wrap: wrap; gap: 6px; }
+  .arch-layer .item { background: rgba(255,255,255,.07); border-radius: 5px; padding: 4px 10px; font-size: 11px; white-space: nowrap; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { background: var(--light); font-weight: 600; color: var(--slate); font-size: 11px; text-transform: uppercase; }
+  td { color: var(--gray); }
+
+  .demo-step { display: grid; grid-template-columns: 40px 1fr; gap: 12px; margin: 14px 0; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .demo-step .step-num { width: 34px; height: 34px; border-radius: 50%; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+  .demo-step h4 { margin: 0 0 2px; font-size: 14px; }
+  .demo-step .time { font-size: 10px; color: var(--text-muted); background: var(--light); padding: 1px 7px; border-radius: 7px; margin-left: 6px; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; }
+  .badge.green { background: #d1fae5; color: #065f46; }
+  .badge.amber { background: #fef3c7; color: #92400e; }
+  .badge.red { background: #fee2e2; color: #991b1b; }
+
+  @media print {
+    body { font-size: 12px; }
+    .page { padding: 24px 16px; max-width: 100%; }
+    .cover { min-height: 100vh; }
+    .mockup, .flow-diagram, .arch-diagram { break-inside: avoid; box-shadow: none; }
+    .page-break { page-break-before: always; }
+    @page { margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER ==================== -->
+<div class="cover">
+  <div class="tag">PROJECT 01 · RAG INFRASTRUCTURE</div>
+  <h1>RAGForge</h1>
+  <p class="subtitle">企业级 RAG 知识引擎<br>为上层 Agent 提供可调试、可评测的知识检索服务</p>
+  <p class="meta">侧重工程深度与基础设施能力 · 2026年5月</p>
+</div>
+
+<!-- ==================== PART 1: POSITIONING ==================== -->
+<div class="page">
+  <h2><span class="num">PART 01</span>项目定位：这不是聊天应用，是知识引擎</h2>
+
+  <table>
+    <tr><th>维度</th><th>RAGForge（本项目）</th><th>CareerMate（项目二）</th></tr>
+    <tr><td>定位</td><td><strong>基础设施层</strong> —— 知识检索 API 服务</td><td><strong>应用层</strong> —— 求职 Agent 智能体</td></tr>
+    <tr><td>用户</td><td>开发者 / 管理员</td><td>求职者</td></tr>
+    <tr><td>核心能力</td><td>文档处理 · 混合检索 · 评测框架 · API 服务</td><td>任务规划 · 工具调用 · 多步推理 · 记忆管理</td></tr>
+    <tr><td>页面数量</td><td><strong>6 个</strong>（管理后台型）</td><td><strong>5 个</strong>（用户应用型）</td></tr>
+    <tr><td>与对方关系</td><td>提供 RESTful API 给 Agent 调用</td><td>通过 API 调用 RAGForge 的检索能力</td></tr>
+  </table>
+
+  <div class="tip-box">
+    <div class="tip-title">🎯 一句话区分</div>
+    <p style="margin:0;font-size:13px;"><strong>RAGForge</strong> 回答"知识从哪里来、怎么检索、质量如何"——给开发者用的。<br>
+    <strong>CareerMate</strong> 回答"怎么帮求职者找到合适的工作"——给用户用的。<br>
+    两者通过 API 连接：CareerMate 的 Agent 调用 RAGForge 的检索接口获取知识。</p>
+  </div>
+</div>
+
+<!-- ==================== PART 2: PAGE FLOW ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 02</span>页面流转全景：6 个页面的访问路径</h2>
+  <p class="section-desc">RAGForge 是管理后台型产品。用户（开发者/管理员）在不同页面间手动导航，每个页面解决一个独立的工程问题。</p>
+
+  <h3>2.1 页面流转图</h3>
+  <div class="flow-diagram">
+    <!-- Row 1: Entry -->
+    <div class="flow-row">
+      <div class="flow-node entry">
+        <div class="icon">🏠</div>
+        <div class="label">P1 · 驾驶舱</div>
+        <div class="sub">入口 · 系统总览</div>
+      </div>
+    </div>
+    <div class="flow-arrow-down">↓ 点击快捷入口 / 左侧菜单 ↓</div>
+    <!-- Row 2: Main pages -->
+    <div class="flow-row">
+      <div class="flow-node">
+        <div class="icon">📁</div>
+        <div class="label">P2 · 知识库管理</div>
+        <div class="sub">文档生命周期</div>
+      </div>
+      <div class="flow-arrow">────→</div>
+      <div class="flow-node">
+        <div class="icon">📄</div>
+        <div class="label">P3 · 文档详情</div>
+        <div class="sub">Chunk 级视图</div>
+      </div>
+    </div>
+    <div class="flow-arrow-down">↓ 从文档详情跳转 / 侧边栏直接进入 ↓</div>
+    <!-- Row 3: Debug -->
+    <div class="flow-row">
+      <div class="flow-node entry">
+        <div class="icon">🔍</div>
+        <div class="label">P4 · 检索调试台</div>
+        <div class="sub">核心技术展示页</div>
+      </div>
+    </div>
+    <div class="flow-arrow-down">↓ 保存测试用例 / 侧边栏进入 ↓</div>
+    <!-- Row 4: Eval -->
+    <div class="flow-row">
+      <div class="flow-node">
+        <div class="icon">🧪</div>
+        <div class="label">P5 · 评测实验室</div>
+        <div class="sub">批量质量评估</div>
+      </div>
+    </div>
+    <div class="flow-arrow-down">↓ 侧边栏底部 ↓</div>
+    <!-- Row 5: API -->
+    <div class="flow-row">
+      <div class="flow-node">
+        <div class="icon">🔌</div>
+        <div class="label">P6 · API 网关</div>
+        <div class="sub">对外接口文档</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>2.2 典型用户操作流</h3>
+  <div class="flow-diagram">
+    <div style="font-family:monospace;font-size:11px;line-height:2.4;">
+      <span style="color:var(--cyan);">① 驾驶舱</span>
+      <span style="color:rgba(255,255,255,.3);"> ──→ </span>
+      <span style="color:#93c5fd;">② 知识库管理</span>
+      <span style="color:rgba(255,255,255,.3);"> ──→ </span>
+      <span style="color:#a5b4fc;">③ 上传文档 → 查看处理管道</span>
+      <span style="color:rgba(255,255,255,.3);"> ──→ </span>
+      <span style="color:#c4b5fd;">④ 检索调试台（验证召回）</span>
+    </div>
+    <div style="font-family:monospace;font-size:11px;line-height:2.4;">
+      <span style="color:rgba(255,255,255,.3);"> ──→ </span>
+      <span style="color:#f9a8d4;">⑤ 评测实验室（跑 100 题验证质量）</span>
+      <span style="color:rgba(255,255,255,.3);"> ──→ </span>
+      <span style="color:var(--green);">⑥ API 网关（展示如何被 Agent 调用）</span>
+    </div>
+  </div>
+
+  <div class="tip-box">
+    <div class="tip-title">🎯 推荐浏览顺序</div>
+    <p style="margin:0;font-size:13px;">从 ① 到 ⑥ 是推荐的浏览路线。这不是线性流程，而是<strong>层层递进展示工程深度</strong>：
+    先让人看到"这是个产品"（驾驶舱），再展示"怎么管理知识"（知识库），然后深入"核心检索技术"（调试台），再用数据证明"质量可靠"（评测实验室），收尾展示"怎么被 Agent 调用"（API网关）。</p>
+  </div>
+</div>
+
+<!-- ==================== PART 3: PAGE DESIGNS ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 03</span>页面详细设计</h2>
+
+  <!-- PAGE 1: DASHBOARD -->
+  <h3>P1 · 系统驾驶舱 <span style="font-weight:400;color:var(--text-muted);font-size:14px;">— 入口页，一屏看懂系统全貌</span></h3>
+  <p>目标：打开第一页，3 秒内理解"这是一个 RAG 基础设施，不是聊天玩具"。</p>
+
+  <div class="mockup">
+    <div class="mockup-header"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">RAGForge · 系统驾驶舱</span></div>
+    <div class="mockup-body" style="display:grid;grid-template-columns:180px 1fr;">
+      <!-- Left Nav -->
+      <div style="background:#f8fafc;border-right:1px solid var(--border);padding:12px;font-size:11px;">
+        <div style="font-weight:700;color:var(--blue);padding:6px;margin-bottom:4px;">🏠 驾驶舱</div>
+        <div style="color:var(--text-muted);padding:6px;margin-bottom:4px;">📁 知识库管理</div>
+        <div style="color:var(--text-muted);padding:6px;margin-bottom:4px;">🔍 检索调试台</div>
+        <div style="color:var(--text-muted);padding:6px;margin-bottom:4px;">🧪 评测实验室</div>
+        <div style="color:var(--text-muted);padding:6px;margin-bottom:4px;">🔌 API 网关</div>
+      </div>
+      <!-- Main -->
+      <div style="padding:18px;">
+        <!-- Metric cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+          <div style="background:var(--navy);border-radius:8px;padding:12px;color:#fff;">
+            <div style="font-size:9px;opacity:.5;">知识库</div>
+            <div style="font-size:22px;font-weight:700;">6</div>
+            <div style="font-size:9px;opacity:.5;">1,280 文档 · 52K Chunk</div>
+          </div>
+          <div style="background:var(--navy);border-radius:8px;padding:12px;color:#fff;">
+            <div style="font-size:9px;opacity:.5;">检索命中率</div>
+            <div style="font-size:22px;font-weight:700;color:var(--green);">91.2%</div>
+            <div style="font-size:9px;opacity:.5;">Hybrid + Reranker</div>
+          </div>
+          <div style="background:var(--navy);border-radius:8px;padding:12px;color:#fff;">
+            <div style="font-size:9px;opacity:.5;">P95 延迟</div>
+            <div style="font-size:22px;font-weight:700;">2.8s</div>
+            <div style="font-size:9px;opacity:.5;">稳定 QPS 38</div>
+          </div>
+          <div style="background:var(--navy);border-radius:8px;padding:12px;color:#fff;">
+            <div style="font-size:9px;opacity:.5;">今日 API 调用</div>
+            <div style="font-size:22px;font-weight:700;">3,240</div>
+            <div style="font-size:9px;opacity:.5;">¥0.008/次</div>
+          </div>
+        </div>
+        <!-- Quick actions -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
+          <div style="background:var(--light);border-radius:8px;padding:14px;text-align:center;border:2px solid var(--blue);">
+            <div style="font-size:18px;">📁</div><div style="font-weight:600;font-size:11px;">管理知识库</div>
+          </div>
+          <div style="background:var(--light);border-radius:8px;padding:14px;text-align:center;">
+            <div style="font-size:18px;">🔍</div><div style="font-weight:600;font-size:11px;">检索调试台</div>
+          </div>
+          <div style="background:var(--light);border-radius:8px;padding:14px;text-align:center;">
+            <div style="font-size:18px;">🔌</div><div style="font-weight:600;font-size:11px;">查看 API 文档</div>
+          </div>
+        </div>
+        <!-- Recent activity -->
+        <div style="background:var(--light);border-radius:8px;padding:12px;font-size:11px;">
+          <div style="font-weight:600;margin-bottom:6px;">最近操作</div>
+          <div style="color:var(--text-muted);">12:30 知识库「面试题库」索引重建完成</div>
+          <div style="color:var(--text-muted);">11:45 评测实验「Hybrid+Reranker」完成，Top3: 89%</div>
+          <div style="color:var(--red);">10:20 文档「某公司面经.pdf」解析失败 — <span style="color:var(--blue);">重试</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ==================== PAGE 2+3: KB MGMT + DOC DETAIL ==================== -->
+<div class="page page-break">
+
+  <h3>P2 · 知识库管理 <span style="font-weight:400;color:var(--text-muted);font-size:14px;">— 文档上传 → 处理 → 索引，全链路可视化</span></h3>
+  <p>流转入口：驾驶舱点击"管理知识库"进入。流转出口：点击具体文档 → P3 文档详情；点击"检索调试" → P4。</p>
+
+  <div class="mockup">
+    <div class="mockup-header"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">知识库管理 · 6 个知识库</span></div>
+    <div class="mockup-body" style="padding:16px;">
+      <!-- Upload zone -->
+      <div style="border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;margin-bottom:14px;background:#fafbfc;">
+        <div style="font-size:24px;">📤</div>
+        <div style="font-weight:600;font-size:12px;">拖拽文件上传 · 支持 PDF / Markdown / Word / HTML</div>
+        <div style="font-size:10px;color:var(--text-muted);">单文件最大 50MB · 支持批量上传</div>
+      </div>
+      <!-- Processing pipeline -->
+      <div style="display:flex;align-items:center;gap:0;font-size:10px;margin-bottom:14px;">
+        <div style="flex:1;background:#eff6ff;border-radius:6px;padding:8px;text-align:center;border:2px solid var(--blue);">
+          <div style="font-weight:600;">📥 解析</div><div style="color:var(--text-muted);">PDF→Text</div>
+        </div><span style="color:var(--border);">→</span>
+        <div style="flex:1;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;border:2px solid var(--green);">
+          <div style="font-weight:600;">✂️ 分块</div><div style="color:var(--text-muted);">512 tokens</div>
+        </div><span style="color:var(--border);">→</span>
+        <div style="flex:1;background:var(--light);border-radius:6px;padding:8px;text-align:center;">
+          <div style="font-weight:600;">🧮 向量化</div><div style="color:var(--text-muted);">Embedding</div>
+        </div><span style="color:var(--border);">→</span>
+        <div style="flex:1;background:var(--light);border-radius:6px;padding:8px;text-align:center;">
+          <div style="font-weight:600;">📇 BM25</div><div style="color:var(--text-muted);">ES 索引</div>
+        </div><span style="color:var(--border);">→</span>
+        <div style="flex:1;background:var(--light);border-radius:6px;padding:8px;text-align:center;">
+          <div style="font-weight:600;">✅ 可用</div><div style="color:var(--text-muted);">可检索</div>
+        </div>
+      </div>
+      <!-- KB table -->
+      <table style="font-size:11px;">
+        <tr><th>知识库</th><th>文档</th><th>Chunk</th><th>Embedding</th><th>BM25</th><th>状态</th><th>操作</th></tr>
+        <tr><td style="font-weight:600;">🧑 求职者简历库</td><td>3</td><td>420</td><td>text-embedding-3</td><td>✓</td><td><span class="badge green">可用</span></td><td style="color:var(--blue);">详情 · 检索</td></tr>
+        <tr><td style="font-weight:600;">💼 岗位 JD 库</td><td>156</td><td>8,200</td><td>text-embedding-3</td><td>✓</td><td><span class="badge green">可用</span></td><td style="color:var(--blue);">详情 · 检索</td></tr>
+        <tr><td style="font-weight:600;">📝 面试题库</td><td>420</td><td>18,500</td><td>text-embedding-3</td><td>✓</td><td><span class="badge amber">重建中</span></td><td style="color:var(--blue);">查看任务</td></tr>
+        <tr><td style="font-weight:600;">🏢 公司信息库</td><td>89</td><td>6,100</td><td>text-embedding-3</td><td>✓</td><td><span class="badge green">可用</span></td><td style="color:var(--blue);">详情 · 检索</td></tr>
+        <tr><td style="font-weight:600;">📚 行业知识库</td><td>312</td><td>12,300</td><td>text-embedding-3</td><td>✓</td><td><span class="badge green">可用</span></td><td style="color:var(--blue);">详情 · 检索</td></tr>
+        <tr><td style="font-weight:600;">📋 求职策略库</td><td>300</td><td>6,580</td><td>text-embedding-3</td><td>✓</td><td><span class="badge red">失败 2</span></td><td style="color:var(--red);">重试</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h3>P3 · 文档详情 <span style="font-weight:400;color:var(--text-muted);font-size:14px;">— Chunk 级视图，展示文档被"理解"的方式</span></h3>
+  <p>流转入口：P2 中点击"详情"。流转出口：点击"在此文档中检索" → P4 检索调试台（预选此文档）。</p>
+
+  <div class="mockup">
+    <div class="mockup-header"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">文档详情 · 字节跳动_后端JD.pdf</span></div>
+    <div class="mockup-body" style="display:grid;grid-template-columns:1fr 1fr;">
+      <!-- Left: Original doc -->
+      <div style="padding:14px;border-right:1px solid var(--border);font-size:11px;">
+        <div style="font-weight:600;margin-bottom:8px;">📄 原文</div>
+        <div style="background:#fef3c7;padding:6px 8px;border-radius:4px;margin-bottom:4px;font-size:10px;line-height:1.5;">
+          <strong>Chunk #12</strong> · 任职要求第3条<br>
+          "熟悉分布式系统设计，有消息队列（Kafka/RabbitMQ）使用经验，了解CAP理论..."
+        </div>
+        <div style="background:#dbeafe;padding:6px 8px;border-radius:4px;margin-bottom:4px;font-size:10px;line-height:1.5;">
+          <strong>Chunk #13</strong> · 任职要求第4条<br>
+          "具备系统性能优化经验，能够定位和解决复杂性能问题..."
+        </div>
+        <div style="background:#fef3c7;padding:6px 8px;border-radius:4px;font-size:10px;line-height:1.5;">
+          <strong>Chunk #14</strong> · 加分项<br>
+          "有大模型应用开发经验者优先，熟悉LangChain/LlamaIndex等框架..."
+        </div>
+      </div>
+      <!-- Right: Metadata -->
+      <div style="padding:14px;font-size:11px;">
+        <div style="font-weight:600;margin-bottom:8px;">📊 文档元信息</div>
+        <div style="margin-bottom:4px;"><strong>文件名：</strong>字节跳动_后端JD.pdf</div>
+        <div style="margin-bottom:4px;"><strong>大小：</strong>245 KB</div>
+        <div style="margin-bottom:4px;"><strong>分块策略：</strong>语义分块 · 512 tokens/块 · 重叠 64</div>
+        <div style="margin-bottom:4px;"><strong>总块数：</strong>28</div>
+        <div style="margin-bottom:4px;"><strong>Embedding：</strong>text-embedding-3-large</div>
+        <div style="margin-bottom:4px;"><strong>索引时间：</strong>2026-05-20 14:23</div>
+        <div style="margin-bottom:4px;"><strong>状态：</strong><span class="badge green">已索引</span></div>
+        <div style="margin-top:10px;padding:8px;border:1px solid var(--blue);border-radius:6px;text-align:center;color:var(--blue);font-size:11px;">
+          🔍 在此文档中检索 →
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ==================== PAGE 4: RETRIEVAL PLAYGROUND ==================== -->
+<div class="page page-break">
+
+  <h3>P4 · 检索调试台 <span style="font-weight:400;color:var(--text-muted);font-size:14px;">— 核心页面，体现技术深度</span></h3>
+  <p><strong>流转入口：</strong>侧边栏、P2/P3 中的"检索"按钮。<strong>流转出口：</strong>保存当前查询为评测用例 → P5 评测实验室。</p>
+
+  <div class="mockup">
+    <div class="mockup-header"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">检索调试台 · 对比 4 种检索模式</span></div>
+    <div class="mockup-body" style="display:grid;grid-template-columns:220px 1fr 200px;">
+      <!-- Left: Config -->
+      <div style="background:#f8fafc;border-right:1px solid var(--border);padding:12px;font-size:10px;">
+        <div style="font-weight:700;font-size:11px;margin-bottom:8px;">⚙️ 检索参数</div>
+        <div style="margin-bottom:6px;"><span style="color:var(--text-muted);">知识库：</span>岗位 JD 库</div>
+        <div style="margin-bottom:6px;"><span style="color:var(--text-muted);">Top-K：</span><input type="range" style="width:60%;"> 8</div>
+        <div style="margin-bottom:6px;"><span style="color:var(--text-muted);">向量权重：</span>0.55</div>
+        <div style="margin-bottom:6px;"><span style="color:var(--text-muted);">BM25 权重：</span>0.45</div>
+        <div style="margin-bottom:6px;"><span style="color:var(--text-muted);">Rerank TopN：</span>5</div>
+        <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px;">
+          <div style="font-weight:600;margin-bottom:4px;">对比模式</div>
+          <div><input type="radio" name="m" checked> 单策略</div>
+          <div><input type="radio" name="m"> A/B 对比</div>
+          <div><input type="radio" name="m"> 四路对比</div>
+        </div>
+      </div>
+      <!-- Center: Results -->
+      <div style="padding:12px;overflow-y:auto;font-size:10px;">
+        <div style="margin-bottom:8px;">
+          <input value="2026年后端开发需要掌握哪些AI技能？" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:11px;">
+        </div>
+        <div style="font-weight:600;margin-bottom:6px;">检索结果 · 耗时 <span style="color:var(--text-muted);">BM25 142ms + Vector 238ms + Rerank 310ms</span></div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;"><span style="font-weight:600;">📄 字节后端JD.pdf #12</span><span style="color:var(--green);">Score 0.94</span></div>
+          <div style="color:var(--gray);">"...有大模型应用开发经验者优先，熟悉LangChain/LlamaIndex..."</div>
+          <div style="color:var(--text-muted);margin-top:2px;">向量 0.94 | BM25 0.91 | Rerank 0.96</div>
+        </div>
+        <div style="background:var(--light);border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;"><span style="font-weight:600;">📄 美团后端JD.pdf #8</span><span style="color:var(--amber);">Score 0.85</span></div>
+          <div style="color:var(--gray);">"...了解AI/ML基础知识，能参与智能业务系统开发..."</div>
+          <div style="color:var(--text-muted);margin-top:2px;">向量 0.82 | BM25 0.88 | Rerank 0.85</div>
+        </div>
+        <div style="background:var(--light);border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;"><span style="font-weight:600;">📄 腾讯JD.pdf #21</span><span style="color:var(--text-muted);">Score 0.71</span></div>
+          <div style="color:var(--gray);">"...负责后台服务开发，优化系统架构..."</div>
+          <div style="color:var(--text-muted);margin-top:2px;">向量 0.68 | BM25 0.74 | Rerank 0.71</div>
+        </div>
+        <div style="margin-top:10px;padding:6px;border:1px dashed var(--blue);border-radius:6px;text-align:center;color:var(--blue);font-size:10px;">
+          💾 保存为评测用例 →
+        </div>
+      </div>
+      <!-- Right: Prompt preview -->
+      <div style="background:#f8fafc;border-left:1px solid var(--border);padding:12px;font-size:9px;font-family:monospace;">
+        <div style="font-weight:600;font-size:10px;margin-bottom:6px;">Prompt 预览</div>
+        <div style="color:var(--text-muted);">System: 你是RAG知识引擎，只基于Context回答。</div>
+        <div style="color:var(--text-muted);margin-top:3px;">Context:</div>
+        <div style="color:var(--gray);">[1] 字节JD.pdf#12: ...有大模型应用开发经验者优先...</div>
+        <div style="color:var(--gray);">[2] 美团JD.pdf#8: ...了解AI/ML基础知识...</div>
+        <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:6px;">
+          <div>Prompt: 1,240 tk</div><div>Completion: 310 tk</div>
+          <div style="font-weight:600;color:var(--cyan);">¥0.006</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ==================== PAGE 5: EVALUATION ==================== -->
+<div class="page page-break">
+
+  <h3>P5 · 评测实验室 <span style="font-weight:400;color:var(--text-muted);font-size:14px;">— 用量化数据证明检索质量</span></h3>
+  <p><strong>流转入口：</strong>侧边栏、P4 中"保存为评测用例"跳转。<strong>流转出口：</strong>点击失败样本 → 回 P4 调试。</p>
+
+  <div class="mockup">
+    <div class="mockup-header"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">评测实验室 · 100 题评测集</span></div>
+    <div class="mockup-body" style="padding:16px;">
+      <!-- Summary cards -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+        <div style="background:var(--navy);border-radius:8px;padding:12px;color:#fff;">
+          <div style="font-size:9px;opacity:.5;">评测问题数</div><div style="font-size:22px;font-weight:700;">100</div>
+        </div>
+        <div style="background:var(--navy);border-radius:8px;padding:12px;color:#fff;">
+          <div style="font-size:9px;opacity:.5;">Top3 命中率</div><div style="font-size:22px;font-weight:700;color:var(--green);">89%</div>
+        </div>
+        <div style="background:var(--navy);border-radius:8px;padding:12px;color:#fff;">
+          <div style="font-size:9px;opacity:.5;">答案可信度</div><div style="font-size:22px;font-weight:700;color:var(--green);">84%</div>
+        </div>
+        <div style="background:var(--navy);border-radius:8px;padding:12px;color:#fff;">
+          <div style="font-size:9px;opacity:.5;">平均耗时</div><div style="font-size:22px;font-weight:700;">1.9s</div>
+        </div>
+      </div>
+      <!-- Strategy comparison chart (simplified) -->
+      <div style="font-weight:600;font-size:11px;margin-bottom:8px;">检索策略对比 · Top3 命中率</div>
+      <div style="display:flex;align-items:flex-end;gap:16px;height:80px;margin-bottom:14px;padding:0 8px;">
+        <div style="text-align:center;"><div style="width:40px;background:var(--blue);height:45px;border-radius:3px 3px 0 0;opacity:.4;"></div><span style="font-size:9px;">Naive<br>62%</span></div>
+        <div style="text-align:center;"><div style="width:40px;background:var(--blue);height:55px;border-radius:3px 3px 0 0;opacity:.6;"></div><span style="font-size:9px;">BM25<br>74%</span></div>
+        <div style="text-align:center;"><div style="width:40px;background:var(--blue);height:68px;border-radius:3px 3px 0 0;opacity:.8;"></div><span style="font-size:9px;">Hybrid<br>85%</span></div>
+        <div style="text-align:center;"><div style="width:40px;background:var(--blue);height:75px;border-radius:3px 3px 0 0;"></div><span style="font-size:9px;">Reranker<br>89%</span></div>
+      </div>
+      <!-- Failure analysis -->
+      <div style="font-weight:600;font-size:11px;margin-bottom:8px;">失败样本分析</div>
+      <table style="font-size:10px;">
+        <tr><th>问题</th><th>失败原因</th><th>优化建议</th><th>操作</th></tr>
+        <tr><td>"AI工程师需要掌握哪些框架？"</td><td><span class="badge amber">召回太少</span> Top1 未命中</td><td>提高 TopK，降低相似度阈值</td><td style="color:var(--blue);">去调试 →</td></tr>
+        <tr><td>"分布式系统面试一般怎么问？"</td><td><span class="badge red">Chunk切碎</span> 上下文不完整</td><td>调整分块策略，增大重叠</td><td style="color:var(--blue);">去调试 →</td></tr>
+        <tr><td>"字节跳动的面试流程有几轮？"</td><td><span class="badge amber">文档缺失</span> 知识库无此信息</td><td>补充面经文档</td><td style="color:var(--blue);">去上传 →</td></tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ==================== PAGE 6: API GATEWAY ==================== -->
+<div class="page page-break">
+
+  <h3>P6 · API 网关 <span style="font-weight:400;color:var(--text-muted);font-size:14px;">— 展示如何被上层 Agent 调用</span></h3>
+  <p><strong>这是连接 RAGForge 和 CareerMate 的关键页面。</strong>展示 RAGForge 暴露的 API 接口，以及 Agent 如何通过这些 API 获取知识。</p>
+
+  <div class="mockup">
+    <div class="mockup-header"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">API 网关 · 对外接口文档</span></div>
+    <div class="mockup-body" style="display:grid;grid-template-columns:200px 1fr;">
+      <!-- API list -->
+      <div style="background:#f8fafc;border-right:1px solid var(--border);padding:12px;font-size:10px;">
+        <div style="font-weight:700;font-size:11px;margin-bottom:8px;">📡 API 列表</div>
+        <div style="padding:6px;background:#eff6ff;border-radius:4px;margin-bottom:3px;color:var(--blue);">POST /search</div>
+        <div style="padding:6px;color:var(--text-muted);margin-bottom:3px;">POST /search/batch</div>
+        <div style="padding:6px;color:var(--text-muted);margin-bottom:3px;">GET /kb/list</div>
+        <div style="padding:6px;color:var(--text-muted);margin-bottom:3px;">POST /kb/upload</div>
+        <div style="padding:6px;color:var(--text-muted);margin-bottom:3px;">GET /eval/run</div>
+        <div style="padding:6px;color:var(--text-muted);margin-bottom:3px;">GET /metrics</div>
+        <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;">
+          <div style="font-weight:600;margin-bottom:4px;">🔑 API Key</div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-family:monospace;">sk-ragforge-xxxx</div>
+        </div>
+      </div>
+      <!-- API detail -->
+      <div style="padding:14px;font-size:11px;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">POST /api/v1/search</div>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">混合检索接口 —— Agent 调用此接口获取知识上下文</p>
+        <div style="background:var(--navy);border-radius:8px;padding:12px;font-family:monospace;font-size:10px;color:#e2e8f0;margin-bottom:10px;">
+          <span style="color:var(--cyan);">// Request</span><br>
+          {<br>
+          &nbsp;&nbsp;"query": "2026年后端需要什么AI技能",<br>
+          &nbsp;&nbsp;"kb_ids": ["jd_library", "industry_kb"],<br>
+          &nbsp;&nbsp;"strategy": "hybrid_rerank",<br>
+          &nbsp;&nbsp;"top_k": 8,<br>
+          &nbsp;&nbsp;"rerank_top_n": 5<br>
+          }<br><br>
+          <span style="color:var(--cyan);">// Response</span><br>
+          {<br>
+          &nbsp;&nbsp;"results": [{<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;"doc": "字节JD.pdf",<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;"chunk_id": "#12",<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;"score": 0.94,<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;"content": "...有大模型应用开发经验..."<br>
+          &nbsp;&nbsp;}],<br>
+          &nbsp;&nbsp;"latency_ms": 452,<br>
+          &nbsp;&nbsp;"tokens_used": 1240<br>
+          }
+        </div>
+        <div style="font-size:10px;padding:8px;border:1px solid var(--purple);border-radius:6px;">
+          <span style="color:var(--purple);font-weight:600;">🔗 Agent 集成示例：</span>
+          CareerMate Agent 调用此接口获取 JD 要求 → 与简历匹配 → 生成个性化建议
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

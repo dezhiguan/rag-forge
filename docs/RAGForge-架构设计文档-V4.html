@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAGForge 架构设计文档 V4</title>
+<style>
+  :root {
+    --navy: #0f172a; --slate: #1e293b; --gray: #475569;
+    --light: #f1f5f9; --blue: #3b82f6; --cyan: #06b6d4;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444;
+    --purple: #8b5cf6; --border: #e2e8f0; --text: #1e293b;
+    --text-muted: #64748b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--text); background: #fff; line-height: 1.85; font-size: 14px;
+  }
+
+  /* ===== COVER ===== */
+  .cover {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 40%, #0f172a 100%);
+    color: #fff; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; text-align: center;
+    padding: 60px 40px; page-break-after: always;
+  }
+  .cover .tag {
+    display: inline-block; border: 1px solid rgba(255,255,255,.3);
+    border-radius: 20px; padding: 6px 20px; font-size: 13px;
+    letter-spacing: 2px; color: var(--cyan); margin-bottom: 32px;
+  }
+  .cover h1 {
+    font-size: 48px; font-weight: 800; letter-spacing: -1px; margin-bottom: 12px;
+    background: linear-gradient(135deg, #fff, #93c5fd);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .cover .subtitle { font-size: 18px; color: rgba(255,255,255,.6); margin-bottom: 40px; max-width: 700px; }
+  .cover .meta { font-size: 13px; color: rgba(255,255,255,.35); }
+
+  /* ===== PAGE ===== */
+  .page { max-width: 960px; margin: 0 auto; padding: 60px 40px; }
+  .page-break { page-break-before: always; }
+  h2 { font-size: 26px; font-weight: 700; color: var(--navy); margin-bottom: 8px; padding-top: 20px; }
+  h2 .num { color: var(--blue); font-size: 15px; display: block; font-weight: 500; margin-bottom: 4px; }
+  h3 { font-size: 18px; font-weight: 600; color: var(--slate); margin: 28px 0 10px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--slate); margin: 16px 0 6px; }
+  p { margin-bottom: 10px; color: var(--gray); }
+  .section-desc { font-size: 14px; color: var(--text-muted); margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+
+  /* ===== TABLES ===== */
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { background: var(--light); font-weight: 600; color: var(--slate); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { color: var(--gray); font-size: 12px; }
+
+  /* ===== CODE ===== */
+  code {
+    background: var(--light); padding: 2px 6px; border-radius: 3px;
+    font-family: "SF Mono", "Menlo", "Monaco", monospace; font-size: 11px; color: var(--red);
+  }
+  pre {
+    background: var(--navy); color: #e2e8f0; padding: 18px 22px; border-radius: 10px;
+    font-size: 11px; line-height: 1.8; overflow-x: auto; margin: 14px 0;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; }
+
+  /* ===== TIP BOX ===== */
+  .tip-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+  .tip-box .tip-title { font-weight: 600; color: var(--blue); margin-bottom: 6px; font-size: 13px; }
+
+  /* ===== ARCH DIAGRAM ===== */
+  .arch-box {
+    background: var(--navy); border-radius: 10px; padding: 22px; margin: 14px 0;
+    color: #e2e8f0; font-family: "SF Mono", "Menlo", monospace; font-size: 11px; line-height: 2;
+  }
+
+  /* ===== FLOW ===== */
+  .flow-box {
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px; margin: 14px 0; font-family: "SF Mono", "Menlo", monospace; font-size: 11px;
+    line-height: 2.2; white-space: pre; overflow-x: auto;
+  }
+
+  /* ===== BADGE ===== */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600;
+  }
+  .badge.green { background: #d1fae5; color: #065f46; }
+  .badge.amber { background: #fef3c7; color: #92400e; }
+  .badge.red { background: #fee2e2; color: #991b1b; }
+  .badge.blue { background: #dbeafe; color: #1e40af; }
+
+  /* ===== MODEL PANORAMA ===== */
+  .model-card {
+    background: var(--light); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin: 10px 0;
+  }
+  .model-card h4 { margin-top: 0; }
+
+  /* ===== TASK TABLE ===== */
+  .task-phase { background: var(--slate); color: #fff; font-weight: 600; }
+
+  /* ===== PRINT ===== */
+  @media print {
+    body { font-size: 11px; }
+    .page { padding: 20px 0; max-width: 100%; }
+    .cover { min-height: 100vh; }
+    .page-break { page-break-before: always; }
+    pre, .arch-box, .flow-box { break-inside: avoid; }
+    @page { margin: 15mm; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER ==================== -->
+<div class="cover">
+  <div class="tag">PROJECT 01 · RAG INFRASTRUCTURE</div>
+  <h1>RAGForge</h1>
+  <p class="subtitle">企业级 RAG 知识引擎 架构设计文档 V4<br>为上层 Agent 提供完整的检索链路：Query改写 → 混合召回 → RRF融合 → Reranker精排</p>
+  <p class="meta">架构师：@guandezhi · Java 技术栈 · 2026年5月27日</p>
+</div>
+
+<!-- ==================== 项目定位 ==================== -->
+<div class="page">
+  <h2><span class="num">PART 01</span>项目定位</h2>
+
+  <p>RAGForge 是 <strong>RAG 基础设施层</strong>，不是聊天应用。它为上层 Agent（CareerMate AI求职智能体）提供：</p>
+  <ul style="margin:10px 0 10px 20px;color:var(--gray);">
+    <li>文档上传 → 异步处理 → 向量+关键词双索引</li>
+    <li>完整检索链路：Query改写 → 向量+关键词双路召回 → RRF融合 → Reranker精排</li>
+    <li>检索质量评测框架（含消融实验）</li>
+    <li>RESTful API（被 CareerMate 调用）</li>
+  </ul>
+
+  <div class="tip-box">
+    <div class="tip-title">一句话定位</div>
+    <p style="margin:0;font-size:13px;">"这是一个从文档解析、Query改写、混合召回、Reranker精排到质量评测的完整 RAG 闭环，不是调 LangChain API 的 wrapper。"</p>
+  </div>
+
+  <h3>两个项目的协作关系</h3>
+  <table>
+    <tr><th>维度</th><th>RAGForge（本项目）</th><th>CareerMate（项目二）</th></tr>
+    <tr><td>定位</td><td><strong>基础设施层</strong> — 知识检索 API 服务</td><td><strong>应用层</strong> — AI 求职 Agent 智能体</td></tr>
+    <tr><td>用户</td><td>开发者 / 管理员（管理后台型）</td><td>求职者（用户应用型）</td></tr>
+    <tr><td>页面数量</td><td><strong>6 个</strong></td><td><strong>5 个</strong></td></tr>
+    <tr><td>与对方关系</td><td>提供 RESTful API 给 Agent 调用</td><td>通过 API 调用 RAGForge 的检索能力</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 技术选型 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 02</span>技术选型</h2>
+
+  <h3>2.1 技术栈总览</h3>
+  <table>
+    <tr><th>层级</th><th>方案</th><th>理由</th></tr>
+    <tr><td>后端框架</td><td>Spring Boot 3.2 + Java 17</td><td>企业级标配</td></tr>
+    <tr><td>ORM</td><td>MyBatis-Plus 3.5</td><td>国内主流，代码生成效率高</td></tr>
+    <tr><td>数据库</td><td>PostgreSQL 15 + pgvector</td><td>业务数据 + 向量存储，一个库搞定</td></tr>
+    <tr><td>关键词检索</td><td>Elasticsearch 8.x + ik 分词器</td><td>用户已有，BM25 生态成熟</td></tr>
+    <tr><td>消息队列</td><td>RocketMQ 5.x</td><td>文档处理异步化，失败可重试</td></tr>
+    <tr><td>文档解析</td><td>Apache Tika 2.x + PDFBox</td><td>Java 生态，支持 PDF/Word/Markdown</td></tr>
+    <tr><td>Embedding</td><td>阿里云 DashScope text-embedding-v4</td><td>1024维，中英文优异</td></tr>
+    <tr><td>Chat / Query改写</td><td>DeepSeek-V3</td><td>性价比高，中文能力强</td></tr>
+    <tr><td>Reranker</td><td>bge-reranker-v2-m3（Python 微服务）</td><td>开源 SOTA，私有化部署</td></tr>
+    <tr><td>文件存储</td><td>本地磁盘（Docker Volume）</td><td>v1 聚焦核心，架构预留 OSS 接口</td></tr>
+    <tr><td>前端</td><td>Vue 3 + Vite（已有 6 页面）</td><td>管理后台，直接搬入</td></tr>
+    <tr><td>部署</td><td>Docker Compose</td><td>一键启动全部服务</td></tr>
+  </table>
+
+  <h3>2.2 模型使用全景</h3>
+  <div class="arch-box" style="line-height:2.2;">
+    RAGForge 用到 3 个模型：<br><br>
+    <span style="color:var(--cyan);">text-embedding-v4</span> (阿里云 DashScope)<br>
+    &nbsp;&nbsp;用途：文档块 → 1024维向量<br>
+    &nbsp;&nbsp;调用位置：异步管道的 Embedder<br><br>
+    <span style="color:var(--purple);">bge-reranker-v2-m3</span> (自建 Python 微服务)<br>
+    &nbsp;&nbsp;用途：召回候选集精排<br>
+    &nbsp;&nbsp;调用位置：HybridSearchService → HTTP 调用 Reranker 服务<br><br>
+    <span style="color:var(--green);">DeepSeek-V3</span> (DeepSeek API)<br>
+    &nbsp;&nbsp;用途①：Query 改写（<span style="color:var(--green);">核心链路</span>）<br>
+    &nbsp;&nbsp;用途②：检索调试台结果验证（调试工具）<br>
+    &nbsp;&nbsp;用途③：评测实验室答案可信度判断（评测工具）
+  </div>
+
+  <h3>2.3 关键决策</h3>
+
+  <p><strong>为什么 PG + ES，不用 Milvus？</strong><br>
+  pgvector 在小规模（百万级 chunk）下性能足够；ES 做关键词是它最擅长的；减少运维成本。</p>
+
+  <p><strong>为什么 Reranker 用 Python 微服务？</strong><br>
+  bge-reranker 生态是 Python 的，Java 调会多一层适配损耗。独立微服务体现"多语言协作"——架构亮点。</p>
+
+  <p><strong>为什么 RocketMQ？</strong><br>
+  文档处理链路长（解析→分块→向量化→索引），同步等 10-30 秒体验差。异步后 Consumer 失败可自动重试。</p>
+
+  <p><strong>为什么文件存磁盘不存 OSS？</strong><br>
+  v1 聚焦核心能力，架构预留 FileStorageService 接口，切换 OSS 只需新增实现类。</p>
+</div>
+
+<!-- ==================== 项目结构 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 03</span>项目结构</h2>
+
+  <div class="flow-box">rag-forge/
+  ├── <strong>CLAUDE.md</strong>              ← AI 上下文恢复文件（自动加载）
+  ├── backend/                   Spring Boot 后端（Cursor 生成）
+  │   ├── src/main/java/com/ragforge/
+  │   │   ├── common/            统一响应体、异常处理、ApiKey拦截器
+  │   │   ├── config/            配置（ES、RocketMQ、WebMvc）
+  │   │   ├── controller/        REST 控制器
+  │   │   ├── service/           业务接口
+  │   │   ├── service/impl/      业务实现
+  │   │   ├── mapper/            MyBatis-Plus Mapper
+  │   │   ├── model/             entity / dto / vo
+  │   │   ├── pipeline/          文档处理管道
+  │   │   │   ├── parser/        Tika 文件解析
+  │   │   │   ├── chunker/       文本分块
+  │   │   │   ├── embedder/      DashScope 向量化
+  │   │   │   └── indexer/       ES 索引写入
+  │   │   ├── search/            检索引擎
+  │   │   │   ├── QueryRewriter        Query改写（DeepSeek）
+  │   │   │   ├── VectorSearchService  pgvector向量检索
+  │   │   │   ├── KeywordSearchService ES BM25检索
+  │   │   │   ├── HybridSearchService  混合检索+RRF融合
+  │   │   │   └── RerankerClient       Reranker HTTP调用
+  │   │   └── mq/                RocketMQ Producer + Consumer
+  │   ├── Dockerfile
+  │   └── pom.xml
+  ├── reranker/                  Python Reranker 微服务
+  │   ├── main.py               FastAPI + bge-reranker-v2-m3
+  │   ├── requirements.txt
+  │   └── Dockerfile
+  ├── frontend/                  Vue 3 前端（已有 6 页面 mockup）
+  │   └── src/
+  │       ├── views/            6 个页面
+  │       ├── components/       Sidebar 等
+  │       ├── router/           路由
+  │       └── api/              ← 新增：API 请求封装层
+  ├── docker-compose.yml        PG + ES + RocketMQ + Backend + Reranker + Nginx
+  ├── nginx.conf                前端静态文件 + API 代理
+  └── docs/
+      ├── architecture.md       完整架构设计文档（权威参考）
+      └── tasks.md              任务追踪（当前进度）</div>
+</div>
+
+<!-- ==================== 数据库设计 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 04</span>数据库设计（9 张表）</h2>
+
+  <p>PostgreSQL 15 + pgvector 扩展。核心：document_chunks 表直接带 <code>vector(1024)</code> 列。</p>
+
+  <h3>4.1 表结构</h3>
+  <table>
+    <tr><th>表名</th><th>说明</th><th>核心字段</th></tr>
+    <tr><td><code>knowledge_bases</code></td><td>知识库</td><td>name, embedding_model(text-embedding-v4), chunk_size, chunk_overlap, doc_count, chunk_count, status</td></tr>
+    <tr><td><code>documents</code></td><td>文档</td><td>kb_id, filename, file_path(/data/files/), file_size, file_type, parse_status(pending→completed/failed)</td></tr>
+    <tr><td><code>document_chunks</code></td><td>文档块（向量）</td><td>doc_id, kb_id, chunk_index, content, <strong>content_vector vector(1024)</strong>, token_count</td></tr>
+    <tr><td><code>retrieval_logs</code></td><td>检索日志</td><td>query, rewritten_queries(JSON), strategy, kb_ids, top_k, result_count, latency_ms</td></tr>
+    <tr><td><code>eval_datasets</code></td><td>评测数据集</td><td>name, kb_id, question_count</td></tr>
+    <tr><td><code>eval_questions</code></td><td>评测问题</td><td>dataset_id, question, expected_doc_ids(JSON)</td></tr>
+    <tr><td><code>eval_experiments</code></td><td>评测实验</td><td>dataset_id, strategy, enable_query_rewrite, enable_reranker, top3_hit_rate, top5_hit_rate, avg_latency_ms</td></tr>
+    <tr><td><code>eval_results</code></td><td>评测结果</td><td>experiment_id, question_id, hit, hit_at, recalled_chunk_ids, score, latency_ms</td></tr>
+    <tr><td><code>api_keys</code></td><td>API密钥</td><td>key_name, api_key, enabled, rate_limit</td></tr>
+  </table>
+
+  <h3>4.2 ER 关系</h3>
+  <div class="flow-box">knowledge_bases  1──N  documents
+  knowledge_bases  1──N  document_chunks
+  documents        1──N  document_chunks
+  eval_datasets    1──N  eval_questions
+  eval_datasets    1──N  eval_experiments
+  eval_experiments 1──N  eval_results
+  eval_questions   1──N  eval_results
+  retrieval_logs   独立日志表
+  api_keys         独立配置表</div>
+
+  <h3>4.3 ES 索引</h3>
+  <table>
+    <tr><th>索引名</th><th>字段</th><th>分词器</th></tr>
+    <tr><td><code>ragforge_chunks</code></td><td>chunk_id, doc_id, kb_id, filename, content(text), chunk_index, created_at</td><td>ik_max_word (索引) / ik_smart (搜索)</td></tr>
+  </table>
+</div>
+
+<!-- ==================== API 设计 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 05</span>API 接口设计</h2>
+
+  <h3>5.1 知识库</h3>
+  <table>
+    <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+    <tr><td>POST</td><td><code>/api/v1/kb</code></td><td>创建知识库</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/kb</code></td><td>知识库列表</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/kb/{id}</code></td><td>知识库详情</td></tr>
+    <tr><td>PUT</td><td><code>/api/v1/kb/{id}</code></td><td>更新知识库</td></tr>
+    <tr><td>DELETE</td><td><code>/api/v1/kb/{id}</code></td><td>删除（级联）</td></tr>
+  </table>
+
+  <h3>5.2 文档管理</h3>
+  <table>
+    <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+    <tr><td>POST</td><td><code>/api/v1/kb/{kbId}/documents</code></td><td>上传文档（异步处理）</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/kb/{kbId}/documents</code></td><td>文档列表（分页）</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/documents/{id}</code></td><td>文档详情 + chunk 列表</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/documents/{id}/status</code></td><td>处理状态查询</td></tr>
+    <tr><td>DELETE</td><td><code>/api/v1/documents/{id}</code></td><td>删除（级联）</td></tr>
+  </table>
+
+  <h3>5.3 检索（核心接口）</h3>
+  <table>
+    <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+    <tr><td>POST</td><td><code>/api/v1/search</code></td><td>完整检索链路</td></tr>
+  </table>
+
+  <p><strong>Request:</strong></p>
+  <pre>{
+    "query": "2026年后端开发需要掌握哪些AI技能",
+    "kb_ids": [1, 3],
+    "strategy": "hybrid",         // vector | keyword | hybrid
+    "top_k": 8,
+    "enable_query_rewrite": true,  // Query改写（DeepSeek）
+    "enable_reranker": true        // Reranker精排
+  }</pre>
+
+  <p><strong>Response:</strong></p>
+  <pre>{
+    "code": 200,
+    "data": {
+      "results": [{
+        "chunk_id": 123, "doc_id": 12,
+        "filename": "字节JD.pdf",
+        "content": "...有大模型应用开发经验者优先...",
+        "score": 0.94,
+        "score_detail": {
+          "vector_score": 0.92,
+          "keyword_score": 0.88,
+          "rrf_score": 0.91,
+          "reranker_score": 0.94
+        }
+      }],
+      "rewritten_queries": ["2026年 后端开发 技能要求", "..."],
+      "latency_ms": 680,
+      "reranker_applied": true
+    }
+  }</pre>
+
+  <h3>5.4 评测</h3>
+  <table>
+    <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+    <tr><td>POST</td><td><code>/api/v1/eval/datasets</code></td><td>创建评测集</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/eval/datasets</code></td><td>评测集列表</td></tr>
+    <tr><td>POST</td><td><code>/api/v1/eval/experiments/run</code></td><td>执行评测实验</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/eval/experiments/{id}</code></td><td>实验详情 + 失败分析</td></tr>
+  </table>
+
+  <h3>5.5 系统</h3>
+  <table>
+    <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+    <tr><td>GET</td><td><code>/api/v1/admin/dashboard</code></td><td>驾驶舱指标</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/admin/metrics</code></td><td>详细指标</td></tr>
+    <tr><td>GET</td><td><code>/api/v1/health</code></td><td>健康检查</td></tr>
+  </table>
+
+  <h3>5.6 统一规范</h3>
+  <p>鉴权：Header <code>X-API-Key: sk-ragforge-xxxx</code> | 分页：<code>?page=1&size=20</code> | 错误：<code>{ code, msg, data }</code></p>
+</div>
+
+<!-- ==================== 文档处理管道 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 06</span>文档处理异步管道</h2>
+
+  <h3>6.1 流程图</h3>
+  <div class="flow-box">POST /api/v1/kb/{kbId}/documents
+    │
+    ├─→ 1. 接收文件，存本地磁盘 → /data/files/{uuid}.pdf
+    ├─→ 2. INSERT documents (file_path, parse_status='pending')
+    ├─→ 3. 发送 RocketMQ Message: { documentId: 123 }
+    └─→ 4. 返回 { documentId: 123, status: "processing" }
+
+                       ↓↓↓ 异步 ↓↓↓
+
+  RocketMQ Consumer 接收消息
+    │
+    ├─→ 5. 更新 parse_status = 'parsing'
+    ├─→ 6. Apache Tika 解析 → 纯文本
+    ├─→ 7. 更新 parse_status = 'chunking'
+    ├─→ 8. 文本分块 → List&lt;Chunk&gt; (512 tokens, overlap 64)
+    ├─→ 9. 更新 parse_status = 'embedding'
+    ├─→ 10. 逐块调用 DashScope text-embedding-v4 → vector(1024)
+    ├─→ 11. 更新 parse_status = 'indexing'
+    ├─→ 12. 批量 INSERT document_chunks (含 content_vector)
+    ├─→ 13. 批量写入 ES 索引 (content + metadata)
+    ├─→ 14. 更新 documents.parse_status = 'completed'
+    ├─→ 15. 更新 knowledge_bases.doc_count, chunk_count
+    │
+    └─→ 失败处理：status='failed', RocketMQ 重试 3 次 → 死信队列</div>
+
+  <h3>6.2 同步 vs 异步</h3>
+  <table>
+    <tr><th>阶段</th><th>耗时</th><th>同步</th><th>异步</th></tr>
+    <tr><td>文件解析</td><td>1-5s</td><td>用户等</td><td>后台跑</td></tr>
+    <tr><td>分块</td><td>&lt;1s</td><td>用户等</td><td>后台跑</td></tr>
+    <tr><td>Embedding (50 chunks)</td><td>3-10s</td><td>用户等</td><td>后台跑</td></tr>
+    <tr><td>ES 索引</td><td>&lt;1s</td><td>用户等</td><td>后台跑</td></tr>
+    <tr><td><strong>用户感知耗时</strong></td><td>—</td><td><strong>10-20s</strong></td><td><strong>&lt;200ms</strong></td></tr>
+  </table>
+
+  <h3>6.3 RocketMQ Topic</h3>
+  <div class="flow-box">Topic: ragforge-document-process
+  Producer: DocumentProcessProducer
+  Consumer: DocumentProcessConsumer
+  消费组: ragforge-doc-process-group
+  重试次数: 3</div>
+</div>
+
+<!-- ==================== 检索策略 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 07</span>检索策略设计（完整链路）</h2>
+
+  <h3>7.1 检索流程</h3>
+  <div class="flow-box">POST /api/v1/search { query, kb_ids, ... }
+
+  <strong>Step 1: Query 改写（DeepSeek-V3）</strong>
+  ┌──────────────────────────────────────────────┐
+  │ 原始: "后端开发需要什么技能"                    │
+  │     ↓ DeepSeek 扩充                           │
+  │ 改写: ["后端开发工程师 技能要求",              │
+  │        "后端开发 技术栈 必备能力",             │
+  │        "Java后端 需要掌握 技术"]               │
+  └──────────────────────────────────────────────┘
+                    │
+                    ▼
+  <strong>Step 2: 双路并发召回</strong>
+  ┌─────────────────┐  ┌─────────────────┐
+  │ pgvector 向量    │  │ ES BM25 关键词   │
+  │ cosine_distance  │  │ ik_max_word     │
+  │ TopK × 2 = 20   │  │ TopK × 2 = 20   │
+  └────────┬────────┘  └────────┬────────┘
+           └──────┬─────────────┘
+                  ▼
+  <strong>Step 3: RRF 融合排序</strong>
+  RRF_score = Σ 1/(60 + rank_i)
+  候选集 = TopK×2 = 16 条
+                  │
+                  ▼
+  <strong>Step 4: Reranker 精排</strong>
+  HTTP POST → reranker:8081/rerank
+  Body: { query, passages: [16条] }
+  Response: [{ index: 3, score: 0.94 }, ...]
+  取 TopK = 8 返回</div>
+
+  <h3>7.2 四种检索模式</h3>
+  <table>
+    <tr><th>模式</th><th>向量</th><th>BM25</th><th>RRF融合</th><th>Query改写</th><th>Reranker</th></tr>
+    <tr><td>vector</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+    <tr><td>keyword</td><td>—</td><td>✅</td><td>—</td><td>—</td><td>—</td></tr>
+    <tr><td>hybrid</td><td>✅</td><td>✅</td><td>✅</td><td>—</td><td>—</td></tr>
+    <tr><td><strong>full</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+  </table>
+  <p style="font-size:12px;color:var(--text-muted);">评测实验室支持消融实验——对比 4 种策略的 Top3/Top5 命中率，用数据量化每个组件贡献。</p>
+
+  <h3>7.3 pgvector 检索 SQL</h3>
+  <pre>SELECT dc.id, dc.content, dc.doc_id, d.filename,
+       1 - (dc.content_vector &lt;=&gt; ?) AS similarity
+FROM document_chunks dc
+JOIN documents d ON dc.doc_id = d.id
+WHERE dc.kb_id = ANY(?)
+ORDER BY dc.content_vector &lt;=&gt; ?
+LIMIT ?;</pre>
+
+  <h3>7.4 ES BM25 检索</h3>
+  <pre>POST /ragforge_chunks/_search
+{
+  "query": {
+    "bool": {
+      "must": [{ "match": { "content": "后端开发 AI 技能" } }],
+      "filter": [{ "terms": { "kb_id": [1, 3] } }]
+    }
+  },
+  "size": 20
+}</pre>
+</div>
+
+<!-- ==================== 前端页面 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 08</span>前端页面与 API 映射</h2>
+
+  <table>
+    <tr><th>页面</th><th>路由</th><th>调用后端接口</th><th>说明</th></tr>
+    <tr><td>驾驶舱</td><td><code>/</code></td><td>GET /api/v1/admin/dashboard</td><td>4 个指标卡片 + 最近操作</td></tr>
+    <tr><td>知识库管理</td><td><code>/knowledge</code></td><td>GET/POST /api/v1/kb, POST 上传</td><td>知识库列表 + 上传区</td></tr>
+    <tr><td>文档详情</td><td><code>/document/:id</code></td><td>GET /api/v1/documents/{id}</td><td>Chunk 列表 + 元信息</td></tr>
+    <tr><td>检索调试台</td><td><code>/debug</code></td><td>POST /api/v1/search</td><td>搜索 + Query改写开关 + 分数明细</td></tr>
+    <tr><td>评测实验室</td><td><code>/eval</code></td><td>GET/POST /api/v1/eval/*</td><td>评测集 + 消融实验 + 失败分析</td></tr>
+    <tr><td>API 网关</td><td><code>/api</code></td><td>GET /api/v1/admin/metrics</td><td>API 文档 + Key 管理</td></tr>
+  </table>
+
+  <p>前端已有 6 个页面的 Vue 组件，样式和交互都写好了，当前是 mock 数据。任务 17 集中做 API 对接。</p>
+</div>
+
+<!-- ==================== 部署架构 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 09</span>部署架构</h2>
+
+  <h3>9.1 Docker Compose</h3>
+  <div class="flow-box">services:
+    postgres          pgvector/pgvector:pg15          :5432
+    elasticsearch     elasticsearch:8.11.0            :9200
+    rocketmq-namesrv  apache/rocketmq:5.1.0           :9876
+    rocketmq-broker   apache/rocketmq:5.1.0           :10911
+    reranker          Python FastAPI + bge-reranker   :8081
+    backend           Spring Boot 3.2                 :8080
+    nginx             nginx:alpine                    :80
+
+  volumes: pgdata, esdata, files (/data/files)</div>
+
+  <h3>9.2 Nginx 路由</h3>
+  <div class="flow-box">/        → /usr/share/nginx/html (前端静态文件)
+  /api/    → proxy_pass backend:8080 (API 代理)</div>
+
+  <h3>9.3 阿里云部署路径</h3>
+  <table>
+    <tr><th>阶段</th><th>方案</th><th>说明</th></tr>
+    <tr><td>v1 开发</td><td>Docker Compose 本地</td><td>一键启动，4 周开发期</td></tr>
+    <tr><td>v2 上线</td><td>阿里云 ECS + Docker</td><td>一台 ECS 跑全部，演示用</td></tr>
+    <tr><td>v3 扩展</td><td>阿里云 ACK (K8s)</td><td>展示"生产级架构演进"</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 任务清单 ==================== -->
+<div class="page page-break">
+  <h2><span class="num">PART 10</span>实施任务清单（18 个）</h2>
+
+  <table>
+    <tr><th>#</th><th>阶段</th><th>任务</th><th>工作日</th></tr>
+    <tr class="task-phase"><td colspan="4">P1 地基（3 天）</td></tr>
+    <tr><td>1</td><td>基础</td><td>Spring Boot 脚手架 + PG/pgvector + ES + RocketMQ 环境配通</td><td>1.5d</td></tr>
+    <tr><td>2</td><td>基础</td><td>9 张表 DDL + MyBatis-Plus 代码生成 entity/mapper</td><td>1d</td></tr>
+    <tr><td>3</td><td>基础</td><td>统一响应体、全局异常处理、ApiKey 拦截器</td><td>0.5d</td></tr>
+    <tr class="task-phase"><td colspan="4">P2 知识库（2 天）</td></tr>
+    <tr><td>4</td><td>知识库</td><td>知识库 CRUD 完整实现（含级联删除校验）</td><td>1d</td></tr>
+    <tr><td>5</td><td>文档</td><td>文档上传（存本地磁盘）+ 列表/详情/状态查询/删除</td><td>1d</td></tr>
+    <tr class="task-phase"><td colspan="4">P3 异步管道（4 天）</td></tr>
+    <tr><td>6</td><td>管道</td><td>Apache Tika 文档解析器（PDF/Word/Markdown）</td><td>1d</td></tr>
+    <tr><td>7</td><td>管道</td><td>文本分块器 + DashScope Embedding 向量化</td><td>1d</td></tr>
+    <tr><td>8</td><td>管道</td><td>ES 索引写入（创建索引、批量写入、删除同步）</td><td>0.5d</td></tr>
+    <tr><td>9</td><td>管道</td><td>RocketMQ Producer + Consumer 编排全流程</td><td>1.5d</td></tr>
+    <tr class="task-phase"><td colspan="4">P4 检索引擎（5 天）</td></tr>
+    <tr><td>10</td><td>检索</td><td>pgvector 向量检索（cosine distance、TopK）</td><td>1d</td></tr>
+    <tr><td>11</td><td>检索</td><td>ES BM25 关键词检索（ik 分词、字段权重）</td><td>1d</td></tr>
+    <tr><td>12</td><td>检索</td><td><strong>Query 改写</strong>：DeepSeek 扩写/分解 query</td><td>1d</td></tr>
+    <tr><td>13</td><td>检索</td><td>混合检索 + RRF 融合排序</td><td>1d</td></tr>
+    <tr><td>14</td><td>检索</td><td><strong>Reranker 微服务</strong>（Python FastAPI + bge-reranker-v2-m3）</td><td>1d</td></tr>
+    <tr class="task-phase"><td colspan="4">P5 评测（1.5 天）</td></tr>
+    <tr><td>15</td><td>评测</td><td>评测数据集管理（创建、添加问题、标注期望文档）</td><td>0.5d</td></tr>
+    <tr><td>16</td><td>评测</td><td>实验执行引擎 + 消融实验（4 策略对比）+ 失败分析</td><td>1d</td></tr>
+    <tr class="task-phase"><td colspan="4">P6 前端 + 部署（2.5 天）</td></tr>
+    <tr><td>17</td><td>前端</td><td>前端 6 页面 API 对接（新增 api/ 请求层）</td><td>1.5d</td></tr>
+    <tr><td>18</td><td>部署</td><td>Docker Compose 编排 + Nginx + 驾驶舱指标接口</td><td>1d</td></tr>
+  </table>
+
+  <div class="tip-box">
+    <div class="tip-title">总计：18 个工作日，约 4 周（每天 3-4 小时）</div>
+    <p style="margin:0;font-size:13px;">开发顺序严格按 #1 → #18 执行，每完成一个任务更新 docs/tasks.md。架构文档 V4 定稿，所有技术选型已确认，不再做结构性调整。</p>
+  </div>
+</div>
+
+<!-- ==================== 扩展预留 ==================== -->
+<div class="page">
+  <h2><span class="num">PART 11</span>扩展预留</h2>
+
+  <table>
+    <tr><th>能力</th><th>v1 状态</th><th>预留设计</th></tr>
+    <tr><td>Query 改写</td><td><span class="badge green">已做</span></td><td>DeepSeek-V3</td></tr>
+    <tr><td>Reranker 精排</td><td><span class="badge green">已做</span></td><td>bge-reranker-v2-m3 独立微服务</td></tr>
+    <tr><td>大文件异步</td><td><span class="badge green">已做</span></td><td>RocketMQ 管道，Consumer 可水平扩展</td></tr>
+    <tr><td>多模态（图片OCR）</td><td><span class="badge amber">不做</span></td><td>Parser 接口 + 策略模式，新增 ImageParser 实现</td></tr>
+    <tr><td>文件存 OSS</td><td><span class="badge amber">不做</span></td><td>FileStorageService 接口，本地→OSS 一键切换</td></tr>
+    <tr><td>多租户</td><td><span class="badge amber">不做</span></td><td>api_keys 表预留，拦截器扩展</td></tr>
+    <tr><td>K8s 部署</td><td><span class="badge amber">不做</span></td><td>Dockerfile 已有，推镜像即可上 ACK</td></tr>
+  </table>
+
+</div>
+
+<div style="background:var(--navy);color:rgba(255,255,255,.5);text-align:center;padding:32px;font-size:12px;">
+  <p>RAGForge · 企业级 RAG 知识引擎 · 架构设计 V4</p>
+  <p style="margin-top:4px;">Java Spring Boot + PostgreSQL/pgvector + Elasticsearch + RocketMQ</p>
+  <p style="margin-top:4px;">18 个任务 · 4 周 · 为 CareerMate Agent 提供知识检索 API</p>
+</div>
+
+</body>
+</html>

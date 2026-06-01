@@ -1,12 +1,12 @@
 # RAGForge 当前真实架构与重构路线
 
-> 日期：2026-05-30  
+> 日期：2026-06-01  
 > 视角：架构体检 / 当前实现校准 / 后续重构路线  
 > 说明：本文不替代 `docs/architecture.md` 的历史设计价值，但以后讨论系统现状、问题和重构优先级时，应优先参考本文。
 
 ## 0. 结论先行
 
-这个项目值得继续做，但应该从“AI 生成堆功能”转向“架构收敛”。
+这个项目已经完成阶段性收口。后续如果继续做，重点应从“补功能”转向“生产工程化增强”。
 
 三条底线：
 
@@ -127,20 +127,26 @@ bge-reranker-v2-m3 Python 微服务
 | rewrite | query rewrite + multi-vector |
 | full | query rewrite + hybrid + rerank |
 
-当前问题：
-
-- 检索逻辑散在 `SearchController` 和 `EvalExperimentServiceImpl`，容易出现策略不一致。
-- 之前评测 `full` 和调试台 `full` 不一致，已修正。
-- `rewrite` 当前是改写后多路 vector，不是改写后 hybrid，需要文档讲清楚。
-- RRF 参数、recallTopK 等关键参数还没有配置化。
-
-建议后续抽出统一服务：
+当前状态：
 
 ```text
-RetrievalService / SearchEngine
+RetrievalService
 ```
 
-由 Controller、评测实验室、性能诊断页统一调用，避免多处复制策略逻辑。
+已由搜索接口、评测实验室、性能诊断页统一调用，避免多处复制策略逻辑。
+
+已完成：
+
+- 之前评测 `full` 和调试台 `full` 不一致的问题已修正。
+- `rewrite` 当前是改写后多路 vector，不是改写后 hybrid，文档已统一说明。
+- 检索链路已返回 latency breakdown。
+- `vector`、`hybrid`、`full` 已增加限流和超时保护。
+- `hybrid` 的 keyword/vector 召回已使用受控线程池并行执行。
+
+仍可继续增强：
+
+- RRF 参数、recallTopK 等关键参数继续配置化。
+- `full` 策略进一步异步化或队列化。
 
 ---
 
@@ -156,13 +162,13 @@ RetrievalService / SearchEngine
 建议容量口径：
 
 ```text
-当前版本目标容量：10,000 文档 / 50,000 到 80,000 chunk
+当前版本已验证：9,800 文档 / 约 96,000 chunk
 ```
 
 不建议当前口径宣称百万级 chunk 已验证。可以说：
 
 ```text
-pgvector 在百万级 chunk 内有演进空间，但当前部署规格下先以 5-8 万 chunk 为验收目标。
+pgvector 在百万级 chunk 内有演进空间，但当前部署规格下先以 10 万 chunk 左右为阶段性验收口径。
 ```
 
 ---
@@ -283,9 +289,9 @@ PerformanceProbe
 
 ### 第三步：打磨核心检索链路
 
-目标：避免调试台、API、评测实验室策略不一致。
+状态：主体已完成，后续继续做参数配置化和 full 异步化。
 
-建议抽象：
+当前抽象：
 
 ```java
 RetrievalService.search(SearchCommand command) -> SearchResponse
@@ -309,7 +315,7 @@ RetrievalService.search(SearchCommand command) -> SearchResponse
 任务：
 
 - PG batch insert。
-- embedding 限流。
+- embedding 限流与缓存。
 - ES 写入失败补偿。
 - Actuator / Micrometer。
 - API Key rate limit 真正生效。
@@ -362,7 +368,8 @@ RAGForge 是我做的 RAG 检索基础设施服务。
 full 是 Query 改写 + 混合召回 + Rerank。
 
 我还做了检索调试台和评测实验室，用于观察每一步的分数、耗时和失败样本。
-后续我会把检索逻辑抽成统一 RetrievalService，并加强评测标注、批量导入和线上可观测性。
+我把检索逻辑收敛到了统一 RetrievalService，并补了分段耗时、限流、超时、缓存和线上压测对比。
+后续如果继续做，会重点加强评测标注、批量导入、多实例部署和线上可观测性。
 ```
 
 ---
@@ -371,9 +378,9 @@ full 是 Query 改写 + 混合召回 + Rerank。
 
 优先顺序：
 
-1. 更新 `docs/architecture.md`，让它和当前实现一致。
-2. 重构 `SearchController` 与 `EvalExperimentServiceImpl` 的重复检索逻辑。
-3. 优化评测实验室的 expected/recalled chunk 展示。
-4. 修正 API Gateway 页面。
-5. 加 Actuator/Micrometer。
-6. 做 document_chunks batch insert 和 embedding 限流。
+1. 接入 Flyway / Liquibase，确保生产索引和 DDL 自动迁移。
+2. 多实例部署前改造共享文件存储，并拆分 API / Worker / Maintenance 角色。
+3. 优化评测实验室的 expected/recalled chunk 展示和人工标注。
+4. 做 document_chunks batch insert 和导入补偿。
+5. 对 `full` 策略做异步化、缓存或队列化。
+6. 完善 Prometheus/Grafana 或云监控告警。

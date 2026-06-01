@@ -241,16 +241,37 @@ curl -X POST http://localhost:8080/api/v1/search \
 - [当前真实架构与重构路线](docs/current-architecture-and-refactor-roadmap.md)
 - [任务记录](docs/tasks.md)
 - [测试计划](docs/ragforge-test-plan.html)
+- [ECS 性能测试报告](docs/ecs-performance-test-report-after-optimization-20260601.html)
 
 ## 当前状态
 
-RAGForge 仍处于持续开发阶段，核心的导入、索引、检索、调试、评测和 API 管理流程已经具备，但还有一些工程化方向需要继续完善：
+RAGForge 已完成阶段性验收，核心的导入、索引、检索、调试、评测、API Key 管理和线上部署流程已经跑通。
 
-- 抽出统一的 `RetrievalService`，避免 Controller、评测和诊断页各自维护检索链路。
-- 进一步提升评测集标注、失败样本分析和结果可信度。
-- 大批量导入时增加批量写入、限流、重试和补偿机制。
-- 完善系统监控、指标采集和生产环境告警。
-- 补充更系统的单元测试、集成测试和压测脚本。
+当前线上验证规模：
+
+```text
+8 个知识库 / 9,800 份文档 / 约 96,000 个 Chunk
+```
+
+已完成的工程化增强：
+
+- 统一 `RetrievalService`，搜索接口、评测和诊断页共用同一套检索链路。
+- 检索链路返回并记录分段耗时：rewrite、vector、keyword、rerank、total。
+- `vector`、`hybrid`、`full` 增加策略级限流和服务端超时保护。
+- `full` 默认限制并发 1，避免重链路拖垮在线服务。
+- `hybrid` 中 keyword/vector 召回使用受控检索线程池并行执行。
+- 增加 query embedding 本地缓存、Dashboard 缓存和知识库列表缓存。
+- 补充 PostgreSQL/pgvector 相关查询索引 SQL。
+- 完成 ECS 线上压测与优化前后对比报告。
+
+仍建议后续继续完善：
+
+- 将本地文件存储切换为 OSS / MinIO / NAS，便于后端多实例部署。
+- API 实例、文档处理 Worker、维护任务实例做角色隔离。
+- 为 `full` 策略增加异步化、缓存或更明确的队列化能力。
+- 引入 Prometheus/Grafana 或云监控告警，长期观察 PG、ES、JVM 和检索分段耗时。
+- 评测集增加人工标注与 MRR/Top1 等更严格指标。
+- 生产数据库迁移建议接入 Flyway 或 Liquibase，避免手动 SQL 遗漏。
 
 ## 开源说明
 
