@@ -11,6 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,11 +32,20 @@ public class DashScopeEmbeddingService implements EmbeddingService {
   private final ObjectMapper objectMapper;
   private final Semaphore requestSemaphore;
   private final AtomicLong nextAvailableAtMs = new AtomicLong(0L);
+  private final Map<String, CacheEntry> embeddingCache;
 
   public DashScopeEmbeddingService(DashScopeProperties properties, ObjectMapper objectMapper) {
     this.properties = properties;
     this.objectMapper = objectMapper;
     this.requestSemaphore = new Semaphore(Math.max(1, properties.getMaxConcurrentRequests()));
+    this.embeddingCache =
+        Collections.synchronizedMap(
+            new LinkedHashMap<String, CacheEntry>(512, 0.75f, true) {
+              @Override
+              protected boolean removeEldestEntry(Map.Entry<String, CacheEntry> eldest) {
+                return size() > 2048;
+              }
+            });
     this.httpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(properties.getTimeout()))
@@ -62,9 +72,36 @@ public class DashScopeEmbeddingService implements EmbeddingService {
           MAX_BATCH_SIZE,
           MAX_BATCH_SIZE);
     }
-    List<float[]> all = new ArrayList<>(texts.size());
-    for (List<String> batch : partitionBatches(texts, batchSize)) {
-      all.addAll(callEmbeddingApi(batch));
+    List<float[]> all = new ArrayList<>(Collections.nCopies(texts.size(), null));
+    List<Integer> missingIndexes = new ArrayList<>();
+    List<String> missingTexts = new ArrayList<>();
+    for (int i = 0; i < texts.size(); i++) {
+      float[] cached = getCached(texts.get(i));
+      if (cached != null) {
+        all.set(i, cached);
+      } else {
+        missingIndexes.add(i);
+        missingTexts.add(texts.get(i));
+      }
+    }
+
+    int offset = 0;
+    for (List<String> batch : partitionBatches(missingTexts, batchSize)) {
+      List<float[]> vectors = callEmbeddingApi(batch);
+      for (int i = 0; i < vectors.size(); i++) {
+        int originalIndex = missingIndexes.get(offset + i);
+        float[] vector = vectors.get(i);
+        putCached(texts.get(originalIndex), vector);
+        all.set(originalIndex, copy(vector));
+      }
+      offset += batch.size();
+    }
+    if (!missingTexts.isEmpty()) {
+      log.info(
+          "Embedding cache stats: requested={} hits={} misses={}",
+          texts.size(),
+          texts.size() - missingTexts.size(),
+          missingTexts.size());
     }
     return all;
   }
@@ -226,4 +263,32 @@ public class DashScopeEmbeddingService implements EmbeddingService {
       throw new BizException("Embedding 重试被中断");
     }
   }
+
+  private float[] getCached(String text) {
+    CacheEntry entry = embeddingCache.get(cacheKey(text));
+    if (entry == null) {
+      return null;
+    }
+    if (System.currentTimeMillis() - entry.createdAtMs > 10 * 60 * 1000L) {
+      embeddingCache.remove(cacheKey(text));
+      return null;
+    }
+    return copy(entry.vector);
+  }
+
+  private void putCached(String text, float[] vector) {
+    embeddingCache.put(cacheKey(text), new CacheEntry(copy(vector), System.currentTimeMillis()));
+  }
+
+  private String cacheKey(String text) {
+    return properties.getModel() + ":" + properties.getDimension() + ":" + text;
+  }
+
+  private static float[] copy(float[] vector) {
+    float[] copy = new float[vector.length];
+    System.arraycopy(vector, 0, copy, 0, vector.length);
+    return copy;
+  }
+
+  private record CacheEntry(float[] vector, long createdAtMs) {}
 }

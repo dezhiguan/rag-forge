@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 public class MetricsServiceImpl implements MetricsService {
 
   private static final String KB_STATUS_DELETED = "deleted";
+  private static final long DASHBOARD_CACHE_TTL_MS = 10_000L;
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
@@ -40,9 +41,28 @@ public class MetricsServiceImpl implements MetricsService {
   private final RetrievalLogMapper retrievalLogMapper;
   private final EvalExperimentMapper evalExperimentMapper;
   private final EvalDatasetMapper evalDatasetMapper;
+  private volatile DashboardCache dashboardCache;
 
   @Override
   public DashboardMetricsVO dashboard() {
+    DashboardCache cached = dashboardCache;
+    long now = System.currentTimeMillis();
+    if (cached != null && now < cached.expiresAtMs()) {
+      return cached.value();
+    }
+    synchronized (this) {
+      cached = dashboardCache;
+      now = System.currentTimeMillis();
+      if (cached != null && now < cached.expiresAtMs()) {
+        return cached.value();
+      }
+      DashboardMetricsVO vo = loadDashboard();
+      dashboardCache = new DashboardCache(vo, now + DASHBOARD_CACHE_TTL_MS);
+      return vo;
+    }
+  }
+
+  private DashboardMetricsVO loadDashboard() {
     DashboardMetricsVO vo = new DashboardMetricsVO();
 
     long kbCount =
@@ -191,5 +211,6 @@ public class MetricsServiceImpl implements MetricsService {
   }
 
   private record ActivityEntry(LocalDateTime createdAt, DashboardActivityVO activity) {}
-}
 
+  private record DashboardCache(DashboardMetricsVO value, long expiresAtMs) {}
+}

@@ -1,6 +1,8 @@
 package com.ragforge.search;
 
 import com.ragforge.search.HybridSearchService.HybridSearchOutput;
+import com.ragforge.common.BizException;
+import com.ragforge.config.RetrievalProperties;
 import com.ragforge.search.RerankerClient.RerankOutput;
 import com.ragforge.search.RerankerClient.RerankResult;
 import java.util.ArrayList;
@@ -10,16 +12,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import io.micrometer.core.instrument.MeterRegistry;
-import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RetrievalService {
 
   private static final int RRF_K = 10;
@@ -30,6 +36,37 @@ public class RetrievalService {
   private final QueryRewriter queryRewriter;
   private final RerankerClient rerankerClient;
   private final MeterRegistry meterRegistry;
+  private final RetrievalProperties retrievalProperties;
+  private final Executor retrievalExecutor;
+  private final Semaphore keywordSemaphore;
+  private final Semaphore vectorSemaphore;
+  private final Semaphore hybridSemaphore;
+  private final Semaphore fullSemaphore;
+  private final Semaphore rewriteSemaphore;
+
+  public RetrievalService(
+      VectorSearchService vectorSearchService,
+      EsSearchService esSearchService,
+      HybridSearchService hybridSearchService,
+      QueryRewriter queryRewriter,
+      RerankerClient rerankerClient,
+      MeterRegistry meterRegistry,
+      RetrievalProperties retrievalProperties,
+      @Qualifier("retrievalExecutor") Executor retrievalExecutor) {
+    this.vectorSearchService = vectorSearchService;
+    this.esSearchService = esSearchService;
+    this.hybridSearchService = hybridSearchService;
+    this.queryRewriter = queryRewriter;
+    this.rerankerClient = rerankerClient;
+    this.meterRegistry = meterRegistry;
+    this.retrievalProperties = retrievalProperties;
+    this.retrievalExecutor = retrievalExecutor;
+    this.keywordSemaphore = new Semaphore(Math.max(1, retrievalProperties.getKeyword().getMaxConcurrent()));
+    this.vectorSemaphore = new Semaphore(Math.max(1, retrievalProperties.getVector().getMaxConcurrent()));
+    this.hybridSemaphore = new Semaphore(Math.max(1, retrievalProperties.getHybrid().getMaxConcurrent()));
+    this.fullSemaphore = new Semaphore(Math.max(1, retrievalProperties.getFull().getMaxConcurrent()));
+    this.rewriteSemaphore = new Semaphore(Math.max(1, retrievalProperties.getRewrite().getMaxConcurrent()));
+  }
 
   public RetrievalOutput retrieve(
       String query,
@@ -39,11 +76,76 @@ public class RetrievalService {
       Double vectorWeight,
       int topK,
       int rerankTopN) {
-    long start = System.currentTimeMillis();
     String normalizedStrategy = normalizeStrategy(strategy);
+    Semaphore semaphore = semaphoreFor(normalizedStrategy);
+    int timeoutMs = timeoutMsFor(normalizedStrategy);
+    boolean acquired = false;
+    CompletableFuture<RetrievalOutput> future = null;
+    try {
+      acquired = semaphore.tryAcquire(200, TimeUnit.MILLISECONDS);
+      if (!acquired) {
+        meterRegistry.counter("ragforge.retrieval.rejected", "strategy", normalizedStrategy).increment();
+        throw new BizException(429, "检索请求过多，请稍后重试");
+      }
+      future =
+          CompletableFuture.supplyAsync(
+              () ->
+                  retrieveInternal(
+                      query,
+                      kbIds,
+                      docIds,
+                      normalizedStrategy,
+                      vectorWeight,
+                      topK,
+                      rerankTopN),
+              retrievalExecutor);
+      return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+    } catch (TimeoutException e) {
+      if (future != null) {
+        future.cancel(true);
+      }
+      meterRegistry.counter("ragforge.retrieval.timeout", "strategy", normalizedStrategy).increment();
+      log.warn("检索总超时 strategy={} timeout={}ms query=\"{}\"", normalizedStrategy, timeoutMs, query);
+      throw new BizException(504, "检索超时，请缩小范围或稍后重试");
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof BizException bizException) {
+        throw bizException;
+      }
+      throw new BizException(500, "检索失败：" + (cause == null ? e.getMessage() : cause.getMessage()));
+    } catch (BizException e) {
+      throw e;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new BizException(500, "检索被中断");
+    } catch (Exception e) {
+      throw new BizException(500, "检索失败：" + e.getMessage());
+    } finally {
+      if (acquired) {
+        semaphore.release();
+      }
+    }
+  }
+
+  private RetrievalOutput retrieveInternal(
+      String query,
+      List<Long> kbIds,
+      List<Long> docIds,
+      String normalizedStrategy,
+      Double vectorWeight,
+      int topK,
+      int rerankTopN) {
+    long start = System.currentTimeMillis();
     double normalizedVectorWeight = normalizeVectorWeight(vectorWeight);
 
-    log.info("检索请求 strategy={} topK={} query=\"{}\"", normalizedStrategy, topK, query);
+    log.info(
+        "检索请求 strategy={} topK={} rerankTopN={} kbCount={} docFilterCount={} query=\"{}\"",
+        normalizedStrategy,
+        topK,
+        rerankTopN,
+        kbIds == null ? 0 : kbIds.size(),
+        docIds == null ? 0 : docIds.size(),
+        query);
 
     List<String> rewrittenQueries = null;
     Long rewriteLatencyMs = null;
@@ -113,7 +215,15 @@ public class RetrievalService {
     }
 
     long latencyMs = System.currentTimeMillis() - start;
-    log.info("检索完成 resultCount={} totalLatency={}ms", results.size(), latencyMs);
+    log.info(
+        "检索完成 strategy={} resultCount={} rewriteLatency={}ms vectorLatency={}ms keywordLatency={}ms rerankLatency={}ms totalLatency={}ms",
+        normalizedStrategy,
+        results.size(),
+        rewriteLatencyMs,
+        vectorLatencyMs,
+        keywordLatencyMs,
+        rerankLatencyMs,
+        latencyMs);
     recordMetrics(
         normalizedStrategy,
         latencyMs,
@@ -132,6 +242,26 @@ public class RetrievalService {
         vectorLatencyMs,
         keywordLatencyMs,
         rerankLatencyMs);
+  }
+
+  private Semaphore semaphoreFor(String strategy) {
+    return switch (strategy) {
+      case "keyword" -> keywordSemaphore;
+      case "hybrid" -> hybridSemaphore;
+      case "full" -> fullSemaphore;
+      case "rewrite" -> rewriteSemaphore;
+      default -> vectorSemaphore;
+    };
+  }
+
+  private int timeoutMsFor(String strategy) {
+    return switch (strategy) {
+      case "keyword" -> retrievalProperties.getKeyword().getTimeoutMs();
+      case "hybrid" -> retrievalProperties.getHybrid().getTimeoutMs();
+      case "full" -> retrievalProperties.getFull().getTimeoutMs();
+      case "rewrite" -> retrievalProperties.getRewrite().getTimeoutMs();
+      default -> retrievalProperties.getVector().getTimeoutMs();
+    };
   }
 
   private void recordMetrics(

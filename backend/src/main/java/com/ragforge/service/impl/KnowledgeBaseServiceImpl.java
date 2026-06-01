@@ -23,9 +23,11 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
   private static final String STATUS_DELETED = "deleted";
   private static final String STATUS_ACTIVE = "active";
+  private static final long LIST_CACHE_TTL_MS = 10_000L;
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
+  private volatile ListCache listCache;
 
   @Override
   @Transactional
@@ -43,11 +45,30 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     kb.setCreatedAt(now);
     kb.setUpdatedAt(now);
     knowledgeBaseMapper.insert(kb);
+    invalidateListCache();
     return kb;
   }
 
   @Override
   public List<KnowledgeBaseVO> listAll() {
+    ListCache cached = listCache;
+    long now = System.currentTimeMillis();
+    if (cached != null && now < cached.expiresAtMs()) {
+      return cached.value();
+    }
+    synchronized (this) {
+      cached = listCache;
+      now = System.currentTimeMillis();
+      if (cached != null && now < cached.expiresAtMs()) {
+        return cached.value();
+      }
+      List<KnowledgeBaseVO> value = loadListAll();
+      listCache = new ListCache(value, now + LIST_CACHE_TTL_MS);
+      return value;
+    }
+  }
+
+  private List<KnowledgeBaseVO> loadListAll() {
     List<KnowledgeBase> list =
         knowledgeBaseMapper.selectList(
             new LambdaQueryWrapper<KnowledgeBase>()
@@ -83,6 +104,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
     kb.setUpdatedAt(LocalDateTime.now());
     knowledgeBaseMapper.updateById(kb);
+    invalidateListCache();
     return kb;
   }
 
@@ -99,6 +121,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     kb.setStatus(STATUS_DELETED);
     kb.setUpdatedAt(LocalDateTime.now());
     knowledgeBaseMapper.updateById(kb);
+    invalidateListCache();
   }
 
   private KnowledgeBase requireActiveKb(Long id) {
@@ -108,4 +131,10 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
     return kb;
   }
+
+  private void invalidateListCache() {
+    listCache = null;
+  }
+
+  private record ListCache(List<KnowledgeBaseVO> value, long expiresAtMs) {}
 }

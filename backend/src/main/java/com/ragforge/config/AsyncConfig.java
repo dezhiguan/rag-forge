@@ -21,4 +21,15 @@ public class AsyncConfig {
     executor.initialize();
     return executor;
   }
+
+  @Bean
+  public Executor retrievalExecutor(RetrievalProperties retrievalProperties) {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(Math.max(1, retrievalProperties.getExecutorCoreSize()));
+    executor.setMaxPoolSize(Math.max(1, retrievalProperties.getExecutorMaxSize()));
+    executor.setQueueCapacity(Math.max(0, retrievalProperties.getExecutorQueueCapacity()));
+    executor.setThreadNamePrefix("retrieval-");
+    executor.initialize();
+    return executor;
+  }
 }

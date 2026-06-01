@@ -26,6 +26,33 @@ ragforge:
   eval:
     max-concurrent-questions: 4
     question-timeout-ms: 30000
+  retrieval:
+    executor-core-size: ${RAGFORGE_RETRIEVAL_CORE_SIZE:4}
+    executor-max-size: ${RAGFORGE_RETRIEVAL_MAX_SIZE:12}
+    executor-queue-capacity: ${RAGFORGE_RETRIEVAL_QUEUE_CAPACITY:100}
+    stage-timeout-ms: ${RAGFORGE_RETRIEVAL_STAGE_TIMEOUT_MS:8000}
+    keyword:
+      max-concurrent: ${RAGFORGE_RETRIEVAL_KEYWORD_CONCURRENCY:20}
+      timeout-ms: ${RAGFORGE_RETRIEVAL_KEYWORD_TIMEOUT_MS:5000}
+    vector:
+      max-concurrent: ${RAGFORGE_RETRIEVAL_VECTOR_CONCURRENCY:5}
+      timeout-ms: ${RAGFORGE_RETRIEVAL_VECTOR_TIMEOUT_MS:8000}
+    hybrid:
+      max-concurrent: ${RAGFORGE_RETRIEVAL_HYBRID_CONCURRENCY:5}
+      timeout-ms: ${RAGFORGE_RETRIEVAL_HYBRID_TIMEOUT_MS:12000}
+    full:
+      max-concurrent: ${RAGFORGE_RETRIEVAL_FULL_CONCURRENCY:1}
+      timeout-ms: ${RAGFORGE_RETRIEVAL_FULL_TIMEOUT_MS:15000}
+    rewrite:
+      max-concurrent: ${RAGFORGE_RETRIEVAL_REWRITE_CONCURRENCY:3}
+      timeout-ms: ${RAGFORGE_RETRIEVAL_REWRITE_TIMEOUT_MS:10000}
+
+server:
+  tomcat:
+    threads:
+      max: ${SERVER_TOMCAT_THREADS_MAX:160}
+      min-spare: ${SERVER_TOMCAT_THREADS_MIN_SPARE:20}
+    accept-count: ${SERVER_TOMCAT_ACCEPT_COUNT:100}
 
 app:
   api-key:

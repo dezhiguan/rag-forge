@@ -1,5 +1,6 @@
 package com.ragforge.search;
 
+import com.ragforge.config.RetrievalProperties;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -11,20 +12,33 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.CompletableFuture;
-import lombok.RequiredArgsConstructor;
+import java.util.concurrent.Executor;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class HybridSearchService {
 
   private static final int RRF_K = 10;
 
   private final VectorSearchService vectorSearchService;
   private final EsSearchService esSearchService;
+  private final RetrievalProperties retrievalProperties;
+  private final Executor retrievalExecutor;
+
+  public HybridSearchService(
+      VectorSearchService vectorSearchService,
+      EsSearchService esSearchService,
+      RetrievalProperties retrievalProperties,
+      @Qualifier("retrievalExecutor") Executor retrievalExecutor) {
+    this.vectorSearchService = vectorSearchService;
+    this.esSearchService = esSearchService;
+    this.retrievalProperties = retrievalProperties;
+    this.retrievalExecutor = retrievalExecutor;
+  }
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK, double vectorWeight) {
     return searchWithMetrics(query, kbIds, docIds, topK, vectorWeight).getResults();
@@ -65,7 +79,8 @@ public class HybridSearchService {
               List<SearchResult> result = vectorSearchService.search(query, kbIds, docIds, recallTopK);
               vectorLatency.set(System.currentTimeMillis() - start);
               return result;
-            });
+            },
+            retrievalExecutor);
     CompletableFuture<List<SearchResult>> keywordFuture =
         CompletableFuture.supplyAsync(
             () -> {
@@ -73,23 +88,26 @@ public class HybridSearchService {
               List<SearchResult> result = esSearchService.search(query, kbIds, docIds, recallTopK);
               keywordLatency.set(System.currentTimeMillis() - start);
               return result;
-            });
+            },
+            retrievalExecutor);
 
     List<SearchResult> vectorResults;
     List<SearchResult> keywordResults;
     try {
-      vectorResults = vectorFuture.get(30, TimeUnit.SECONDS);
+      vectorResults = vectorFuture.get(retrievalProperties.getStageTimeoutMs(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException e) {
-      log.error("向量检索超时 (30s)，降级为空结果");
+      vectorFuture.cancel(true);
+      log.error("向量检索超时 ({}ms)，降级为空结果", retrievalProperties.getStageTimeoutMs());
       vectorResults = Collections.emptyList();
     } catch (Exception e) {
       log.error("向量检索异常: {}", e.getMessage());
       vectorResults = Collections.emptyList();
     }
     try {
-      keywordResults = keywordFuture.get(30, TimeUnit.SECONDS);
+      keywordResults = keywordFuture.get(retrievalProperties.getStageTimeoutMs(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException e) {
-      log.error("关键词检索超时 (30s)，降级为空结果");
+      keywordFuture.cancel(true);
+      log.error("关键词检索超时 ({}ms)，降级为空结果", retrievalProperties.getStageTimeoutMs());
       keywordResults = Collections.emptyList();
     } catch (Exception e) {
       log.error("关键词检索异常: {}", e.getMessage());
