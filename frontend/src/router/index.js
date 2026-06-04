@@ -8,7 +8,7 @@ const routes = [
   { path: '/debug', name: 'DebugConsole', component: () => import('../views/DebugConsole.vue'), meta: { icon: '🔍', label: '检索调试台' } },
   { path: '/perf-probe', name: 'PerformanceProbe', component: () => import('../views/PerformanceProbe.vue'), meta: { icon: '⏱', label: '性能诊断' } },
   { path: '/eval', name: 'EvaluationLab', component: () => import('../views/EvaluationLab.vue'), meta: { icon: '🧪', label: '评测实验室' } },
-  { path: '/api', name: 'ApiGateway', component: () => import('../views/ApiGateway.vue'), meta: { icon: '🔌', label: 'API 网关' } },
+  { path: '/api-gateway', name: 'ApiGateway', component: () => import('../views/ApiGateway.vue'), meta: { icon: '🔌', label: 'API 网关' } },
 ]
 
 const router = createRouter({

@@ -34,7 +34,7 @@
           <div class="action-icon">🔍</div>
           <div class="action-text">检索调试台</div>
         </div>
-        <div class="action-card" @click="$router.push('/api')">
+        <div class="action-card" @click="$router.push('/api-gateway')">
           <div class="action-icon">🔌</div>
           <div class="action-text">查看 API 文档</div>
         </div>
