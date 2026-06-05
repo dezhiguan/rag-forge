@@ -1,0 +1,14 @@
+# Server 2 入口层：Nginx + RAGForge 前端静态资源（不含后端）
+# CareerMate 前端由 CareerMate CI 同步到 frontend/dist/careermate/
+#
+# 启动：docker compose -f docker-compose-ingress.yml up -d
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: ragforge-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro

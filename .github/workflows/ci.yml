@@ -10,6 +10,8 @@ on:
       - "frontend/**"
       - "nginx.conf"
       - "docker-compose-app.yml"
+      - "docker-compose-backend.yml"
+      - "docker-compose-ingress.yml"
       - "deploy.sh"
       - ".github/workflows/ci.yml"
 
@@ -82,19 +84,39 @@ jobs:
           path: .
 
       - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Add server to known_hosts
+        env:
+          INGRESS_KEY: ${{ secrets.RAGFORGE_INGRESS_SSH_KEY }}
+          APP_KEY: ${{ secrets.RAGFORGE_APP_SSH_KEY }}
+          LEGACY_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          INGRESS_KNOWN: ${{ secrets.RAGFORGE_INGRESS_KNOWN_HOSTS }}
+          APP_KNOWN: ${{ secrets.RAGFORGE_APP_KNOWN_HOSTS }}
+          LEGACY_KNOWN: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          KEY="${INGRESS_KEY:-${LEGACY_KEY}}"
+          if [[ -z "${KEY}" ]]; then
+            echo "RAGFORGE_INGRESS_SSH_KEY or SSH_PRIVATE_KEY must be set"
+            exit 1
+          fi
+          printf '%s\n' "${KEY}" | ssh-add -
+          if [[ -n "${APP_KEY}" && "${APP_KEY}" != "${KEY}" ]]; then
+            printf '%s\n' "${APP_KEY}" | ssh-add -
+          fi
+          {
+            [[ -n "${INGRESS_KNOWN}" ]] && echo "${INGRESS_KNOWN}"
+            [[ -n "${APP_KNOWN}" ]] && echo "${APP_KNOWN}"
+            [[ -z "${INGRESS_KNOWN}" && -n "${LEGACY_KNOWN}" ]] && echo "${LEGACY_KNOWN}"
+          } >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy to app server
+      - name: Deploy (three-tier)
         env:
+          RAGFORGE_INGRESS_HOST: ${{ secrets.RAGFORGE_INGRESS_HOST }}
+          RAGFORGE_APP_HOST: ${{ secrets.RAGFORGE_APP_HOST }}
+          RAGFORGE_INGRESS_DIR: ${{ secrets.RAGFORGE_INGRESS_DIR }}
+          RAGFORGE_APP_DIR: ${{ secrets.RAGFORGE_APP_DIR }}
           APP_HOST: ${{ secrets.APP_HOST }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
           SKIP_BUILD: "1"

@@ -82,11 +82,13 @@ rag-forge/
 ├── reranker/                # 可选 Python Reranker 服务预留
 ├── docker/                  # 中间件配置
 ├── docs/                    # 架构、路线图、测试计划
-├── docker-compose.yml       # 本地中间件环境
-├── docker-compose-data.yml  # 数据与检索层部署
-├── docker-compose-app.yml   # 应用入口层部署
-├── deploy.sh                # 简单部署脚本
-└── nginx.conf               # Nginx 前端和 API 代理配置
+├── docker-compose.yml           # 本地中间件环境
+├── docker-compose-data.yml      # Server 1 数据与检索层
+├── docker-compose-ingress.yml   # Server 2 入口层（Nginx + 前端）
+├── docker-compose-backend.yml   # Server 3 应用层（RAGForge 后端）
+├── docker-compose-app.yml       # LEGACY 单机模式（Nginx + 后端同机）
+├── deploy.sh                    # 三层部署脚本
+└── nginx.conf                   # Nginx 前端和 API 代理配置
 ```
 
 ## 页面功能
@@ -215,17 +217,22 @@ curl -X POST http://localhost:8080/api/v1/search \
 
 ## 部署说明
 
-仓库中保留了一个轻量两层部署方案：
-
-- `docker-compose-data.yml`：PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ
-- `docker-compose-app.yml`：RAGForge 后端服务和 Nginx 前端入口
-
-参考部署规格：
+生产环境采用**三层架构**（详见 [docs/deployment-three-tier.md](docs/deployment-three-tier.md)）：
 
 | 服务器 | 角色 | 组件 |
 | --- | --- | --- |
-| 4 vCPU / 8 GiB | 数据与检索层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ |
-| 2 vCPU / 4 GiB | 应用入口层 | Nginx、Vue 前端、RAGForge 后端 |
+| Server 1（172.25.90.183） | 数据层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ、Reranker |
+| Server 2（8.163.63.222） | 入口层 | Nginx、RAGForge 前端、CareerMate 前端 |
+| Server 3（8.138.191.228） | 应用层 | RAGForge backend、CareerMate backend、爬虫 |
+
+Compose 文件：
+
+- `docker-compose-data.yml` → Server 1（保持不动）
+- `docker-compose-ingress.yml` → Server 2
+- `docker-compose-backend.yml` → Server 3
+- `docker-compose-app.yml` → **LEGACY** 单机模式（兼容旧部署）
+
+迁移与切流步骤见 [docs/deployment-migration-runbook.md](docs/deployment-migration-runbook.md)。
 
 当前版本更适合作为中小型知识库检索服务验证。一个比较务实的容量目标是：
 
@@ -237,6 +244,8 @@ curl -X POST http://localhost:8080/api/v1/search \
 
 ## 文档
 
+- [三层部署架构](docs/deployment-three-tier.md)
+- [迁移 Runbook](docs/deployment-migration-runbook.md)
 - [架构设计](docs/architecture.md)
 - [当前真实架构与重构路线](docs/current-architecture-and-refactor-roadmap.md)
 - [任务记录](docs/tasks.md)

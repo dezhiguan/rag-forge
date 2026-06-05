@@ -1,3 +1,8 @@
+# LEGACY：单机应用层模式（Nginx + 后端同机部署，Server 2 旧方案）
+# 新架构请使用：
+#   - docker-compose-ingress.yml  → Server 2 入口层
+#   - docker-compose-backend.yml  → Server 3 应用层
+# 详见 docs/deployment-three-tier.md
 services:
   backend:
     image: ragforge-backend:latest

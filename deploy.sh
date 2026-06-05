@@ -1,38 +1,46 @@
 #!/usr/bin/env bash
-# 构建并部署到应用层服务器（Nginx + 后端）
-# 数据层（PG/ES/MQ）在 ECS 172.25.90.183，需事先 docker compose -f docker-compose-data.yml up -d
+# 三层部署：Server 2 入口层（Nginx + 前端）+ Server 3 应用层（后端）
+# 数据层（PG/ES/MQ）在 Server 1（172.25.90.183），需事先 docker compose -f docker-compose-data.yml up -d
 #
 # 本地：./deploy.sh
 # CI：  SKIP_BUILD=1 ./deploy.sh  （GitHub Actions 已构建产物后仅同步与重启）
 #
-# 所需 GitHub Secrets：
-#   SSH_PRIVATE_KEY  - deploy 专用 ed25519 私钥
-#   SSH_KNOWN_HOSTS  - ssh-keyscan 8.163.63.222 的输出
-#   APP_HOST         - 可选，默认 root@8.163.63.222
-#   REMOTE_DIR       - 可选，默认 /opt/rag-forge
+# 所需 GitHub Secrets（新架构）：
+#   RAGFORGE_INGRESS_SSH_KEY / RAGFORGE_INGRESS_KNOWN_HOSTS  → Server 2
+#   RAGFORGE_APP_SSH_KEY / RAGFORGE_APP_KNOWN_HOSTS          → Server 3
+#   RAGFORGE_INGRESS_HOST  - 可选，默认 root@8.163.63.222
+#   RAGFORGE_APP_HOST      - 可选，默认 root@8.138.191.228
+#   RAGFORGE_INGRESS_DIR   - 可选，默认 /opt/rag-forge
+#   RAGFORGE_APP_DIR       - 可选，默认 /opt/rag-forge
+#
+# 兼容旧变量（仅入口层，不推荐）：
+#   APP_HOST / REMOTE_DIR / SSH_PRIVATE_KEY
 set -euo pipefail
 
-APP_HOST="${APP_HOST:-root@8.163.63.222}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/rag-forge}"
-HEALTH_CHECK_URL="${HEALTH_CHECK_URL:-http://8.163.63.222/api/v1/health}"
+RAGFORGE_INGRESS_HOST="${RAGFORGE_INGRESS_HOST:-${APP_HOST:-root@8.163.63.222}}"
+RAGFORGE_APP_HOST="${RAGFORGE_APP_HOST:-root@8.138.191.228}"
+RAGFORGE_INGRESS_DIR="${RAGFORGE_INGRESS_DIR:-${REMOTE_DIR:-/opt/rag-forge}}"
+RAGFORGE_APP_DIR="${RAGFORGE_APP_DIR:-/opt/rag-forge}"
+INGRESS_HEALTH_URL="${INGRESS_HEALTH_URL:-http://8.163.63.222/api/v1/health}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 SKIP_HEALTH_CHECK="${SKIP_HEALTH_CHECK:-0}"
 SSH_OPTS="${SSH_OPTS:--o StrictHostKeyChecking=yes}"
 RSYNC_SSH="${RSYNC_SSH:-ssh ${SSH_OPTS}}"
 
-echo "=== RAGForge 应用层部署 ==="
-echo "目标: ${APP_HOST}:${REMOTE_DIR}"
+echo "=== RAGForge 三层部署 ==="
+echo "入口层 (Server 2): ${RAGFORGE_INGRESS_HOST}:${RAGFORGE_INGRESS_DIR}"
+echo "应用层 (Server 3): ${RAGFORGE_APP_HOST}:${RAGFORGE_APP_DIR}"
 echo ""
 
 if [[ "${SKIP_BUILD}" != "1" ]]; then
-  echo "[1/4] 构建前端..."
+  echo "[1/5] 构建前端..."
   (cd frontend && npm ci && npm run build)
 
-  echo "[2/4] 构建后端..."
+  echo "[2/5] 构建后端..."
   (cd backend && mvn -B clean package -DskipTests)
 else
-  echo "[1/4] 跳过构建（SKIP_BUILD=1）"
-  echo "[2/4] 跳过构建（SKIP_BUILD=1）"
+  echo "[1/5] 跳过构建（SKIP_BUILD=1）"
+  echo "[2/5] 跳过构建（SKIP_BUILD=1）"
 fi
 
 JAR="$(ls backend/target/rag-forge-*.jar | head -1)"
@@ -47,37 +55,66 @@ if [[ ! -d frontend/dist ]]; then
   exit 1
 fi
 
-echo "[3/4] 同步到服务器..."
-ssh ${SSH_OPTS} "${APP_HOST}" "mkdir -p ${REMOTE_DIR}/backend/target ${REMOTE_DIR}/frontend/dist"
-rsync -avz -e "${RSYNC_SSH}" backend/Dockerfile "${JAR}" "${APP_HOST}:${REMOTE_DIR}/backend/target/"
-rsync -avz -e "${RSYNC_SSH}" --delete frontend/dist/ "${APP_HOST}:${REMOTE_DIR}/frontend/dist/"
-rsync -avz -e "${RSYNC_SSH}" nginx.conf docker-compose-app.yml "${APP_HOST}:${REMOTE_DIR}/"
+echo "[3/5] 同步后端到 Server 3（应用层）..."
+ssh ${SSH_OPTS} "${RAGFORGE_APP_HOST}" "mkdir -p ${RAGFORGE_APP_DIR}/backend/target"
+rsync -avz -e "${RSYNC_SSH}" backend/Dockerfile "${JAR}" \
+  "${RAGFORGE_APP_HOST}:${RAGFORGE_APP_DIR}/backend/target/"
+rsync -avz -e "${RSYNC_SSH}" docker-compose-backend.yml \
+  "${RAGFORGE_APP_HOST}:${RAGFORGE_APP_DIR}/"
 
-echo "[4/4] 远程构建镜像并重启..."
-ssh ${SSH_OPTS} "${APP_HOST}" bash -s <<EOF
+echo "[4/5] 远程构建镜像并重启后端（Server 3）..."
+ssh ${SSH_OPTS} "${RAGFORGE_APP_HOST}" bash -s <<EOF
 set -euo pipefail
-cd ${REMOTE_DIR}/backend
+cd ${RAGFORGE_APP_DIR}/backend
 docker build -t ragforge-backend:latest .
-cd ${REMOTE_DIR}
-docker compose -f docker-compose-app.yml -f docker-compose.override.yml up -d --force-recreate
-docker compose -f docker-compose-app.yml -f docker-compose.override.yml ps
+cd ${RAGFORGE_APP_DIR}
+docker compose -f docker-compose-backend.yml up -d --force-recreate
+docker compose -f docker-compose-backend.yml ps
+EOF
+
+echo "[5/5] 同步入口层到 Server 2（Nginx + 前端）..."
+ssh ${SSH_OPTS} "${RAGFORGE_INGRESS_HOST}" "mkdir -p ${RAGFORGE_INGRESS_DIR}/frontend/dist"
+rsync -avz -e "${RSYNC_SSH}" --delete frontend/dist/ \
+  "${RAGFORGE_INGRESS_HOST}:${RAGFORGE_INGRESS_DIR}/frontend/dist/"
+rsync -avz -e "${RSYNC_SSH}" nginx.conf docker-compose-ingress.yml \
+  "${RAGFORGE_INGRESS_HOST}:${RAGFORGE_INGRESS_DIR}/"
+
+ssh ${SSH_OPTS} "${RAGFORGE_INGRESS_HOST}" bash -s <<EOF
+set -euo pipefail
+cd ${RAGFORGE_INGRESS_DIR}
+docker compose -f docker-compose-ingress.yml up -d --force-recreate
+docker compose -f docker-compose-ingress.yml ps
 EOF
 
 echo ""
 echo "=== 部署完成 ==="
-echo "前端: http://8.163.63.222"
-echo "健康检查: ${HEALTH_CHECK_URL}"
+echo "公网入口: http://8.163.63.222"
+echo "健康检查（公网）: ${INGRESS_HEALTH_URL}"
 
 if [[ "${SKIP_HEALTH_CHECK}" != "1" ]]; then
   echo ""
-  echo "等待服务就绪..."
+  echo "等待 Server 3 后端就绪..."
+  ssh ${SSH_OPTS} "${RAGFORGE_APP_HOST}" bash -s <<'HEALTH_EOF'
+set -euo pipefail
+for _ in $(seq 1 30); do
+  if curl -sf http://127.0.0.1:8080/api/v1/health >/dev/null; then
+    echo "Server 3 本机健康检查通过"
+    exit 0
+  fi
+  sleep 5
+done
+echo "Server 3 本机健康检查失败" >&2
+exit 1
+HEALTH_EOF
+
+  echo "等待公网入口健康检查..."
   for _ in $(seq 1 30); do
-    if curl -sf "${HEALTH_CHECK_URL}" >/dev/null; then
-      echo "健康检查通过"
+    if curl -sf "${INGRESS_HEALTH_URL}" >/dev/null; then
+      echo "公网健康检查通过"
       exit 0
     fi
     sleep 5
   done
-  echo "健康检查失败: ${HEALTH_CHECK_URL}" >&2
+  echo "公网健康检查失败: ${INGRESS_HEALTH_URL}" >&2
   exit 1
 fi
