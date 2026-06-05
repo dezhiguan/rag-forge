@@ -18,11 +18,11 @@ Server 2 入口层（8.163.63.222 / 172.19.40.32）
 Server 3 应用层（8.138.191.228 / 172.25.90.184）
   RAGForge backend :8080
   CareerMate backend :18080（systemd）
-  jd-crawler / interview-crawler
   │
   ▼
 Server 1 数据层（8.163.30.216 / 172.25.90.183）— 保持不动
-  PostgreSQL / PgVector / Elasticsearch / Redis / RocketMQ / Reranker
+  PostgreSQL / PgVector / Elasticsearch / Redis / RocketMQ
+  （Reranker 预留，当前不默认启动）
 ```
 
 ## Compose 文件对照
@@ -62,7 +62,7 @@ chmod 600 /opt/rag-forge/docker-compose.override.yml
 
 # 3. 确认数据层连通（见 docs/deployment-migration-runbook.md）
 HOST=172.25.90.183
-for p in 5432 9200 6379 9876 10909 10911 10912 8001; do
+for p in 5432 9200 6379 9876 10909 10911 10912; do
   nc -vz -w 3 "$HOST" "$p"
 done
 
@@ -75,8 +75,6 @@ done
 |------|------|
 | RAGForge backend | `-Xms512m -Xmx2g` |
 | CareerMate backend | `-Xms512m -Xmx2g` |
-| jd-crawler | ~256M |
-| interview-crawler | ~256M |
 
 总计约 4.5G / 8G，保留系统与未来扩展空间。
 
@@ -151,6 +149,10 @@ nc -vz -w 3 172.25.90.184 18080
 | `RAGFORGE_APP_KNOWN_HOSTS` | `ssh-keyscan 8.138.191.228` |
 | `RAGFORGE_INGRESS_HOST` | 可选，默认 `root@8.163.63.222` |
 | `RAGFORGE_APP_HOST` | 可选，默认 `root@8.138.191.228` |
+| `RAGFORGE_INGRESS_DIR` | 可选，默认 `/opt/rag-forge`（Server 2） |
+| `RAGFORGE_APP_DIR` | 可选，默认 `/opt/rag-forge`（Server 3） |
+
+完整部署步骤见 [deployment-migration-runbook.md](deployment-migration-runbook.md)。
 
 ## 验证
 
@@ -210,20 +212,6 @@ ssh root@8.138.191.228 'cd /opt/rag-forge && \
 4. 公网验证通过后，停止 Server 2 旧 backend 容器
 
 回滚：恢复 Nginx 备份或将 `proxy_pass` 改回旧地址，reload Nginx；不删除 Server 3 release 和迁移数据。
-
-## 爬虫数据流（Server 3）
-
-爬虫在本机调用 RAGForge：
-
-```bash
-# JD 模式库
-POST http://127.0.0.1:8080/api/v1/kb/<JD_PATTERN_KB_ID>/documents
-# 或
-POST http://127.0.0.1:8080/api/v1/documents/upload?kbId=<JD_PATTERN_KB_ID>
-
-# 面试题库
-POST http://127.0.0.1:8080/api/v1/kb/<INTERVIEW_QA_KB_ID>/documents
-```
 
 ## 相关文档
 

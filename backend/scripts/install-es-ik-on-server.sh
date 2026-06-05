@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run on ECS (8.163.63.222) as root after: ssh root@8.163.63.222
+# Run on Server 1 data layer (8.163.30.216 / 172.25.90.183) as root.
+# Example: ssh root@8.163.30.216
 # Installs IK analyzer for Elasticsearch 8.11.x running in Docker.
 
 set -euo pipefail

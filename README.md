@@ -221,7 +221,7 @@ curl -X POST http://localhost:8080/api/v1/search \
 
 | 服务器 | 角色 | 组件 |
 | --- | --- | --- |
-| Server 1（172.25.90.183） | 数据层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ、Reranker |
+| Server 1（172.25.90.183） | 数据层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ（Reranker 预留，当前不默认启动） |
 | Server 2（8.163.63.222） | 入口层 | Nginx、RAGForge 前端、CareerMate 前端 |
 | Server 3（8.138.191.228） | 应用层 | RAGForge backend、CareerMate backend、爬虫 |
 
