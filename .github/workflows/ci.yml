@@ -119,6 +119,8 @@ jobs:
           RAGFORGE_APP_DIR: ${{ secrets.RAGFORGE_APP_DIR }}
           APP_HOST: ${{ secrets.APP_HOST }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
+          APP_SSH_OPTS: "-o StrictHostKeyChecking=yes -o ProxyJump=${{ secrets.RAGFORGE_INGRESS_HOST || 'root@8.163.63.222' }}"
+          APP_RSYNC_SSH: "ssh -o StrictHostKeyChecking=yes -o ProxyJump=${{ secrets.RAGFORGE_INGRESS_HOST || 'root@8.163.63.222' }}"
           SKIP_BUILD: "1"
         run: ./deploy.sh
 
