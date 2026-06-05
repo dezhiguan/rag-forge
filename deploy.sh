@@ -15,6 +15,15 @@
 #
 # 兼容旧变量（仅入口层，不推荐）：
 #   APP_HOST / REMOTE_DIR / SSH_PRIVATE_KEY
+#
+# 入口层静态目录说明：
+#   RAGForge 前端与 CareerMate 前端共用 Nginx html 根目录（frontend/dist/）。
+#   CareerMate 前端由 CareerMate CI 单独同步到 frontend/dist/careermate/。
+#   RAGForge 部署时必须保留 careermate/ 子目录（rsync --exclude）。
+#
+# Server 3 敏感配置：
+#   若存在 ${RAGFORGE_APP_DIR}/docker-compose.override.yml（服务器本地，不入库），
+#   compose up 时会自动叠加该文件以注入 API Key、数据库密码等。
 set -euo pipefail
 
 RAGFORGE_INGRESS_HOST="${RAGFORGE_INGRESS_HOST:-${APP_HOST:-root@8.163.63.222}}"
@@ -57,7 +66,9 @@ fi
 
 echo "[3/5] 同步后端到 Server 3（应用层）..."
 ssh ${SSH_OPTS} "${RAGFORGE_APP_HOST}" "mkdir -p ${RAGFORGE_APP_DIR}/backend/target"
-rsync -avz -e "${RSYNC_SSH}" backend/Dockerfile "${JAR}" \
+rsync -avz -e "${RSYNC_SSH}" backend/Dockerfile \
+  "${RAGFORGE_APP_HOST}:${RAGFORGE_APP_DIR}/backend/Dockerfile"
+rsync -avz -e "${RSYNC_SSH}" "${JAR}" \
   "${RAGFORGE_APP_HOST}:${RAGFORGE_APP_DIR}/backend/target/"
 rsync -avz -e "${RSYNC_SSH}" docker-compose-backend.yml \
   "${RAGFORGE_APP_HOST}:${RAGFORGE_APP_DIR}/"
@@ -68,13 +79,18 @@ set -euo pipefail
 cd ${RAGFORGE_APP_DIR}/backend
 docker build -t ragforge-backend:latest .
 cd ${RAGFORGE_APP_DIR}
-docker compose -f docker-compose-backend.yml up -d --force-recreate
-docker compose -f docker-compose-backend.yml ps
+COMPOSE_FILES=(-f docker-compose-backend.yml)
+if [[ -f docker-compose.override.yml ]]; then
+  COMPOSE_FILES+=(-f docker-compose.override.yml)
+  echo "使用本地 override: docker-compose.override.yml"
+fi
+docker compose "\${COMPOSE_FILES[@]}" up -d --force-recreate
+docker compose "\${COMPOSE_FILES[@]}" ps
 EOF
 
-echo "[5/5] 同步入口层到 Server 2（Nginx + 前端）..."
+echo "[5/5] 同步入口层到 Server 2（Nginx + 前端，保留 careermate/ 子目录）..."
 ssh ${SSH_OPTS} "${RAGFORGE_INGRESS_HOST}" "mkdir -p ${RAGFORGE_INGRESS_DIR}/frontend/dist"
-rsync -avz -e "${RSYNC_SSH}" --delete frontend/dist/ \
+rsync -avz -e "${RSYNC_SSH}" --delete --exclude 'careermate/' frontend/dist/ \
   "${RAGFORGE_INGRESS_HOST}:${RAGFORGE_INGRESS_DIR}/frontend/dist/"
 rsync -avz -e "${RSYNC_SSH}" nginx.conf docker-compose-ingress.yml \
   "${RAGFORGE_INGRESS_HOST}:${RAGFORGE_INGRESS_DIR}/"

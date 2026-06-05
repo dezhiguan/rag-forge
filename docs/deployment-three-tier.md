@@ -45,6 +45,20 @@ systemctl enable --now docker
 
 # 2. 创建部署目录
 mkdir -p /opt/rag-forge/backend/target
+# Dockerfile 由 deploy.sh 同步到 /opt/rag-forge/backend/Dockerfile
+# JAR 同步到 /opt/rag-forge/backend/target/
+
+# 2b. （推荐）创建服务器本地敏感配置，不入库
+cat > /opt/rag-forge/docker-compose.override.yml <<'EOF'
+# 示例：注入生产环境变量（勿提交到 Git）
+services:
+  backend:
+    environment:
+      DASHSCOPE_API_KEY: <your-key>
+      DEEPSEEK_API_KEY: <your-key>
+      POSTGRES_PASSWORD: <your-password>
+EOF
+chmod 600 /opt/rag-forge/docker-compose.override.yml
 
 # 3. 确认数据层连通（见 docs/deployment-migration-runbook.md）
 HOST=172.25.90.183
@@ -70,17 +84,44 @@ done
 
 RAGForge 上传文件挂载在 Docker volume `files_data`（容器内 `/data/files`）。
 
+### 服务器本地 override（敏感配置）
+
+Server 3 可在 `/opt/rag-forge/docker-compose.override.yml` 覆盖 `docker-compose-backend.yml` 中的环境变量，例如：
+
+- `DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`
+- `POSTGRES_PASSWORD`
+- `RERANKER_BASE_URL`
+- 其他运行时参数
+
+该文件**不入库**、不随 `deploy.sh` 同步。`deploy.sh` 在远端检测到该文件时，自动执行：
+
+```bash
+docker compose -f docker-compose-backend.yml -f docker-compose.override.yml up -d --force-recreate
+```
+
 ## Server 2 Bootstrap（一次性）
 
 在 `8.163.63.222` 上：
 
 ```bash
+# RAGForge 与 CareerMate 前端共用此目录；CareerMate 在 careermate/ 子目录
 mkdir -p /opt/rag-forge/frontend/dist/careermate
 
 # 确认可访问 Server 3 应用层
 nc -vz -w 3 172.25.90.184 8080
 nc -vz -w 3 172.25.90.184 18080
 ```
+
+**Server 2 只跑 Nginx + 两个前端**，不部署任何 backend 容器。
+
+### 前端静态目录约定
+
+| 路径 | 来源 | 说明 |
+|------|------|------|
+| `/opt/rag-forge/frontend/dist/` | RAGForge `deploy.sh` | RAGForge 根路径 `/` |
+| `/opt/rag-forge/frontend/dist/careermate/` | CareerMate CI | CareerMate 路径 `/careermate/` |
+
+`deploy.sh` 同步 RAGForge 前端时使用 `rsync --delete --exclude 'careermate/'`，**不会删除** CareerMate 前端子目录。
 
 ## 部署方式
 
@@ -138,7 +179,10 @@ docker volume inspect rag-forge_files_data --format '{{ .Mountpoint }}'
 
 # 3. rsync 到 Server 3（先不删除旧数据）
 # 在 Server 3 上先停止 backend，再同步
-ssh root@8.138.191.228 'docker compose -f /opt/rag-forge/docker-compose-backend.yml stop backend'
+ssh root@8.138.191.228 'cd /opt/rag-forge && \
+  COMPOSE="-f docker-compose-backend.yml"; \
+  [[ -f docker-compose.override.yml ]] && COMPOSE="$COMPOSE -f docker-compose.override.yml"; \
+  docker compose $COMPOSE stop backend'
 
 # 从旧 Server 2 同步（示例）
 rsync -avz --progress \
@@ -146,7 +190,10 @@ rsync -avz --progress \
   root@8.138.191.228:/var/lib/docker/volumes/rag-forge_files_data/_data/
 
 # 4. 重启 Server 3 backend 并验证上传/下载
-ssh root@8.138.191.228 'docker compose -f /opt/rag-forge/docker-compose-backend.yml up -d'
+ssh root@8.138.191.228 'cd /opt/rag-forge && \
+  COMPOSE="-f docker-compose-backend.yml"; \
+  [[ -f docker-compose.override.yml ]] && COMPOSE="$COMPOSE -f docker-compose.override.yml"; \
+  docker compose $COMPOSE up -d'
 ```
 
 > 迁移前务必确认 volume 名称和目标路径，建议先 `rsync --dry-run`。

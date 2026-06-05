@@ -12,6 +12,13 @@
 
 **Server 1 数据层保持不动。**
 
+角色速查：
+
+- **Server 2**：仅 Nginx + RAGForge 前端 + CareerMate 前端（无 backend 容器）
+- **Server 3**：RAGForge backend `:8080` + CareerMate backend `:18080`（systemd）+ 爬虫
+- **前端目录**：`/opt/rag-forge/frontend/dist/`（RAGForge）与 `/opt/rag-forge/frontend/dist/careermate/`（CareerMate）共用 Nginx html 根；RAGForge `deploy.sh` 使用 `--exclude careermate/`，不会删除 CareerMate 静态资源
+- **Server 3 敏感配置**：`/opt/rag-forge/docker-compose.override.yml`（本地文件，不入库），用于 API Key、数据库密码等
+
 ## 1. 网络安全组
 
 ### Server 1 入方向
@@ -100,9 +107,11 @@ VOL_NAME="rag-forge_files_data"   # 以实际为准
 # 步骤 2：查看挂载路径
 docker volume inspect "$VOL_NAME" --format '{{ .Mountpoint }}'
 
-# 步骤 3：在 Server 3 停止 backend
-ssh root@8.138.191.228 \
-  'docker compose -f /opt/rag-forge/docker-compose-backend.yml stop backend'
+# 步骤 3：在 Server 3 停止 backend（有 override 时一并指定）
+ssh root@8.138.191.228 'cd /opt/rag-forge && \
+  COMPOSE="-f docker-compose-backend.yml"; \
+  [[ -f docker-compose.override.yml ]] && COMPOSE="$COMPOSE -f docker-compose.override.yml"; \
+  docker compose $COMPOSE stop backend'
 
 # 步骤 4：rsync（先 dry-run）
 rsync -avzn --progress \
@@ -114,9 +123,11 @@ rsync -avz --progress \
   root@8.163.63.222:/var/lib/docker/volumes/${VOL_NAME}/_data/ \
   root@8.138.191.228:/var/lib/docker/volumes/${VOL_NAME}/_data/
 
-# 步骤 5：重启并验证
-ssh root@8.138.191.228 \
-  'docker compose -f /opt/rag-forge/docker-compose-backend.yml up -d'
+# 步骤 5：重启并验证（有 override 时一并指定）
+ssh root@8.138.191.228 'cd /opt/rag-forge && \
+  COMPOSE="-f docker-compose-backend.yml"; \
+  [[ -f docker-compose.override.yml ]] && COMPOSE="$COMPOSE -f docker-compose.override.yml"; \
+  docker compose $COMPOSE up -d'
 ```
 
 **迁移后先不删除旧 Server 2 数据。**
@@ -126,7 +137,9 @@ ssh root@8.138.191.228 \
 按顺序执行：
 
 1. **Bootstrap Server 3**
-   - 部署 RAGForge backend（`docker-compose-backend.yml`）
+   - 创建 `/opt/rag-forge/backend/target`
+   - （推荐）创建 `/opt/rag-forge/docker-compose.override.yml` 注入 API Key 等敏感配置（不入库）
+   - 部署 RAGForge backend（`docker-compose-backend.yml`，有 override 时自动叠加）
    - 部署 CareerMate backend（systemd，`/opt/careermate/backend/.env.app`）
    - 确认爬虫配置指向 `127.0.0.1:8080`
 
