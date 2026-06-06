@@ -88,64 +88,78 @@ jobs:
           INGRESS_KEY: ${{ secrets.RAGFORGE_INGRESS_SSH_KEY }}
           APP_KEY: ${{ secrets.RAGFORGE_APP_SSH_KEY }}
           LEGACY_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          INGRESS_KNOWN: ${{ secrets.RAGFORGE_INGRESS_KNOWN_HOSTS }}
-          APP_KNOWN: ${{ secrets.RAGFORGE_APP_KNOWN_HOSTS }}
-          LEGACY_KNOWN: ${{ secrets.SSH_KNOWN_HOSTS }}
           INGRESS_HOST_VALUE: ${{ secrets.RAGFORGE_INGRESS_HOST }}
           APP_HOST_VALUE: ${{ secrets.RAGFORGE_APP_HOST }}
+          INGRESS_PORT_VALUE: ${{ secrets.RAGFORGE_INGRESS_PORT }}
+          APP_PORT_VALUE: ${{ secrets.RAGFORGE_APP_PORT }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          eval "$(ssh-agent -s)"
-          KEY="${INGRESS_KEY:-${LEGACY_KEY}}"
-          if [[ -z "${KEY}" ]]; then
+          INGRESS_KEY="${INGRESS_KEY:-${LEGACY_KEY}}"
+          APP_KEY="${APP_KEY:-${INGRESS_KEY}}"
+          if [[ -z "${INGRESS_KEY}" ]]; then
             echo "RAGFORGE_INGRESS_SSH_KEY or SSH_PRIVATE_KEY must be set"
             exit 1
           fi
-          printf '%s\n' "${KEY}" | ssh-add -
-          if [[ -n "${APP_KEY}" && "${APP_KEY}" != "${KEY}" ]]; then
-            printf '%s\n' "${APP_KEY}" | ssh-add -
+          if [[ -z "${APP_KEY}" ]]; then
+            echo "RAGFORGE_APP_SSH_KEY or RAGFORGE_INGRESS_SSH_KEY must be set"
+            exit 1
           fi
-          {
-            [[ -n "${INGRESS_KNOWN}" ]] && echo "${INGRESS_KNOWN}"
-            [[ -n "${APP_KNOWN}" ]] && echo "${APP_KNOWN}"
-            [[ -z "${INGRESS_KNOWN}" && -n "${LEGACY_KNOWN}" ]] && echo "${LEGACY_KNOWN}"
-          } >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-          JUMP="${INGRESS_HOST_VALUE:-root@8.163.63.222}"
+          printf '%s\n' "${INGRESS_KEY}" > ~/.ssh/ragforge_ingress_key
+          printf '%s\n' "${APP_KEY}" > ~/.ssh/ragforge_app_key
+          chmod 600 ~/.ssh/ragforge_ingress_key ~/.ssh/ragforge_app_key
+
+          INGRESS="${INGRESS_HOST_VALUE:-root@8.163.63.222}"
           APP="${APP_HOST_VALUE:-root@8.138.191.228}"
-          JUMP_HOST="${JUMP#*@}"
-          APP_HOST_ONLY="${APP#*@}"
-          if [[ "${JUMP}" == *@* ]]; then
-            JUMP_USER="${JUMP%@*}"
+          INGRESS_HOST="${INGRESS#*@}"
+          APP_HOST="${APP#*@}"
+          if [[ "${INGRESS}" == *@* ]]; then
+            INGRESS_USER="${INGRESS%@*}"
           else
-            JUMP_USER="root"
+            INGRESS_USER="root"
           fi
+          if [[ "${APP}" == *@* ]]; then
+            APP_USER="${APP%@*}"
+          else
+            APP_USER="root"
+          fi
+          INGRESS_PORT="${INGRESS_PORT_VALUE:-22}"
+          APP_PORT="${APP_PORT_VALUE:-22}"
+          ssh-keyscan -p "${INGRESS_PORT}" "${INGRESS_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
           {
-            printf '%s\n' "Host ragforge-jump ${JUMP_HOST}"
-            printf '%s\n' "  HostName ${JUMP_HOST}"
-            printf '%s\n' "  User ${JUMP_USER}"
-            printf '%s\n' "  StrictHostKeyChecking accept-new"
-            printf '%s\n' "  UserKnownHostsFile /tmp/ragforge_jump_known_hosts"
-            printf '%s\n' ""
-            printf '%s\n' "Host ${APP_HOST_ONLY}"
-            printf '%s\n' "  HostName ${APP_HOST_ONLY}"
-            printf '%s\n' "  StrictHostKeyChecking accept-new"
-            printf '%s\n' "  UserKnownHostsFile /tmp/ragforge_app_known_hosts"
-            printf '%s\n' "  ProxyJump ragforge-jump"
-          } > /tmp/ragforge_ssh_config
-          chmod 600 /tmp/ragforge_ssh_config
+            printf '%s\n' 'Host ragforge-ingress'
+            printf '%s\n' "  HostName ${INGRESS_HOST}"
+            printf '%s\n' "  User ${INGRESS_USER}"
+            printf '%s\n' "  Port ${INGRESS_PORT}"
+            printf '%s\n' '  IdentityFile ~/.ssh/ragforge_ingress_key'
+            printf '%s\n' '  IdentitiesOnly yes'
+            printf '%s\n' '  StrictHostKeyChecking accept-new'
+            printf '%s\n' ''
+            printf '%s\n' 'Host ragforge-app'
+            printf '%s\n' "  HostName ${APP_HOST}"
+            printf '%s\n' "  User ${APP_USER}"
+            printf '%s\n' "  Port ${APP_PORT}"
+            printf '%s\n' '  IdentityFile ~/.ssh/ragforge_app_key'
+            printf '%s\n' '  IdentitiesOnly yes'
+            printf '%s\n' '  StrictHostKeyChecking accept-new'
+            printf '%s\n' '  ProxyJump ragforge-ingress'
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Verify SSH connectivity
+        run: |
+          ssh ragforge-ingress 'echo ragforge-ingress-ok'
+          ssh ragforge-app 'echo ragforge-app-ok'
 
       - name: Deploy (three-tier)
         env:
-          RAGFORGE_INGRESS_HOST: ${{ secrets.RAGFORGE_INGRESS_HOST }}
-          RAGFORGE_APP_HOST: ${{ secrets.RAGFORGE_APP_HOST }}
+          RAGFORGE_INGRESS_HOST: ragforge-ingress
+          RAGFORGE_APP_HOST: ragforge-app
           RAGFORGE_INGRESS_DIR: ${{ secrets.RAGFORGE_INGRESS_DIR }}
           RAGFORGE_APP_DIR: ${{ secrets.RAGFORGE_APP_DIR }}
           APP_HOST: ${{ secrets.APP_HOST }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
-          APP_SSH_OPTS: "-F /tmp/ragforge_ssh_config"
-          APP_RSYNC_SSH: "ssh -F /tmp/ragforge_ssh_config"
+          SSH_OPTS: "-o StrictHostKeyChecking=accept-new"
           SKIP_BUILD: "1"
         run: ./deploy.sh
 
