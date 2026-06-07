@@ -7,6 +7,11 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
+  cache:
+    type: caffeine
+    cache-names: queryRewrite
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=1h
 
 management:
   endpoints:
