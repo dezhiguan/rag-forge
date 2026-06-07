@@ -70,6 +70,7 @@ public class EsSearchService {
         result.setChunkIndex(toInt(source.get("chunk_index")));
         result.setVectorScore(0);
         result.setBm25Score(hit.score() != null ? hit.score() : 0);
+        result.setChunkType(source.get("chunk_type") == null ? null : source.get("chunk_type").toString());
         results.add(result);
       }
       return results;

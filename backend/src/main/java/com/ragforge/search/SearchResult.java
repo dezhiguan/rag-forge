@@ -13,4 +13,5 @@ public class SearchResult {
   private double vectorScore;
   private double bm25Score;
   private double finalScore;
+  private String chunkType;
 }

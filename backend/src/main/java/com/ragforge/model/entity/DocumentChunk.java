@@ -24,6 +24,9 @@ public class DocumentChunk {
   @TableField(value = "content_vector", typeHandler = PGvectorTypeHandler.class)
   private PGvector contentVector;
 
+  @TableField("chunk_type")
+  private String chunkType;
+
   private Integer tokenCount;
   private LocalDateTime createdAt;
 }

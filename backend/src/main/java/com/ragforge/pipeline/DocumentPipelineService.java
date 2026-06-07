@@ -281,6 +281,7 @@ public class DocumentPipelineService {
       entity.setContent(chunk.getContent());
       entity.setContentVector(new PGvector(vectors.get(i)));
       entity.setTokenCount(chunk.getTokenCount());
+      entity.setChunkType(null);
       entity.setCreatedAt(now);
     }
 

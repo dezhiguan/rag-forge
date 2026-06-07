@@ -30,7 +30,7 @@ public class VectorSearchService {
     StringBuilder sql =
         new StringBuilder(
             """
-            SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index,
+            SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
                    1 - (dc.content_vector <=> ?::vector) AS similarity
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
@@ -81,6 +81,7 @@ public class VectorSearchService {
               result.setFilename(rs.getString("filename"));
               result.setChunkIndex(rs.getInt("chunk_index"));
               result.setVectorScore(rs.getDouble("similarity"));
+              result.setChunkType(rs.getString("chunk_type"));
               return result;
             });
     long dbLatencyMs = System.currentTimeMillis() - dbStart;
@@ -168,7 +169,7 @@ public class VectorSearchService {
       sql.append(
           """
           SELECT * FROM (
-            SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index,
+            SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
                    1 - (dc.content_vector <=> ?::vector) AS similarity
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
@@ -225,6 +226,7 @@ public class VectorSearchService {
     result.setFilename(rs.getString("filename"));
     result.setChunkIndex(rs.getInt("chunk_index"));
     result.setVectorScore(rs.getDouble("similarity"));
+    result.setChunkType(rs.getString("chunk_type"));
     return result;
   }
 }

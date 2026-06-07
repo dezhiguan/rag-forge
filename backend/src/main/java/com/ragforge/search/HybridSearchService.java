@@ -168,6 +168,7 @@ public class HybridSearchService {
     copy.setChunkIndex(src.getChunkIndex());
     copy.setVectorScore(src.getVectorScore());
     copy.setBm25Score(src.getBm25Score());
+    copy.setChunkType(src.getChunkType());
     return copy;
   }
 

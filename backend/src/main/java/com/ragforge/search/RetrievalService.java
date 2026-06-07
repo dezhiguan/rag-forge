@@ -417,6 +417,7 @@ public class RetrievalService {
     copy.setVectorScore(src.getVectorScore());
     copy.setBm25Score(src.getBm25Score());
     copy.setFinalScore(src.getFinalScore());
+    copy.setChunkType(src.getChunkType());
     return copy;
   }
 
