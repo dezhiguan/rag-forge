@@ -23,5 +23,6 @@ public class Document {
   private String parseStatus;
   private Integer chunkCount;
   private String errorMsg;
+  private String chunkType;
   private LocalDateTime createdAt;
 }

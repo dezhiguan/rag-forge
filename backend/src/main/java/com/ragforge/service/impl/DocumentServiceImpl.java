@@ -9,6 +9,7 @@ import com.ragforge.common.PageResult;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
@@ -39,6 +40,7 @@ import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.DigestUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -342,6 +344,65 @@ public class DocumentServiceImpl implements DocumentService {
       kb.setUpdatedAt(LocalDateTime.now());
       knowledgeBaseMapper.updateById(kb);
     }
+  }
+
+  @Override
+  @Transactional
+  public DocumentUploadResultVO uploadText(TextUploadRequest request) {
+    requireActiveKb(request.getKbId());
+
+    String content = request.getContent();
+    if (content == null || content.isBlank()) {
+      throw new BizException(400, "文本内容不能为空");
+    }
+    if (content.length() > 500_000) {
+      throw new BizException(400, "文本内容超过 500,000 字符限制");
+    }
+
+    String title = request.getTitle().trim();
+    byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+    String fileMd5 = DigestUtils.md5DigestAsHex(bytes);
+
+    Document existing =
+        documentMapper.selectOne(
+            new LambdaQueryWrapper<Document>()
+                .eq(Document::getKbId, request.getKbId())
+                .eq(Document::getFileMd5, fileMd5)
+                .ne(Document::getParseStatus, STATUS_DELETED)
+                .last("LIMIT 1"));
+    if (existing != null) {
+      DocumentUploadResultVO result = new DocumentUploadResultVO();
+      result.setDocId(existing.getId());
+      result.setFilename(existing.getFilename());
+      result.setStatus(existing.getParseStatus());
+      result.setSkipped(true);
+      return result;
+    }
+
+    String filename = title + ".md";
+    String filePath = fileStorageService.storeBytes(bytes, filename);
+
+    Document doc = new Document();
+    doc.setKbId(request.getKbId());
+    doc.setFilename(filename);
+    doc.setFilePath(filePath);
+    doc.setFileSize((long) bytes.length);
+    doc.setFileType("md");
+    doc.setFileMd5(fileMd5);
+    doc.setVersion(1);
+    doc.setParseStatus(PARSE_STATUS_PENDING);
+    doc.setChunkType(request.getChunkType());
+    doc.setCreatedAt(LocalDateTime.now());
+    documentMapper.insert(doc);
+
+    documentProcessProducer.send(doc.getId());
+
+    DocumentUploadResultVO result = new DocumentUploadResultVO();
+    result.setDocId(doc.getId());
+    result.setFilename(filename);
+    result.setStatus(PARSE_STATUS_PENDING);
+    result.setSkipped(false);
+    return result;
   }
 
   private KnowledgeBase requireActiveKb(Long kbId) {

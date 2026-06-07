@@ -9,6 +9,9 @@ public interface FileStorageService {
    */
   String store(MultipartFile file);
 
+  /** @return filePath persisted to disk */
+  String storeBytes(byte[] content, String filename);
+
   void delete(String filePath);
 }
 

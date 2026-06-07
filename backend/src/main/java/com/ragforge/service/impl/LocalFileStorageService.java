@@ -41,6 +41,29 @@ public class LocalFileStorageService implements FileStorageService {
   }
 
   @Override
+  public String storeBytes(byte[] content, String filename) {
+    if (filename == null || filename.isBlank()) {
+      throw new IllegalArgumentException("file name is required");
+    }
+    if (content == null) {
+      throw new IllegalArgumentException("content is required");
+    }
+
+    String extension = getExtension(filename);
+    String storedName = UUID.randomUUID() + (extension.isEmpty() ? "" : "." + extension);
+
+    try {
+      Path dir = Paths.get(storagePath).toAbsolutePath().normalize();
+      Files.createDirectories(dir);
+      Path target = dir.resolve(storedName);
+      Files.write(target, content);
+      return target.toString();
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to store file", e);
+    }
+  }
+
+  @Override
   public void delete(String filePath) {
     if (filePath == null || filePath.isBlank()) {
       return;

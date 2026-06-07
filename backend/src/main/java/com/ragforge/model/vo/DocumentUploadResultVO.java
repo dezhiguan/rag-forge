@@ -11,5 +11,8 @@ public class DocumentUploadResultVO {
   private Long documentId;
   private String status;
   private String message;
+  private Long docId;
+  private String filename;
+  private boolean skipped = false;
 }
 

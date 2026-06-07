@@ -2,6 +2,7 @@ package com.ragforge.controller;
 
 import com.ragforge.common.PageResult;
 import com.ragforge.common.Result;
+import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -98,5 +100,11 @@ public class DocumentController {
   public Result<Void> reprocess(@PathVariable Long id) {
     documentService.reprocess(id);
     return Result.ok();
+  }
+
+  @PostMapping("/documents/text")
+  public Result<DocumentUploadResultVO> uploadText(
+      @RequestBody @jakarta.validation.Valid TextUploadRequest request) {
+    return Result.ok(documentService.uploadText(request));
   }
 }

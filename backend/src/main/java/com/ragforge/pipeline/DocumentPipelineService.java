@@ -126,7 +126,7 @@ public class DocumentPipelineService {
 
       stageStart = System.currentTimeMillis();
       List<DocumentChunk> documentChunks =
-          self.insertChunks(documentId, doc.getKbId(), chunks, vectors);
+          self.insertChunks(documentId, doc.getKbId(), chunks, vectors, doc.getChunkType());
       pgInsertLatencyMs = System.currentTimeMillis() - stageStart;
 
       stageStart = System.currentTimeMillis();
@@ -211,13 +211,14 @@ public class DocumentPipelineService {
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public List<DocumentChunk> insertChunks(
-      Long docId, Long kbId, List<Chunk> chunks, List<float[]> vectors) {
+      Long docId, Long kbId, List<Chunk> chunks, List<float[]> vectors, String docChunkType) {
     LocalDateTime now = LocalDateTime.now();
     List<DocumentChunk> inserted = new ArrayList<>(chunks.size());
     int batchSize = 50;
     for (int offset = 0; offset < chunks.size(); offset += batchSize) {
       int end = Math.min(offset + batchSize, chunks.size());
-      inserted.addAll(insertChunkBatch(docId, kbId, chunks, vectors, offset, end, now));
+      inserted.addAll(
+          insertChunkBatch(docId, kbId, chunks, vectors, offset, end, now, docChunkType));
     }
     return inserted;
   }
@@ -229,18 +230,19 @@ public class DocumentPipelineService {
       List<float[]> vectors,
       int start,
       int end,
-      LocalDateTime now) {
+      LocalDateTime now,
+      String docChunkType) {
     StringBuilder sql =
         new StringBuilder(
             """
-            INSERT INTO document_chunks (doc_id, kb_id, chunk_index, content, content_vector, token_count, created_at)
+            INSERT INTO document_chunks (doc_id, kb_id, chunk_index, content, content_vector, token_count, chunk_type, created_at)
             VALUES
             """);
     for (int i = start; i < end; i++) {
       if (i > start) {
         sql.append(", ");
       }
-      sql.append("(?, ?, ?, ?, ?::vector, ?, ?)");
+      sql.append("(?, ?, ?, ?, ?::vector, ?, ?, ?)");
     }
     sql.append(" RETURNING id, chunk_index");
 
@@ -257,6 +259,7 @@ public class DocumentPipelineService {
             ps.setString(idx++, chunk.getContent());
             ps.setObject(idx++, new PGvector(vectors.get(i)));
             ps.setInt(idx++, chunk.getTokenCount());
+            ps.setString(idx++, docChunkType);
             ps.setObject(idx++, now);
           }
           return ps;
@@ -281,7 +284,7 @@ public class DocumentPipelineService {
       entity.setContent(chunk.getContent());
       entity.setContentVector(new PGvector(vectors.get(i)));
       entity.setTokenCount(chunk.getTokenCount());
-      entity.setChunkType(null);
+      entity.setChunkType(docChunkType);
       entity.setCreatedAt(now);
     }
 
