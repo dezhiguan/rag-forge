@@ -11,8 +11,7 @@ services:
       POSTGRES_PASSWORD: ragforge
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/main/resources/db/init/schema.sql:/docker-entrypoint-initdb.d/01-pgvector.sql:ro
-      - ./backend/src/main/resources/db/migration/V1__init.sql:/docker-entrypoint-initdb.d/02-tables.sql:ro
+      # Schema 由应用启动时 Flyway 执行（db/migration/V1–V5），勿在此重复挂载 init SQL
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ragforge -d ragforge"]
       interval: 5s

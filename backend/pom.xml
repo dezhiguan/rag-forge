@@ -65,6 +65,11 @@
       <artifactId>postgresql</artifactId>
     </dependency>
 
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+
     <!-- pgvector JDBC type support (keeps build stable without Spring AI milestones) -->
     <dependency>
       <groupId>com.pgvector</groupId>
