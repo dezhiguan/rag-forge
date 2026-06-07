@@ -179,7 +179,14 @@ public class RetrievalService {
           vectorLatencyMs,
           keywordLatencyMs);
 
-      List<String> documents = results.stream().map(SearchResult::getContent).toList();
+      List<String> documents =
+          results.stream()
+              .map(
+                  r -> {
+                    String c = r.getContent();
+                    return (c != null && c.length() > 300) ? c.substring(0, 300) : c;
+                  })
+              .toList();
       long rerankStart = System.currentTimeMillis();
       RerankOutput rerankOutput =
           rerankerClient.rerank(query, documents, Math.min(rerankTopN, results.size()));
@@ -301,7 +308,7 @@ public class RetrievalService {
 
   private HybridSearchOutput searchByRewrittenHybrid(
       List<String> queries, List<Long> kbIds, List<Long> docIds, int topK, double vectorWeight) {
-    int recallTopK = Math.max(topK * 2, topK);
+    int recallTopK = Math.max(topK * 4, 20);
     Map<Long, SearchResult> dedup = new LinkedHashMap<>();
     Map<Long, Double> rrfScores = new LinkedHashMap<>();
     long vectorLatency = 0;
@@ -336,10 +343,31 @@ public class RetrievalService {
       return new HybridSearchOutput(vectorOnly, vectorLatency, null, "vector");
     }
 
-    for (String q : queries) {
-      long keywordStart = System.currentTimeMillis();
-      List<SearchResult> keywordResults = esSearchService.search(q, kbIds, docIds, recallTopK);
-      keywordLatency += System.currentTimeMillis() - keywordStart;
+    List<CompletableFuture<List<SearchResult>>> esFutures =
+        queries.stream()
+            .map(
+                q ->
+                    CompletableFuture.supplyAsync(
+                        () -> esSearchService.search(q, kbIds, docIds, recallTopK),
+                        retrievalExecutor))
+            .toList();
+
+    long keywordStart = System.currentTimeMillis();
+    List<List<SearchResult>> allEsResults =
+        esFutures.stream()
+            .map(
+                f -> {
+                  try {
+                    return f.get(retrievalProperties.getStageTimeoutMs(), TimeUnit.MILLISECONDS);
+                  } catch (Exception e) {
+                    log.warn("ES 子查询超时/异常: {}", e.getMessage());
+                    return java.util.List.<SearchResult>of();
+                  }
+                })
+            .toList();
+    keywordLatency = System.currentTimeMillis() - keywordStart;
+
+    for (List<SearchResult> keywordResults : allEsResults) {
       for (int i = 0; i < keywordResults.size(); i++) {
         SearchResult item = keywordResults.get(i);
         if (item.getChunkId() == null) {

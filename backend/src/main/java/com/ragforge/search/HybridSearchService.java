@@ -46,7 +46,7 @@ public class HybridSearchService {
 
   public HybridSearchOutput searchWithMetrics(
       String query, List<Long> kbIds, List<Long> docIds, int topK, double vectorWeight) {
-    int recallTopK = Math.max(topK * 2, topK);
+    int recallTopK = Math.max(topK * 4, 20);
     double vw = clampWeight(vectorWeight);
 
     // Extreme weights should fully degrade to a single strategy.
