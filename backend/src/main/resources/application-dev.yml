@@ -19,6 +19,10 @@ spring:
       schema-locations: classpath:db/init/schema.sql
       continue-on-error: true
 
+  output:
+    ansi:
+      enabled: always
+
 # 本机 Elasticsearch（默认 localhost:9200，无认证）
 elasticsearch:
   host: ${ELASTICSEARCH_HOST:localhost}
@@ -44,3 +48,4 @@ logging:
     root: INFO
     com.ragforge: DEBUG
     com.ragforge.mapper: DEBUG
+    com.ragforge.search: INFO

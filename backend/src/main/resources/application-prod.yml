@@ -17,6 +17,10 @@ spring:
     init:
       mode: never
 
+  output:
+    ansi:
+      enabled: always
+
 elasticsearch:
   host: ${ELASTICSEARCH_HOST:172.25.90.183}
   port: ${ELASTICSEARCH_PORT:9200}
@@ -42,3 +46,4 @@ logging:
   level:
     root: INFO
     com.ragforge: INFO
+    com.ragforge.search: INFO

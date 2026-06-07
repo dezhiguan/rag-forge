@@ -1,19 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-  <!-- 默认（dev）: 可读文本，含 traceId -->
-  <springProfile name="default | dev">
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+  <!-- 默认彩色控制台；需要 JSON（Filebeat）时追加 profile：json-logs -->
+  <springProfile name="!json-logs">
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder>
-        <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [traceId=%X{traceId}] %logger{36} - %msg%n</pattern>
+        <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([traceId=%X{traceId}]){magenta} %clr(%logger{36}){cyan} %clr(-){faint} %msg%n</pattern>
+        <charset>UTF-8</charset>
       </encoder>
     </appender>
+
+    <!-- RAG 检索链路：绿色标签 + 加粗，便于在控制台快速定位 -->
+    <appender name="RAG_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([RAG]){green,bold} %clr([traceId=%X{traceId}]){magenta} %clr(%logger{36}){green} %clr(-){faint} %msg%n</pattern>
+        <charset>UTF-8</charset>
+      </encoder>
+    </appender>
+
+    <logger name="com.ragforge.search" level="INFO" additivity="false">
+      <appender-ref ref="RAG_CONSOLE"/>
+    </logger>
+
     <root level="INFO">
       <appender-ref ref="CONSOLE"/>
     </root>
   </springProfile>
 
-  <!-- docker / prod: JSON 格式，方便 Filebeat 采集灌 ES -->
-  <springProfile name="docker | prod">
+  <springProfile name="json-logs">
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder class="net.logstash.logback.encoder.LogstashEncoder">
         <includeMdcKeyName>traceId</includeMdcKeyName>
@@ -22,7 +37,7 @@
         </fieldNames>
       </encoder>
     </appender>
-    <root level="DEBUG">
+    <root level="INFO">
       <appender-ref ref="CONSOLE"/>
     </root>
   </springProfile>

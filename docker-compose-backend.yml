@@ -11,6 +11,7 @@ services:
       - "8080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      SPRING_OUTPUT_ANSI_ENABLED: always
       JAVA_OPTS: "-Xms512m -Xmx2g"
     volumes:
       - files_data:/data/files
