@@ -20,6 +20,15 @@ public class EsSearchService {
   private final ElasticsearchClient client;
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
+    return search(query, kbIds, docIds, topK, null);
+  }
+
+  public List<SearchResult> search(
+      String query,
+      List<Long> kbIds,
+      List<Long> docIds,
+      int topK,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     try {
       SearchResponse<Map> response =
           client.search(
@@ -50,6 +59,18 @@ public class EsSearchService {
                                                   t ->
                                                       t.field("doc_id")
                                                           .terms(ts -> ts.value(docValues))));
+                                    }
+                                    if (filter != null
+                                        && filter.getChunkType() != null
+                                        && !filter.getChunkType().isEmpty()) {
+                                      List<FieldValue> chunkTypeValues =
+                                          filter.getChunkType().stream().map(FieldValue::of).toList();
+                                      b.filter(
+                                          f ->
+                                              f.terms(
+                                                  t ->
+                                                      t.field("chunk_type")
+                                                          .terms(ts -> ts.value(chunkTypeValues))));
                                     }
                                     return b;
                                   })),

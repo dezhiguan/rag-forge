@@ -21,6 +21,15 @@ public class VectorSearchService {
   private final JdbcTemplate jdbcTemplate;
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
+    return search(query, kbIds, docIds, topK, null);
+  }
+
+  public List<SearchResult> search(
+      String query,
+      List<Long> kbIds,
+      List<Long> docIds,
+      int topK,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     long start = System.currentTimeMillis();
     long embedStart = System.currentTimeMillis();
     float[] queryVector = embedder.embed(query);
@@ -51,6 +60,12 @@ public class VectorSearchService {
       sql.append(")");
     }
 
+    if (filter != null
+        && filter.getChunkType() != null
+        && !filter.getChunkType().isEmpty()) {
+      sql.append(" AND dc.chunk_type = ANY(?)");
+    }
+
     sql.append(" ORDER BY dc.content_vector <=> ?::vector LIMIT ?");
 
     long dbStart = System.currentTimeMillis();
@@ -69,6 +84,14 @@ public class VectorSearchService {
                 for (Long docId : docIds) {
                   ps.setLong(idx++, docId);
                 }
+              }
+              if (filter != null
+                  && filter.getChunkType() != null
+                  && !filter.getChunkType().isEmpty()) {
+                java.sql.Array arr =
+                    ps.getConnection()
+                        .createArrayOf("varchar", filter.getChunkType().toArray(new String[0]));
+                ps.setArray(idx++, arr);
               }
               ps.setObject(idx++, pgVector);
               ps.setInt(idx, topK);
@@ -100,6 +123,15 @@ public class VectorSearchService {
 
   public List<SearchResult> searchByQueries(
       List<String> queries, List<Long> kbIds, List<Long> docIds, int topK) {
+    return searchByQueries(queries, kbIds, docIds, topK, null);
+  }
+
+  public List<SearchResult> searchByQueries(
+      List<String> queries,
+      List<Long> kbIds,
+      List<Long> docIds,
+      int topK,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     if (queries == null || queries.isEmpty()) {
       return List.of();
     }
@@ -112,7 +144,7 @@ public class VectorSearchService {
       throw new IllegalStateException("Embedding 数量与改写查询数量不一致");
     }
 
-    String sql = buildBatchVectorSql(queries.size(), kbIds, docIds);
+    String sql = buildBatchVectorSql(queries.size(), kbIds, docIds, filter);
     long dbStart = System.currentTimeMillis();
     List<SearchResult> rawResults =
         jdbcTemplate.query(
@@ -122,7 +154,7 @@ public class VectorSearchService {
               for (float[] vector : vectors) {
                 PGvector pgVector = new PGvector(vector);
                 ps.setObject(idx++, pgVector);
-                idx = bindFilters(ps, idx, kbIds, docIds);
+                idx = bindFilters(ps, idx, kbIds, docIds, filter);
                 ps.setObject(idx++, pgVector);
                 ps.setInt(idx++, topK);
               }
@@ -160,7 +192,11 @@ public class VectorSearchService {
     return merged;
   }
 
-  private String buildBatchVectorSql(int queryCount, List<Long> kbIds, List<Long> docIds) {
+  private String buildBatchVectorSql(
+      int queryCount,
+      List<Long> kbIds,
+      List<Long> docIds,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     StringBuilder sql = new StringBuilder();
     for (int i = 0; i < queryCount; i++) {
       if (i > 0) {
@@ -175,7 +211,7 @@ public class VectorSearchService {
             JOIN documents d ON dc.doc_id = d.id
             WHERE dc.content_vector IS NOT NULL
           """);
-      appendFilters(sql, kbIds, docIds);
+      appendFilters(sql, kbIds, docIds, filter);
       sql.append(
           """
             ORDER BY dc.content_vector <=> ?::vector
@@ -186,7 +222,11 @@ public class VectorSearchService {
     return sql.toString();
   }
 
-  private void appendFilters(StringBuilder sql, List<Long> kbIds, List<Long> docIds) {
+  private void appendFilters(
+      StringBuilder sql,
+      List<Long> kbIds,
+      List<Long> docIds,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     if (kbIds != null && !kbIds.isEmpty()) {
       sql.append(" AND dc.kb_id IN (");
       sql.append("?,".repeat(kbIds.size()));
@@ -199,10 +239,19 @@ public class VectorSearchService {
       sql.setLength(sql.length() - 1);
       sql.append(")");
     }
+    if (filter != null
+        && filter.getChunkType() != null
+        && !filter.getChunkType().isEmpty()) {
+      sql.append(" AND dc.chunk_type = ANY(?)");
+    }
   }
 
   private int bindFilters(
-      java.sql.PreparedStatement ps, int idx, List<Long> kbIds, List<Long> docIds)
+      java.sql.PreparedStatement ps,
+      int idx,
+      List<Long> kbIds,
+      List<Long> docIds,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter)
       throws java.sql.SQLException {
     if (kbIds != null && !kbIds.isEmpty()) {
       for (Long kbId : kbIds) {
@@ -213,6 +262,13 @@ public class VectorSearchService {
       for (Long docId : docIds) {
         ps.setLong(idx++, docId);
       }
+    }
+    if (filter != null
+        && filter.getChunkType() != null
+        && !filter.getChunkType().isEmpty()) {
+      java.sql.Array arr =
+          ps.getConnection().createArrayOf("varchar", filter.getChunkType().toArray(new String[0]));
+      ps.setArray(idx++, arr);
     }
     return idx;
   }

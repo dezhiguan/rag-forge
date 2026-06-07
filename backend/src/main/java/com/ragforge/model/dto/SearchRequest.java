@@ -3,6 +3,7 @@ package com.ragforge.model.dto;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.Data;
 
@@ -31,4 +32,13 @@ public class SearchRequest {
   @Min(1)
   @Max(50)
   private int topK = 8;
+
+  @Valid
+  private SearchFilter filter;
+
+  @Data
+  public static class SearchFilter {
+    /** chunk_type 取值（OR 关系，多值任意命中即可）；为空或 null 时不过滤 */
+    private List<String> chunkType;
+  }
 }

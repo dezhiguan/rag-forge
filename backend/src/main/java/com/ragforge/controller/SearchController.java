@@ -31,7 +31,8 @@ public class SearchController {
             req.getStrategy(),
             req.getVectorWeight(),
             req.getTopK(),
-            req.getRerankTopN());
+            req.getRerankTopN(),
+            req.getFilter());
 
     return Result.ok(
         new SearchResponse(

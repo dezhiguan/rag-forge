@@ -76,6 +76,18 @@ public class RetrievalService {
       Double vectorWeight,
       int topK,
       int rerankTopN) {
+    return retrieve(query, kbIds, docIds, strategy, vectorWeight, topK, rerankTopN, null);
+  }
+
+  public RetrievalOutput retrieve(
+      String query,
+      List<Long> kbIds,
+      List<Long> docIds,
+      String strategy,
+      Double vectorWeight,
+      int topK,
+      int rerankTopN,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     String normalizedStrategy = normalizeStrategy(strategy);
     Semaphore semaphore = semaphoreFor(normalizedStrategy);
     int timeoutMs = timeoutMsFor(normalizedStrategy);
@@ -97,7 +109,8 @@ public class RetrievalService {
                       normalizedStrategy,
                       vectorWeight,
                       topK,
-                      rerankTopN),
+                      rerankTopN,
+                      filter),
               retrievalExecutor);
       return future.get(timeoutMs, TimeUnit.MILLISECONDS);
     } catch (TimeoutException e) {
@@ -134,7 +147,8 @@ public class RetrievalService {
       String normalizedStrategy,
       Double vectorWeight,
       int topK,
-      int rerankTopN) {
+      int rerankTopN,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     long start = System.currentTimeMillis();
     double normalizedVectorWeight = normalizeVectorWeight(vectorWeight);
 
@@ -160,7 +174,7 @@ public class RetrievalService {
       rewriteLatencyMs = System.currentTimeMillis() - rewriteStart;
       log.info("Query改写完成 变体数={} latency={}ms", rewrittenQueries.size(), rewriteLatencyMs);
       long vectorStart = System.currentTimeMillis();
-      results = searchByRewrittenQueries(rewrittenQueries, kbIds, docIds, topK);
+      results = searchByRewrittenQueries(rewrittenQueries, kbIds, docIds, topK, filter);
       vectorLatencyMs = System.currentTimeMillis() - vectorStart;
     } else if ("full".equals(normalizedStrategy)) {
       long rewriteStart = System.currentTimeMillis();
@@ -169,7 +183,7 @@ public class RetrievalService {
       log.info("Query改写完成 变体数={} latency={}ms", rewrittenQueries.size(), rewriteLatencyMs);
       HybridSearchOutput output =
           searchByRewrittenHybrid(
-              rewrittenQueries, kbIds, docIds, topK, normalizedVectorWeight);
+              rewrittenQueries, kbIds, docIds, topK, normalizedVectorWeight, filter);
       results = output.getResults();
       vectorLatencyMs = output.getVectorLatencyMs();
       keywordLatencyMs = output.getKeywordLatencyMs();
@@ -199,7 +213,7 @@ public class RetrievalService {
     } else if ("hybrid".equals(normalizedStrategy)) {
       HybridSearchOutput output =
           hybridSearchService.searchWithMetrics(
-              query, kbIds, docIds, topK, normalizedVectorWeight);
+              query, kbIds, docIds, topK, normalizedVectorWeight, filter);
       results = output.getResults();
       vectorLatencyMs = output.getVectorLatencyMs();
       keywordLatencyMs = output.getKeywordLatencyMs();
@@ -211,12 +225,12 @@ public class RetrievalService {
           keywordLatencyMs);
     } else if ("keyword".equals(normalizedStrategy)) {
       long keywordStart = System.currentTimeMillis();
-      results = esSearchService.search(query, kbIds, docIds, topK);
+      results = esSearchService.search(query, kbIds, docIds, topK, filter);
       keywordLatencyMs = System.currentTimeMillis() - keywordStart;
       log.info("关键词检索完成 结果数={} latency={}ms", results.size(), keywordLatencyMs);
     } else {
       long vectorStart = System.currentTimeMillis();
-      results = vectorSearchService.search(query, kbIds, docIds, topK);
+      results = vectorSearchService.search(query, kbIds, docIds, topK, filter);
       vectorLatencyMs = System.currentTimeMillis() - vectorStart;
       log.info("向量检索完成 结果数={} latency={}ms", results.size(), vectorLatencyMs);
     }
@@ -302,12 +316,21 @@ public class RetrievalService {
   }
 
   private List<SearchResult> searchByRewrittenQueries(
-      List<String> queries, List<Long> kbIds, List<Long> docIds, int topK) {
-    return vectorSearchService.searchByQueries(queries, kbIds, docIds, topK);
+      List<String> queries,
+      List<Long> kbIds,
+      List<Long> docIds,
+      int topK,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    return vectorSearchService.searchByQueries(queries, kbIds, docIds, topK, filter);
   }
 
   private HybridSearchOutput searchByRewrittenHybrid(
-      List<String> queries, List<Long> kbIds, List<Long> docIds, int topK, double vectorWeight) {
+      List<String> queries,
+      List<Long> kbIds,
+      List<Long> docIds,
+      int topK,
+      double vectorWeight,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     int recallTopK = Math.max(topK * 4, 20);
     Map<Long, SearchResult> dedup = new LinkedHashMap<>();
     Map<Long, Double> rrfScores = new LinkedHashMap<>();
@@ -317,7 +340,7 @@ public class RetrievalService {
     if (vectorWeight > 0) {
       long vectorStart = System.currentTimeMillis();
       List<SearchResult> vectorResults =
-          vectorSearchService.searchByQueries(queries, kbIds, docIds, recallTopK);
+          vectorSearchService.searchByQueries(queries, kbIds, docIds, recallTopK, filter);
       vectorLatency = System.currentTimeMillis() - vectorStart;
       for (int i = 0; i < vectorResults.size(); i++) {
         SearchResult item = vectorResults.get(i);
@@ -348,7 +371,7 @@ public class RetrievalService {
             .map(
                 q ->
                     CompletableFuture.supplyAsync(
-                        () -> esSearchService.search(q, kbIds, docIds, recallTopK),
+                        () -> esSearchService.search(q, kbIds, docIds, recallTopK, filter),
                         retrievalExecutor))
             .toList();
 
