@@ -27,6 +27,9 @@ query -> chunks + scores + metadata + latency
 - 评测实验室：构建评测集并观察召回、排序和失败样本。
 - 性能诊断页：手动查看检索链路分段耗时。
 - API Key 管理：为外部系统提供受控 API 调用。
+- 文本直传接口：`POST /api/v1/documents/text`，已解析文本直接入库，支持 `chunkType` 语义标注，避免 Tika 二次解析。
+- 元数据过滤检索：检索请求支持 `filter.chunkType` 参数，向量和关键词两路均可按 chunk 类型精确过滤。
+- MCP Server：基于 Spring AI MCP（HTTP_SSE），暴露 `searchKnowledgeBase` 和 `listKnowledgeBases` 两个工具，Claude Desktop 可直接连接 `http://localhost:8080/sse` 调用 RAGForge 检索能力
 
 ## 架构概览
 
