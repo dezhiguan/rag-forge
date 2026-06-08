@@ -1,6 +1,13 @@
 spring:
   application:
     name: rag-forge
+  ai:
+    mcp:
+      server:
+        name: ragforge-mcp-server
+        version: 1.0.0
+        type: SYNC
+        sse-message-endpoint: /mcp/message
   profiles:
     active: dev
   flyway:
