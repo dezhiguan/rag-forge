@@ -18,8 +18,8 @@
 #
 # 入口层静态目录说明：
 #   RAGForge 前端与 CareerMate 前端共用 Nginx html 根目录（frontend/dist/）。
-#   CareerMate 前端由 CareerMate CI 单独同步到 frontend/dist/careermate/。
-#   RAGForge 部署时必须保留 careermate/ 子目录（rsync --exclude）。
+#   CareerForge 前端由 CareerMate CI 单独同步到 frontend/dist/careerforge/。
+#   RAGForge 部署时必须保留 careerforge/ 子目录（rsync --exclude）。
 #
 # Server 3 敏感配置：
 #   若存在 ${RAGFORGE_APP_DIR}/docker-compose.override.yml（服务器本地，不入库），
@@ -30,7 +30,7 @@ RAGFORGE_INGRESS_HOST="${RAGFORGE_INGRESS_HOST:-${APP_HOST:-root@8.163.63.222}}"
 RAGFORGE_APP_HOST="${RAGFORGE_APP_HOST:-root@8.138.191.228}"
 RAGFORGE_INGRESS_DIR="${RAGFORGE_INGRESS_DIR:-${REMOTE_DIR:-/opt/rag-forge}}"
 RAGFORGE_APP_DIR="${RAGFORGE_APP_DIR:-/opt/rag-forge}"
-INGRESS_HEALTH_URL="${INGRESS_HEALTH_URL:-http://8.163.63.222/api/v1/health}"
+INGRESS_HEALTH_URL="${INGRESS_HEALTH_URL:-https://ragforge.net/api/v1/health}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 SKIP_HEALTH_CHECK="${SKIP_HEALTH_CHECK:-0}"
 SSH_OPTS="${SSH_OPTS:--o StrictHostKeyChecking=yes}"
@@ -92,9 +92,9 @@ docker compose "\${COMPOSE_FILES[@]}" up -d --force-recreate
 docker compose "\${COMPOSE_FILES[@]}" ps
 EOF
 
-echo "[5/5] 同步入口层到 Server 2（Nginx + 前端，保留 careermate/ 子目录）..."
+echo "[5/5] 同步入口层到 Server 2（Nginx + 前端，保留 careerforge/ 子目录）..."
 ssh ${INGRESS_SSH_OPTS} "${RAGFORGE_INGRESS_HOST}" "mkdir -p ${RAGFORGE_INGRESS_DIR}/frontend/dist"
-rsync -avz -e "${INGRESS_RSYNC_SSH}" --delete --exclude 'careermate/' frontend/dist/ \
+rsync -avz -e "${INGRESS_RSYNC_SSH}" --delete --exclude 'careerforge/' frontend/dist/ \
   "${RAGFORGE_INGRESS_HOST}:${RAGFORGE_INGRESS_DIR}/frontend/dist/"
 rsync -avz -e "${INGRESS_RSYNC_SSH}" nginx.conf docker-compose-ingress.yml \
   "${RAGFORGE_INGRESS_HOST}:${RAGFORGE_INGRESS_DIR}/"
@@ -108,7 +108,7 @@ EOF
 
 echo ""
 echo "=== 部署完成 ==="
-echo "公网入口: http://8.163.63.222"
+echo "公网入口: http://ragforge.net"
 echo "健康检查（公网）: ${INGRESS_HEALTH_URL}"
 
 if [[ "${SKIP_HEALTH_CHECK}" != "1" ]]; then

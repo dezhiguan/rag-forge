@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const apiBaseURL = process.env.PLAYWRIGHT_API_BASE_URL || 'http://8.163.63.222/api/v1'
+const apiBaseURL = process.env.PLAYWRIGHT_API_BASE_URL || 'http://ragforge.net/api/v1'
 const serverErrorPattern = /(?:500 Internal Server Error|502 Bad Gateway|404 Not Found|Whitelabel Error Page)/i
 
 async function expectPageReady(page, visibleTextPattern) {

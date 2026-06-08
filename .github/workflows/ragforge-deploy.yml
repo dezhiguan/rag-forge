@@ -244,8 +244,8 @@ jobs:
 
           ssh ragforge-ingress "mkdir -p '${INGRESS_DIR}/frontend/dist'"
 
-          # Preserve the CareerMate frontend subdir, which is synced by CareerMate CI.
-          rsync -avz --delete --exclude 'careermate/' -e "${RSYNC_SSH}" \
+          # Preserve the CareerForge frontend subdir, which is synced by CareerMate CI.
+          rsync -avz --delete --exclude 'careerforge/' -e "${RSYNC_SSH}" \
             frontend-dist/ \
             "ragforge-ingress:${INGRESS_DIR}/frontend/dist/"
 
@@ -272,10 +272,10 @@ jobs:
       - deploy-ingress
     steps:
       - name: API health check
-        run: curl -fsS "${{ vars.RAGFORGE_API_BASE_URL || 'http://8.163.63.222/api/v1' }}/health"
+        run: curl -fsS "${{ vars.RAGFORGE_API_BASE_URL || 'https://ragforge.net/api/v1' }}/health"
 
       - name: Frontend entry check
-        run: curl -fsS "${{ vars.RAGFORGE_BASE_URL || 'http://8.163.63.222' }}/" | grep -qi 'rag'
+        run: curl -fsS "${{ vars.RAGFORGE_BASE_URL || 'https://ragforge.net' }}/" | grep -qi 'rag'
 
   postdeploy-playwright:
     name: postdeploy-playwright
@@ -305,8 +305,8 @@ jobs:
         working-directory: frontend
         env:
           CI: true
-          PLAYWRIGHT_BASE_URL: ${{ vars.RAGFORGE_BASE_URL || 'http://8.163.63.222' }}
-          PLAYWRIGHT_API_BASE_URL: ${{ vars.RAGFORGE_API_BASE_URL || 'http://8.163.63.222/api/v1' }}
+          PLAYWRIGHT_BASE_URL: ${{ vars.RAGFORGE_BASE_URL || 'https://ragforge.net' }}
+          PLAYWRIGHT_API_BASE_URL: ${{ vars.RAGFORGE_API_BASE_URL || 'https://ragforge.net/api/v1' }}
         run: npm run test:e2e:cloud
 
       - name: Upload Playwright HTML report

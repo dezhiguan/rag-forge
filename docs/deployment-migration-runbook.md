@@ -137,17 +137,19 @@ docker compose -f docker-compose-backend.yml -f docker-compose.override.yml up -
 在 Server 2（`8.163.63.222` / `172.19.40.32`）执行。
 
 ```bash
-mkdir -p /opt/rag-forge/frontend/dist/careermate
+mkdir -p /opt/rag-forge/frontend/dist/careerforge
 ```
 
-确认 Nginx 配置（`nginx.conf`）路由：
+确认 Nginx 配置（`nginx.conf`）按域名分流：
 
-| 路径 | 目标 |
-|------|------|
-| `/` | RAGForge 静态：`/usr/share/nginx/html/` |
-| `/api/` | `http://172.25.90.184:8080` |
-| `/careermate/` | CareerMate 静态：`/usr/share/nginx/html/careermate/` |
-| `/careermate-api/` | `http://172.25.90.184:18080/api/` |
+| 域名 | 路径 | 目标 |
+|------|------|------|
+| `ragforge.net` | `/` | RAGForge 静态：`/usr/share/nginx/html/` |
+| `ragforge.net` | `/api/` | `http://172.25.90.184:8080` |
+| `careerforge.cn` | `/` | CareerForge 静态：`/usr/share/nginx/html/careerforge/` |
+| `careerforge.cn` | `/api/` | `http://172.25.90.184:18080/api/` |
+
+裸 IP `8.163.63.222` 仍保留旧路径（`/careermate/`、`/careermate-api/`）便于迁移期访问。
 
 启动或重启入口层（仅 Nginx + 前端，无 backend 容器）：
 
@@ -161,8 +163,8 @@ docker compose -f docker-compose-ingress.yml ps
 
 | 主机路径 | 说明 |
 |----------|------|
-| `/opt/rag-forge/frontend/dist/` | RAGForge 前端（`deploy.sh` 同步，`--exclude careermate/`） |
-| `/opt/rag-forge/frontend/dist/careermate/` | CareerMate 前端（CareerMate CI 单独同步） |
+| `/opt/rag-forge/frontend/dist/` | RAGForge 前端（`deploy.sh` 同步，`--exclude careerforge/`） |
+| `/opt/rag-forge/frontend/dist/careerforge/` | CareerForge 前端（CareerMate CI 单独同步） |
 
 ---
 
@@ -352,11 +354,13 @@ docker compose "${COMPOSE[@]}" up -d
 ## J. 请求链路确认
 
 ```text
-用户 → 8.163.63.222 (Nginx)
-  /                 → RAGForge frontend
-  /api/             → 172.25.90.184:8080
-  /careermate/      → CareerMate frontend
-  /careermate-api/  → 172.25.90.184:18080/api/
+用户 → ragforge.net (8.163.63.222 Nginx)
+  /      → RAGForge frontend
+  /api/  → 172.25.90.184:8080
+
+用户 → careerforge.cn (8.163.63.222 Nginx)
+  /      → CareerForge frontend
+  /api/  → 172.25.90.184:18080/api/
 
 Server 3 → 172.25.90.183 (数据层)
   PostgreSQL :5432 / ES :9200 / Redis :6379 / RocketMQ :9876

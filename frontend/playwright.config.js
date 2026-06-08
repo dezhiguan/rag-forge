@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://8.163.63.222'
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://ragforge.net'
 
 export default defineConfig({
   testDir: './tests/e2e',

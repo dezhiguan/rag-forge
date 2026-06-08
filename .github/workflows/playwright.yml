@@ -32,8 +32,8 @@ jobs:
       - name: Run cloud smoke
         env:
           CI: true
-          PLAYWRIGHT_BASE_URL: ${{ vars.RAGFORGE_BASE_URL || 'http://8.163.63.222' }}
-          PLAYWRIGHT_API_BASE_URL: ${{ vars.RAGFORGE_API_BASE_URL || 'http://8.163.63.222/api/v1' }}
+          PLAYWRIGHT_BASE_URL: ${{ vars.RAGFORGE_BASE_URL || 'http://ragforge.net' }}
+          PLAYWRIGHT_API_BASE_URL: ${{ vars.RAGFORGE_API_BASE_URL || 'http://ragforge.net/api/v1' }}
         run: npm run test:e2e:cloud
 
       - name: Upload Playwright HTML report
