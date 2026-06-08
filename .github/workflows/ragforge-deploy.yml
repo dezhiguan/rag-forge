@@ -173,14 +173,20 @@ jobs:
         run: |
           ssh ragforge-app bash -s <<'EOF'
           set -euo pipefail
-          for _ in $(seq 1 30); do
+          # V6 HNSW 索引 CONCURRENTLY 首次构建可能需数分钟，Flyway 完成前 8080 不会就绪
+          for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8080/api/v1/health >/dev/null; then
-              echo "Server 3 backend health check passed"
+              echo "Server 3 backend health check passed (attempt ${i})"
               exit 0
             fi
+            echo "Waiting for backend... attempt ${i}/60"
             sleep 5
           done
-          echo "Server 3 backend health check failed" >&2
+          echo "Server 3 backend health check failed after 5 minutes" >&2
+          echo "=== docker ps ===" >&2
+          docker ps -a --filter name=ragforge-backend >&2 || true
+          echo "=== container logs (last 300 lines) ===" >&2
+          docker logs ragforge-backend --tail 300 >&2 || true
           exit 1
           EOF
 
