@@ -9,10 +9,33 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      SPRING_OUTPUT_ANSI_ENABLED: always
-      JAVA_OPTS: "-Xms512m -Xmx2g"
+    env_file:
+      - /opt/shared/env/common.env
+      - /opt/shared/env/ragforge.env
+    volumes:
+      - files_data:/data/files
+
+  backend-2:
+    image: ragforge-backend:latest
+    container_name: ragforge-backend-2
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    env_file:
+      - /opt/shared/env/common.env
+      - /opt/shared/env/ragforge.env
+    volumes:
+      - files_data:/data/files
+
+  backend-3:
+    image: ragforge-backend:latest
+    container_name: ragforge-backend-3
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    env_file:
+      - /opt/shared/env/common.env
+      - /opt/shared/env/ragforge.env
     volumes:
       - files_data:/data/files
 
