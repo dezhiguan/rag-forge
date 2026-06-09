@@ -5,6 +5,12 @@ spring:
   config:
     import: optional:file:backend/.env[.properties],optional:file:.env[.properties]
 
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      timeout: 3000ms
+
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:127.0.0.1}:${POSTGRES_PORT:5432}/${POSTGRES_DB:ragforge}
     username: ${POSTGRES_USER:amy}

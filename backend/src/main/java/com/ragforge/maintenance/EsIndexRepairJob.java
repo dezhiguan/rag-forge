@@ -9,6 +9,7 @@ import com.ragforge.pipeline.indexer.EsIndexService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -24,6 +25,10 @@ public class EsIndexRepairJob {
   private final EsIndexService esIndexService;
 
   @Scheduled(fixedDelayString = "${ragforge.maintenance.es-repair-interval-ms:1800000}")
+  @SchedulerLock(
+      name = "EsIndexRepairJob_repairMissingIndexes",
+      lockAtMostFor = "PT30M",
+      lockAtLeastFor = "PT0S")
   public void repairMissingIndexes() {
     long start = System.currentTimeMillis();
     EsRepairReport report = repairAllMissingIndexes();

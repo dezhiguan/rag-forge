@@ -13,6 +13,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +31,10 @@ public class DataCalibrationJob {
   private final JdbcTemplate jdbcTemplate;
 
   @Scheduled(fixedDelayString = "${ragforge.maintenance.calibration-interval-ms:1800000}")
+  @SchedulerLock(
+      name = "DataCalibrationJob_calibrateCounters",
+      lockAtMostFor = "PT30M",
+      lockAtLeastFor = "PT0S")
   public void calibrateCounters() {
     long start = System.currentTimeMillis();
     DataCalibrationReport report = calibrate();

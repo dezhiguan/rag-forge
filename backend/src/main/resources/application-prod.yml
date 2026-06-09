@@ -1,4 +1,10 @@
 spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:172.25.90.183}
+      port: ${REDIS_PORT:6379}
+      timeout: 3000ms
+
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:172.25.90.183}:${POSTGRES_PORT:5432}/${POSTGRES_DB:ragforge}
     username: ${POSTGRES_USER:ragforge}
