@@ -8,7 +8,7 @@
 |------|---------|---------|------|
 | Server 1 数据层 | 8.163.30.216 | 172.25.90.183 | PostgreSQL、Elasticsearch、Redis、RocketMQ |
 | Server 2 入口层 | 8.163.63.222 | 172.19.40.32 | Nginx、RAGForge 前端、CareerMate 前端 |
-| Server 3 应用层 | 8.138.191.228 | 172.25.90.184 | RAGForge backend `:8080`、CareerMate backend `:18080` |
+| Server 3 应用层 | 8.138.191.228 | 172.25.90.184 | RAGForge backend `:8080/:8081/:8082`、CareerMate backend `:18080/:18081/:18082` |
 
 说明：
 
@@ -57,10 +57,9 @@ Server 1 **入方向**仅允许来源 `172.25.90.184/32`（Server 3 应用层）
 curl -fsSL https://get.docker.com | sh
 systemctl enable --now docker
 
-# Java 17（CareerMate systemd 需要）
-apt-get update && apt-get install -y openjdk-17-jre-headless curl netcat-openbsd rsync
+# 基础工具
+apt-get update && apt-get install -y curl netcat-openbsd rsync
 
-java -version   # 应为 17.x
 docker compose version
 ```
 
@@ -76,58 +75,48 @@ sudo bash deploy/scripts/init-server3.sh
 sudo CAREERMATE_DEPLOY_USER=<CAREERMATE_APP_USER> bash deploy/scripts/init-server3.sh
 ```
 
-脚本会创建 `careermate` 用户、目录布局、`.env.app` 占位模板（mode 600），可重复执行。
+脚本会创建 `careermate` 用户、目录布局、`/opt/shared/env/common.env` 和 `/opt/shared/env/careermate.env` 占位模板（mode 600），可重复执行。
 
 ### B.3 配置 CareerMate 敏感环境
 
 ```bash
-sudo vim /opt/careermate/backend/.env.app
+sudo vim /opt/shared/env/common.env
+sudo vim /opt/shared/env/careermate.env
 ```
 
 必须手工替换占位符（**勿提交到 Git**）：
 
+- `DASHSCOPE_API_KEY` / `LLM_API_KEY`
 - `DB_PASSWORD`
 - `JWT_SECRET`
-- `LLM_API_KEY`
 - 其他生产参数
 
 参考模板：`careermate/deploy/env/careermate-backend.env.example`
 
-### B.4 安装 CareerMate systemd unit
+### B.4 准备 CareerMate Docker Compose
 
 ```bash
-sudo cp deploy/systemd/careermate-backend.service.example \
-  /etc/systemd/system/careermate-backend.service
-sudo systemctl daemon-reload
-sudo systemctl enable careermate-backend
-# 首次部署完成后再 start（见章节 E）
+# CI 会同步 docker-compose-backend.yml 到 /opt/careermate/docker-compose-backend.yml
+# 首次部署完成后由 deploy-from-github.sh 构建镜像并启动容器
 ```
 
-### B.5 准备 RAGForge 部署目录与敏感 override
+### B.5 准备 RAGForge 部署目录与 shared env
 
 ```bash
 mkdir -p /opt/rag-forge/backend/target
+mkdir -p /opt/shared/env
+chmod 700 /opt/shared/env
 ```
 
-创建服务器本地敏感配置（**不入库、不由 deploy.sh 同步**）：
+创建 RAGForge 服务配置（**不入库、不由 deploy.sh 同步**）：
 
 ```bash
-cat > /opt/rag-forge/docker-compose.override.yml <<'EOF'
-services:
-  backend:
-    environment:
-      DASHSCOPE_API_KEY: <your-dashscope-key>
-      DEEPSEEK_API_KEY: <your-deepseek-key>
-      POSTGRES_PASSWORD: <your-db-password>
-      # 按需追加其他运行时变量
+cat > /opt/shared/env/ragforge.env <<'EOF'
+SPRING_PROFILES_ACTIVE=prod
+SPRING_OUTPUT_ANSI_ENABLED=always
+JAVA_OPTS=-Xms512m -Xmx1g
 EOF
-chmod 600 /opt/rag-forge/docker-compose.override.yml
-```
-
-`deploy.sh` 检测到该文件时自动执行：
-
-```bash
-docker compose -f docker-compose-backend.yml -f docker-compose.override.yml up -d --force-recreate
+chmod 600 /opt/shared/env/ragforge.env
 ```
 
 ---
@@ -145,9 +134,9 @@ mkdir -p /opt/rag-forge/frontend/dist/careerforge
 | 域名 | 路径 | 目标 |
 |------|------|------|
 | `ragforge.net` | `/` | RAGForge 静态：`/usr/share/nginx/html/` |
-| `ragforge.net` | `/api/` | `http://172.25.90.184:8080` |
+| `ragforge.net` | `/api/` | `http://172.19.40.32:19080/19081/19082` |
 | `careerforge.cn` | `/` | CareerForge 静态：`/usr/share/nginx/html/careerforge/` |
-| `careerforge.cn` | `/api/` | `http://172.25.90.184:18080/api/` |
+| `careerforge.cn` | `/api/` | `careermate_backend` → `172.19.40.32:18080/18081/18082` |
 
 裸 IP `8.163.63.222` 仍保留旧路径（`/careermate/`、`/careermate-api/`）便于迁移期访问。
 
@@ -183,7 +172,7 @@ done
 
 ```bash
 nc -vz -w 3 172.25.90.184 8080
-nc -vz -w 3 172.25.90.184 18080
+nc -vz -w 3 172.25.90.184 18080 18081 18082
 ```
 
 全部 `succeeded` 后再继续部署。
@@ -226,14 +215,14 @@ SKIP_BUILD=1 ./deploy.sh
 
 ```bash
 curl -fsS http://127.0.0.1:8080/api/v1/health
-curl -fsS http://127.0.0.1:18080/api/health
+for p in 18080 18081 18082; do curl -fsS "http://127.0.0.1:${p}/api/health"; done
 ```
 
 ### Server 2 → Server 3（内网）
 
 ```bash
-curl -fsS http://172.25.90.184:8080/api/v1/health
-curl -fsS http://172.25.90.184:18080/api/health
+curl -fsS http://172.19.40.32:19080/api/v1/health
+for p in 18080 18081 18082; do curl -fsS "http://172.19.40.32:${p}/api/health"; done
 ```
 
 ### 公网入口
@@ -254,9 +243,7 @@ curl -fsS http://8.163.63.222/careermate/ | head
 2. 若有上一版镜像 tag，重新 tag 并重启：
    ```bash
    cd /opt/rag-forge
-   COMPOSE=(-f docker-compose-backend.yml)
-   [[ -f docker-compose.override.yml ]] && COMPOSE+=(-f docker-compose.override.yml)
-   docker compose "${COMPOSE[@]}" up -d --force-recreate
+   docker compose -f docker-compose-backend.yml up -d --force-recreate
    ```
 3. 或从上一版 JAR 重新 `docker build` 后 `compose up -d`
 4. 验证：`curl -fsS http://127.0.0.1:8080/api/v1/health`
@@ -307,7 +294,7 @@ docker compose -f docker-compose-ingress.yml exec nginx nginx -s reload
 
 兼容旧 secret：`SSH_PRIVATE_KEY`、`SSH_KNOWN_HOSTS`、`APP_HOST`、`REMOTE_DIR`（不推荐新环境使用）。
 
-**不要**在 Secrets 中存放数据库密码、DashScope Key、JWT 等——使用 Server 3 本地 `docker-compose.override.yml` 和 `.env.app`。
+**不要**在 Secrets 中存放数据库密码、DashScope Key、JWT 等——使用 Server 3 本地 `/opt/shared/env/common.env`、`/opt/shared/env/ragforge.env`、`/opt/shared/env/careermate.env`。
 
 ### CareerMate 仓库
 
@@ -334,9 +321,7 @@ docker volume ls | grep files
 
 # 2. 停止 Server 3 backend
 cd /opt/rag-forge
-COMPOSE=(-f docker-compose-backend.yml)
-[[ -f docker-compose.override.yml ]] && COMPOSE+=(-f docker-compose.override.yml)
-docker compose "${COMPOSE[@]}" stop backend
+docker compose -f docker-compose-backend.yml stop backend-1 backend-2 backend-3
 
 # 3. rsync（先 --dry-run）
 rsync -avzn --progress \
@@ -356,11 +341,11 @@ docker compose "${COMPOSE[@]}" up -d
 ```text
 用户 → ragforge.net (8.163.63.222 Nginx)
   /      → RAGForge frontend
-  /api/  → 172.25.90.184:8080
+  /api/  → 172.19.40.32:19080/19081/19082
 
 用户 → careerforge.cn (8.163.63.222 Nginx)
   /      → CareerForge frontend
-  /api/  → 172.25.90.184:18080/api/
+  /api/  → careermate_backend (172.19.40.32:18080/18081/18082)
 
 Server 3 → 172.25.90.183 (数据层)
   PostgreSQL :5432 / ES :9200 / Redis :6379 / RocketMQ :9876

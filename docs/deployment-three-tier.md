@@ -12,12 +12,12 @@ Server 2 入口层（8.163.63.222 / 172.19.40.32）
   ├─ /              → RAGForge 静态资源
   ├─ /api/          → Server 3 :8080
   ├─ /careermate/   → CareerMate 静态资源
-  └─ /careermate-api/ → Server 3 :18080/api/
+  └─ /careermate-api/ → careermate_backend → Server 3 :18080/:18081/:18082
   │
   ▼
 Server 3 应用层（8.138.191.228 / 172.25.90.184）
-  RAGForge backend :8080
-  CareerMate backend :18080（systemd）
+  RAGForge backend Docker :8080 / :8081 / :8082
+  CareerMate backend Docker :18080 / :18081 / :18082
   │
   ▼
 Server 1 数据层（8.163.30.216 / 172.25.90.183）— 保持不动
@@ -48,17 +48,23 @@ mkdir -p /opt/rag-forge/backend/target
 # Dockerfile 由 deploy.sh 同步到 /opt/rag-forge/backend/Dockerfile
 # JAR 同步到 /opt/rag-forge/backend/target/
 
-# 2b. （推荐）创建服务器本地敏感配置，不入库
-cat > /opt/rag-forge/docker-compose.override.yml <<'EOF'
-# 示例：注入生产环境变量（勿提交到 Git）
-services:
-  backend:
-    environment:
-      DASHSCOPE_API_KEY: <your-key>
-      DEEPSEEK_API_KEY: <your-key>
-      POSTGRES_PASSWORD: <your-password>
+# 2b. 创建服务器本地 shared env，不入库
+mkdir -p /opt/shared/env
+chmod 700 /opt/shared/env
+
+cat > /opt/shared/env/common.env <<'EOF'
+TZ=Asia/Shanghai
+DASHSCOPE_API_KEY=<your-dashscope-key>
+LLM_API_KEY=<your-dashscope-key>
 EOF
-chmod 600 /opt/rag-forge/docker-compose.override.yml
+
+cat > /opt/shared/env/ragforge.env <<'EOF'
+SPRING_PROFILES_ACTIVE=prod
+SPRING_OUTPUT_ANSI_ENABLED=always
+JAVA_OPTS=-Xms512m -Xmx1g
+EOF
+
+chmod 600 /opt/shared/env/common.env /opt/shared/env/ragforge.env
 
 # 3. 确认数据层连通（见 docs/deployment-migration-runbook.md）
 HOST=172.25.90.183
@@ -73,8 +79,8 @@ done
 
 | 服务 | 内存 |
 |------|------|
-| RAGForge backend | `-Xms512m -Xmx2g` |
-| CareerMate backend | `-Xms512m -Xmx2g` |
+| RAGForge backend | `-Xms512m -Xmx1g` |
+| CareerMate backend | `-Xms512m -Xmx1g` |
 
 总计约 4.5G / 8G，保留系统与未来扩展空间。
 
@@ -82,19 +88,18 @@ done
 
 RAGForge 上传文件挂载在 Docker volume `files_data`（容器内 `/data/files`）。
 
-### 服务器本地 override（敏感配置）
+### 服务器 shared env（敏感配置）
 
-Server 3 可在 `/opt/rag-forge/docker-compose.override.yml` 覆盖 `docker-compose-backend.yml` 中的环境变量，例如：
+Server 3 使用 `/opt/shared/env` 注入运行配置：
 
-- `DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`
-- `POSTGRES_PASSWORD`
-- `RERANKER_BASE_URL`
-- 其他运行时参数
+- `/opt/shared/env/common.env`：跨服务公共配置，例如 `DASHSCOPE_API_KEY`、`LLM_API_KEY`、`TZ`
+- `/opt/shared/env/ragforge.env`：RAGForge 专属配置，例如 `SPRING_PROFILES_ACTIVE`、`JAVA_OPTS`
+- `/opt/shared/env/careermate.env`：CareerMate 专属配置，例如 `DB_URL`、`JWT_SECRET`、`LLM_PROVIDER`
 
-该文件**不入库**、不随 `deploy.sh` 同步。`deploy.sh` 在远端检测到该文件时，自动执行：
+这些文件**不入库**、不随 CI 同步。RAGForge 手工启动：
 
 ```bash
-docker compose -f docker-compose-backend.yml -f docker-compose.override.yml up -d --force-recreate
+docker compose -f docker-compose-backend.yml up -d --force-recreate
 ```
 
 ## Server 2 Bootstrap（一次性）
@@ -107,7 +112,7 @@ mkdir -p /opt/rag-forge/frontend/dist/careermate
 
 # 确认可访问 Server 3 应用层
 nc -vz -w 3 172.25.90.184 8080
-nc -vz -w 3 172.25.90.184 18080
+nc -vz -w 3 172.25.90.184 18080 18081 18082
 ```
 
 **Server 2 只跑 Nginx + 两个前端**，不部署任何 backend 容器。
@@ -161,7 +166,7 @@ nc -vz -w 3 172.25.90.184 18080
 curl http://127.0.0.1:8080/api/v1/health
 
 # Server 2 内网
-curl http://172.25.90.184:8080/api/v1/health
+curl http://172.19.40.32:19080/api/v1/health
 
 # 公网入口
 curl http://8.163.63.222/api/v1/health
@@ -182,9 +187,7 @@ docker volume inspect rag-forge_files_data --format '{{ .Mountpoint }}'
 # 3. rsync 到 Server 3（先不删除旧数据）
 # 在 Server 3 上先停止 backend，再同步
 ssh root@8.138.191.228 'cd /opt/rag-forge && \
-  COMPOSE="-f docker-compose-backend.yml"; \
-  [[ -f docker-compose.override.yml ]] && COMPOSE="$COMPOSE -f docker-compose.override.yml"; \
-  docker compose $COMPOSE stop backend'
+  docker compose -f docker-compose-backend.yml stop backend-1 backend-2 backend-3'
 
 # 从旧 Server 2 同步（示例）
 rsync -avz --progress \
@@ -193,9 +196,7 @@ rsync -avz --progress \
 
 # 4. 重启 Server 3 backend 并验证上传/下载
 ssh root@8.138.191.228 'cd /opt/rag-forge && \
-  COMPOSE="-f docker-compose-backend.yml"; \
-  [[ -f docker-compose.override.yml ]] && COMPOSE="$COMPOSE -f docker-compose.override.yml"; \
-  docker compose $COMPOSE up -d'
+  docker compose -f docker-compose-backend.yml up -d'
 ```
 
 > 迁移前务必确认 volume 名称和目标路径，建议先 `rsync --dry-run`。

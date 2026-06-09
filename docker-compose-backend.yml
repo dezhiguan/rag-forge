@@ -1,11 +1,12 @@
-# Server 3 应用层：仅 RAGForge 后端（不含 Nginx）
+# Server 3 应用层：RAGForge 后端单机 3 副本（不含 Nginx）
 # 数据层在 Server 1（172.25.90.183），由 docker-compose-data.yml 管理
 #
 # 启动：docker compose -f docker-compose-backend.yml up -d
+# 配置：/opt/shared/env/common.env + /opt/shared/env/ragforge.env
 services:
-  backend:
+  backend-1:
     image: ragforge-backend:latest
-    container_name: ragforge-backend
+    container_name: ragforge-backend-1
     restart: unless-stopped
     ports:
       - "8080:8080"

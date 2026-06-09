@@ -93,6 +93,7 @@ app:
     rerank-model: qwen3-rerank
     batch-size: 10
     timeout: 30000
+    llm-timeout-ms: ${DASHSCOPE_LLM_TIMEOUT_MS:60000}
     min-request-interval-ms: 0
     max-concurrent-requests: 1
 

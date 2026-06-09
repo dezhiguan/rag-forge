@@ -22,8 +22,7 @@
 #   RAGForge 部署时必须保留 careerforge/ 子目录（rsync --exclude）。
 #
 # Server 3 敏感配置：
-#   若存在 ${RAGFORGE_APP_DIR}/docker-compose.override.yml（服务器本地，不入库），
-#   compose up 时会自动叠加该文件以注入 API Key、数据库密码等。
+#   /opt/shared/env/common.env 与 /opt/shared/env/ragforge.env（服务器本地，不入库）。
 set -euo pipefail
 
 RAGFORGE_INGRESS_HOST="${RAGFORGE_INGRESS_HOST:-${APP_HOST:-root@8.163.63.222}}"
@@ -83,13 +82,12 @@ set -euo pipefail
 cd ${RAGFORGE_APP_DIR}/backend
 docker build -t ragforge-backend:latest .
 cd ${RAGFORGE_APP_DIR}
-COMPOSE_FILES=(-f docker-compose-backend.yml)
-if [[ -f docker-compose.override.yml ]]; then
-  COMPOSE_FILES+=(-f docker-compose.override.yml)
-  echo "使用本地 override: docker-compose.override.yml"
+if [[ ! -f /opt/shared/env/common.env || ! -f /opt/shared/env/ragforge.env ]]; then
+  echo "缺少 shared env: /opt/shared/env/common.env 或 /opt/shared/env/ragforge.env" >&2
+  exit 1
 fi
-docker compose "\${COMPOSE_FILES[@]}" up -d --force-recreate
-docker compose "\${COMPOSE_FILES[@]}" ps
+docker compose -f docker-compose-backend.yml up -d --force-recreate
+docker compose -f docker-compose-backend.yml ps
 EOF
 
 echo "[5/5] 同步入口层到 Server 2（Nginx + 前端，保留 careerforge/ 子目录）..."

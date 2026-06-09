@@ -239,7 +239,7 @@ Compose 文件：
 
 部署注意事项：
 
-- **Server 1 数据层不动**；**Server 2 只跑 Nginx + 两个前端**；**Server 3 跑 RAGForge backend (:8080) 和 CareerMate backend (:18080)**。
+- **Server 1 数据层不动**；**Server 2 只跑 Nginx + 两个前端**；**Server 3 跑 RAGForge backend (:8080/:8081/:8082) 和 CareerMate backend (:18080/:18081/:18082)**。
 - RAGForge 与 CareerMate 前端共用 Nginx html 根目录：`/opt/rag-forge/frontend/dist/`。CareerMate 前端在子目录 `careermate/`，由 CareerMate CI 单独同步；`deploy.sh` 同步 RAGForge 前端时会 `--exclude careermate/`，不会删除 CareerMate 静态资源。
 - Server 3 首次部署前创建 `/opt/rag-forge/backend/target`；`Dockerfile` 位于 `/opt/rag-forge/backend/Dockerfile`。
 - Server 3 可在 `/opt/rag-forge/docker-compose.override.yml` 注入真实 API Key、数据库密码等敏感配置（**服务器本地文件，不入库**）；`deploy.sh` 检测到该文件时自动叠加使用。

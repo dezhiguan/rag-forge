@@ -6,8 +6,8 @@ import com.ragforge.common.Result;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -22,11 +22,16 @@ import org.springframework.web.client.RestTemplate;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1")
-@RequiredArgsConstructor
 public class LlmController {
 
-  private final RestTemplate restTemplate;
+  private final RestTemplate llmRestTemplate;
   private final ObjectMapper objectMapper;
+
+  public LlmController(
+      @Qualifier("llmRestTemplate") RestTemplate llmRestTemplate, ObjectMapper objectMapper) {
+    this.llmRestTemplate = llmRestTemplate;
+    this.objectMapper = objectMapper;
+  }
 
   @Value("${app.dashscope.api-key:}")
   private String apiKey;
@@ -68,7 +73,7 @@ public class LlmController {
 
       long start = System.currentTimeMillis();
       HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
-      ResponseEntity<String> response = restTemplate.postForEntity(
+      ResponseEntity<String> response = llmRestTemplate.postForEntity(
           baseUrl + "/chat/completions", entity, String.class);
       long totalMs = System.currentTimeMillis() - start;
 

@@ -75,7 +75,7 @@ jobs:
           if-no-files-found: error
 
   deploy-app:
-    name: deploy-app-server3
+    name: deploy-app-nodes
     runs-on: ubuntu-latest
     needs:
       - backend-build
@@ -88,10 +88,11 @@ jobs:
         with:
           name: ragforge-backend-jar
 
-      - name: Configure SSH (Server 3 via Server 2 jump)
+      - name: Configure SSH (App nodes via Server 2 jump)
         env:
           SSH_KEY: ${{ secrets.RAGFORGE_APP_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.RAGFORGE_APP_HOST }}
+          DEPLOY_HOSTS: ${{ secrets.RAGFORGE_APP_HOSTS }}
           DEPLOY_USER: ${{ secrets.RAGFORGE_APP_USER }}
           DEPLOY_PORT: ${{ secrets.RAGFORGE_APP_PORT }}
           JUMP_HOST: ${{ secrets.RAGFORGE_INGRESS_HOST }}
@@ -106,7 +107,7 @@ jobs:
           chmod 700 ~/.ssh
           printf '%s\n' "${SSH_KEY}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          DEPLOY_HOST="${DEPLOY_HOST:-8.138.191.228}"
+          APP_HOSTS="${DEPLOY_HOSTS:-${DEPLOY_HOST:-8.138.191.228}}"
           DEPLOY_USER="${DEPLOY_USER:-root}"
           PORT="${DEPLOY_PORT:-22}"
           JUMP_HOST="${JUMP_HOST:-8.163.63.222}"
@@ -121,19 +122,53 @@ jobs:
             printf '%s\n' '  IdentityFile ~/.ssh/deploy_key'
             printf '%s\n' '  IdentitiesOnly yes'
             printf '%s\n' '  StrictHostKeyChecking accept-new'
-            printf '%s\n' ''
-            printf '%s\n' 'Host ragforge-app'
-            printf '%s\n' "  HostName ${DEPLOY_HOST}"
-            printf '%s\n' "  User ${DEPLOY_USER}"
-            printf '%s\n' "  Port ${PORT}"
-            printf '%s\n' '  IdentityFile ~/.ssh/deploy_key'
-            printf '%s\n' '  IdentitiesOnly yes'
-            printf '%s\n' '  StrictHostKeyChecking accept-new'
-            printf '%s\n' '  ProxyJump ragforge-jump'
           } > ~/.ssh/config
+
+          : > /tmp/ragforge_app_aliases
+          index=0
+          while IFS= read -r raw_host; do
+            host_entry="$(printf '%s' "${raw_host}" | xargs)"
+            [[ -z "${host_entry}" ]] && continue
+            index=$((index + 1))
+
+            app_user="${DEPLOY_USER}"
+            app_host_port="${host_entry}"
+            if [[ "${host_entry}" == *@* ]]; then
+              app_user="${host_entry%@*}"
+              app_host_port="${host_entry#*@}"
+            fi
+
+            app_host="${app_host_port}"
+            app_port="${PORT}"
+            if [[ "${app_host_port}" =~ ^[0-9.]+:[0-9]+$ || "${app_host_port}" =~ ^[^:]+:[0-9]+$ ]]; then
+              app_host="${app_host_port%:*}"
+              app_port="${app_host_port##*:}"
+            fi
+
+            alias="ragforge-app-${index}"
+            printf '%s\n' "${alias}" >> /tmp/ragforge_app_aliases
+            {
+              printf '%s\n' ''
+              printf '%s\n' "Host ${alias}"
+              printf '%s\n' "  HostName ${app_host}"
+              printf '%s\n' "  User ${app_user}"
+              printf '%s\n' "  Port ${app_port}"
+              printf '%s\n' '  IdentityFile ~/.ssh/deploy_key'
+              printf '%s\n' '  IdentitiesOnly yes'
+              printf '%s\n' '  StrictHostKeyChecking accept-new'
+              printf '%s\n' '  ProxyJump ragforge-jump'
+            } >> ~/.ssh/config
+          done < <(printf '%s\n' "${APP_HOSTS}" | tr ',;' '\n')
+
+          if [[ ! -s /tmp/ragforge_app_aliases ]]; then
+            echo "No app nodes configured. Set RAGFORGE_APP_HOST or RAGFORGE_APP_HOSTS."
+            exit 1
+          fi
+          echo "Configured app nodes:"
+          cat /tmp/ragforge_app_aliases
           chmod 600 ~/.ssh/config
 
-      - name: Upload backend to Server 3
+      - name: Upload backend to app nodes
         env:
           APP_DIR: ${{ secrets.RAGFORGE_APP_DIR }}
         run: |
@@ -144,57 +179,78 @@ jobs:
             exit 1
           fi
 
-          ssh ragforge-app "mkdir -p '${APP_DIR}/backend/target'"
+          while IFS= read -r alias; do
+            echo "Uploading backend to ${alias}"
+            ssh "${alias}" "mkdir -p '${APP_DIR}/backend/target'"
+            scp "${JAR_FILE}" "${alias}:${APP_DIR}/backend/target/"
+            scp backend/Dockerfile "${alias}:${APP_DIR}/backend/Dockerfile"
+            scp docker-compose-backend.yml "${alias}:${APP_DIR}/docker-compose-backend.yml"
+          done < /tmp/ragforge_app_aliases
 
-          scp "${JAR_FILE}" "ragforge-app:${APP_DIR}/backend/target/"
-          scp backend/Dockerfile "ragforge-app:${APP_DIR}/backend/Dockerfile"
-          scp docker-compose-backend.yml "ragforge-app:${APP_DIR}/docker-compose-backend.yml"
-
-      - name: Build image and restart backend on Server 3
+      - name: Build image and restart backend on app nodes
         env:
           APP_DIR: ${{ secrets.RAGFORGE_APP_DIR }}
         run: |
           APP_DIR="${APP_DIR:-/opt/rag-forge}"
-          ssh ragforge-app bash -s <<EOF
+          while IFS= read -r alias; do
+            echo "Deploying backend on ${alias}"
+            ssh "${alias}" bash -s <<EOF
           set -euo pipefail
           cd "${APP_DIR}/backend"
           docker build -t ragforge-backend:latest .
           cd "${APP_DIR}"
-          COMPOSE_FILES=(-f docker-compose-backend.yml)
-          if [[ -f docker-compose.override.yml ]]; then
-            COMPOSE_FILES+=(-f docker-compose.override.yml)
-            echo "Using local override: docker-compose.override.yml"
+          docker rm -f ragforge-backend 2>/dev/null || true
+          if [[ ! -f /opt/shared/env/common.env || ! -f /opt/shared/env/ragforge.env ]]; then
+            echo "Missing shared env files: /opt/shared/env/common.env and /opt/shared/env/ragforge.env" >&2
+            exit 1
           fi
-          docker compose "\${COMPOSE_FILES[@]}" up -d --force-recreate
-          docker compose "\${COMPOSE_FILES[@]}" ps
+          docker compose -f docker-compose-backend.yml up -d --force-recreate
+          docker compose -f docker-compose-backend.yml ps
           EOF
+          done < /tmp/ragforge_app_aliases
 
-      - name: Verify backend health on Server 3
+      - name: Verify backend health on app nodes
+        env:
+          APP_HEALTH_PORTS: ${{ secrets.RAGFORGE_APP_HEALTH_PORTS }}
         run: |
-          ssh ragforge-app bash -s <<'EOF'
+          APP_HEALTH_PORTS="${APP_HEALTH_PORTS:-8080 8081 8082}"
+          while IFS= read -r alias; do
+            echo "Checking backend health on ${alias}"
+            ssh "${alias}" "APP_HEALTH_PORTS='${APP_HEALTH_PORTS}' bash -s" <<'EOF'
           set -euo pipefail
           # V6 HNSW 索引 CONCURRENTLY 首次构建可能需数分钟，Flyway 完成前 8080 不会就绪
-          for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:8080/api/v1/health >/dev/null; then
-              echo "Server 3 backend health check passed (attempt ${i})"
-              exit 0
+          for port in ${APP_HEALTH_PORTS}; do
+            echo "Checking backend port ${port}"
+            healthy=0
+            for i in $(seq 1 60); do
+              if curl -sf "http://127.0.0.1:${port}/api/v1/health" >/dev/null; then
+                echo "Backend port ${port} health check passed (attempt ${i})"
+                healthy=1
+                break
+              fi
+              echo "Waiting for backend port ${port}... attempt ${i}/60"
+              sleep 5
+            done
+            if [[ "${healthy}" != "1" ]]; then
+              echo "Backend port ${port} health check failed after 5 minutes" >&2
+              echo "=== docker ps ===" >&2
+              docker ps -a --filter name=ragforge-backend >&2 || true
+              echo "=== container logs (last 300 lines) ===" >&2
+              for name in ragforge-backend-1 ragforge-backend-2 ragforge-backend-3 ragforge-backend; do
+                docker logs "${name}" --tail 120 >&2 2>/dev/null || true
+              done
+              exit 1
             fi
-            echo "Waiting for backend... attempt ${i}/60"
-            sleep 5
           done
-          echo "Server 3 backend health check failed after 5 minutes" >&2
-          echo "=== docker ps ===" >&2
-          docker ps -a --filter name=ragforge-backend >&2 || true
-          echo "=== container logs (last 300 lines) ===" >&2
-          docker logs ragforge-backend --tail 300 >&2 || true
-          exit 1
           EOF
+          done < /tmp/ragforge_app_aliases
 
   deploy-ingress:
     name: deploy-ingress-server2
     runs-on: ubuntu-latest
     needs:
       - frontend-build
+      - deploy-app
     steps:
       - name: Checkout deploy assets
         uses: actions/checkout@v4
@@ -238,9 +294,50 @@ jobs:
       - name: Upload frontend and config to Server 2
         env:
           INGRESS_DIR: ${{ secrets.RAGFORGE_INGRESS_DIR }}
+          BACKEND_UPSTREAMS: ${{ secrets.RAGFORGE_BACKEND_UPSTREAMS }}
         run: |
           INGRESS_DIR="${INGRESS_DIR:-/opt/rag-forge}"
           RSYNC_SSH="ssh -F ${HOME}/.ssh/config"
+          NGINX_CONF="nginx.conf"
+
+          if [[ -n "${BACKEND_UPSTREAMS}" ]]; then
+            echo "Rendering RAGForge backend upstreams from RAGFORGE_BACKEND_UPSTREAMS"
+            {
+              printf '%s\n' '# BEGIN RAGFORGE_BACKEND_UPSTREAM'
+              printf '%s\n' 'upstream ragforge_backend {'
+              printf '%s\n' '    least_conn;'
+              while IFS= read -r upstream; do
+                upstream="$(printf '%s' "${upstream}" | xargs)"
+                [[ -z "${upstream}" ]] && continue
+                printf '    server %s;\n' "${upstream}"
+              done < <(printf '%s\n' "${BACKEND_UPSTREAMS}" | tr ',;' '\n')
+              printf '%s\n' '    keepalive 32;'
+              printf '%s\n' '}'
+              printf '%s\n' '# END RAGFORGE_BACKEND_UPSTREAM'
+            } > /tmp/ragforge_backend_upstream.conf
+            if ! grep -q '^    server ' /tmp/ragforge_backend_upstream.conf; then
+              echo "RAGFORGE_BACKEND_UPSTREAMS is set but no valid upstream entries were found"
+              exit 1
+            fi
+            awk '
+              BEGIN {
+                while ((getline line < "/tmp/ragforge_backend_upstream.conf") > 0) {
+                  replacement = replacement line ORS
+                }
+              }
+              /^# BEGIN RAGFORGE_BACKEND_UPSTREAM$/ {
+                printf "%s", replacement
+                skip = 1
+                next
+              }
+              /^# END RAGFORGE_BACKEND_UPSTREAM$/ {
+                skip = 0
+                next
+              }
+              !skip { print }
+            ' nginx.conf > nginx.rendered.conf
+            NGINX_CONF="nginx.rendered.conf"
+          fi
 
           ssh ragforge-ingress "mkdir -p '${INGRESS_DIR}/frontend/dist'"
 
@@ -249,7 +346,7 @@ jobs:
             frontend-dist/ \
             "ragforge-ingress:${INGRESS_DIR}/frontend/dist/"
 
-          scp nginx.conf "ragforge-ingress:${INGRESS_DIR}/nginx.conf"
+          scp "${NGINX_CONF}" "ragforge-ingress:${INGRESS_DIR}/nginx.conf"
           scp docker-compose-ingress.yml "ragforge-ingress:${INGRESS_DIR}/docker-compose-ingress.yml"
 
       - name: Restart Nginx on Server 2

@@ -9,6 +9,6 @@ COPY target/rag-forge-*.jar app.jar
 EXPOSE 8080
 
 ENV SPRING_PROFILES_ACTIVE=prod
-ENV JAVA_OPTS="-Xms512m -Xmx2g"
+ENV JAVA_OPTS="-Xms512m -Xmx1g"
 
 ENTRYPOINT ["sh", "-c", "exec java ${JAVA_OPTS} -jar app.jar"]
