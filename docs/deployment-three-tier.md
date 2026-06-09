@@ -86,7 +86,7 @@ done
 
 ### 文件存储
 
-RAGForge 上传文件挂载在 Docker volume `files_data`（容器内 `/data/files`）。
+RAGForge 上传文件挂载在 Server 3 宿主机 `/data/files`（bind mount 到容器内 `/data/files`）。
 
 ### 服务器 shared env（敏感配置）
 

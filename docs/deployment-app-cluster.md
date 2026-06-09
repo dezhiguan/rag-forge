@@ -46,7 +46,7 @@ RAGFORGE_APP_SSH_KEY=<private key that can access Server 3 through Server 2>
 
 ## Storage Requirement
 
-Same-host replicas share the same `files_data` Docker volume, so uploaded files remain visible to all three backend containers on Server 3.
+Same-host replicas share the same host bind mount `/data/files`, so uploaded files remain visible to all three backend containers on Server 3.
 
 If app replicas are later moved to multiple machines, uploaded files must be moved off node-local Docker volumes first.
 

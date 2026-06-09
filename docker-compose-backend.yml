@@ -3,6 +3,7 @@
 #
 # 启动：docker compose -f docker-compose-backend.yml up -d
 # 配置：/opt/shared/env/common.env + /opt/shared/env/ragforge.env
+# 文件存储：宿主机 /data/files bind mount，3 副本共享
 services:
   backend-1:
     image: ragforge-backend:latest
@@ -14,7 +15,7 @@ services:
       - /opt/shared/env/common.env
       - /opt/shared/env/ragforge.env
     volumes:
-      - files_data:/data/files
+      - /data/files:/data/files
 
   backend-2:
     image: ragforge-backend:latest
@@ -26,7 +27,7 @@ services:
       - /opt/shared/env/common.env
       - /opt/shared/env/ragforge.env
     volumes:
-      - files_data:/data/files
+      - /data/files:/data/files
 
   backend-3:
     image: ragforge-backend:latest
@@ -38,7 +39,4 @@ services:
       - /opt/shared/env/common.env
       - /opt/shared/env/ragforge.env
     volumes:
-      - files_data:/data/files
-
-volumes:
-  files_data:
+      - /data/files:/data/files

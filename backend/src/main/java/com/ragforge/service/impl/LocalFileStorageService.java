@@ -16,7 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class LocalFileStorageService implements FileStorageService {
 
-  @Value("${app.file.storage-path:./data/files}")
+  @Value("${app.file.storage-path:${ragforge.files.upload-path:./data/files}}")
   private String storagePath;
 
   @Override

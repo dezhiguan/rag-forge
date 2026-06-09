@@ -34,6 +34,10 @@ rocketmq:
 reranker:
   base-url: ${RERANKER_BASE_URL:http://172.25.90.183:8001}
 
+app:
+  file:
+    storage-path: /data/files
+
 ragforge:
   files:
     upload-path: /data/files/
