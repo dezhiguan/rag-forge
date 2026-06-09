@@ -7,25 +7,28 @@ import com.ragforge.mapper.ApiKeyMapper;
 import com.ragforge.model.entity.ApiKey;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.time.Duration;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ApiKeyInterceptor implements HandlerInterceptor {
 
   private static final String DEV_KEY = "sk-ragforge-dev";
+  static final String RATE_LIMIT_PREFIX = "ragforge:ratelimit:";
 
   private final ApiKeyMapper apiKeyMapper;
   private final ApiKeyProperties apiKeyProperties;
   private final ObjectMapper objectMapper;
+  private final StringRedisTemplate redisTemplate;
 
   private volatile Boolean hasAnyKeys;
-  private final ConcurrentMap<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
   @Override
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
@@ -97,32 +100,23 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
             .last("LIMIT 1"));
   }
 
-  private boolean consumeRateLimit(ApiKey apiKey) {
+  boolean consumeRateLimit(ApiKey apiKey) {
     int limit = apiKey.getRateLimit() == null ? 100 : apiKey.getRateLimit();
     if (limit <= 0) {
       return false;
     }
     long nowMinute = System.currentTimeMillis() / 60_000L;
-    RateWindow window =
-        rateWindows.compute(
-            apiKey.getApiKey(),
-            (key, existing) -> {
-              if (existing == null || existing.minute != nowMinute) {
-                return new RateWindow(nowMinute, 1);
-              }
-              existing.count++;
-              return existing;
-            });
-    return window.count <= limit;
-  }
-
-  private static class RateWindow {
-    private final long minute;
-    private int count;
-
-    private RateWindow(long minute, int count) {
-      this.minute = minute;
-      this.count = count;
+    String key = RATE_LIMIT_PREFIX + apiKey.getApiKey() + ":" + nowMinute;
+    try {
+      Long count = redisTemplate.opsForValue().increment(key);
+      if (count != null && count == 1L) {
+        redisTemplate.expire(key, Duration.ofSeconds(120));
+      }
+      return count == null || count <= limit;
+    } catch (Exception e) {
+      // fail-open：Redis 异常时不阻断业务，放行并告警，避免限流组件拖垮整个 API
+      log.warn("Rate limit check via Redis failed, allowing request", e);
+      return true;
     }
   }
 }
