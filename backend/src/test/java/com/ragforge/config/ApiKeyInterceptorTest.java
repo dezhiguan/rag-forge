@@ -1,0 +1,145 @@
+package com.ragforge.config;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.mapper.ApiKeyMapper;
+import com.ragforge.model.entity.ApiKey;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+
+@ExtendWith(MockitoExtension.class)
+class ApiKeyInterceptorTest {
+
+  @Mock private ApiKeyMapper apiKeyMapper;
+  @Mock private StringRedisTemplate redisTemplate;
+  @Mock private HttpServletRequest request;
+  @Mock private HttpServletResponse response;
+
+  private ApiKeyProperties apiKeyProperties;
+  private ApiKeyInterceptor interceptor;
+
+  @BeforeEach
+  void setUp() {
+    apiKeyProperties = new ApiKeyProperties();
+    interceptor = new ApiKeyInterceptor(apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate);
+  }
+
+  private StringWriter stubResponseWriter() throws Exception {
+    StringWriter body = new StringWriter();
+    when(response.getWriter()).thenReturn(new PrintWriter(body));
+    return body;
+  }
+
+  @Test
+  void whitelistedPath_allowsWithoutApiKey() throws Exception {
+    when(request.getRequestURI()).thenReturn("/api/v1/health");
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isTrue();
+    verify(apiKeyMapper, never()).selectCount(isNull());
+  }
+
+  @Test
+  void devKey_allowsRegardlessOfDatabase() throws Exception {
+    when(request.getRequestURI()).thenReturn("/api/v1/search");
+    when(request.getHeader("X-API-Key")).thenReturn("sk-ragforge-dev");
+    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isTrue();
+    verify(apiKeyMapper, never()).selectOne(any());
+  }
+
+  @Test
+  void noKeysInDatabase_allowsWithoutApiKey() throws Exception {
+    when(request.getRequestURI()).thenReturn("/api/v1/kb");
+    when(apiKeyMapper.selectCount(isNull())).thenReturn(0L);
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isTrue();
+    verify(response, never()).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+  }
+
+  @Test
+  void invalidApiKey_returns401() throws Exception {
+    StringWriter responseBody = stubResponseWriter();
+    when(request.getRequestURI()).thenReturn("/api/v1/kb");
+    when(request.getHeader("X-API-Key")).thenReturn("sk-invalid");
+    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
+    when(apiKeyMapper.selectOne(any())).thenReturn(null);
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isFalse();
+    verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    assertThat(responseBody.toString()).contains("\"code\":401");
+    assertThat(responseBody.toString()).contains("Invalid API Key");
+  }
+
+  @Test
+  void validApiKeyOverRateLimit_returns429() throws Exception {
+    StringWriter responseBody = stubResponseWriter();
+    when(request.getRequestURI()).thenReturn("/api/v1/search");
+    when(request.getHeader("X-API-Key")).thenReturn("sk-test");
+    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
+
+    ApiKey keyRecord = new ApiKey();
+    keyRecord.setApiKey("sk-test");
+    keyRecord.setRateLimit(100);
+    when(apiKeyMapper.selectOne(any())).thenReturn(keyRecord);
+
+    ValueOperations<String, String> ops = mock(ValueOperations.class);
+    when(redisTemplate.opsForValue()).thenReturn(ops);
+    when(ops.increment(anyString())).thenReturn(101L);
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isFalse();
+    verify(response).setStatus(429);
+    assertThat(responseBody.toString()).contains("\"code\":429");
+    assertThat(responseBody.toString()).contains("rate limit exceeded");
+  }
+
+  @Test
+  void validApiKeyUnderRateLimit_allowsRequest() throws Exception {
+    when(request.getRequestURI()).thenReturn("/api/v1/search");
+    when(request.getHeader("X-API-Key")).thenReturn("sk-test");
+    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
+
+    ApiKey keyRecord = new ApiKey();
+    keyRecord.setApiKey("sk-test");
+    keyRecord.setRateLimit(100);
+    when(apiKeyMapper.selectOne(any())).thenReturn(keyRecord);
+
+    ValueOperations<String, String> ops = mock(ValueOperations.class);
+    when(redisTemplate.opsForValue()).thenReturn(ops);
+    when(ops.increment(anyString())).thenReturn(1L);
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isTrue();
+    verify(response, never()).setStatus(eq(429));
+    verify(response, never()).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+  }
+}

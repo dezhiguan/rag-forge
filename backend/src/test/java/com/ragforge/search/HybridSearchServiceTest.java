@@ -135,6 +135,64 @@ class HybridSearchServiceTest {
     assertThat(output.getResults().get(0).getChunkId()).isEqualTo(2L);
   }
 
+  @Test
+  void hybrid_keywordTimeout_degradesToVectorResults() throws Exception {
+    retrievalProperties.setStageTimeoutMs(100);
+    hybridSearchService =
+        new HybridSearchService(
+            vectorSearchService,
+            esSearchService,
+            retrievalProperties,
+            Executors.newCachedThreadPool());
+
+    SearchResult vectorHit = result(1L, 0.92, 0.0);
+    when(vectorSearchService.search(any(), anyList(), any(), anyInt(), any()))
+        .thenReturn(List.of(vectorHit));
+    when(esSearchService.search(any(), anyList(), any(), anyInt(), any()))
+        .thenAnswer(
+            inv -> {
+              Thread.sleep(500);
+              return List.of(result(2L, 0.0, 0.85));
+            });
+
+    HybridSearchOutput output =
+        hybridSearchService.searchWithMetrics("q", List.of(1L), null, 5, 0.55);
+
+    assertThat(output.getEffectiveStrategy()).isEqualTo("hybrid");
+    assertThat(output.getResults()).hasSize(1);
+    assertThat(output.getResults().get(0).getChunkId()).isEqualTo(1L);
+  }
+
+  @Test
+  void hybrid_bothPathsTimeout_returnsEmptyResults() throws Exception {
+    retrievalProperties.setStageTimeoutMs(100);
+    hybridSearchService =
+        new HybridSearchService(
+            vectorSearchService,
+            esSearchService,
+            retrievalProperties,
+            Executors.newCachedThreadPool());
+
+    when(vectorSearchService.search(any(), anyList(), any(), anyInt(), any()))
+        .thenAnswer(
+            inv -> {
+              Thread.sleep(500);
+              return List.of(result(1L, 0.9, 0.0));
+            });
+    when(esSearchService.search(any(), anyList(), any(), anyInt(), any()))
+        .thenAnswer(
+            inv -> {
+              Thread.sleep(500);
+              return List.of(result(2L, 0.0, 0.85));
+            });
+
+    HybridSearchOutput output =
+        hybridSearchService.searchWithMetrics("q", List.of(1L), null, 5, 0.55);
+
+    assertThat(output.getEffectiveStrategy()).isEqualTo("hybrid");
+    assertThat(output.getResults()).isEmpty();
+  }
+
   private static SearchResult result(long chunkId, double vectorScore, double bm25Score) {
     SearchResult r = new SearchResult();
     r.setChunkId(chunkId);

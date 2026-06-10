@@ -73,4 +73,24 @@ class QueryRewriterTest {
 
     assertThat(result).containsExactly("Java 后端开发", "Spring Boot 面试题", "Java 后端架构");
   }
+
+  @Test
+  void apiException_fallsBackToOriginalQuery() {
+    when(restTemplate.postForEntity(any(String.class), any(), eq(String.class)))
+        .thenThrow(new RuntimeException("network error"));
+
+    List<String> result = queryRewriter.rewrite("Java 后端开发");
+
+    assertThat(result).containsExactly("Java 后端开发");
+  }
+
+  @Test
+  void emptyResponseBody_fallsBackToOriginalQuery() {
+    when(restTemplate.postForEntity(any(String.class), any(), eq(String.class)))
+        .thenReturn(ResponseEntity.ok(""));
+
+    List<String> result = queryRewriter.rewrite("分布式系统");
+
+    assertThat(result).containsExactly("分布式系统");
+  }
 }
