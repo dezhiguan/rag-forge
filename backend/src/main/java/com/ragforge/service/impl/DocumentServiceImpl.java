@@ -25,7 +25,9 @@ import com.ragforge.service.FileStorageService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -40,7 +42,6 @@ import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.DigestUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -79,7 +80,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
     String fileType = extractExtension(originalFilename);
-    String fileMd5 = calculateMd5(file);
+    String fileMd5 = calculateSha256(file);
 
     Document existing =
         documentMapper.selectOne(
@@ -150,7 +151,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
     String fileType = extractExtension(originalFilename);
-    String fileMd5 = calculateMd5(file);
+    String fileMd5 = calculateSha256(file);
 
     int oldChunkCount = coalesce(existing.getChunkCount(), 0);
 
@@ -361,7 +362,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     String title = request.getTitle().trim();
     byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-    String fileMd5 = DigestUtils.md5DigestAsHex(bytes);
+    String fileMd5 = sha256Hex(bytes);
 
     Document existing =
         documentMapper.selectOne(
@@ -468,22 +469,27 @@ public class DocumentServiceImpl implements DocumentService {
     return filename.substring(idx + 1).toLowerCase(Locale.ROOT);
   }
 
-  private String calculateMd5(MultipartFile file) {
+  private String calculateSha256(MultipartFile file) {
     try (InputStream is = file.getInputStream()) {
-      java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
       byte[] buffer = new byte[8192];
       int len;
       while ((len = is.read(buffer)) != -1) {
         md.update(buffer, 0, len);
       }
       byte[] digest = md.digest();
-      StringBuilder sb = new StringBuilder();
-      for (byte b : digest) {
-        sb.append(String.format("%02x", b));
-      }
-      return sb.toString();
+      return HexFormat.of().formatHex(digest);
     } catch (Exception e) {
-      throw new BizException(500, "计算文件 MD5 失败");
+      throw new BizException(500, "计算文件摘要失败");
+    }
+  }
+
+  private String sha256Hex(byte[] bytes) {
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      return HexFormat.of().formatHex(md.digest(bytes));
+    } catch (Exception e) {
+      throw new BizException(500, "计算文本摘要失败");
     }
   }
 

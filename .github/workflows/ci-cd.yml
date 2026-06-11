@@ -286,6 +286,8 @@ jobs:
             echo "Missing shared env files: /opt/shared/env/common.env and /opt/shared/env/ragforge.env" >&2
             exit 1
           fi
+          mkdir -p /data/files
+          chown -R 10001:10001 /data/files
           docker compose -f docker-compose-backend.yml up -d --force-recreate
           docker compose -f docker-compose-backend.yml ps
           EOF

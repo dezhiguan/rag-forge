@@ -1,0 +1,2 @@
+ALTER TABLE documents
+  ALTER COLUMN file_md5 TYPE VARCHAR(64);
