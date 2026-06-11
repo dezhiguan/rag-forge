@@ -71,3 +71,7 @@ temp/
 tasks.md
 docs/tasks.md
 docs/cursor-prompts.md
+
+# Uploaded documents (local runtime storage only, not for version control)
+data/files/*
+!data/files/.gitkeep
