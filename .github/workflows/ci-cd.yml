@@ -155,10 +155,10 @@ jobs:
           path: frontend/dist
           if-no-files-found: error
 
-  deploy-app:
-    name: deploy-app-nodes
+  deploy-k3s:
+    name: deploy-k3s-server3
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs:
       - backend-unit-test
@@ -170,12 +170,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ragforge-backend-jar
+          path: backend/target
 
-      - name: Configure SSH (App nodes via Server 2 jump)
+      - name: Configure SSH (Server 3 via Server 2 jump)
         env:
           SSH_KEY: ${{ secrets.RAGFORGE_APP_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.RAGFORGE_APP_HOST }}
-          DEPLOY_HOSTS: ${{ secrets.RAGFORGE_APP_HOSTS }}
           DEPLOY_USER: ${{ secrets.RAGFORGE_APP_USER }}
           DEPLOY_PORT: ${{ secrets.RAGFORGE_APP_PORT }}
           JUMP_HOST: ${{ secrets.RAGFORGE_INGRESS_HOST }}
@@ -192,7 +192,7 @@ jobs:
           printf '%s\n' "${SSH_KEY}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          APP_HOSTS="${DEPLOY_HOSTS:-${DEPLOY_HOST:-8.138.191.228}}"
+          DEPLOY_HOST="${DEPLOY_HOST:-8.138.191.228}"
           DEPLOY_USER="${DEPLOY_USER:-root}"
           PORT="${DEPLOY_PORT:-22}"
           JUMP_HOST="${JUMP_HOST:-8.163.63.222}"
@@ -212,142 +212,82 @@ jobs:
             printf '%s\n' '  ConnectTimeout 15'
             printf '%s\n' '  ServerAliveInterval 15'
             printf '%s\n' '  ServerAliveCountMax 3'
+            printf '%s\n' ''
+            printf '%s\n' 'Host ragforge-k3s'
+            printf '%s\n' "  HostName ${DEPLOY_HOST}"
+            printf '%s\n' "  User ${DEPLOY_USER}"
+            printf '%s\n' "  Port ${PORT}"
+            printf '%s\n' '  IdentityFile ~/.ssh/deploy_key'
+            printf '%s\n' '  IdentitiesOnly yes'
+            printf '%s\n' '  StrictHostKeyChecking accept-new'
+            printf '%s\n' '  BatchMode yes'
+            printf '%s\n' '  ConnectTimeout 15'
+            printf '%s\n' '  ServerAliveInterval 15'
+            printf '%s\n' '  ServerAliveCountMax 3'
+            printf '%s\n' '  ProxyJump ragforge-jump'
           } > ~/.ssh/config
-
-          : > /tmp/ragforge_app_aliases
-          index=0
-          while IFS= read -r raw_host; do
-            host_entry="$(printf '%s' "${raw_host}" | xargs)"
-            [[ -z "${host_entry}" ]] && continue
-            index=$((index + 1))
-
-            app_user="${DEPLOY_USER}"
-            app_host_port="${host_entry}"
-            if [[ "${host_entry}" == *@* ]]; then
-              app_user="${host_entry%@*}"
-              app_host_port="${host_entry#*@}"
-            fi
-
-            app_host="${app_host_port}"
-            app_port="${PORT}"
-            if [[ "${app_host_port}" =~ ^[0-9.]+:[0-9]+$ || "${app_host_port}" =~ ^[^:]+:[0-9]+$ ]]; then
-              app_host="${app_host_port%:*}"
-              app_port="${app_host_port##*:}"
-            fi
-
-            alias="ragforge-app-${index}"
-            printf '%s\n' "${alias}" >> /tmp/ragforge_app_aliases
-            {
-              printf '%s\n' ''
-              printf '%s\n' "Host ${alias}"
-              printf '%s\n' "  HostName ${app_host}"
-              printf '%s\n' "  User ${app_user}"
-              printf '%s\n' "  Port ${app_port}"
-              printf '%s\n' '  IdentityFile ~/.ssh/deploy_key'
-              printf '%s\n' '  IdentitiesOnly yes'
-              printf '%s\n' '  StrictHostKeyChecking accept-new'
-              printf '%s\n' '  BatchMode yes'
-              printf '%s\n' '  ConnectTimeout 15'
-              printf '%s\n' '  ServerAliveInterval 15'
-              printf '%s\n' '  ServerAliveCountMax 3'
-              printf '%s\n' '  ProxyJump ragforge-jump'
-            } >> ~/.ssh/config
-          done < <(printf '%s\n' "${APP_HOSTS}" | tr ',;' '\n')
-
-          if [[ ! -s /tmp/ragforge_app_aliases ]]; then
-            echo "No app nodes configured. Set RAGFORGE_APP_HOST or RAGFORGE_APP_HOSTS."
-            exit 1
-          fi
-
-          echo "Configured app nodes:"
-          cat /tmp/ragforge_app_aliases
           chmod 600 ~/.ssh/config
 
-      - name: Upload backend to app nodes
+      - name: Sync repo to Server 3
         env:
-          APP_DIR: ${{ secrets.RAGFORGE_APP_DIR }}
+          APP_DIR: ${{ secrets.RAGFORGE_K8S_SRC_DIR }}
         run: |
-          APP_DIR="${APP_DIR:-/opt/rag-forge}"
-          JAR_FILE="$(find . -maxdepth 1 -name 'rag-forge-*.jar' ! -name '*.original' | head -n 1)"
+          APP_DIR="${APP_DIR:-/opt/rag-forge/k8s-src}"
+          JAR_FILE="$(find backend/target -maxdepth 1 -name 'rag-forge-*.jar' ! -name '*.original' | head -n 1)"
           if [[ -z "${JAR_FILE}" ]]; then
-            echo "No backend JAR found in workspace"
+            echo "No backend JAR found under backend/target"
             exit 1
           fi
 
           SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
-          SCP_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+          RSYNC_SSH="ssh -F ${HOME}/.ssh/config -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
 
-          while IFS= read -r alias; do
-            echo "Uploading backend to ${alias}"
-            timeout 2m ssh -T "${SSH_OPTS[@]}" "${alias}" "mkdir -p '${APP_DIR}/backend/target'"
-            timeout 5m scp "${SCP_OPTS[@]}" "${JAR_FILE}" "${alias}:${APP_DIR}/backend/target/"
-            timeout 2m scp "${SCP_OPTS[@]}" backend/Dockerfile "${alias}:${APP_DIR}/backend/Dockerfile"
-            timeout 2m scp "${SCP_OPTS[@]}" docker-compose-backend.yml "${alias}:${APP_DIR}/docker-compose-backend.yml"
-          done < /tmp/ragforge_app_aliases
+          timeout 2m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "mkdir -p '${APP_DIR}'"
+          timeout 12m rsync -az --delete \
+            --exclude '.git' \
+            --exclude 'frontend/node_modules' \
+            --exclude 'frontend/dist' \
+            --exclude 'reranker/__pycache__' \
+            -e "${RSYNC_SSH}" \
+            ./ "ragforge-k3s:${APP_DIR}/"
 
-      - name: Build image and restart backend on app nodes
+      - name: Deploy backend to k3s on Server 3
         env:
-          APP_DIR: ${{ secrets.RAGFORGE_APP_DIR }}
+          APP_DIR: ${{ secrets.RAGFORGE_K8S_SRC_DIR }}
         run: |
-          APP_DIR="${APP_DIR:-/opt/rag-forge}"
+          APP_DIR="${APP_DIR:-/opt/rag-forge/k8s-src}"
           SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 
-          while IFS= read -r alias; do
-            echo "Deploying backend on ${alias}"
-            timeout 25m ssh -T "${SSH_OPTS[@]}" "${alias}" "APP_DIR='${APP_DIR}' bash -s" <<'EOF'
+          timeout 25m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "APP_DIR='${APP_DIR}' bash -s" <<'EOF'
           set -euo pipefail
-          cd "${APP_DIR}/backend"
-          docker build -t ragforge-backend:latest .
           cd "${APP_DIR}"
-          docker rm -f ragforge-backend 2>/dev/null || true
           if [[ ! -f /opt/shared/env/common.env || ! -f /opt/shared/env/ragforge.env ]]; then
             echo "Missing shared env files: /opt/shared/env/common.env and /opt/shared/env/ragforge.env" >&2
             exit 1
           fi
-          mkdir -p /data/files
-          chown -R 10001:10001 /data/files
-          docker compose -f docker-compose-backend.yml up -d --force-recreate
-          docker compose -f docker-compose-backend.yml ps
+          sudo -n env SKIP_BACKEND_BUILD=1 bash deploy/scripts/deploy-ragforge-k8s.sh
           EOF
-          done < /tmp/ragforge_app_aliases
 
-      - name: Verify backend health on app nodes
-        env:
-          APP_HEALTH_PORTS: ${{ secrets.RAGFORGE_APP_HEALTH_PORTS }}
+      - name: Verify k3s backend health
         run: |
-          APP_HEALTH_PORTS="${APP_HEALTH_PORTS:-8080 8081 8082}"
           SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
-
-          while IFS= read -r alias; do
-            echo "Checking backend health on ${alias}"
-            timeout 20m ssh -T "${SSH_OPTS[@]}" "${alias}" "APP_HEALTH_PORTS='${APP_HEALTH_PORTS}' bash -s" <<'EOF'
+          timeout 10m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "bash -s" <<'EOF'
           set -euo pipefail
-          for port in ${APP_HEALTH_PORTS}; do
-            echo "Checking backend port ${port}"
-            healthy=0
-            for i in $(seq 1 60); do
-              if curl -sf "http://127.0.0.1:${port}/api/v1/health" >/dev/null; then
-                echo "Backend port ${port} health check passed (attempt ${i})"
-                healthy=1
-                break
-              fi
-              echo "Waiting for backend port ${port}... attempt ${i}/60"
-              sleep 5
-            done
-
-            if [[ "${healthy}" != "1" ]]; then
-              echo "Backend port ${port} health check failed after 5 minutes" >&2
-              echo "=== docker ps ===" >&2
-              docker ps -a --filter name=ragforge-backend >&2 || true
-              echo "=== container logs (last 300 lines) ===" >&2
-              for name in ragforge-backend-1 ragforge-backend-2 ragforge-backend-3 ragforge-backend; do
-                docker logs "${name}" --tail 120 >&2 2>/dev/null || true
-              done
-              exit 1
+          sudo k3s kubectl -n ragforge rollout status deployment/ragforge-backend --timeout=300s
+          sudo k3s kubectl -n ragforge get pods -o wide
+          for i in $(seq 1 60); do
+            if curl -sf "http://127.0.0.1:31090/api/v1/health" >/dev/null; then
+              echo "RAGForge k3s backend health check passed (attempt ${i})"
+              exit 0
             fi
+            echo "Waiting for RAGForge k3s backend... attempt ${i}/60"
+            sleep 5
           done
+          echo "RAGForge k3s backend health check failed" >&2
+          sudo k3s kubectl -n ragforge get pods -o wide >&2 || true
+          sudo k3s kubectl -n ragforge logs deployment/ragforge-backend --tail=200 >&2 || true
+          exit 1
           EOF
-          done < /tmp/ragforge_app_aliases
 
   deploy-ingress:
     name: deploy-ingress-server2
@@ -356,7 +296,7 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs:
       - frontend-build
-      - deploy-app
+      - deploy-k3s
     steps:
       - name: Checkout deploy assets
         uses: actions/checkout@v4
@@ -407,16 +347,16 @@ jobs:
       - name: Upload frontend and config to Server 2
         env:
           INGRESS_DIR: ${{ secrets.RAGFORGE_INGRESS_DIR }}
-          BACKEND_UPSTREAMS: ${{ secrets.RAGFORGE_BACKEND_UPSTREAMS }}
         run: |
           INGRESS_DIR="${INGRESS_DIR:-/opt/rag-forge}"
           RSYNC_SSH="ssh -F ${HOME}/.ssh/config -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
           SCP_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
           SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
           NGINX_CONF="nginx.conf"
+          BACKEND_UPSTREAMS="172.25.90.184:31090"
 
-          if [[ -n "${BACKEND_UPSTREAMS}" ]]; then
-            echo "Rendering RAGForge backend upstreams from RAGFORGE_BACKEND_UPSTREAMS"
+          if true; then
+            echo "Rendering RAGForge backend upstreams for k3s"
             {
               printf '%s\n' '# BEGIN RAGFORGE_BACKEND_UPSTREAM'
               printf '%s\n' 'upstream ragforge_backend {'
@@ -432,7 +372,7 @@ jobs:
             } > /tmp/ragforge_backend_upstream.conf
 
             if ! grep -q '^    server ' /tmp/ragforge_backend_upstream.conf; then
-              echo "RAGFORGE_BACKEND_UPSTREAMS is set but no valid upstream entries were found"
+              echo "No valid RAGForge backend upstream entries were found"
               exit 1
             fi
 
@@ -486,7 +426,7 @@ jobs:
     timeout-minutes: 5
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs:
-      - deploy-app
+      - deploy-k3s
       - deploy-ingress
     steps:
       - name: API health check

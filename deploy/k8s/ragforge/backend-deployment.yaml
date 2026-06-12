@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragforge-backend
+  namespace: ragforge
+  labels:
+    app: ragforge-backend
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: ragforge-backend
+  template:
+    metadata:
+      labels:
+        app: ragforge-backend
+    spec:
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: ragforge/backend:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: JAVA_OPTS
+              value: -Xms512m -Xmx1g
+            - name: RAGFORGE_UPLOAD_PATH
+              value: /data/files/
+          envFrom:
+            - secretRef:
+                name: ragforge-backend-env
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+          volumeMounts:
+            - name: ragforge-files
+              mountPath: /data/files
+      volumes:
+        - name: ragforge-files
+          # nosemgrep: yaml.kubernetes.security.hostpath-mount.hostpath-mount
+          # Temporary local file storage until RAGForge supports OSS.
+          hostPath:
+            path: /data/files
+            type: DirectoryOrCreate

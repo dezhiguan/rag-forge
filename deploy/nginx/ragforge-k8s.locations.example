@@ -1,0 +1,10 @@
+# RAGForge k3s ingress locations for Server 2 (ragforge.net).
+# NodePort runs on Server 3 private IP.
+#
+# Replace the old ragforge_backend upstream with:
+#   upstream ragforge_backend {
+#       least_conn;
+#       server 172.25.90.184:31090;
+#       keepalive 32;
+#   }
+
