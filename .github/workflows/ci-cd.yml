@@ -105,8 +105,6 @@ jobs:
         working-directory: backend
         run: >
           mvn -B clean verify
-          -Dtest=ApiKeyServiceImplTest,SearchControllerTest,GlobalExceptionHandlerTest,ApiKeyInterceptorTest,ApiKeyInterceptorRateLimitTest,RerankerClientTest,QueryRewriterTest,HybridSearchServiceTest,RetrievalServiceTest
-          -Dmaven.test.failure.ignore=true
           -Dspring-boot.repackage.skip=true
 
       - name: Upload backend coverage report
