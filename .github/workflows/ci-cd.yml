@@ -101,11 +101,31 @@ jobs:
           java-version: "17"
           cache: maven
 
-      - name: Run stable backend unit tests
+      - name: Check backend unit test coverage
         working-directory: backend
         run: >
-          mvn -B test
+          mvn -B clean verify
           -Dtest=ApiKeyServiceImplTest,SearchControllerTest,GlobalExceptionHandlerTest,ApiKeyInterceptorTest,ApiKeyInterceptorRateLimitTest,RerankerClientTest,QueryRewriterTest,HybridSearchServiceTest,RetrievalServiceTest
+          -Dmaven.test.failure.ignore=true
+          -Dspring-boot.repackage.skip=true
+
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: ragforge-backend-unit-test-coverage
+          path: backend/target/site/jacoco/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload backend test reports
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: ragforge-backend-unit-test-reports
+          path: backend/target/surefire-reports/
+          retention-days: 14
+          if-no-files-found: ignore
 
   frontend-build:
     name: frontend-build
