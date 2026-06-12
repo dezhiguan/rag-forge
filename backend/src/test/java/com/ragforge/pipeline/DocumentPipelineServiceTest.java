@@ -1,0 +1,312 @@
+package com.ragforge.pipeline;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.ragforge.common.BizException;
+import com.ragforge.mapper.DocumentChunkMapper;
+import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.model.entity.Document;
+import com.ragforge.model.entity.DocumentChunk;
+import com.ragforge.model.entity.KnowledgeBase;
+import com.ragforge.pipeline.chunker.Chunk;
+import com.ragforge.pipeline.chunker.TextChunker;
+import com.ragforge.pipeline.embedder.EmbeddingService;
+import com.ragforge.pipeline.indexer.EsIndexService;
+import com.ragforge.pipeline.parser.DocumentParser;
+import com.ragforge.pipeline.parser.ParseResult;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Spy;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementCreator;
+import org.springframework.jdbc.core.RowCallbackHandler;
+import org.springframework.test.util.ReflectionTestUtils;
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class DocumentPipelineServiceTest {
+
+  @Mock private DocumentMapper documentMapper;
+  @Mock private DocumentChunkMapper documentChunkMapper;
+  @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
+  @Mock private DocumentParser documentParser;
+  @Mock private TextChunker textChunker;
+  @Mock private EmbeddingService embeddingService;
+  @Mock private EsIndexService esIndexService;
+  @Mock private JdbcTemplate jdbcTemplate;
+
+  @Spy @InjectMocks private DocumentPipelineService documentPipelineService;
+
+  @BeforeEach
+  void setUp() {
+    ReflectionTestUtils.setField(documentPipelineService, "self", documentPipelineService);
+    stubPipelineSideEffects();
+  }
+
+  private void stubPipelineSideEffects() {
+    doNothing().when(documentPipelineService).cleanupArtifacts(anyLong());
+    doNothing().when(documentPipelineService).updateStatus(anyLong(), anyString());
+    doNothing().when(documentPipelineService).updateStatusWithError(anyLong(), anyString(), anyString());
+    doNothing().when(documentPipelineService).updateDocumentChunkCount(anyLong(), anyInt());
+    doNothing().when(documentPipelineService).incrementKbCount(anyLong(), anyInt(), anyBoolean());
+  }
+
+  @Test
+  void processDocument_successRunsAllStages() throws Exception {
+    Document doc = document(1L, 10L, "sample.md");
+    KnowledgeBase kb = knowledgeBase(10L);
+    List<Chunk> chunks = List.of(new Chunk(0, "hello", 5), new Chunk(1, "world", 5));
+    List<float[]> vectors = List.of(new float[] {0.1f}, new float[] {0.2f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(100L, 0), chunkEntity(101L, 1));
+
+    when(documentMapper.selectById(1L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(doc.getFilePath(), doc.getFileType()))
+        .thenReturn(new ParseResult("hello world", 1L, 1));
+    when(textChunker.chunk("hello world", 500, 50)).thenReturn(chunks);
+    when(embeddingService.embedBatch(List.of("hello", "world"))).thenReturn(vectors);
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(eq(1L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"));
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(1L);
+
+    verify(documentPipelineService).cleanupArtifacts(1L);
+    verify(documentPipelineService).updateStatus(1L, "parsing");
+    verify(documentPipelineService).updateStatus(1L, "chunking");
+    verify(documentPipelineService).updateStatus(1L, "embedding");
+    verify(documentPipelineService).updateStatus(1L, "indexing");
+    verify(documentPipelineService).updateStatus(1L, "completed");
+    verify(documentPipelineService).updateDocumentChunkCount(1L, 2);
+    verify(documentPipelineService).incrementKbCount(10L, 2, true);
+  }
+
+  @Test
+  void processDocument_missingDocument_throwsAndMarksFailed() {
+    when(documentMapper.selectById(404L)).thenReturn(null);
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(404L))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("文档不存在");
+
+    verify(documentPipelineService).updateStatusWithError(eq(404L), eq("failed"), anyString());
+  }
+
+  @Test
+  void processDocument_embeddingMismatch_marksFailed() throws Exception {
+    Document doc = document(2L, 10L, "a.md");
+    when(documentMapper.selectById(2L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("text", 1L, 1));
+    when(textChunker.chunk(anyString(), anyInt(), anyInt())).thenReturn(List.of(new Chunk(0, "text", 4)));
+    when(embeddingService.embedBatch(anyList())).thenReturn(List.of());
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(2L))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("Embedding 数量");
+
+    verify(documentPipelineService).updateStatusWithError(eq(2L), eq("failed"), anyString());
+  }
+
+  @Test
+  void processDocument_esIndexFailure_marksFailed() throws Exception {
+    Document doc = document(3L, 10L, "a.md");
+    List<Chunk> chunks = List.of(new Chunk(0, "text", 4));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(200L, 0));
+
+    when(documentMapper.selectById(3L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("text", 1L, 1));
+    when(textChunker.chunk(anyString(), anyInt(), anyInt())).thenReturn(chunks);
+    when(embeddingService.embedBatch(anyList())).thenReturn(vectors);
+    doReturn(inserted).when(documentPipelineService).insertChunks(anyLong(), anyLong(), anyList(), anyList(), any());
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(false);
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(3L))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("ES 索引写入失败");
+  }
+
+  @Test
+  void processDocument_parserFailure_marksFailed() throws Exception {
+    Document doc = document(4L, 10L, "bad.pdf");
+    when(documentMapper.selectById(4L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(documentParser.parse(anyString(), anyString())).thenThrow(new RuntimeException("parse failed"));
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(4L))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("parse failed");
+
+    verify(documentPipelineService).updateStatusWithError(eq(4L), eq("failed"), anyString());
+  }
+
+  @Test
+  void processDocument_reprocessDoesNotIncrementDocCount() throws Exception {
+    Document doc = document(5L, 10L, "v2.md");
+    doc.setVersion(2);
+    doc.setParseStatus("pending");
+    List<Chunk> chunks = List.of(new Chunk(0, "text", 4));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(300L, 0));
+
+    when(documentMapper.selectById(5L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("text", 1L, 1));
+    when(textChunker.chunk(anyString(), anyInt(), anyInt())).thenReturn(chunks);
+    when(embeddingService.embedBatch(anyList())).thenReturn(vectors);
+    doReturn(inserted).when(documentPipelineService).insertChunks(anyLong(), anyLong(), anyList(), anyList(), any());
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(5L);
+
+    verify(documentPipelineService).incrementKbCount(10L, 1, false);
+  }
+
+  @Test
+  void insertChunks_batchesLargeInput() throws Exception {
+    List<Chunk> chunks = new ArrayList<>();
+    List<float[]> vectors = new ArrayList<>();
+    for (int i = 0; i < 55; i++) {
+      chunks.add(new Chunk(i, "chunk-" + i, 6));
+      vectors.add(new float[] {0.1f});
+    }
+
+    AtomicInteger batchIndex = new AtomicInteger();
+    doAnswer(
+            inv -> {
+              int batch = batchIndex.getAndIncrement();
+              int start = batch == 0 ? 0 : 50;
+              int count = batch == 0 ? 50 : 5;
+              PreparedStatementCreator psc = inv.getArgument(0);
+              RowCallbackHandler rch = inv.getArgument(1);
+              Connection conn = org.mockito.Mockito.mock(Connection.class);
+              PreparedStatement ps = org.mockito.Mockito.mock(PreparedStatement.class);
+              ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
+              when(conn.prepareStatement(anyString())).thenReturn(ps);
+              when(ps.executeQuery()).thenReturn(rs);
+              AtomicInteger rowNum = new AtomicInteger(0);
+              when(rs.next()).thenAnswer(i -> rowNum.getAndIncrement() < count);
+              when(rs.getLong("id")).thenAnswer(i -> 1000L + start + rowNum.get() - 1);
+              when(rs.getInt("chunk_index")).thenAnswer(i -> start + rowNum.get() - 1);
+              psc.createPreparedStatement(conn);
+              while (rs.next()) {
+                rch.processRow(rs);
+              }
+              return null;
+            })
+        .when(jdbcTemplate)
+        .query(any(PreparedStatementCreator.class), any(RowCallbackHandler.class));
+
+    List<DocumentChunk> inserted =
+        documentPipelineService.insertChunks(1L, 10L, chunks, vectors, "TEXT");
+
+    assertThat(inserted).hasSize(55);
+    assertThat(batchIndex.get()).isEqualTo(2);
+  }
+
+  @Test
+  void insertChunks_missingReturnedRow_throws() throws Exception {
+    List<Chunk> chunks = List.of(new Chunk(0, "a", 1), new Chunk(1, "b", 1));
+    List<float[]> vectors = List.of(new float[] {0.1f}, new float[] {0.2f});
+
+    doAnswer(
+            inv -> {
+              PreparedStatementCreator psc = inv.getArgument(0);
+              RowCallbackHandler rch = inv.getArgument(1);
+              Connection conn = org.mockito.Mockito.mock(Connection.class);
+              PreparedStatement ps = org.mockito.Mockito.mock(PreparedStatement.class);
+              ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
+              when(conn.prepareStatement(anyString())).thenReturn(ps);
+              when(ps.executeQuery()).thenReturn(rs);
+              when(rs.next()).thenReturn(true, false);
+              when(rs.getLong("id")).thenReturn(100L);
+              when(rs.getInt("chunk_index")).thenReturn(0);
+              psc.createPreparedStatement(conn);
+              rch.processRow(rs);
+              return null;
+            })
+        .when(jdbcTemplate)
+        .query(any(PreparedStatementCreator.class), any(RowCallbackHandler.class));
+
+    assertThatThrownBy(() -> documentPipelineService.insertChunks(1L, 10L, chunks, vectors, "TEXT"))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("缺少返回记录");
+  }
+
+  @Test
+  void incrementKbCount_noKnowledgeBase_isNoOp() {
+    when(knowledgeBaseMapper.selectById(99L)).thenReturn(null);
+
+    documentPipelineService.incrementKbCount(99L, 3, true);
+
+    verify(knowledgeBaseMapper, never()).update(org.mockito.ArgumentMatchers.isNull(), any());
+  }
+
+  private static Document document(long id, long kbId, String filename) {
+    Document doc = new Document();
+    doc.setId(id);
+    doc.setKbId(kbId);
+    doc.setFilename(filename);
+    doc.setFilePath("/data/" + filename);
+    doc.setFileType("md");
+    doc.setParseStatus("pending");
+    doc.setVersion(1);
+    doc.setChunkType("RESUME");
+    return doc;
+  }
+
+  private static KnowledgeBase knowledgeBase(long id) {
+    KnowledgeBase kb = new KnowledgeBase();
+    kb.setId(id);
+    kb.setChunkSize(500);
+    kb.setChunkOverlap(50);
+    kb.setDocCount(0);
+    kb.setChunkCount(0);
+    return kb;
+  }
+
+  private static DocumentChunk chunkEntity(long id, int index) {
+    DocumentChunk chunk = new DocumentChunk();
+    chunk.setId(id);
+    chunk.setDocId(1L);
+    chunk.setKbId(10L);
+    chunk.setChunkIndex(index);
+    chunk.setContent("chunk-" + index);
+    chunk.setTokenCount(5);
+    chunk.setChunkType("RESUME");
+    chunk.setCreatedAt(LocalDateTime.now());
+    return chunk;
+  }
+}
