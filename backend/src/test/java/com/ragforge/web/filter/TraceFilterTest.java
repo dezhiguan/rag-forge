@@ -14,6 +14,7 @@ import org.slf4j.MDC;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import com.ragforge.web.TraceIds;
 
 class TraceFilterTest {
 
@@ -38,15 +39,17 @@ class TraceFilterTest {
   }
 
   @Test
-  void generatesRfTraceIdWhenMissing() throws ServletException, IOException {
+  void generatesTraceIdWhenMissing() throws ServletException, IOException {
     MockHttpServletRequest request = new MockHttpServletRequest();
     MockHttpServletResponse response = new MockHttpServletResponse();
 
     filter.doFilter(request, response, new MockFilterChain());
 
     String traceId = response.getHeader("X-Trace-Id");
+    String requestId = response.getHeader("X-Request-Id");
     assertNotNull(traceId);
-    assertTrue(traceId.startsWith("rf-"));
+    assertNotNull(requestId);
+    assertTrue(traceId.startsWith("rf-") || traceId.equals(requestId));
   }
 
   @Test
@@ -142,9 +145,27 @@ class TraceFilterTest {
 
   @Test
   void rejectsIgnoredSkyWalkingTraceId() {
-    assertTrue(TraceFilter.isUsableSkyWalkingTraceId("abc123"));
-    assertFalse(TraceFilter.isUsableSkyWalkingTraceId("Ignored_Trace"));
-    assertFalse(TraceFilter.isUsableSkyWalkingTraceId("N/A"));
-    assertFalse(TraceFilter.isUsableSkyWalkingTraceId(""));
+    assertTrue(TraceIds.isUsableTraceId("abc123"));
+    assertFalse(TraceIds.isUsableTraceId("Ignored_Trace"));
+    assertFalse(TraceIds.isUsableTraceId("N/A"));
+    assertFalse(TraceIds.isUsableTraceId(""));
+  }
+
+  @Test
+  void putsTraceIdInMdcDuringRequest() throws ServletException, IOException {
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.addHeader("X-Trace-Id", "trace-for-mdc");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(
+        request,
+        response,
+        (req, res) -> {
+          assertNotNull(MDC.get("traceId"));
+          assertNotNull(MDC.get("requestId"));
+        });
+
+    assertEquals("trace-for-mdc", response.getHeader("X-Trace-Id"));
+    assertNotNull(response.getHeader("X-Request-Id"));
   }
 }

@@ -1,12 +1,12 @@
 package com.ragforge.web.filter;
 
+import com.ragforge.web.TraceIds;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
-import org.apache.skywalking.apm.toolkit.trace.TraceContext;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -22,11 +22,9 @@ public class TraceFilter extends OncePerRequestFilter {
   private static final String REQUEST_ID_KEY = "requestId";
   private static final String SESSION_ID_KEY = "sessionId";
 
-  private static final String HEADER_TRACE_ID = "X-Trace-Id";
-  private static final String HEADER_REQUEST_ID = "X-Request-Id";
+  private static final String HEADER_TRACE_ID = TraceIds.HEADER_TRACE_ID;
+  private static final String HEADER_REQUEST_ID = TraceIds.HEADER_REQUEST_ID;
   private static final String HEADER_SESSION_ID = "X-CareerMate-Session-Id";
-
-  private static final String SKYWALKING_IGNORED_TRACE = "Ignored_Trace";
 
   @Override
   protected void doFilterInternal(
@@ -35,18 +33,19 @@ public class TraceFilter extends OncePerRequestFilter {
     MdcSnapshot mdcSnapshot = MdcSnapshot.capture();
     String requestId = resolveRequestId(request);
     String incomingTraceId = incomingTraceId(request);
-    String fallbackTraceId = resolveFallbackTraceId(incomingTraceId);
 
     MDC.put(REQUEST_ID_KEY, requestId);
     putSessionIdIfPresent(request);
-    MDC.put(TRACE_ID_KEY, fallbackTraceId);
+    MDC.remove(TRACE_ID_KEY);
+    String traceId = TraceIds.resolve(incomingTraceId);
+    MDC.put(TRACE_ID_KEY, traceId);
 
     try {
       filterChain.doFilter(request, response);
     } finally {
-      String traceId = resolveTraceId(incomingTraceId, fallbackTraceId);
-      MDC.put(TRACE_ID_KEY, traceId);
-      response.setHeader(HEADER_TRACE_ID, traceId);
+      String finalTraceId = TraceIds.resolve(incomingTraceId);
+      MDC.put(TRACE_ID_KEY, finalTraceId);
+      response.setHeader(HEADER_TRACE_ID, finalTraceId);
       response.setHeader(HEADER_REQUEST_ID, requestId);
       mdcSnapshot.restore();
     }
@@ -73,34 +72,6 @@ public class TraceFilter extends OncePerRequestFilter {
       return incoming.trim();
     }
     return null;
-  }
-
-  private String resolveFallbackTraceId(String incomingTraceId) {
-    if (StringUtils.hasText(incomingTraceId)) {
-      return incomingTraceId;
-    }
-    return generateLocalTraceId();
-  }
-
-  private String resolveTraceId(String incomingTraceId, String fallbackTraceId) {
-    String skyWalkingTraceId = TraceContext.traceId();
-    if (isUsableSkyWalkingTraceId(skyWalkingTraceId)) {
-      return skyWalkingTraceId;
-    }
-    if (StringUtils.hasText(incomingTraceId)) {
-      return incomingTraceId;
-    }
-    return fallbackTraceId;
-  }
-
-  static boolean isUsableSkyWalkingTraceId(String traceId) {
-    return StringUtils.hasText(traceId)
-        && !SKYWALKING_IGNORED_TRACE.equals(traceId)
-        && !"N/A".equalsIgnoreCase(traceId);
-  }
-
-  static String generateLocalTraceId() {
-    return "rf-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
   }
 
   private record MdcSnapshot(String traceId, String requestId, String sessionId) {

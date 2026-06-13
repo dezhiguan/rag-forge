@@ -3,6 +3,7 @@ package com.ragforge.common;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
@@ -10,6 +11,10 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.security.ApiKeyInterceptor;
 import com.ragforge.config.ApiKeyProperties;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.web.TraceResponseBodyAdvice;
+import com.ragforge.web.filter.TraceFilter;
 import com.ragforge.controller.HealthController;
 import com.ragforge.controller.KnowledgeBaseController;
 import com.ragforge.mapper.ApiKeyMapper;
@@ -23,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 @ExtendWith(MockitoExtension.class)
 class ApiAndExceptionTest {
@@ -44,28 +50,47 @@ class ApiAndExceptionTest {
 
     mockMvc =
         standaloneSetup(new HealthController(), new KnowledgeBaseController(knowledgeBaseService))
+            .addFilter(new TraceFilter())
             .addInterceptors(interceptor)
+            .setControllerAdvice(new TraceResponseBodyAdvice())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .build();
   }
 
   @Test
   void healthWithoutApiKeyReturns200() throws Exception {
-    mockMvc
-        .perform(get("/api/v1/health"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.code").value(200))
-        .andExpect(jsonPath("$.msg").value("success"));
+    MvcResult result =
+        mockMvc
+            .perform(get("/api/v1/health"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.msg").value("success"))
+            .andExpect(jsonPath("$.traceId").exists())
+            .andExpect(header().exists("X-Trace-Id"))
+            .andExpect(header().exists("X-Request-Id"))
+            .andReturn();
+
+    String headerTraceId = result.getResponse().getHeader("X-Trace-Id");
+    JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+    org.junit.jupiter.api.Assertions.assertEquals(headerTraceId, body.get("traceId").asText());
   }
 
   @Test
   void kbWithoutApiKeyReturns401() throws Exception {
     when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
 
-    mockMvc
-        .perform(get("/api/v1/kb"))
-        .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.code").value(401))
-        .andExpect(jsonPath("$.msg").value("Invalid API Key"));
+    MvcResult result =
+        mockMvc
+            .perform(get("/api/v1/kb"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value(401))
+            .andExpect(jsonPath("$.msg").value("Invalid API Key"))
+            .andExpect(jsonPath("$.traceId").exists())
+            .andExpect(header().exists("X-Trace-Id"))
+            .andReturn();
+
+    org.junit.jupiter.api.Assertions.assertNotNull(result.getResponse().getHeader("X-Trace-Id"));
+    JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+    org.junit.jupiter.api.Assertions.assertNotNull(body.get("traceId").asText());
   }
 }

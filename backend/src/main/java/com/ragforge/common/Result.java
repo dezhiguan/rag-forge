@@ -1,5 +1,6 @@
 package com.ragforge.common;
 
+import com.ragforge.web.TraceIds;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -12,9 +13,10 @@ public class Result<T> {
   private int code;
   private String msg;
   private T data;
+  private String traceId;
 
   public static <T> Result<T> ok(T data) {
-    return new Result<>(200, "success", data);
+    return new Result<>(200, "success", data, TraceIds.current());
   }
 
   public static <T> Result<T> ok() {
@@ -26,6 +28,6 @@ public class Result<T> {
   }
 
   public static <T> Result<T> fail(int code, String msg) {
-    return new Result<>(code, msg, null);
+    return new Result<>(code, msg, null, TraceIds.current());
   }
 }
