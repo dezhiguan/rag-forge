@@ -12,7 +12,11 @@ import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.dto.CreateKbDTO;
+import com.ragforge.model.dto.UpdateKbDTO;
 import com.ragforge.model.entity.KnowledgeBase;
+import com.ragforge.model.vo.KnowledgeBaseVO;
+import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,7 +25,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class KnowledgeBaseServiceImplTest {
 
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
@@ -81,5 +89,69 @@ class KnowledgeBaseServiceImplTest {
     assertThat(created.getName()).isEqualTo("new-kb");
     assertThat(created.getStatus()).isEqualTo("active");
     verify(knowledgeBaseMapper).insert(eq(created));
+  }
+
+  @Test
+  void listAll_loadsActiveKnowledgeBases() {
+    KnowledgeBase kb = new KnowledgeBase();
+    kb.setId(10L);
+    kb.setName("cached-kb");
+    kb.setStatus("active");
+    kb.setCreatedAt(LocalDateTime.now());
+    when(knowledgeBaseMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(kb));
+
+    List<KnowledgeBaseVO> first = knowledgeBaseService.listAll();
+    List<KnowledgeBaseVO> second = knowledgeBaseService.listAll();
+
+    assertThat(first).hasSize(1);
+    assertThat(first.get(0).getName()).isEqualTo("cached-kb");
+    assertThat(second).isSameAs(first);
+  }
+
+  @Test
+  void getById_returnsVoForActiveKb() {
+    KnowledgeBase kb = new KnowledgeBase();
+    kb.setId(20L);
+    kb.setName("found");
+    kb.setStatus("active");
+    when(knowledgeBaseMapper.selectById(20L)).thenReturn(kb);
+
+    KnowledgeBaseVO vo = knowledgeBaseService.getById(20L);
+
+    assertThat(vo.getId()).isEqualTo(20L);
+    assertThat(vo.getName()).isEqualTo("found");
+  }
+
+  @Test
+  void getById_missingOrDeletedThrows404() {
+    when(knowledgeBaseMapper.selectById(404L)).thenReturn(null);
+
+    assertThatThrownBy(() -> knowledgeBaseService.getById(404L))
+        .isInstanceOf(BizException.class)
+        .extracting("code")
+        .isEqualTo(404);
+  }
+
+  @Test
+  void updateAppliesProvidedFields() {
+    KnowledgeBase kb = new KnowledgeBase();
+    kb.setId(30L);
+    kb.setName("old");
+    kb.setStatus("active");
+    when(knowledgeBaseMapper.selectById(30L)).thenReturn(kb);
+
+    UpdateKbDTO dto = new UpdateKbDTO();
+    dto.setName("  new-name  ");
+    dto.setDescription("desc");
+    dto.setChunkSize(256);
+    dto.setChunkOverlap(32);
+
+    KnowledgeBase updated = knowledgeBaseService.update(30L, dto);
+
+    assertThat(updated.getName()).isEqualTo("new-name");
+    assertThat(updated.getDescription()).isEqualTo("desc");
+    assertThat(updated.getChunkSize()).isEqualTo(256);
+    assertThat(updated.getChunkOverlap()).isEqualTo(32);
+    verify(knowledgeBaseMapper).updateById(kb);
   }
 }
