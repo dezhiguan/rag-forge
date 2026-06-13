@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.Result;
 import com.ragforge.config.ApiKeyProperties;
+import com.ragforge.web.TraceIds;
 import com.ragforge.mapper.ApiKeyMapper;
 import com.ragforge.model.entity.ApiKey;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,20 +54,26 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     ApiKey keyRecord = apiKey != null ? findValidApiKey(apiKey) : null;
     if (keyRecord != null) {
       if (!consumeRateLimit(keyRecord)) {
-        response.setStatus(429);
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.setCharacterEncoding("UTF-8");
-        objectMapper.writeValue(response.getWriter(), Result.fail(429, "API Key rate limit exceeded"));
+        writeJsonError(response, 429, 429, "API Key rate limit exceeded");
         return false;
       }
       return true;
     }
 
-    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "Invalid API Key");
+    return false;
+  }
+
+  private void writeJsonError(HttpServletResponse response, int httpStatus, int code, String msg)
+      throws IOException {
+    response.setStatus(httpStatus);
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding("UTF-8");
-    objectMapper.writeValue(response.getWriter(), Result.fail(401, "Invalid API Key"));
-    return false;
+    String traceId = TraceIds.current();
+    String requestId = TraceIds.currentRequestId();
+    response.setHeader(TraceIds.HEADER_TRACE_ID, traceId);
+    response.setHeader(TraceIds.HEADER_REQUEST_ID, requestId);
+    objectMapper.writeValue(response.getWriter(), Result.fail(code, msg));
   }
 
   private boolean isWhitelisted(String path) {
