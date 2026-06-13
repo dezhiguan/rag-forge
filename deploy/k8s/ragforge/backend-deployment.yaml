@@ -45,6 +45,12 @@ spec:
           envFrom:
             - secretRef:
                 name: ragforge-backend-env
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -javaagent:/opt/skywalking-agent/skywalking-agent.jar
+                -Dskywalking.agent.service_name=ragforge-backend
+                -Dskywalking.collector.backend_service=172.25.90.184:11800
           startupProbe:
             httpGet:
               path: /api/v1/health
@@ -79,6 +85,9 @@ spec:
           volumeMounts:
             - name: ragforge-files
               mountPath: /data/files
+            - name: skywalking-agent
+              mountPath: /opt/skywalking-agent
+              readOnly: true
       volumes:
         - name: ragforge-files
           # nosemgrep: yaml.kubernetes.security.hostpath-mount.hostpath-mount
@@ -86,3 +95,7 @@ spec:
           hostPath:
             path: /data/files
             type: DirectoryOrCreate
+        - name: skywalking-agent
+          hostPath:
+            path: /opt/skywalking-agent
+            type: Directory
