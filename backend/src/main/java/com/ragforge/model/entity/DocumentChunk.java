@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.pgvector.PGvector;
-import com.ragforge.config.handler.PGvectorTypeHandler;
+import com.ragforge.mybatis.handler.PGvectorTypeHandler;
 import java.time.LocalDateTime;
 import lombok.Data;
 

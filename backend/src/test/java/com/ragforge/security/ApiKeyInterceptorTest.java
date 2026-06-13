@@ -1,4 +1,4 @@
-package com.ragforge.config;
+package com.ragforge.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.config.ApiKeyProperties;
 import com.ragforge.mapper.ApiKeyMapper;
 import com.ragforge.model.entity.ApiKey;
 import jakarta.servlet.http.HttpServletRequest;

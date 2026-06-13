@@ -1,4 +1,4 @@
-package com.ragforge.config;
+package com.ragforge.bootstrap;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ragforge.mapper.ApiKeyMapper;

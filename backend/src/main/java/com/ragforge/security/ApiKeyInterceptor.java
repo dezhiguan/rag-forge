@@ -1,8 +1,9 @@
-package com.ragforge.config;
+package com.ragforge.security;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.Result;
+import com.ragforge.config.ApiKeyProperties;
 import com.ragforge.mapper.ApiKeyMapper;
 import com.ragforge.model.entity.ApiKey;
 import jakarta.servlet.http.HttpServletRequest;

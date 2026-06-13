@@ -1,5 +1,6 @@
 package com.ragforge.config;
 
+import com.ragforge.security.ApiKeyInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;

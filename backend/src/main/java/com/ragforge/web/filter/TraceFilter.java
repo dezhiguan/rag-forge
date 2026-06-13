@@ -1,4 +1,4 @@
-package com.ragforge.config;
+package com.ragforge.web.filter;
 
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;

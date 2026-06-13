@@ -1,4 +1,4 @@
-package com.ragforge.config.handler;
+package com.ragforge.mybatis.handler;
 
 import com.pgvector.PGvector;
 import java.sql.CallableStatement;

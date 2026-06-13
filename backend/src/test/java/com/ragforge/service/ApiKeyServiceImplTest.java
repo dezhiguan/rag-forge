@@ -8,7 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ragforge.common.BizException;
-import com.ragforge.config.ApiKeyInterceptor;
+import com.ragforge.security.ApiKeyInterceptor;
 import com.ragforge.mapper.ApiKeyMapper;
 import com.ragforge.model.entity.ApiKey;
 import com.ragforge.service.impl.ApiKeyServiceImpl;

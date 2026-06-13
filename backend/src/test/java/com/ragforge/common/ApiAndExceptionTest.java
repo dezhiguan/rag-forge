@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ragforge.config.ApiKeyInterceptor;
+import com.ragforge.security.ApiKeyInterceptor;
 import com.ragforge.config.ApiKeyProperties;
 import com.ragforge.controller.HealthController;
 import com.ragforge.controller.KnowledgeBaseController;
