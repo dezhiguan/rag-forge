@@ -4,6 +4,7 @@
 # 启动：docker compose -f docker-compose-backend.yml up -d
 # 配置：/opt/shared/env/common.env + /opt/shared/env/ragforge.env
 # 文件存储：宿主机 /data/files bind mount，3 副本共享
+# SkyWalking：先启动共享 OAP/UI，确保外部网络 skywalking-net 已存在
 services:
   backend-1:
     image: ragforge-backend:latest
@@ -14,8 +15,17 @@ services:
     env_file:
       - /opt/shared/env/common.env
       - /opt/shared/env/ragforge.env
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -javaagent:/opt/skywalking-agent/skywalking-agent.jar
+        -Dskywalking.agent.service_name=ragforge-backend
+        -Dskywalking.collector.backend_service=skywalking-oap:11800
     volumes:
       - /data/files:/data/files
+      - /opt/skywalking-agent:/opt/skywalking-agent:ro
+    networks:
+      - default
+      - skywalking-net
 
   backend-2:
     image: ragforge-backend:latest
@@ -26,8 +36,17 @@ services:
     env_file:
       - /opt/shared/env/common.env
       - /opt/shared/env/ragforge.env
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -javaagent:/opt/skywalking-agent/skywalking-agent.jar
+        -Dskywalking.agent.service_name=ragforge-backend
+        -Dskywalking.collector.backend_service=skywalking-oap:11800
     volumes:
       - /data/files:/data/files
+      - /opt/skywalking-agent:/opt/skywalking-agent:ro
+    networks:
+      - default
+      - skywalking-net
 
   backend-3:
     image: ragforge-backend:latest
@@ -38,5 +57,19 @@ services:
     env_file:
       - /opt/shared/env/common.env
       - /opt/shared/env/ragforge.env
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -javaagent:/opt/skywalking-agent/skywalking-agent.jar
+        -Dskywalking.agent.service_name=ragforge-backend
+        -Dskywalking.collector.backend_service=skywalking-oap:11800
     volumes:
       - /data/files:/data/files
+      - /opt/skywalking-agent:/opt/skywalking-agent:ro
+    networks:
+      - default
+      - skywalking-net
+
+networks:
+  skywalking-net:
+    external: true
+    name: skywalking-net

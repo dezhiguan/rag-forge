@@ -1,44 +1,127 @@
 package com.ragforge.web.filter;
 
-import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.ServletRequest;
-import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
+import org.apache.skywalking.apm.toolkit.trace.TraceContext;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class TraceFilter implements Filter {
+public class TraceFilter extends OncePerRequestFilter {
 
   private static final String TRACE_ID_KEY = "traceId";
+  private static final String REQUEST_ID_KEY = "requestId";
+  private static final String SESSION_ID_KEY = "sessionId";
+
+  private static final String HEADER_TRACE_ID = "X-Trace-Id";
+  private static final String HEADER_REQUEST_ID = "X-Request-Id";
+  private static final String HEADER_SESSION_ID = "X-CareerMate-Session-Id";
+
+  private static final String SKYWALKING_IGNORED_TRACE = "Ignored_Trace";
 
   @Override
-  public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-      throws IOException, ServletException {
-    String traceId = extractOrGenerate(request);
-    MDC.put(TRACE_ID_KEY, traceId);
+  protected void doFilterInternal(
+      HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+      throws ServletException, IOException {
+    MdcSnapshot mdcSnapshot = MdcSnapshot.capture();
+    String requestId = resolveRequestId(request);
+    String incomingTraceId = incomingTraceId(request);
+    String fallbackTraceId = resolveFallbackTraceId(incomingTraceId);
+
+    MDC.put(REQUEST_ID_KEY, requestId);
+    putSessionIdIfPresent(request);
+    MDC.put(TRACE_ID_KEY, fallbackTraceId);
+
     try {
-      chain.doFilter(request, response);
+      filterChain.doFilter(request, response);
     } finally {
-      MDC.clear();
+      String traceId = resolveTraceId(incomingTraceId, fallbackTraceId);
+      MDC.put(TRACE_ID_KEY, traceId);
+      response.setHeader(HEADER_TRACE_ID, traceId);
+      response.setHeader(HEADER_REQUEST_ID, requestId);
+      mdcSnapshot.restore();
     }
   }
 
-  private String extractOrGenerate(ServletRequest request) {
-    // 如果上游传了 X-Trace-Id，直接复用
-    if (request instanceof HttpServletRequest httpRequest) {
-      String incoming = httpRequest.getHeader("X-Trace-Id");
-      if (incoming != null && !incoming.isBlank()) {
-        return incoming;
+  private void putSessionIdIfPresent(HttpServletRequest request) {
+    String sessionId = request.getHeader(HEADER_SESSION_ID);
+    if (StringUtils.hasText(sessionId)) {
+      MDC.put(SESSION_ID_KEY, sessionId.trim());
+    }
+  }
+
+  private String resolveRequestId(HttpServletRequest request) {
+    String incoming = request.getHeader(HEADER_REQUEST_ID);
+    if (StringUtils.hasText(incoming)) {
+      return incoming.trim();
+    }
+    return UUID.randomUUID().toString();
+  }
+
+  private String incomingTraceId(HttpServletRequest request) {
+    String incoming = request.getHeader(HEADER_TRACE_ID);
+    if (StringUtils.hasText(incoming)) {
+      return incoming.trim();
+    }
+    return null;
+  }
+
+  private String resolveFallbackTraceId(String incomingTraceId) {
+    if (StringUtils.hasText(incomingTraceId)) {
+      return incomingTraceId;
+    }
+    return generateLocalTraceId();
+  }
+
+  private String resolveTraceId(String incomingTraceId, String fallbackTraceId) {
+    String skyWalkingTraceId = TraceContext.traceId();
+    if (isUsableSkyWalkingTraceId(skyWalkingTraceId)) {
+      return skyWalkingTraceId;
+    }
+    if (StringUtils.hasText(incomingTraceId)) {
+      return incomingTraceId;
+    }
+    return fallbackTraceId;
+  }
+
+  static boolean isUsableSkyWalkingTraceId(String traceId) {
+    return StringUtils.hasText(traceId)
+        && !SKYWALKING_IGNORED_TRACE.equals(traceId)
+        && !"N/A".equalsIgnoreCase(traceId);
+  }
+
+  static String generateLocalTraceId() {
+    return "rf-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+  }
+
+  private record MdcSnapshot(String traceId, String requestId, String sessionId) {
+
+    private static MdcSnapshot capture() {
+      return new MdcSnapshot(
+          MDC.get(TRACE_ID_KEY), MDC.get(REQUEST_ID_KEY), MDC.get(SESSION_ID_KEY));
+    }
+
+    private void restore() {
+      restoreKey(TRACE_ID_KEY, traceId);
+      restoreKey(REQUEST_ID_KEY, requestId);
+      restoreKey(SESSION_ID_KEY, sessionId);
+    }
+
+    private static void restoreKey(String key, String value) {
+      if (value == null) {
+        MDC.remove(key);
+      } else {
+        MDC.put(key, value);
       }
     }
-    return "rf-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
   }
 }

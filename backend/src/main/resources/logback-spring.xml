@@ -6,7 +6,7 @@
   <springProfile name="!json-logs">
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder>
-        <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([traceId=%X{traceId}]){magenta} %clr(%logger{36}){cyan} %clr(-){faint} %msg%n</pattern>
+        <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([traceId=%X{traceId} requestId=%X{requestId} sessionId=%X{sessionId}]){magenta} %clr(%logger{36}){cyan} %clr(-){faint} %msg%n</pattern>
         <charset>UTF-8</charset>
       </encoder>
     </appender>
@@ -14,7 +14,7 @@
     <!-- RAG 检索链路：绿色标签 + 加粗，便于在控制台快速定位 -->
     <appender name="RAG_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder>
-        <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([RAG]){green,bold} %clr([traceId=%X{traceId}]){magenta} %clr(%logger{36}){green} %clr(-){faint} %msg%n</pattern>
+        <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([RAG]){green,bold} %clr([traceId=%X{traceId} requestId=%X{requestId} sessionId=%X{sessionId}]){magenta} %clr(%logger{36}){green} %clr(-){faint} %msg%n</pattern>
         <charset>UTF-8</charset>
       </encoder>
     </appender>
@@ -32,6 +32,8 @@
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder class="net.logstash.logback.encoder.LogstashEncoder">
         <includeMdcKeyName>traceId</includeMdcKeyName>
+        <includeMdcKeyName>requestId</includeMdcKeyName>
+        <includeMdcKeyName>sessionId</includeMdcKeyName>
         <fieldNames>
           <timestamp>@timestamp</timestamp>
         </fieldNames>
