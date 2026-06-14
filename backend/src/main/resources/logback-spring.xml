@@ -4,8 +4,24 @@
 
   <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="ragforge-backend"/>
 
+  <!--
+    Log levels (env):
+      APP_LOG_LEVEL=INFO       — business package com.ragforge (SkyWalking + console)
+      FRAMEWORK_LOG_LEVEL=WARN — Spring/Tomcat/Hikari/MyBatis/etc. (console only)
+
+    SkyWalking query (OAP Logs):
+      service=ragforge-backend | level=ERROR|WARN|INFO | logType=business
+      logger prefix=com.ragforge | traceId=<from Trace UI>
+    See docs/skywalking-business-logs.md
+  -->
+  <property name="APP_LOG_LEVEL" value="${APP_LOG_LEVEL:-INFO}"/>
+  <property name="FRAMEWORK_LOG_LEVEL" value="${FRAMEWORK_LOG_LEVEL:-WARN}"/>
+
   <property name="UNIFIED_LOG_PATTERN"
             value="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%level service=%X{service:-${APP_NAME}} traceId=%X{traceId:-} requestId=%X{requestId:-} sessionId=%X{sessionId:-} userId=%X{userId:-} thread=%thread logger=%logger{36} msg=%msg%ex%n"/>
+
+  <property name="SKYWALKING_LOG_PATTERN"
+            value="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%level logType=business service=%X{service:-${APP_NAME}} traceId=%X{traceId:-} requestId=%X{requestId:-} sessionId=%X{sessionId:-} userId=%X{userId:-} thread=%thread logger=%logger{36} msg=%msg%ex%n"/>
 
   <property name="CONSOLE_LOG_PATTERN"
             value="%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([service=%X{service:-${APP_NAME}} traceId=%X{traceId} requestId=%X{requestId} sessionId=%X{sessionId} userId=%X{userId}]){magenta} %clr(%logger{36}){cyan} %clr(-){faint} %msg%n"/>
@@ -13,15 +29,42 @@
   <property name="RAG_CONSOLE_LOG_PATTERN"
             value="%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([RAG]){green,bold} %clr([service=%X{service:-${APP_NAME}} traceId=%X{traceId} requestId=%X{requestId} sessionId=%X{sessionId} userId=%X{userId}]){magenta} %clr(%logger{36}){green} %clr(-){faint} %msg%n"/>
 
-  <!-- SkyWalking log reporter: only when prod or explicit skywalking-log profile is active -->
+  <!-- Framework / infra: console only, never SkyWalking -->
+  <logger name="org.springframework" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="org.springframework.web" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="org.springframework.security" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="org.apache" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="org.apache.catalina" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="org.apache.tomcat" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="org.mybatis" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="com.baomidou.mybatisplus" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="com.zaxxer.hikari" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="io.lettuce" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="redis.clients" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="org.hibernate" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="okhttp3" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="reactor.netty" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="io.netty" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="org.apache.skywalking" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="com.alibaba" level="${FRAMEWORK_LOG_LEVEL}"/>
+  <logger name="com.aliyun" level="${FRAMEWORK_LOG_LEVEL}"/>
+
   <springProfile name="prod | skywalking-log">
     <appender name="SKYWALKING_GRPC" class="org.apache.skywalking.apm.toolkit.log.logback.v1.x.log.GRPCLogClientAppender">
       <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
         <layout class="org.apache.skywalking.apm.toolkit.log.logback.v1.x.mdc.TraceIdMDCPatternLogbackLayout">
-          <Pattern>${UNIFIED_LOG_PATTERN}</Pattern>
+          <Pattern>${SKYWALKING_LOG_PATTERN}</Pattern>
         </layout>
       </encoder>
     </appender>
+
+    <logger name="com.ragforge" level="${APP_LOG_LEVEL}">
+      <appender-ref ref="SKYWALKING_GRPC"/>
+    </logger>
+  </springProfile>
+
+  <springProfile name="!prod &amp; !skywalking-log">
+    <logger name="com.ragforge" level="${APP_LOG_LEVEL}"/>
   </springProfile>
 
   <springProfile name="!json-logs &amp; (prod | skywalking-log)">
@@ -39,13 +82,14 @@
       </encoder>
     </appender>
 
+    <!-- additivity=false: RAG console styling; SkyWalking attached explicitly -->
     <logger name="com.ragforge.search" level="INFO" additivity="false">
       <appender-ref ref="RAG_CONSOLE"/>
+      <appender-ref ref="SKYWALKING_GRPC"/>
     </logger>
 
     <root level="INFO">
       <appender-ref ref="CONSOLE"/>
-      <appender-ref ref="SKYWALKING_GRPC"/>
     </root>
   </springProfile>
 
@@ -82,7 +126,6 @@
     </appender>
     <root level="INFO">
       <appender-ref ref="CONSOLE"/>
-      <appender-ref ref="SKYWALKING_GRPC"/>
     </root>
   </springProfile>
 
