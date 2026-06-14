@@ -51,6 +51,8 @@ spec:
                 -javaagent:/opt/skywalking-agent/skywalking-agent.jar
                 -Dskywalking.agent.service_name=ragforge-backend
                 -Dskywalking.collector.backend_service=172.25.90.184:11800
+            - name: SW_LOGGING_OUTPUT
+              value: CONSOLE
           startupProbe:
             httpGet:
               path: /api/v1/health

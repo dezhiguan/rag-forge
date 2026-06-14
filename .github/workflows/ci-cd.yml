@@ -405,6 +405,9 @@ jobs:
 
           timeout 3m scp "${SCP_OPTS[@]}" "${NGINX_CONF}" "ragforge-ingress:${INGRESS_DIR}/nginx.conf"
           timeout 3m scp "${SCP_OPTS[@]}" docker-compose-ingress.yml "ragforge-ingress:${INGRESS_DIR}/docker-compose-ingress.yml"
+          timeout 3m ssh -T "${SSH_OPTS[@]}" ragforge-ingress "mkdir -p '${INGRESS_DIR}/deploy/scripts'"
+          timeout 3m scp "${SCP_OPTS[@]}" deploy/scripts/patch-skywalking-ui-router-base.sh \
+            "ragforge-ingress:${INGRESS_DIR}/deploy/scripts/patch-skywalking-ui-router-base.sh"
 
       - name: Restart Nginx on Server 2
         env:
@@ -416,6 +419,7 @@ jobs:
           timeout 5m ssh -T "${SSH_OPTS[@]}" ragforge-ingress "INGRESS_DIR='${INGRESS_DIR}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${INGRESS_DIR}"
+          bash deploy/scripts/patch-skywalking-ui-router-base.sh
           docker compose -f docker-compose-ingress.yml up -d --force-recreate
           docker compose -f docker-compose-ingress.yml ps
           EOF
