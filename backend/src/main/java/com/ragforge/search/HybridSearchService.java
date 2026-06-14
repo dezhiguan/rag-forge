@@ -179,6 +179,11 @@ public class HybridSearchService {
     if (sorted.size() > topK) {
       sorted = new ArrayList<>(sorted.subList(0, topK));
     }
+    log.info(
+        "hybrid召回 fusion resultCount={} vectorLatency={}ms keywordLatency={}ms",
+        sorted.size(),
+        vectorLatency.get(),
+        keywordLatency.get());
     return new HybridSearchOutput(sorted, vectorLatency.get(), keywordLatency.get(), "hybrid");
   }
 

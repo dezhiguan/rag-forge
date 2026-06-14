@@ -21,7 +21,7 @@ class HealthControllerTest {
   void health_returnsOkWithTraceId() throws Exception {
     MockMvc mockMvc =
         standaloneSetup(new HealthController())
-            .addFilter(new TraceFilter())
+            .addFilter(new TraceFilter("ragforge-backend"))
             .setControllerAdvice(new TraceResponseBodyAdvice())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .build();

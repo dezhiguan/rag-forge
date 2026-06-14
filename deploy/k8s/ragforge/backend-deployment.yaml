@@ -37,7 +37,7 @@ spec:
               containerPort: 8080
           env:
             - name: SPRING_PROFILES_ACTIVE
-              value: prod
+              value: prod,skywalking-log
             - name: JAVA_OPTS
               value: -Xms512m -Xmx1g
             - name: RAGFORGE_UPLOAD_PATH

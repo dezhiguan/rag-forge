@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,13 @@ public class TraceFilter extends OncePerRequestFilter {
   private static final String TRACE_ID_KEY = "traceId";
   private static final String REQUEST_ID_KEY = "requestId";
   private static final String SESSION_ID_KEY = "sessionId";
+  private static final String SERVICE_KEY = "service";
+
+  private final String serviceName;
+
+  public TraceFilter(@Value("${spring.application.name:ragforge-backend}") String serviceName) {
+    this.serviceName = serviceName;
+  }
 
   private static final String HEADER_TRACE_ID = TraceIds.HEADER_TRACE_ID;
   private static final String HEADER_REQUEST_ID = TraceIds.HEADER_REQUEST_ID;
@@ -35,20 +43,24 @@ public class TraceFilter extends OncePerRequestFilter {
     String incomingTraceId = incomingTraceId(request);
 
     MDC.put(REQUEST_ID_KEY, requestId);
+    MDC.put(SERVICE_KEY, serviceName);
     putSessionIdIfPresent(request);
     MDC.remove(TRACE_ID_KEY);
-    String traceId = TraceIds.resolve(incomingTraceId);
-    MDC.put(TRACE_ID_KEY, traceId);
+    syncTraceMdc(incomingTraceId);
 
     try {
       filterChain.doFilter(request, response);
     } finally {
-      String finalTraceId = TraceIds.resolve(incomingTraceId);
-      MDC.put(TRACE_ID_KEY, finalTraceId);
+      syncTraceMdc(incomingTraceId);
+      String finalTraceId = MDC.get(TRACE_ID_KEY);
       response.setHeader(HEADER_TRACE_ID, finalTraceId);
       response.setHeader(HEADER_REQUEST_ID, requestId);
       mdcSnapshot.restore();
     }
+  }
+
+  private void syncTraceMdc(String incomingTraceId) {
+    MDC.put(TRACE_ID_KEY, TraceIds.resolve(incomingTraceId));
   }
 
   private void putSessionIdIfPresent(HttpServletRequest request) {

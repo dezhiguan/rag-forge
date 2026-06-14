@@ -2,19 +2,64 @@
 <configuration>
   <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-  <!-- 默认彩色控制台；需要 JSON（Filebeat）时追加 profile：json-logs -->
-  <springProfile name="!json-logs">
+  <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="ragforge-backend"/>
+
+  <property name="UNIFIED_LOG_PATTERN"
+            value="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%level service=%X{service:-${APP_NAME}} traceId=%X{traceId:-} requestId=%X{requestId:-} sessionId=%X{sessionId:-} userId=%X{userId:-} thread=%thread logger=%logger{36} msg=%msg%ex%n"/>
+
+  <property name="CONSOLE_LOG_PATTERN"
+            value="%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([service=%X{service:-${APP_NAME}} traceId=%X{traceId} requestId=%X{requestId} sessionId=%X{sessionId} userId=%X{userId}]){magenta} %clr(%logger{36}){cyan} %clr(-){faint} %msg%n"/>
+
+  <property name="RAG_CONSOLE_LOG_PATTERN"
+            value="%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([RAG]){green,bold} %clr([service=%X{service:-${APP_NAME}} traceId=%X{traceId} requestId=%X{requestId} sessionId=%X{sessionId} userId=%X{userId}]){magenta} %clr(%logger{36}){green} %clr(-){faint} %msg%n"/>
+
+  <!-- SkyWalking log reporter: only when prod or explicit skywalking-log profile is active -->
+  <springProfile name="prod | skywalking-log">
+    <appender name="SKYWALKING_GRPC" class="org.apache.skywalking.apm.toolkit.log.logback.v1.x.log.GRPCLogClientAppender">
+      <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+        <layout class="org.apache.skywalking.apm.toolkit.log.logback.v1.x.mdc.TraceIdMDCPatternLogbackLayout">
+          <Pattern>${UNIFIED_LOG_PATTERN}</Pattern>
+        </layout>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <springProfile name="!json-logs &amp; (prod | skywalking-log)">
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder>
-        <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([traceId=%X{traceId} requestId=%X{requestId} sessionId=%X{sessionId}]){magenta} %clr(%logger{36}){cyan} %clr(-){faint} %msg%n</pattern>
+        <pattern>${CONSOLE_LOG_PATTERN}</pattern>
         <charset>UTF-8</charset>
       </encoder>
     </appender>
 
-    <!-- RAG 检索链路：绿色标签 + 加粗，便于在控制台快速定位 -->
     <appender name="RAG_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder>
-        <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %highlight(%-5level) %clr([RAG]){green,bold} %clr([traceId=%X{traceId} requestId=%X{requestId} sessionId=%X{sessionId}]){magenta} %clr(%logger{36}){green} %clr(-){faint} %msg%n</pattern>
+        <pattern>${RAG_CONSOLE_LOG_PATTERN}</pattern>
+        <charset>UTF-8</charset>
+      </encoder>
+    </appender>
+
+    <logger name="com.ragforge.search" level="INFO" additivity="false">
+      <appender-ref ref="RAG_CONSOLE"/>
+    </logger>
+
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+      <appender-ref ref="SKYWALKING_GRPC"/>
+    </root>
+  </springProfile>
+
+  <springProfile name="!json-logs &amp; !prod &amp; !skywalking-log">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+        <charset>UTF-8</charset>
+      </encoder>
+    </appender>
+
+    <appender name="RAG_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <pattern>${RAG_CONSOLE_LOG_PATTERN}</pattern>
         <charset>UTF-8</charset>
       </encoder>
     </appender>
@@ -28,15 +73,24 @@
     </root>
   </springProfile>
 
-  <springProfile name="json-logs">
+  <springProfile name="json-logs &amp; (prod | skywalking-log)">
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-        <includeMdcKeyName>traceId</includeMdcKeyName>
-        <includeMdcKeyName>requestId</includeMdcKeyName>
-        <includeMdcKeyName>sessionId</includeMdcKeyName>
-        <fieldNames>
-          <timestamp>@timestamp</timestamp>
-        </fieldNames>
+      <encoder>
+        <pattern>${UNIFIED_LOG_PATTERN}</pattern>
+        <charset>UTF-8</charset>
+      </encoder>
+    </appender>
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+      <appender-ref ref="SKYWALKING_GRPC"/>
+    </root>
+  </springProfile>
+
+  <springProfile name="json-logs &amp; !prod &amp; !skywalking-log">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <pattern>${UNIFIED_LOG_PATTERN}</pattern>
+        <charset>UTF-8</charset>
       </encoder>
     </appender>
     <root level="INFO">

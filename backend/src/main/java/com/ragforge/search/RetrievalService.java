@@ -118,7 +118,7 @@ public class RetrievalService {
         future.cancel(true);
       }
       meterRegistry.counter("ragforge.retrieval.timeout", "strategy", normalizedStrategy).increment();
-      log.warn("检索总超时 strategy={} timeout={}ms query=\"{}\"", normalizedStrategy, timeoutMs, query);
+      log.warn("检索总超时 strategy={} timeout={}ms queryLen={}", normalizedStrategy, timeoutMs, queryLength(query));
       throw new BizException(504, "检索超时，请缩小范围或稍后重试");
     } catch (ExecutionException e) {
       Throwable cause = e.getCause();
@@ -153,13 +153,13 @@ public class RetrievalService {
     double normalizedVectorWeight = normalizeVectorWeight(vectorWeight);
 
     log.info(
-        "检索请求 strategy={} topK={} rerankTopN={} kbCount={} docFilterCount={} query=\"{}\"",
+        "检索请求 strategy={} topK={} rerankTopN={} kbCount={} docFilterCount={} queryLen={}",
         normalizedStrategy,
         topK,
         rerankTopN,
         kbIds == null ? 0 : kbIds.size(),
         docIds == null ? 0 : docIds.size(),
-        query);
+        queryLength(query));
 
     List<String> rewrittenQueries = null;
     Long rewriteLatencyMs = null;
@@ -492,6 +492,10 @@ public class RetrievalService {
       return 0.55;
     }
     return Math.max(0, Math.min(1, raw));
+  }
+
+  private static int queryLength(String query) {
+    return query == null ? 0 : query.length();
   }
 
   @Value

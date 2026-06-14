@@ -1,5 +1,6 @@
 package com.ragforge.config;
 
+import com.ragforge.common.MdcContext;
 import java.util.concurrent.Executor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +19,7 @@ public class AsyncConfig {
     executor.setMaxPoolSize(poolSize);
     executor.setQueueCapacity(200);
     executor.setThreadNamePrefix("eval-exp-");
+    executor.setTaskDecorator(MdcContext.taskDecorator());
     executor.initialize();
     return executor;
   }
@@ -29,6 +31,7 @@ public class AsyncConfig {
     executor.setMaxPoolSize(Math.max(1, retrievalProperties.getExecutorMaxSize()));
     executor.setQueueCapacity(Math.max(0, retrievalProperties.getExecutorQueueCapacity()));
     executor.setThreadNamePrefix("retrieval-");
+    executor.setTaskDecorator(MdcContext.taskDecorator());
     executor.initialize();
     return executor;
   }

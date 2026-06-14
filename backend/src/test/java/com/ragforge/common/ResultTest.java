@@ -6,7 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.slf4j.MDC;
+
+import static org.mockito.Mockito.mockStatic;
 
 class ResultTest {
 
@@ -23,6 +26,20 @@ class ResultTest {
     Result<String> result = Result.ok("data");
 
     assertEquals("mdc-trace-123", result.getTraceId());
+  }
+
+  @Test
+  void okPrefersSkyWalkingTraceIdOverMdc() {
+    MDC.put("traceId", "mdc-trace-123");
+
+    try (MockedStatic<org.apache.skywalking.apm.toolkit.trace.TraceContext> skyWalking =
+        mockStatic(org.apache.skywalking.apm.toolkit.trace.TraceContext.class)) {
+      skyWalking.when(org.apache.skywalking.apm.toolkit.trace.TraceContext::traceId).thenReturn("sw-trace-001");
+
+      Result<String> result = Result.ok("data");
+
+      assertEquals("sw-trace-001", result.getTraceId());
+    }
   }
 
   @Test

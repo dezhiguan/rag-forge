@@ -10,15 +10,18 @@ import jakarta.servlet.ServletException;
 import java.io.IOException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.slf4j.MDC;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import com.ragforge.web.TraceIds;
 
+import static org.mockito.Mockito.mockStatic;
+
 class TraceFilterTest {
 
-  private final TraceFilter filter = new TraceFilter();
+  private final TraceFilter filter = new TraceFilter("ragforge-backend");
 
   @AfterEach
   void tearDown() {
@@ -167,5 +170,27 @@ class TraceFilterTest {
 
     assertEquals("trace-for-mdc", response.getHeader("X-Trace-Id"));
     assertNotNull(response.getHeader("X-Request-Id"));
+  }
+
+  @Test
+  void prefersSkyWalkingTraceIdInMdcAndResponseHeader() throws ServletException, IOException {
+    try (MockedStatic<org.apache.skywalking.apm.toolkit.trace.TraceContext> skyWalking =
+        mockStatic(org.apache.skywalking.apm.toolkit.trace.TraceContext.class)) {
+      skyWalking.when(org.apache.skywalking.apm.toolkit.trace.TraceContext::traceId).thenReturn("sw-trace-777");
+
+      MockHttpServletRequest request = new MockHttpServletRequest();
+      request.addHeader("X-Trace-Id", "upstream-trace-123");
+      MockHttpServletResponse response = new MockHttpServletResponse();
+
+      filter.doFilter(
+          request,
+          response,
+          (req, res) -> {
+            assertEquals("sw-trace-777", MDC.get("traceId"));
+            assertEquals("ragforge-backend", MDC.get("service"));
+          });
+
+      assertEquals("sw-trace-777", response.getHeader("X-Trace-Id"));
+    }
   }
 }

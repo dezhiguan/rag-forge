@@ -50,7 +50,7 @@ class ApiAndExceptionTest {
 
     mockMvc =
         standaloneSetup(new HealthController(), new KnowledgeBaseController(knowledgeBaseService))
-            .addFilter(new TraceFilter())
+            .addFilter(new TraceFilter("ragforge-backend"))
             .addInterceptors(interceptor)
             .setControllerAdvice(new TraceResponseBodyAdvice())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())

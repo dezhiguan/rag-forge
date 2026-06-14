@@ -23,6 +23,14 @@ public class SearchController {
 
   @PostMapping("/search")
   public Result<SearchResponse> search(@Valid @RequestBody SearchRequest req) {
+    int queryLen = req.getQuery() == null ? 0 : req.getQuery().length();
+    log.info(
+        "ragforge.api search received strategy={} kbCount={} topK={} queryLen={}",
+        req.getStrategy(),
+        req.getKbIds() == null ? 0 : req.getKbIds().size(),
+        req.getTopK(),
+        queryLen);
+
     RetrievalOutput output =
         retrievalService.retrieve(
             req.getQuery(),
@@ -33,6 +41,12 @@ public class SearchController {
             req.getTopK(),
             req.getRerankTopN(),
             req.getFilter());
+
+    log.info(
+        "ragforge.api search completed strategy={} resultCount={} latencyMs={}",
+        output.getStrategy(),
+        output.getResults() == null ? 0 : output.getResults().size(),
+        output.getLatencyMs());
 
     return Result.ok(
         new SearchResponse(
