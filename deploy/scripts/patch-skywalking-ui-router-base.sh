@@ -30,6 +30,11 @@ for old, new in replacements:
 while "/skywalking/skywalking/" in content:
     content = content.replace("/skywalking/skywalking/", "/skywalking/")
 
+# Menu fallback and links use bare absolute strings outside route records.
+for bare in ('"/marketplace"', '"/dashboard/new"'):
+    bare_new = bare.replace('"/', '"/skywalking/')
+    content = content.replace(bare, bare_new)
+
 path.write_text(content, encoding="utf-8")
 print("patched router base and absolute paths for /skywalking/")
 PY
