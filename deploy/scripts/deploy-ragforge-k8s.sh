@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 K8S_DIR="${REPO_ROOT}/deploy/k8s/ragforge"
 NAMESPACE="${RAGFORGE_K8S_NAMESPACE:-ragforge}"
+# shellcheck source=deploy/scripts/k8s-image-common.sh
+source "${SCRIPT_DIR}/k8s-image-common.sh"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Run as root: sudo bash $0" >&2
@@ -18,30 +20,57 @@ if [[ ! -d "${K8S_DIR}" ]]; then
   exit 1
 fi
 
-echo "[1/5] Ensure file storage directory"
+IMAGE_TAG="$(resolve_ragforge_image_tag "${REPO_ROOT}")"
+export RAGFORGE_BACKEND_IMAGE_TAG="${IMAGE_TAG}"
+BACKEND_IMAGE="$(ragforge_backend_image "${REPO_ROOT}")"
+RENDERED_DEPLOY="$(mktemp)"
+trap 'rm -f "${RENDERED_DEPLOY}"' EXIT
+
+echo "[0/6] Optional safe disk cleanup"
+if [[ "${SKIP_DISK_CLEANUP:-0}" != "1" ]]; then
+  bash "${SCRIPT_DIR}/cleanup-server3-disk-safe.sh"
+fi
+
+echo "[1/6] Ensure file storage directory"
 mkdir -p /data/files
 chown 10001:10001 /data/files
 
-echo "[2/5] Build and import backend image"
+echo "[2/6] Ensure k3s sandbox (pause) image"
+bash "${SCRIPT_DIR}/ensure-k3s-sandbox-image.sh"
+
+echo "[3/6] Build and import backend image"
 if [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
   bash "${SCRIPT_DIR}/build-ragforge-k8s-image.sh"
 else
   echo "Skip image build (SKIP_IMAGE_BUILD=1)"
+  if ! k3s ctr -n k8s.io images ls | grep -q "${BACKEND_IMAGE}"; then
+    TAR_PATH="${K3S_IMAGES_DIR}/ragforge-backend-${IMAGE_TAG}.tar"
+    if [[ -f "${TAR_PATH}" ]]; then
+      echo "Importing airgap image from ${TAR_PATH}"
+      k3s ctr -n k8s.io images import "${TAR_PATH}"
+    else
+      echo "ERROR: image ${BACKEND_IMAGE} missing and no airgap tar at ${TAR_PATH}" >&2
+      exit 1
+    fi
+  fi
 fi
 
-echo "[3/5] Create backend secret from /opt/shared/env"
+echo "[4/6] Create backend secret from /opt/shared/env"
 bash "${SCRIPT_DIR}/create-ragforge-k8s-secret.sh"
 
-echo "[4/5] Apply manifests"
-k3s kubectl apply -f "${K8S_DIR}/"
-k3s kubectl -n "${NAMESPACE}" rollout restart deployment/ragforge-backend
+echo "[5/6] Apply manifests (image=${BACKEND_IMAGE})"
+render_ragforge_deployment "${K8S_DIR}/backend-deployment.yaml" "${RENDERED_DEPLOY}" "${BACKEND_IMAGE}"
+k3s kubectl apply -f "${K8S_DIR}/namespace.yaml"
+k3s kubectl apply -f "${K8S_DIR}/backend-service.yaml"
+k3s kubectl apply -f "${RENDERED_DEPLOY}"
 k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-backend --timeout=300s
 
-echo "[5/5] Current status"
+echo "[6/6] Current status"
 k3s kubectl -n "${NAMESPACE}" get pods -o wide
-k3s kubectl -n "${NAMESPACE}" get svc
+k3s kubectl -n "${NAMESPACE}" get svc,endpoints
 
 echo ""
 echo "NodePort endpoint on Server 3:"
 echo "  http://172.25.90.184:31090/api/v1/health"
-
+echo "Image: ${BACKEND_IMAGE}"
+echo "Tip: deploy/k3s/registries.yaml is documentation-only unless installed to /etc/rancher/k3s/registries.yaml"

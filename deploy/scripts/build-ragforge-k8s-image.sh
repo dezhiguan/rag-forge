@@ -4,8 +4,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=deploy/scripts/k8s-image-common.sh
+source "${SCRIPT_DIR}/k8s-image-common.sh"
 
-BACKEND_IMAGE="${RAGFORGE_BACKEND_IMAGE:-ragforge/backend:latest}"
+if [[ -z "${RAGFORGE_BACKEND_IMAGE_TAG:-}" ]]; then
+  IMAGE_TAG="$(resolve_ragforge_image_tag "${REPO_ROOT}")"
+  export RAGFORGE_BACKEND_IMAGE_TAG="${IMAGE_TAG}"
+else
+  IMAGE_TAG="${RAGFORGE_BACKEND_IMAGE_TAG}"
+fi
+BACKEND_IMAGE="$(ragforge_backend_image "${REPO_ROOT}")"
 JAR_GLOB="${RAGFORGE_BACKEND_JAR_GLOB:-${REPO_ROOT}/backend/target/rag-forge-*.jar}"
 
 cd "${REPO_ROOT}"
@@ -26,9 +34,17 @@ fi
 echo "[backend] docker build -> ${BACKEND_IMAGE}"
 docker build -f backend/Dockerfile -t "${BACKEND_IMAGE}" backend/
 
-echo "[backend] import image into k3s"
-docker save "${BACKEND_IMAGE}" | sudo k3s ctr images import -
+echo "[backend] import image into k3s containerd"
+import_image_to_k3s "${BACKEND_IMAGE}"
+
+if [[ "${EUID}" -eq 0 ]]; then
+  TAR_NAME="ragforge-backend-${IMAGE_TAG}.tar"
+  persist_k3s_image_tar "${BACKEND_IMAGE}" "${TAR_NAME}"
+  prune_old_ragforge_airgap_tars 2
+fi
 
 echo ""
 echo "Image ready:"
 docker images --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}' | grep -E 'REPOSITORY|ragforge/backend'
+echo "RAGFORGE_BACKEND_IMAGE_TAG=${IMAGE_TAG}"
+echo "RAGFORGE_BACKEND_IMAGE=${BACKEND_IMAGE}"

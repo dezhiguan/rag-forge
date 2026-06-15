@@ -258,7 +258,7 @@ jobs:
           APP_DIR="${APP_DIR:-/opt/rag-forge/k8s-src}"
           SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 
-          timeout 25m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "APP_DIR='${APP_DIR}' bash -s" <<'EOF'
+          timeout 25m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "APP_DIR='${APP_DIR}' RAGFORGE_BACKEND_IMAGE_TAG='${GITHUB_SHA::12}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${APP_DIR}"
           if [[ ! -f /opt/shared/env/common.env || ! -f /opt/shared/env/ragforge.env ]]; then

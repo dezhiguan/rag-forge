@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Shared helpers for RAGForge k3s image build/deploy on Server 3.
+set -euo pipefail
+
+K3S_IMAGES_DIR="${K3S_IMAGES_DIR:-/var/lib/rancher/k3s/agent/images}"
+RAGFORGE_IMAGE_REPO="${RAGFORGE_IMAGE_REPO:-docker.io/ragforge/backend}"
+
+resolve_ragforge_image_tag() {
+  if [[ -n "${RAGFORGE_BACKEND_IMAGE_TAG:-}" ]]; then
+    printf '%s\n' "${RAGFORGE_BACKEND_IMAGE_TAG}"
+    return 0
+  fi
+
+  local repo_root="${1:-}"
+  if [[ -n "${repo_root}" ]] && git -C "${repo_root}" rev-parse --short=12 HEAD >/dev/null 2>&1; then
+    git -C "${repo_root}" rev-parse --short=12 HEAD
+    return 0
+  fi
+
+  local date_tag
+  date_tag="$(date +%Y%m%d%H%M%S)"
+  echo "WARN: RAGFORGE_BACKEND_IMAGE_TAG not set and git metadata unavailable; using manual-${date_tag}" >&2
+  printf 'manual-%s\n' "${date_tag}"
+}
+
+ragforge_backend_image() {
+  local tag
+  tag="$(resolve_ragforge_image_tag "${1:-}")"
+  printf '%s\n' "${RAGFORGE_IMAGE_REPO}:${tag}"
+}
+
+import_image_to_k3s() {
+  local image="$1"
+  if ! command -v k3s >/dev/null 2>&1; then
+    echo "WARN: k3s not found; skip ctr import for ${image}" >&2
+    return 0
+  fi
+  docker save "${image}" | k3s ctr -n k8s.io images import -
+}
+
+persist_k3s_image_tar() {
+  local image="$1"
+  local tar_name="$2"
+
+  if [[ "${EUID}" -ne 0 ]]; then
+    echo "WARN: persist_k3s_image_tar requires root; skipped ${tar_name}" >&2
+    return 0
+  fi
+
+  mkdir -p "${K3S_IMAGES_DIR}"
+  docker save "${image}" -o "${K3S_IMAGES_DIR}/${tar_name}"
+  chmod 0644 "${K3S_IMAGES_DIR}/${tar_name}"
+  echo "Saved k3s airgap image: ${K3S_IMAGES_DIR}/${tar_name}"
+}
+
+prune_old_ragforge_airgap_tars() {
+  local keep="${1:-2}"
+
+  if [[ ! -d "${K3S_IMAGES_DIR}" ]]; then
+    return 0
+  fi
+
+  if find "${K3S_IMAGES_DIR}" -maxdepth 1 -name 'ragforge-backend-*.tar' -type f -printf '%T@ %p\n' >/dev/null 2>&1; then
+    find "${K3S_IMAGES_DIR}" -maxdepth 1 -name 'ragforge-backend-*.tar' -type f -printf '%T@ %p\n' \
+      | sort -rn \
+      | awk -v keep="${keep}" 'NR>keep {print $2}' \
+      | while read -r old_tar; do
+          echo "Deleting old airgap image tar: ${old_tar}"
+          rm -f "${old_tar}"
+        done
+    return 0
+  fi
+
+  # Fallback for environments without GNU find -printf (e.g. macOS).
+  local -a tars=()
+  while IFS= read -r tar_path; do
+    tars+=("${tar_path}")
+  done < <(ls -1t "${K3S_IMAGES_DIR}"/ragforge-backend-*.tar 2>/dev/null || true)
+
+  local idx
+  for ((idx = keep; idx < ${#tars[@]}; idx++)); do
+    echo "Deleting old airgap image tar: ${tars[idx]}"
+    rm -f "${tars[idx]}"
+  done
+}
+
+render_ragforge_deployment() {
+  local src="$1"
+  local dest="$2"
+  local image="$3"
+
+  awk -v image="${image}" '
+    /^[[:space:]]*- name: backend[[:space:]]*$/ {
+      in_backend = 1
+      print
+      next
+    }
+    in_backend && /^[[:space:]]*image:/ {
+      match($0, /^[[:space:]]*/)
+      print substr($0, 1, RLENGTH) "image: " image
+      next
+    }
+    in_backend && /^[[:space:]]*imagePullPolicy:/ {
+      match($0, /^[[:space:]]*/)
+      print substr($0, 1, RLENGTH) "imagePullPolicy: IfNotPresent"
+      in_backend = 0
+      next
+    }
+    /^[[:space:]]*- name:/ && !/^[[:space:]]*- name: backend[[:space:]]*$/ {
+      in_backend = 0
+    }
+    { print }
+  ' "${src}" > "${dest}"
+}
