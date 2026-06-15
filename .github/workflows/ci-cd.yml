@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - backend-build
+      - security-scan
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -104,7 +104,7 @@ jobs:
       - name: Check backend unit test coverage
         working-directory: backend
         run: >
-          mvn -B clean verify
+          mvn -B -T 1C verify
           -Dspring-boot.repackage.skip=true
 
       - name: Upload backend coverage report
@@ -161,6 +161,7 @@ jobs:
     timeout-minutes: 35
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs:
+      - backend-build
       - backend-unit-test
     steps:
       - name: Checkout deploy assets
@@ -245,8 +246,15 @@ jobs:
           timeout 2m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "mkdir -p '${APP_DIR}'"
           timeout 12m rsync -az --delete \
             --exclude '.git' \
+            --exclude '.github/' \
+            --exclude 'docs/' \
+            --exclude 'backend/src/test/' \
+            --exclude 'backend/target/surefire-reports/' \
+            --exclude 'backend/target/site/' \
             --exclude 'frontend/node_modules' \
             --exclude 'frontend/dist' \
+            --exclude 'playwright-report/' \
+            --exclude 'test-results/' \
             --exclude 'reranker/__pycache__' \
             -e "${RSYNC_SSH}" \
             ./ "ragforge-k3s:${APP_DIR}/"

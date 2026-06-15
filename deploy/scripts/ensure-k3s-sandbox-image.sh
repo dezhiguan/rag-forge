@@ -32,12 +32,16 @@ if ! k3s ctr -n k8s.io images ls | grep -q 'rancher/mirrored-pause:3.6'; then
     echo "ERROR: pause image unavailable and docker not installed" >&2
     exit 1
   fi
+else
+  echo "[sandbox] pause image already present in containerd; skip pull/import"
 fi
 
 if [[ ! -f "${PAUSE_TAR}" ]] && command -v docker >/dev/null 2>&1; then
   echo "[sandbox] saving pause image tar for k3s restart recovery"
   docker save "${PAUSE_IMAGE}" -o "${PAUSE_TAR}"
   chmod 0644 "${PAUSE_TAR}"
+else
+  echo "[sandbox] airgap pause tar already present; skip save"
 fi
 
 echo "[sandbox] pause image ready:"
