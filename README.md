@@ -302,3 +302,7 @@ RAGForge 已完成阶段性验收，核心的导入、索引、检索、调试�
 - 示例截图
 - 更完整的 API 文档
 - 一份可复现的 demo 数据集
+
+## Auth event HMAC configuration
+
+RAGForge consumes auth-gateway event webhooks with `X-Auth-Event-Signature: sha256=<lowerHex>` and `X-Auth-Event-Timestamp: <epoch_seconds>`. The signature is computed as `HMAC-SHA256(secret, raw_request_body)`. Set `ragforge.auth.events.hmac-secret` (or `RAGFORGE_AUTH_EVENT_HMAC_SECRET`) to exactly the same value configured on auth-gateway `event_subscriptions.hmac_secret`; mismatched values cause the event consumer to reject the webhook with 401. RAGForge accepts only `X-Auth-Event-Signature` for event signatures and rejects timestamps outside the configured `ragforge.auth.events.max-clock-skew` window.

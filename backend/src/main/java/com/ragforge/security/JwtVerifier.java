@@ -26,34 +26,43 @@ public class JwtVerifier {
     try {
       String[] parts = token.split("\\.");
       if (parts.length != 3) {
-        throw new IllegalArgumentException("invalid JWT format");
+        throw new JwtInvalidException("invalid JWT format");
       }
       Map<String, Object> header = readJson(parts[0]);
       if (!"RS256".equals(header.get("alg"))) {
-        throw new IllegalArgumentException("unsupported JWT alg");
+        throw new JwtInvalidException("unsupported JWT alg");
       }
       RSAPublicKey key = jwksClient.getKey(String.valueOf(header.get("kid")));
       Signature signature = Signature.getInstance("SHA256withRSA");
       signature.initVerify(key);
       signature.update((parts[0] + "." + parts[1]).getBytes(StandardCharsets.US_ASCII));
       if (!signature.verify(Base64.getUrlDecoder().decode(parts[2]))) {
-        throw new IllegalArgumentException("JWT signature invalid");
+        throw new JwtInvalidException("JWT signature invalid");
       }
       JwtClaims claims = new JwtClaims(readJson(parts[1]));
       if (!properties.getIssuer().equals(claims.string("iss"))) {
-        throw new IllegalArgumentException("JWT issuer mismatch");
+        throw new JwtInvalidException("JWT issuer mismatch");
       }
       if (!claims.audienceContains(properties.getAudience())) {
-        throw new IllegalArgumentException("JWT audience mismatch");
+        throw new JwtInvalidException("JWT audience mismatch");
       }
-      if (claims.expired(Instant.now().getEpochSecond())) {
-        throw new IllegalArgumentException("JWT expired");
+      long nowEpochSeconds = Instant.now().getEpochSecond();
+      long leewaySeconds = Math.max(60L, properties.getClockSkewSeconds());
+      Long exp = claims.longValue("exp");
+      if (exp == null || exp + leewaySeconds < nowEpochSeconds) {
+        throw new JwtInvalidException("JWT expired");
+      }
+      Long notBefore = claims.longValue("nbf");
+      if (notBefore != null && notBefore > nowEpochSeconds + leewaySeconds) {
+        throw new JwtInvalidException("JWT not valid yet");
       }
       return claims;
-    } catch (IllegalArgumentException ex) {
+    } catch (JwtInvalidException | IllegalArgumentException ex) {
+      throw ex;
+    } catch (JwtInfrastructureException ex) {
       throw ex;
     } catch (Exception ex) {
-      throw new IllegalArgumentException("JWT verification failed", ex);
+      throw new JwtInvalidException("JWT verification failed", ex);
     }
   }
 

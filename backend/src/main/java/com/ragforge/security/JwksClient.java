@@ -68,7 +68,7 @@ public class JwksClient {
       keys.putAll(loaded);
       fetchedAtMs = now;
     } catch (Exception ex) {
-      throw new IllegalStateException("failed to refresh JWKS", ex);
+      throw new JwtInfrastructureException("failed to refresh JWKS", ex);
     }
   }
 }

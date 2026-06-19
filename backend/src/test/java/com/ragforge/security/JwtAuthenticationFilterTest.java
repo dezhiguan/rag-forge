@@ -58,7 +58,7 @@ class JwtAuthenticationFilterTest {
   }
 
   @Test
-  void redisFailureDuringRevocationCheckFailsClosed() throws Exception {
+  void redisFailureDuringRevocationCheckReturnsServerError() throws Exception {
     String token = "header.payload.signature";
     JwtClaims claims = new JwtClaims(Map.of("jti", "jti-1", "sub", "42", "iat", 100));
     when(jwtVerifier.verify(token)).thenReturn(claims);
@@ -71,7 +71,7 @@ class JwtAuthenticationFilterTest {
 
     filter.doFilter(request, response, chain);
 
-    assertThat(response.getStatus()).isEqualTo(401);
+    assertThat(response.getStatus()).isEqualTo(500);
     verify(chain, never()).doFilter(request, response);
   }
 }
