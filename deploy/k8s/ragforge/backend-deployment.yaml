@@ -40,18 +40,24 @@ spec:
                 name: ragforge-backend-env
           env:
             - name: SPRING_PROFILES_ACTIVE
-              value: prod,skywalking-log
+              # [SkyWalking-OFF 2026-06-19] 原值: prod,skywalking-log
+              value: prod
             - name: JAVA_OPTS
               value: -Xms512m -Xmx1g
             - name: RAGFORGE_UPLOAD_PATH
               value: /data/files/
             - name: JAVA_TOOL_OPTIONS
-              value: >-
-                -javaagent:/opt/skywalking-agent/skywalking-agent.jar
-                -Dskywalking.agent.service_name=ragforge-backend
-                -Dskywalking.collector.backend_service=172.25.90.184:11800
-            - name: SW_LOGGING_OUTPUT
-              value: CONSOLE
+              # [SkyWalking-OFF 2026-06-19] 已剥离 -javaagent 参数。
+              # 恢复时使用下方注释的完整值：
+              # value: >-
+              #   -Xms512m -Xmx1g
+              #   -javaagent:/opt/skywalking-agent/skywalking-agent.jar
+              #   -Dskywalking.agent.service_name=ragforge-backend
+              #   -Dskywalking.collector.backend_service=172.25.90.184:11800
+              value: "-Xms512m -Xmx1g"
+            # [SkyWalking-OFF 2026-06-19] 临时停用，恢复时取消下方注释
+            # - name: SW_LOGGING_OUTPUT
+            #   value: CONSOLE
           startupProbe:
             httpGet:
               path: /api/v1/health
@@ -88,9 +94,10 @@ spec:
           volumeMounts:
             - name: ragforge-files
               mountPath: /data/files
-            - name: skywalking-agent
-              mountPath: /opt/skywalking-agent
-              readOnly: true
+            # [SkyWalking-OFF 2026-06-19] 临时停用，恢复时取消下方注释
+            # - name: skywalking-agent
+            #   mountPath: /opt/skywalking-agent
+            #   readOnly: true
       volumes:
         - name: ragforge-files
           # nosemgrep: yaml.kubernetes.security.hostpath-mount.hostpath-mount
@@ -98,7 +105,8 @@ spec:
           hostPath:
             path: /data/files
             type: DirectoryOrCreate
-        - name: skywalking-agent
-          hostPath:
-            path: /opt/skywalking-agent
-            type: Directory
+        # [SkyWalking-OFF 2026-06-19] 临时停用，恢复时取消下方注释
+        # - name: skywalking-agent
+        #   hostPath:
+        #     path: /opt/skywalking-agent
+        #     type: Directory
