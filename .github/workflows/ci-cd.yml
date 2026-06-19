@@ -330,7 +330,20 @@ jobs:
     name: deploy-ingress-server2
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # 条件触发：只在 Server 2 nginx 相关配置变化时跑（避免每次 PR 都跑 30s 的 ingress 推送）。
+    # 触发文件：nginx.conf / docker-compose-ingress.yml / patch-skywalking-ui-router-base.sh
+    # 紧急强制触发：commit message 中包含 [force-deploy-ingress]
+    if: |
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      (
+        contains(toJSON(github.event.commits.*.modified), 'nginx.conf') ||
+        contains(toJSON(github.event.commits.*.added), 'nginx.conf') ||
+        contains(toJSON(github.event.commits.*.modified), 'docker-compose-ingress.yml') ||
+        contains(toJSON(github.event.commits.*.added), 'docker-compose-ingress.yml') ||
+        contains(toJSON(github.event.commits.*.modified), 'deploy/scripts/patch-skywalking-ui-router-base.sh') ||
+        contains(github.event.head_commit.message, '[force-deploy-ingress]')
+      )
     needs:
       - frontend-build
       - deploy-k3s
