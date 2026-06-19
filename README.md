@@ -65,7 +65,7 @@ query -> chunks + scores + metadata + latency
 
 | 层级 | 技术 |
 | --- | --- |
-| 后端 | Spring Boot 3.2, Java 17 |
+| 后端 | Spring Boot 3.2, Java 21 |
 | ORM | MyBatis-Plus |
 | 数据库 | PostgreSQL 15 |
 | 向量检索 | pgvector |
@@ -106,7 +106,7 @@ rag-forge/
 
 ## 环境要求
 
-- JDK 17+
+- JDK 21+
 - Maven 3.8+
 - Node.js 18+
 - Docker 和 Docker Compose
