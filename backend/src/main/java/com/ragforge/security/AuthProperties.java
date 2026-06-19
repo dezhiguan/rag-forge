@@ -11,4 +11,5 @@ public class AuthProperties {
   private String audience = "ragforge-admin-api";
   private String jwksUrl = "http://auth.careermate.cn/.well-known/jwks.json";
   private long jwksCacheTtlMs = 3_600_000L;
+  private long clockSkewSeconds = 60L;
 }

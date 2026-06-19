@@ -14,4 +14,5 @@ public class AuthEventProperties {
   private Duration idempotencyTtl = Duration.ofDays(7);
   private Duration revokedJtiTtl = Duration.ofDays(7);
   private Duration userRevocationTtl = Duration.ofDays(30);
+  private Duration maxClockSkew = Duration.ofSeconds(300);
 }

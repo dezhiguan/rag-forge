@@ -31,6 +31,9 @@ public class AuthEventService {
   private final StringRedisTemplate redisTemplate;
 
   public AuthEventResult handle(String expectedType, String rawBody, HttpHeaders headers) {
+    if (!verifyTimestamp(headers)) {
+      return AuthEventResult.invalidSignature();
+    }
     if (!verifySignature(rawBody, headers)) {
       return AuthEventResult.invalidSignature();
     }
@@ -157,15 +160,23 @@ public class AuthEventService {
         normalizeSignature(provided).getBytes(StandardCharsets.US_ASCII));
   }
 
+  private boolean verifyTimestamp(HttpHeaders headers) {
+    String timestamp = headers.getFirst(properties.getTimestampHeader());
+    if (!StringUtils.hasText(timestamp)) {
+      return false;
+    }
+    try {
+      long eventEpochSeconds = Long.parseLong(timestamp.trim());
+      long nowEpochSeconds = Instant.now().getEpochSecond();
+      long allowedSkewSeconds = properties.getMaxClockSkew().toSeconds();
+      return Math.abs(nowEpochSeconds - eventEpochSeconds) <= allowedSkewSeconds;
+    } catch (NumberFormatException ex) {
+      return false;
+    }
+  }
+
   private String signature(HttpHeaders headers) {
-    String signature = headers.getFirst(properties.getSignatureHeader());
-    if (!StringUtils.hasText(signature)) {
-      signature = headers.getFirst("X-Hub-Signature-256");
-    }
-    if (!StringUtils.hasText(signature)) {
-      signature = headers.getFirst("X-Signature");
-    }
-    return signature;
+    return headers.getFirst(properties.getSignatureHeader());
   }
 
   private String normalizeSignature(String signature) {

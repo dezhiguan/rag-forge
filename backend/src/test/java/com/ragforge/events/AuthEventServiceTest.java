@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +44,7 @@ class AuthEventServiceTest {
     String body = "{\"event_id\":\"evt-1\",\"type\":\"session.revoked\",\"jti\":\"jti-1\"}";
     HttpHeaders headers = new HttpHeaders();
     headers.set("X-Auth-Event-Signature", "sha256=bad");
+    headers.set("X-Auth-Event-Timestamp", String.valueOf(Instant.now().getEpochSecond()));
 
     AuthEventResult result = service.handle("session.revoked", body, headers);
 
@@ -62,6 +64,31 @@ class AuthEventServiceTest {
     assertThat(result.revokedJtiCount()).isEqualTo(1);
     verify(valueOperations).set(eq(AuthEventService.REVOKED_JTI_PREFIX + "jti-1"), eq("evt-1"), any(Duration.class));
     verify(valueOperations).set(eq(AuthEventService.EVENT_ID_PREFIX + "evt-1"), eq("session.revoked"), any(Duration.class));
+  }
+
+  @Test
+  void validSignatureWithExpiredTimestampIsRejected() {
+    String body = "{\"event_id\":\"evt-old\",\"type\":\"session.revoked\",\"jti\":\"jti-old\"}";
+    HttpHeaders headers = signedHeaders(body);
+    headers.set("X-Auth-Event-Timestamp", String.valueOf(Instant.now().minusSeconds(600).getEpochSecond()));
+
+    AuthEventResult result = service.handle("session.revoked", body, headers);
+
+    assertThat(result.status()).isEqualTo(401);
+    verify(redisTemplate, never()).opsForValue();
+  }
+
+  @Test
+  void legacyHubSignatureHeaderIsRejected() {
+    String body = "{\"event_id\":\"evt-legacy\",\"type\":\"session.revoked\",\"jti\":\"jti-legacy\"}";
+    HttpHeaders headers = new HttpHeaders();
+    headers.set("X-Hub-Signature-256", "sha256=" + hmac(body));
+    headers.set("X-Auth-Event-Timestamp", String.valueOf(Instant.now().getEpochSecond()));
+
+    AuthEventResult result = service.handle("session.revoked", body, headers);
+
+    assertThat(result.status()).isEqualTo(401);
+    verify(redisTemplate, never()).opsForValue();
   }
 
   @Test
@@ -109,6 +136,7 @@ class AuthEventServiceTest {
   private HttpHeaders signedHeaders(String body) {
     HttpHeaders headers = new HttpHeaders();
     headers.set("X-Auth-Event-Signature", "sha256=" + hmac(body));
+    headers.set("X-Auth-Event-Timestamp", String.valueOf(Instant.now().getEpochSecond()));
     return headers;
   }
 

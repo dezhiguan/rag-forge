@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -46,11 +48,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
           }
           context = jwtVerifier.toContext(claims);
-        } catch (IllegalArgumentException | IllegalStateException ex) {
+        } catch (IllegalArgumentException | IllegalStateException | JwtInvalidException ex) {
           writeUnauthorized(response);
           return;
+        } catch (JwtInfrastructureException ex) {
+          log.error("JWT infrastructure failure", ex);
+          writeError(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Service unavailable");
+          return;
         } catch (RuntimeException ex) {
-          writeUnauthorized(response);
+          log.error("Unexpected JWT authentication failure", ex);
+          writeError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
           return;
         }
         RagAuthContextHolder.set(context);
@@ -69,12 +76,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   }
 
   private void writeUnauthorized(HttpServletResponse response) throws IOException {
-    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
+  }
+
+  private void writeError(HttpServletResponse response, int status, String message) throws IOException {
+    response.setStatus(status);
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding("UTF-8");
     response.setHeader(TraceIds.HEADER_TRACE_ID, TraceIds.current());
     response.setHeader(TraceIds.HEADER_REQUEST_ID, TraceIds.currentRequestId());
-    objectMapper.writeValue(response.getWriter(), Result.fail(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"));
+    objectMapper.writeValue(response.getWriter(), Result.fail(status, message));
   }
 
   private String bearerToken(HttpServletRequest request) {
