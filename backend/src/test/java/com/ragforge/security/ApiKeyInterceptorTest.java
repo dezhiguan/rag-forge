@@ -17,6 +17,7 @@ import com.ragforge.model.entity.ApiKey;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.PrintWriter;
+import java.util.List;
 import java.io.StringWriter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @ExtendWith(MockitoExtension.class)
 class ApiKeyInterceptorTest {
@@ -39,8 +41,11 @@ class ApiKeyInterceptorTest {
 
   @BeforeEach
   void setUp() {
+    RagAuthContextHolder.clear();
+    SecurityContextHolder.clearContext();
     apiKeyProperties = new ApiKeyProperties();
-    interceptor = new ApiKeyInterceptor(apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate);
+    interceptor =
+        new ApiKeyInterceptor(apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate, List.of());
   }
 
   private StringWriter stubResponseWriter() throws Exception {
@@ -56,38 +61,59 @@ class ApiKeyInterceptorTest {
     boolean allowed = interceptor.preHandle(request, response, new Object());
 
     assertThat(allowed).isTrue();
-    verify(apiKeyMapper, never()).selectCount(isNull());
+    verify(apiKeyMapper, never()).selectOne(any());
   }
 
   @Test
-  void devKey_allowsRegardlessOfDatabase() throws Exception {
+  void devKey_allowsOnlyWhenDevConfigPresent() throws Exception {
+    interceptor =
+        new ApiKeyInterceptor(
+            apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate, List.of(new DevApiKeyConfig()));
     when(request.getRequestURI()).thenReturn("/api/v1/search");
     when(request.getHeader("X-API-Key")).thenReturn("sk-ragforge-dev");
-    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
 
     boolean allowed = interceptor.preHandle(request, response, new Object());
 
     assertThat(allowed).isTrue();
     verify(apiKeyMapper, never()).selectOne(any());
+    assertThat(RagAuthContextHolder.get()).isNotNull();
+    assertThat(RagAuthContextHolder.get().principalType()).isEqualTo("service_account");
+    interceptor.afterCompletion(request, response, new Object(), null);
+    assertThat(RagAuthContextHolder.get()).isNull();
   }
 
   @Test
-  void noKeysInDatabase_allowsWithoutApiKey() throws Exception {
-    when(request.getRequestURI()).thenReturn("/api/v1/kb");
-    when(apiKeyMapper.selectCount(isNull())).thenReturn(0L);
+  void devKey_withoutDevConfigReturns401AndDoesNotUseDatabase() throws Exception {
+    StringWriter responseBody = stubResponseWriter();
+    when(request.getRequestURI()).thenReturn("/api/v1/search");
+    when(request.getHeader("X-API-Key")).thenReturn("sk-ragforge-dev");
 
     boolean allowed = interceptor.preHandle(request, response, new Object());
 
-    assertThat(allowed).isTrue();
-    verify(response, never()).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    assertThat(allowed).isFalse();
+    verify(apiKeyMapper, never()).selectOne(any());
+    verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    assertThat(responseBody.toString()).contains("\"code\":401");
+  }
+
+  @Test
+  void noApiKey_returns401EvenWhenDatabaseIsEmpty() throws Exception {
+    StringWriter responseBody = stubResponseWriter();
+    when(request.getRequestURI()).thenReturn("/api/v1/search");
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isFalse();
+    verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    verify(apiKeyMapper, never()).selectCount(isNull());
+    assertThat(responseBody.toString()).contains("\"code\":401");
   }
 
   @Test
   void invalidApiKey_returns401() throws Exception {
     StringWriter responseBody = stubResponseWriter();
-    when(request.getRequestURI()).thenReturn("/api/v1/kb");
+    when(request.getRequestURI()).thenReturn("/api/v1/search");
     when(request.getHeader("X-API-Key")).thenReturn("sk-invalid");
-    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
     when(apiKeyMapper.selectOne(any())).thenReturn(null);
 
     boolean allowed = interceptor.preHandle(request, response, new Object());
@@ -103,7 +129,6 @@ class ApiKeyInterceptorTest {
     StringWriter responseBody = stubResponseWriter();
     when(request.getRequestURI()).thenReturn("/api/v1/search");
     when(request.getHeader("X-API-Key")).thenReturn("sk-test");
-    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
 
     ApiKey keyRecord = new ApiKey();
     keyRecord.setApiKey("sk-test");
@@ -126,7 +151,6 @@ class ApiKeyInterceptorTest {
   void validApiKeyUnderRateLimit_allowsRequest() throws Exception {
     when(request.getRequestURI()).thenReturn("/api/v1/search");
     when(request.getHeader("X-API-Key")).thenReturn("sk-test");
-    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
 
     ApiKey keyRecord = new ApiKey();
     keyRecord.setApiKey("sk-test");
@@ -140,7 +164,11 @@ class ApiKeyInterceptorTest {
     boolean allowed = interceptor.preHandle(request, response, new Object());
 
     assertThat(allowed).isTrue();
+    assertThat(RagAuthContextHolder.get()).isNotNull();
+    assertThat(RagAuthContextHolder.get().principalType()).isEqualTo("service_account");
     verify(response, never()).setStatus(eq(429));
     verify(response, never()).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    interceptor.afterCompletion(request, response, new Object(), null);
+    assertThat(RagAuthContextHolder.get()).isNull();
   }
 }
