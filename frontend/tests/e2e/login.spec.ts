@@ -74,7 +74,7 @@ test.describe('RAGForge auth layout', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ code: 200, data: { accessToken: 'mobile-access-token', user: { displayName: 'mobile-admin' } } }),
+        body: JSON.stringify({ code: 200, data: { accessToken: 'mobile-access-token', user: { displayName: 'mobile-admin', ragRole: 'ADMIN' } } }),
       })
     })
 
