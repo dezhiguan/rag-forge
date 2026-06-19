@@ -63,7 +63,7 @@ class EsSearchServiceTest {
   void search_withoutOptionalFilters_usesFourArgOverload() throws Exception {
     stubSearchResponse(List.of(hit(sourceMap(), 1.0)));
 
-    List<SearchResult> results = esSearchService.search("hello", null, null, 3);
+    List<SearchResult> results = esSearchService.search("hello", List.of(1L), null, 3);
 
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getChunkId()).isEqualTo(10L);
@@ -129,7 +129,7 @@ class EsSearchServiceTest {
             org.mockito.ArgumentMatchers.<Function<SearchRequest.Builder, ObjectBuilder<SearchRequest>>>any(),
             eq(Map.class));
 
-    List<SearchResult> results = esSearchService.search("q", null, null, 3);
+    List<SearchResult> results = esSearchService.search("q", List.of(1L), null, 3);
 
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getChunkId()).isZero();

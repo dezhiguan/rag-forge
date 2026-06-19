@@ -2,34 +2,38 @@ package com.ragforge.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.ragforge.bootstrap.DataInitRunner;
-import com.ragforge.maintenance.DataCalibrationJob;
-import com.ragforge.maintenance.EsIndexRepairJob;
 import com.ragforge.model.entity.KbAcl;
 import com.ragforge.model.entity.KnowledgeBase;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.mybatis.spring.annotation.MapperScan;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest(properties = "spring.task.scheduling.enabled=false")
-@ActiveProfiles("dev")
+@SpringBootTest(
+    classes = KbAclMapperTest.MapperTestConfig.class,
+    properties = {
+      "spring.datasource.url=jdbc:h2:mem:kb_acl_mapper_test;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1",
+      "spring.datasource.driver-class-name=org.h2.Driver",
+      "spring.datasource.username=sa",
+      "spring.datasource.password=",
+      "spring.profiles.active=test",
+      "spring.autoconfigure.exclude=org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration",
+      "spring.flyway.enabled=false",
+      "spring.sql.init.mode=always",
+      "spring.sql.init.schema-locations=classpath:kb-acl-mapper-schema.sql",
+      "mybatis-plus.configuration.map-underscore-to-camel-case=true"
+    })
 @Transactional
 class KbAclMapperTest {
 
   @Autowired private KnowledgeBaseMapper knowledgeBaseMapper;
 
   @Autowired private KbAclMapper kbAclMapper;
-
-  @MockBean private DataInitRunner dataInitRunner;
-
-  @MockBean private DataCalibrationJob dataCalibrationJob;
-
-  @MockBean private EsIndexRepairJob esIndexRepairJob;
 
   @Test
   void existsByUserAndKbHonorsPermissionAndExpiry() {
@@ -101,4 +105,9 @@ class KbAclMapperTest {
     acl.setUpdatedAt(now);
     kbAclMapper.insert(acl);
   }
+
+  @SpringBootConfiguration
+  @EnableAutoConfiguration
+  @MapperScan("com.ragforge.mapper")
+  static class MapperTestConfig {}
 }

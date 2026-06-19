@@ -105,7 +105,7 @@ class VectorSearchServiceTest {
               return List.of(mapper.mapRow(rs, 0));
             });
 
-    List<SearchResult> results = vectorSearchService.search("hello", null, null, 3);
+    List<SearchResult> results = vectorSearchService.search("hello", List.of(1L), null, 3);
 
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getFilename()).isEqualTo("f.md");
@@ -164,7 +164,7 @@ class VectorSearchServiceTest {
             });
 
     List<SearchResult> results =
-        vectorSearchService.searchByQueries(List.of("q1"), null, null, 5, null);
+        vectorSearchService.searchByQueries(List.of("q1"), List.of(1L), null, 5, null);
 
     assertThat(results).hasSize(1);
     assertThat(results.get(0).getChunkId()).isEqualTo(300L);

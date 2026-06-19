@@ -11,6 +11,7 @@ import com.ragforge.model.dto.SearchRequest;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.security.KbAccessGuard;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -40,7 +41,7 @@ class SearchAuthorizationTest {
   void emptyKbIds_autoFillsAllReadableKbIds() {
     SearchController controller = new SearchController(retrievalService, kbAccessGuard);
     SearchRequest req = request();
-    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(1L, 2L));
+    when(kbAccessGuard.allReadableKbIds()).thenReturn(new LinkedHashSet<>(List.of(1L, 2L)));
     when(retrievalService.retrieve(eq("java"), eq(List.of(1L, 2L)), any(), any(), any(), eq(8), eq(5), any()))
         .thenReturn(new RetrievalOutput(List.of(), 1L, "vector", null, null, 1L, null, null));
 
