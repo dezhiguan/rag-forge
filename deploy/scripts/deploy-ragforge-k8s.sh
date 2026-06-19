@@ -54,6 +54,7 @@ fi
 IMAGE_TAG="$(resolve_ragforge_image_tag "${REPO_ROOT}")"
 export RAGFORGE_BACKEND_IMAGE_TAG="${IMAGE_TAG}"
 BACKEND_IMAGE="$(ragforge_backend_image "${REPO_ROOT}")"
+FRONTEND_IMAGE="ragforge/frontend:latest"
 RENDERED_DEPLOY="$(mktemp)"
 trap 'rm -f "${RENDERED_DEPLOY}"' EXIT
 
@@ -73,9 +74,13 @@ step_start "[2/6] Ensure k3s sandbox (pause) image"
 bash "${SCRIPT_DIR}/ensure-k3s-sandbox-image.sh"
 step_end
 
-step_start "[3/6] Build and import backend image"
+step_start "[3/6] Build and import images"
 if [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
   bash "${SCRIPT_DIR}/build-ragforge-k8s-image.sh"
+  echo "[frontend] docker build -> ${FRONTEND_IMAGE}"
+  docker build -f frontend/Dockerfile --target runtime-prebuilt -t "${FRONTEND_IMAGE}" .
+  echo "[frontend] import image into k3s containerd"
+  docker save "${FRONTEND_IMAGE}" | k3s ctr -n k8s.io images import -
 else
   echo "Skip image build (SKIP_IMAGE_BUILD=1)"
   if ! k3s ctr -n k8s.io images ls | grep -q "${BACKEND_IMAGE}"; then
@@ -99,8 +104,11 @@ step_start "[5/6] Apply manifests (image=${BACKEND_IMAGE})"
 render_ragforge_deployment "${K8S_DIR}/backend-deployment.yaml" "${RENDERED_DEPLOY}" "${BACKEND_IMAGE}"
 k3s kubectl apply -f "${K8S_DIR}/namespace.yaml"
 k3s kubectl apply -f "${K8S_DIR}/backend-service.yaml"
+k3s kubectl apply -f "${K8S_DIR}/frontend-service.yaml"
 k3s kubectl apply -f "${RENDERED_DEPLOY}"
+k3s kubectl apply -f "${K8S_DIR}/frontend-deployment.yaml"
 k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-backend --timeout=300s
+k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-frontend --timeout=180s
 step_end
 
 step_start "[6/6] Current status"

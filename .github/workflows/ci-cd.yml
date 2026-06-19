@@ -166,6 +166,7 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs:
       - backend-build
+      - frontend-build
       # [BackendUnitTest-OFF 2026-06-19] 临时置灰 backend-unit-test，恢复时取消下一行注释
       # - backend-unit-test
     steps:
@@ -177,6 +178,12 @@ jobs:
         with:
           name: ragforge-backend-jar
           path: backend/target
+
+      - name: Download frontend dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ragforge-frontend-dist
+          path: frontend/dist
 
       - name: Configure SSH (Server 3 via Server 2 jump)
         env:
@@ -257,12 +264,29 @@ jobs:
             --exclude 'backend/target/surefire-reports/' \
             --exclude 'backend/target/site/' \
             --exclude 'frontend/node_modules' \
-            --exclude 'frontend/dist' \
             --exclude 'playwright-report/' \
             --exclude 'test-results/' \
             --exclude 'reranker/__pycache__' \
             -e "${RSYNC_SSH}" \
             ./ "ragforge-k3s:${APP_DIR}/"
+
+      - name: Build and import ragforge-frontend image on Server 3
+        env:
+          APP_DIR: ${{ secrets.RAGFORGE_K8S_SRC_DIR }}
+        run: |
+          APP_DIR="${APP_DIR:-/opt/rag-forge/k8s-src}"
+          SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+
+          timeout 10m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "APP_DIR='${APP_DIR}' bash -s" <<'EOF'
+          set -euo pipefail
+          cd "${APP_DIR}"
+          if [[ ! -d frontend/dist ]]; then
+            echo "Missing frontend/dist for runtime-prebuilt image" >&2
+            exit 1
+          fi
+          docker build -f frontend/Dockerfile --target runtime-prebuilt -t ragforge/frontend:latest .
+          docker save ragforge/frontend:latest | sudo k3s ctr -n k8s.io images import -
+          EOF
 
       - name: Deploy backend to k3s on Server 3
         env:
@@ -413,9 +437,11 @@ jobs:
 
           # [SkyWalking-OFF 2026-06-19] careerforge 残留目录已由架构师手动清理，不再需要 --exclude 保留。
           # 恢复方法：在 rsync 参数中重新加入 `--exclude 'careerforge/'`
-          timeout 10m rsync -avz --delete -e "${RSYNC_SSH}" \
-            frontend-dist/ \
-            "ragforge-ingress:${INGRESS_DIR}/frontend/dist/"
+          # [FrontendK8s-MIGRATED 2026-06-19] 前端已迁移到 K8s（NodePort 31002），无需再 rsync dist 到 Server 2。
+          # 恢复方法：取消下方注释；同时把 nginx.conf 的 location / 改回 root /usr/share/nginx/html。
+          # timeout 10m rsync -avz --delete -e "${RSYNC_SSH}" \
+          #   frontend-dist/ \
+          #   "ragforge-ingress:${INGRESS_DIR}/frontend/dist/"
 
           timeout 3m scp "${SCP_OPTS[@]}" "${NGINX_CONF}" "ragforge-ingress:${INGRESS_DIR}/nginx.conf"
           timeout 3m scp "${SCP_OPTS[@]}" docker-compose-ingress.yml "ragforge-ingress:${INGRESS_DIR}/docker-compose-ingress.yml"
