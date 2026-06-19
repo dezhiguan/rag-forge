@@ -1,5 +1,10 @@
 <template>
-  <div class="app-layout">
+  <router-view v-if="isAuthLayout" v-slot="{ Component }">
+    <transition name="page-fade" mode="out-in">
+      <component :is="Component" />
+    </transition>
+  </router-view>
+  <div v-else class="app-layout">
     <div v-if="mobileMenuOpen" class="mobile-overlay" @click="closeMobileMenu" />
     <Sidebar
       :mobile-open="mobileMenuOpen"
@@ -11,6 +16,7 @@
         <span class="hamburger" @click="toggleMobileMenu">☰</span>
         <span class="top-bar-icon">{{ currentPage.icon }}</span>
         <span class="top-bar-title">{{ currentPage.label }}</span>
+        <UserMenu v-if="isAuthenticated" />
       </div>
       <router-view v-slot="{ Component }">
         <transition name="page-fade" mode="out-in">
@@ -25,10 +31,15 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/Sidebar.vue'
+import UserMenu from './components/UserMenu.vue'
+import { useAuth } from './composables/useAuth'
 
 const sidebarCollapsed = ref(false)
 const mobileMenuOpen = ref(false)
 const route = useRoute()
+const { isAuthenticated } = useAuth()
+
+const isAuthLayout = computed(() => route.meta?.layout === 'auth')
 
 const currentPage = computed(() => ({
   icon: route.meta?.icon || '',
@@ -94,7 +105,7 @@ body {
 .top-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
   padding: 0 28px;
   height: 44px;
@@ -104,6 +115,7 @@ body {
 .top-bar-icon { font-size: 14px; }
 .top-bar-title {
   min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -21,6 +21,10 @@ public class KnowledgeBase {
   private Integer docCount;
   private Integer chunkCount;
   private String status;
+  private String tenantId;
+  private Long ownerUserId;
+  private String visibility;
+  private String kbType;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 }

@@ -40,6 +40,9 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     if (isWhitelisted(path)) {
       return true;
     }
+    if (RagAuthContextHolder.get() != null) {
+      return true;
+    }
 
     // 首次启动时若数据库中没有任何 Key，放行所有请求，避免管理后台无法使用
     if (noKeysYet()) {
