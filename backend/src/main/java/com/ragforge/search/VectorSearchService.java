@@ -30,6 +30,7 @@ public class VectorSearchService {
       List<Long> docIds,
       int topK,
       com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    requireKbScope(kbIds);
     long start = System.currentTimeMillis();
     long embedStart = System.currentTimeMillis();
     float[] queryVector = embedder.embed(query);
@@ -132,6 +133,7 @@ public class VectorSearchService {
       List<Long> docIds,
       int topK,
       com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    requireKbScope(kbIds);
     if (queries == null || queries.isEmpty()) {
       return List.of();
     }
@@ -284,5 +286,11 @@ public class VectorSearchService {
     result.setVectorScore(rs.getDouble("similarity"));
     result.setChunkType(rs.getString("chunk_type"));
     return result;
+  }
+
+  private static void requireKbScope(List<Long> kbIds) {
+    if (kbIds == null || kbIds.isEmpty()) {
+      throw new IllegalStateException("Search requires non-empty kbIds");
+    }
   }
 }

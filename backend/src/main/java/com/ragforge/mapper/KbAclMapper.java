@@ -52,4 +52,15 @@ public interface KbAclMapper extends BaseMapper<KbAcl> {
       ORDER BY kb_id
       """)
   List<Long> findWritableKbIds(@Param("userId") Long userId);
+
+  @Select("""
+      SELECT DISTINCT kb_id
+      FROM kb_acl
+      WHERE principal_type = 'user'
+        AND principal_id = CAST(#{userId} AS VARCHAR)
+        AND permission = 'admin'
+        AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+      ORDER BY kb_id
+      """)
+  List<Long> findAdminKbIds(@Param("userId") Long userId);
 }

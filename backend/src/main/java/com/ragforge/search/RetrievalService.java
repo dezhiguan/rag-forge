@@ -88,6 +88,7 @@ public class RetrievalService {
       int topK,
       int rerankTopN,
       com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    requireKbScope(kbIds);
     String normalizedStrategy = normalizeStrategy(strategy);
     Semaphore semaphore = semaphoreFor(normalizedStrategy);
     int timeoutMs = timeoutMsFor(normalizedStrategy);
@@ -137,6 +138,12 @@ public class RetrievalService {
       if (acquired) {
         semaphore.release();
       }
+    }
+  }
+
+  private static void requireKbScope(List<Long> kbIds) {
+    if (kbIds == null || kbIds.isEmpty()) {
+      throw new IllegalStateException("Retrieval requires non-empty kbIds after authorization filtering");
     }
   }
 

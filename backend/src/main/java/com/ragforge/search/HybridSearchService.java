@@ -22,6 +22,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class HybridSearchService {
 
+  private static void requireKbScope(List<Long> kbIds) {
+    if (kbIds == null || kbIds.isEmpty()) {
+      throw new IllegalStateException("Search requires non-empty kbIds");
+    }
+  }
+
   private static final int RRF_K = 10;
 
   private final VectorSearchService vectorSearchService;
@@ -67,6 +73,7 @@ public class HybridSearchService {
       int topK,
       double vectorWeight,
       com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    requireKbScope(kbIds);
     int recallTopK = Math.max(topK * 4, 20);
     double vw = clampWeight(vectorWeight);
 

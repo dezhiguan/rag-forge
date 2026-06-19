@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Min;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,6 +32,7 @@ public class DocumentController {
   private final DocumentService documentService;
 
   @PostMapping("/kb/{kbId}/documents")
+  @PreAuthorize("@kbAccessGuard.canWrite(#kbId)")
   public Result<DocumentUploadResultVO> upload(
       @PathVariable Long kbId,
       @RequestParam("file") MultipartFile file,
@@ -44,6 +46,7 @@ public class DocumentController {
    * <p>Alias route: /api/v1/documents/upload?kbId=1&overwrite=true
    */
   @PostMapping("/documents/upload")
+  @PreAuthorize("@kbAccessGuard.canWrite(#kbId)")
   public Result<DocumentUploadResultVO> uploadAlias(
       @RequestParam("kbId") Long kbId,
       @RequestParam("file") MultipartFile file,
@@ -52,6 +55,7 @@ public class DocumentController {
   }
 
   @PostMapping("/kb/{kbId}/documents/replace/{docId}")
+  @PreAuthorize("@kbAccessGuard.canWrite(#kbId)")
   public Result<DocumentVO> replace(
       @PathVariable Long kbId,
       @PathVariable Long docId,
@@ -60,6 +64,7 @@ public class DocumentController {
   }
 
   @GetMapping("/kb/{kbId}/documents")
+  @PreAuthorize("@kbAccessGuard.canRead(#kbId)")
   public Result<PageResult<DocumentVO>> listByKb(
       @PathVariable Long kbId,
       @RequestParam(defaultValue = "1") @Min(1) int page,
@@ -68,11 +73,13 @@ public class DocumentController {
   }
 
   @GetMapping("/documents/{id}")
+  @PreAuthorize("@kbAccessGuard.canReadDocument(#id)")
   public Result<DocumentDetailVO> getById(@PathVariable Long id) {
     return Result.ok(documentService.getById(id));
   }
 
   @GetMapping("/documents/{id}/chunks")
+  @PreAuthorize("@kbAccessGuard.canReadDocument(#id)")
   public Result<PageResult<DocumentChunkVO>> listChunks(
       @PathVariable Long id,
       @RequestParam(defaultValue = "1") @Min(1) int page,
@@ -81,28 +88,33 @@ public class DocumentController {
   }
 
   @GetMapping("/documents/{id}/status")
+  @PreAuthorize("@kbAccessGuard.canReadDocument(#id)")
   public Result<DocumentStatusVO> getStatus(@PathVariable Long id) {
     return Result.ok(documentService.getStatus(id));
   }
 
   @GetMapping("/documents/{id}/download")
+  @PreAuthorize("@kbAccessGuard.canReadDocument(#id)")
   public ResponseEntity<Resource> download(@PathVariable Long id) {
     return documentService.download(id);
   }
 
   @DeleteMapping("/documents/{id}")
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR') and @kbAccessGuard.canWriteDocument(#id)")
   public Result<Void> delete(@PathVariable Long id) {
     documentService.delete(id);
     return Result.ok();
   }
 
   @PostMapping("/documents/{id}/reprocess")
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR') and @kbAccessGuard.canWriteDocument(#id)")
   public Result<Void> reprocess(@PathVariable Long id) {
     documentService.reprocess(id);
     return Result.ok();
   }
 
   @PostMapping("/documents/text")
+  @PreAuthorize("@kbAccessGuard.canWrite(#request.kbId)")
   public Result<DocumentUploadResultVO> uploadText(
       @RequestBody @jakarta.validation.Valid TextUploadRequest request) {
     return Result.ok(documentService.uploadText(request));

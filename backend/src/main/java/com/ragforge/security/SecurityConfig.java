@@ -12,6 +12,8 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -41,7 +43,14 @@ public class SecurityConfig {
             auth ->
                 auth.requestMatchers("/api/v1/health", "/actuator/health", "/api/auth/**").permitAll()
                     .requestMatchers("/api/v1/events/**").permitAll()
-                    .requestMatchers("/api/v1/search", "/api/v1/internal/**").permitAll()
+                    .requestMatchers("/api/v1/search", "/api/v1/internal/**")
+                    .access(
+                        (authentication, context) ->
+                            new AuthorizationDecision(
+                                (authentication.get() != null
+                                        && authentication.get().isAuthenticated()
+                                        && !(authentication.get() instanceof AnonymousAuthenticationToken))
+                                    || context.getRequest().getHeader("X-API-Key") != null))
                     .anyRequest().authenticated())
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         .build();

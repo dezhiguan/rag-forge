@@ -29,6 +29,7 @@ public class EsSearchService {
       List<Long> docIds,
       int topK,
       com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    requireKbScope(kbIds);
     try {
       SearchResponse<Map> response =
           client.search(
@@ -98,6 +99,12 @@ public class EsSearchService {
     } catch (Exception e) {
       log.warn("ES keyword search failed: query={}, err={}", query, e.getMessage());
       return List.of();
+    }
+  }
+
+  private static void requireKbScope(List<Long> kbIds) {
+    if (kbIds == null || kbIds.isEmpty()) {
+      throw new IllegalStateException("Search requires non-empty kbIds");
     }
   }
 

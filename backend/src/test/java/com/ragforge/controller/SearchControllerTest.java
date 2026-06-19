@@ -12,9 +12,11 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.model.dto.SearchRequest;
 import com.ragforge.search.RetrievalService;
+import com.ragforge.security.KbAccessGuard;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +31,7 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 class SearchControllerTest {
 
   @Mock private RetrievalService retrievalService;
+  @Mock private KbAccessGuard kbAccessGuard;
 
   private MockMvc mockMvc;
 
@@ -38,7 +41,7 @@ class SearchControllerTest {
     validator.afterPropertiesSet();
 
     mockMvc =
-        standaloneSetup(new SearchController(retrievalService))
+        standaloneSetup(new SearchController(retrievalService, kbAccessGuard))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .setValidator(validator)
@@ -73,6 +76,8 @@ class SearchControllerTest {
             50L,
             70L,
             null);
+
+    when(kbAccessGuard.filterReadable(List.of(17L))).thenReturn(Set.of(17L));
 
     when(retrievalService.retrieve(
             eq("Java"),
@@ -124,9 +129,11 @@ class SearchControllerTest {
     RetrievalOutput output =
         new RetrievalOutput(List.of(), 10L, "vector", null, null, 10L, null, null);
 
+    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(17L));
+
     when(retrievalService.retrieve(
             eq("spring"),
-            isNull(),
+            eq(List.of(17L)),
             isNull(),
             eq("vector"),
             eq(0.55),
@@ -153,7 +160,7 @@ class SearchControllerTest {
     verify(retrievalService)
         .retrieve(
             eq("spring"),
-            isNull(),
+            eq(List.of(17L)),
             isNull(),
             eq("vector"),
             eq(0.55),
