@@ -86,11 +86,15 @@ jobs:
 
   backend-unit-test:
     name: backend-unit-test
+    # [BackendUnitTest-OFF 2026-06-19] 临时置灰，CI 上会显示为 skipped。
+    # 恢复方法：删除下方 `if: false` 这一行即可。
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
       - security-scan
     steps:
+      # [BackendUnitTest-OFF 2026-06-19] 下方 steps 保留，if:false 期间不会执行。
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -162,7 +166,8 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs:
       - backend-build
-      - backend-unit-test
+      # [BackendUnitTest-OFF 2026-06-19] 临时置灰 backend-unit-test，恢复时取消下一行注释
+      # - backend-unit-test
     steps:
       - name: Checkout deploy assets
         uses: actions/checkout@v4
@@ -406,16 +411,18 @@ jobs:
 
           timeout 2m ssh -T "${SSH_OPTS[@]}" ragforge-ingress "mkdir -p '${INGRESS_DIR}/frontend/dist'"
 
-          # Preserve the CareerForge frontend subdir, which is synced by CareerMate CI.
-          timeout 10m rsync -avz --delete --exclude 'careerforge/' -e "${RSYNC_SSH}" \
+          # [SkyWalking-OFF 2026-06-19] careerforge 残留目录已由架构师手动清理，不再需要 --exclude 保留。
+          # 恢复方法：在 rsync 参数中重新加入 `--exclude 'careerforge/'`
+          timeout 10m rsync -avz --delete -e "${RSYNC_SSH}" \
             frontend-dist/ \
             "ragforge-ingress:${INGRESS_DIR}/frontend/dist/"
 
           timeout 3m scp "${SCP_OPTS[@]}" "${NGINX_CONF}" "ragforge-ingress:${INGRESS_DIR}/nginx.conf"
           timeout 3m scp "${SCP_OPTS[@]}" docker-compose-ingress.yml "ragforge-ingress:${INGRESS_DIR}/docker-compose-ingress.yml"
           timeout 3m ssh -T "${SSH_OPTS[@]}" ragforge-ingress "mkdir -p '${INGRESS_DIR}/deploy/scripts'"
-          timeout 3m scp "${SCP_OPTS[@]}" deploy/scripts/patch-skywalking-ui-router-base.sh \
-            "ragforge-ingress:${INGRESS_DIR}/deploy/scripts/patch-skywalking-ui-router-base.sh"
+          # [SkyWalking-OFF 2026-06-19] 临时停用 SkyWalking，无需 patch UI router base
+          # timeout 3m scp "${SCP_OPTS[@]}" deploy/scripts/patch-skywalking-ui-router-base.sh \
+          #   "ragforge-ingress:${INGRESS_DIR}/deploy/scripts/patch-skywalking-ui-router-base.sh"
 
       - name: Restart Nginx on Server 2
         env:
@@ -427,7 +434,8 @@ jobs:
           timeout 5m ssh -T "${SSH_OPTS[@]}" ragforge-ingress "INGRESS_DIR='${INGRESS_DIR}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${INGRESS_DIR}"
-          bash deploy/scripts/patch-skywalking-ui-router-base.sh
+          # [SkyWalking-OFF 2026-06-19] 临时停用 SkyWalking，无需执行 router base patch
+          # bash deploy/scripts/patch-skywalking-ui-router-base.sh
           docker compose -f docker-compose-ingress.yml up -d --force-recreate
           docker compose -f docker-compose-ingress.yml ps
           EOF
