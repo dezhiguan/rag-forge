@@ -55,3 +55,7 @@ logging:
     com.ragforge: DEBUG
     com.ragforge.mapper: DEBUG
     com.ragforge.search: INFO
+
+ragforge:
+  auth:
+    jwks-url: ${RAGFORGE_AUTH_JWKS_URL:http://127.0.0.1:8090/.well-known/jwks.json}

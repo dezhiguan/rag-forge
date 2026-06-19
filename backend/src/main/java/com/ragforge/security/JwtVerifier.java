@@ -43,7 +43,7 @@ public class JwtVerifier {
       if (!properties.getIssuer().equals(claims.string("iss"))) {
         throw new JwtInvalidException("JWT issuer mismatch");
       }
-      if (!claims.audienceContains(properties.getAudience())) {
+      if (properties.getAudiences().stream().noneMatch(claims::audienceContains)) {
         throw new JwtInvalidException("JWT audience mismatch");
       }
       long nowEpochSeconds = Instant.now().getEpochSecond();

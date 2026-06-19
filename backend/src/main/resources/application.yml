@@ -48,7 +48,9 @@ management:
 ragforge:
   auth:
     issuer: ${RAGFORGE_AUTH_ISSUER:https://auth.careermate.cn}
-    audience: ${RAGFORGE_AUTH_AUDIENCE:ragforge-admin-api}
+    audiences:
+      - ${RAGFORGE_AUTH_AUDIENCE:ragforge-admin-api}
+      - ragforge-search-api
     jwks-url: ${RAGFORGE_AUTH_JWKS_URL:http://auth.careermate.cn/.well-known/jwks.json}
     jwks-cache-ttl-ms: ${RAGFORGE_AUTH_JWKS_CACHE_TTL_MS:3600000}
     clock-skew-seconds: 60
