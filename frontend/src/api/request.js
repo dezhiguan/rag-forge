@@ -1,11 +1,18 @@
 import axios from 'axios'
+import { useAuth } from '../composables/useAuth'
 
 const request = axios.create({
   baseURL: '/api/v1',
   timeout: 0,
-  headers: {
-    'X-API-Key': 'sk-ragforge-dev',
-  },
+})
+
+request.interceptors.request.use((config) => {
+  const { state } = useAuth()
+  if (state.accessToken) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${state.accessToken}`
+  }
+  return config
 })
 
 request.interceptors.response.use(

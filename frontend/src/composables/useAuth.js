@@ -71,7 +71,9 @@ function resolveScopes(user, claims, role) {
   if (typeof user?.scope === 'string') values.push(...user.scope.split(/\s+/))
   if (Array.isArray(claims?.scopes)) values.push(...claims.scopes)
   if (typeof claims?.scope === 'string') values.push(...claims.scope.split(/\s+/))
-  if (values.length === 0 && DEFAULT_ROLE_SCOPES[role]) {
+  if (role === 'ADMIN' && values.some((scope) => scope === 'rag:admin:write' || scope === 'rag:admin:read')) {
+    values.push(...DEFAULT_ROLE_SCOPES.ADMIN)
+  } else if (values.length === 0 && DEFAULT_ROLE_SCOPES[role]) {
     values.push(...DEFAULT_ROLE_SCOPES[role])
   }
   return new Set(values.filter(Boolean))

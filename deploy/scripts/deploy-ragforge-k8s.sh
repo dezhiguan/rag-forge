@@ -78,7 +78,7 @@ step_start "[3/6] Build and import images"
 if [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
   bash "${SCRIPT_DIR}/build-ragforge-k8s-image.sh"
   echo "[frontend] docker build -> ${FRONTEND_IMAGE}"
-  docker build -f frontend/Dockerfile --target runtime-prebuilt -t "${FRONTEND_IMAGE}" .
+  docker build -f frontend/Dockerfile --target runtime -t "${FRONTEND_IMAGE}" .
   echo "[frontend] import image into k3s containerd"
   docker save "${FRONTEND_IMAGE}" | k3s ctr -n k8s.io images import -
 else

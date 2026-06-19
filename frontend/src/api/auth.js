@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuth } from '../composables/useAuth'
 
 export const authClient = axios.create({
   baseURL: '/api/auth',
@@ -16,6 +17,11 @@ function readCookie(name) {
 }
 
 authClient.interceptors.request.use((config) => {
+  const { state } = useAuth()
+  if (state.accessToken) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${state.accessToken}`
+  }
   const method = (config.method || 'get').toLowerCase()
   if (!['get', 'head', 'options'].includes(method)) {
     const csrf = readCookie('rf_csrf')

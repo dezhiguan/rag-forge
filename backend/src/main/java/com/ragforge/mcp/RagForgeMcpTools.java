@@ -5,6 +5,7 @@ import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
+import com.ragforge.security.KbAccessGuard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -12,7 +13,9 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -22,6 +25,7 @@ public class RagForgeMcpTools {
 
     private final RetrievalService retrievalService;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final KbAccessGuard kbAccessGuard;
 
     @Tool(description = """
         搜索 RAGForge 知识库，返回最相关的文本片段。
@@ -34,10 +38,16 @@ public class RagForgeMcpTools {
             @ToolParam(description = "返回结果数量，默认 5，最大 10") int topK) {
         try {
             List<Long> kbIdList = parseKbIds(kbIds);
+            Set<Long> readableKbIds = kbIdList.isEmpty()
+                    ? kbAccessGuard.allReadableKbIds()
+                    : kbAccessGuard.filterReadable(kbIdList);
+            if (readableKbIds.isEmpty()) {
+                return "没有可访问的知识库。";
+            }
             int k = Math.min(Math.max(topK <= 0 ? 5 : topK, 1), 10);
 
             RetrievalOutput output =
-                    retrievalService.retrieve(query, kbIdList, null, "hybrid", null, k, 5, null);
+                    retrievalService.retrieve(query, new ArrayList<>(readableKbIds), null, "hybrid", null, k, 5, null);
 
             if (output.getResults() == null || output.getResults().isEmpty()) {
                 return "未找到相关内容（query=" + query + "）";
@@ -68,6 +78,10 @@ public class RagForgeMcpTools {
                             new LambdaQueryWrapper<KnowledgeBase>()
                                     .ne(KnowledgeBase::getStatus, "deleted")
                                     .orderByAsc(KnowledgeBase::getId));
+            Set<Long> readableKbIds = kbAccessGuard.allReadableKbIds();
+            kbs = kbs.stream()
+                    .filter(kb -> readableKbIds.contains(kb.getId()))
+                    .collect(Collectors.toList());
             if (kbs.isEmpty()) {
                 return "当前没有可用的知识库。";
             }

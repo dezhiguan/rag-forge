@@ -51,6 +51,7 @@ ragforge:
     audiences:
       - ${RAGFORGE_AUTH_AUDIENCE:ragforge-admin-api}
       - ragforge-search-api
+      - ragforge-api
     jwks-url: ${RAGFORGE_AUTH_JWKS_URL:http://auth.careermate.cn/.well-known/jwks.json}
     jwks-cache-ttl-ms: ${RAGFORGE_AUTH_JWKS_CACHE_TTL_MS:3600000}
     clock-skew-seconds: 60
@@ -62,6 +63,15 @@ ragforge:
       idempotency-ttl: ${RAGFORGE_AUTH_EVENT_IDEMPOTENCY_TTL:7d}
       revoked-jti-ttl: ${RAGFORGE_AUTH_REVOKED_JTI_TTL:7d}
       user-revocation-ttl: ${RAGFORGE_AUTH_USER_REVOCATION_TTL:30d}
+    proxy:
+      base-url: ${RAGFORGE_AUTH_PROXY_BASE_URL:http://auth-gateway.auth-gateway.svc.cluster.local:8090}
+      client-id: ${RAGFORGE_AUTH_PROXY_CLIENT_ID:ragforge-admin-backend}
+      target-audience: ${RAGFORGE_AUTH_PROXY_TARGET_AUDIENCE:ragforge-admin-api}
+      token-endpoint-audience: ${RAGFORGE_AUTH_PROXY_TOKEN_ENDPOINT_AUDIENCE:https://auth.careermate.cn/oauth/token}
+      client-assertion-private-key: ${RAGFORGE_AUTH_PROXY_CLIENT_ASSERTION_PRIVATE_KEY:}
+      client-assertion-kid: ${RAGFORGE_AUTH_PROXY_CLIENT_ASSERTION_KID:ragforge-admin-backend}
+      public-key-pem: ${RAGFORGE_AUTH_PROXY_PUBLIC_KEY_PEM:}
+      cookie-secure: ${RAGFORGE_AUTH_PROXY_COOKIE_SECURE:true}
   files:
     upload-path: /data/files/
   eval:

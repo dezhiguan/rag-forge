@@ -10,13 +10,13 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
+FROM nginx:1.27-alpine AS runtime
+COPY deploy/k8s/ragforge/frontend-nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /src/dist /usr/share/nginx/html
+EXPOSE 80
+
 # Pre-built dist (SKIP_FRONTEND_BUILD=1 path)
 FROM nginx:1.27-alpine AS runtime-prebuilt
 COPY deploy/k8s/ragforge/frontend-nginx.conf /etc/nginx/conf.d/default.conf
 COPY frontend/dist /usr/share/nginx/html
-EXPOSE 80
-
-FROM nginx:1.27-alpine AS runtime
-COPY deploy/k8s/ragforge/frontend-nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /src/dist /usr/share/nginx/html
 EXPOSE 80
