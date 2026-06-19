@@ -483,7 +483,12 @@ jobs:
     name: smoke-test
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # 允许 deploy-ingress 被条件触发 skip 时仍跑 smoke-test（生产 nginx 不变也要验证）。
+    if: |
+      !failure() && !cancelled() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      needs.deploy-k3s.result == 'success'
     needs:
       - deploy-k3s
       - deploy-ingress
