@@ -51,6 +51,13 @@ ragforge:
     audience: ${RAGFORGE_AUTH_AUDIENCE:ragforge-admin-api}
     jwks-url: ${RAGFORGE_AUTH_JWKS_URL:http://auth.careermate.cn/.well-known/jwks.json}
     jwks-cache-ttl-ms: ${RAGFORGE_AUTH_JWKS_CACHE_TTL_MS:3600000}
+    events:
+      hmac-secret: ${RAGFORGE_AUTH_EVENT_HMAC_SECRET:}
+      signature-header: ${RAGFORGE_AUTH_EVENT_SIGNATURE_HEADER:X-Auth-Event-Signature}
+      timestamp-header: ${RAGFORGE_AUTH_EVENT_TIMESTAMP_HEADER:X-Auth-Event-Timestamp}
+      idempotency-ttl: ${RAGFORGE_AUTH_EVENT_IDEMPOTENCY_TTL:7d}
+      revoked-jti-ttl: ${RAGFORGE_AUTH_REVOKED_JTI_TTL:7d}
+      user-revocation-ttl: ${RAGFORGE_AUTH_USER_REVOCATION_TTL:30d}
   files:
     upload-path: /data/files/
   eval:
