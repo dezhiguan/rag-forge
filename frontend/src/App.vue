@@ -1,5 +1,10 @@
 <template>
-  <div class="app-layout">
+  <router-view v-if="isAuthLayout" v-slot="{ Component }">
+    <transition name="page-fade" mode="out-in">
+      <component :is="Component" />
+    </transition>
+  </router-view>
+  <div v-else class="app-layout">
     <div v-if="mobileMenuOpen" class="mobile-overlay" @click="closeMobileMenu" />
     <Sidebar
       :mobile-open="mobileMenuOpen"
@@ -29,6 +34,8 @@ import Sidebar from './components/Sidebar.vue'
 const sidebarCollapsed = ref(false)
 const mobileMenuOpen = ref(false)
 const route = useRoute()
+
+const isAuthLayout = computed(() => route.meta?.layout === 'auth')
 
 const currentPage = computed(() => ({
   icon: route.meta?.icon || '',
