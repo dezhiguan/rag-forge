@@ -26,7 +26,10 @@
           >手机验证码</button>
         </div>
 
-        <div v-if="errorMsg" class="tip tip-err">{{ errorMsg }}</div>
+        <div v-if="errorMsg" class="tip tip-err">
+          <span>{{ errorMsg }}</span>
+          <span v-if="remainingAttempts !== null">，剩余 {{ remainingAttempts }} 次</span>
+        </div>
 
         <form v-if="tab === 'password'" @submit.prevent="handlePasswordLogin" novalidate>
           <div class="field">
@@ -53,6 +56,23 @@
               @input="errorMsg = ''"
             />
           </div>
+          <div v-if="captchaRequired" class="field">
+            <label for="captcha">图形验证码</label>
+            <div class="captcha-row">
+              <input
+                id="captcha"
+                v-model.trim="form.captcha"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                placeholder="请输入右侧字符"
+                :disabled="submitDisabled"
+                @input="errorMsg = ''"
+              />
+              <img v-if="captchaImage" class="captcha-img" :src="captchaImage" alt="图形验证码" />
+              <div v-else class="captcha-fallback">R7A2</div>
+            </div>
+          </div>
           <div class="row-between">
             <label class="check" :class="{ on: form.remember }">
               <input type="checkbox" v-model="form.remember" />
@@ -61,8 +81,8 @@
             </label>
             <a class="link" href="#" @click.prevent="onForgotPassword">忘记密码？</a>
           </div>
-          <button type="submit" class="btn-primary" :disabled="loading">
-            {{ loading ? '登录中…' : '登 录' }}
+          <button type="submit" class="btn-primary" :disabled="submitDisabled">
+            {{ submitBtnLabel }}
           </button>
         </form>
 
@@ -90,7 +110,7 @@
                 maxlength="6"
                 autocomplete="one-time-code"
                 placeholder="请输入 6 位验证码"
-                :disabled="loading"
+                :disabled="submitDisabled"
                 @input="errorMsg = ''"
               />
               <button
@@ -110,12 +130,12 @@
             </label>
             <span class="link muted">遇到问题？联系管理员</span>
           </div>
-          <button type="submit" class="btn-primary" :disabled="loading">
-            {{ loading ? '登录中…' : '登 录' }}
+          <button type="submit" class="btn-primary" :disabled="submitDisabled">
+            {{ submitBtnLabel }}
           </button>
         </form>
 
-        <p class="footer-mini">登录即代表同意《管理员行为审计协议》</p>
+        <p class="footer-mini">所有管理员操作会进入审计日志</p>
   </div>
 </template>
 
@@ -134,13 +154,20 @@ const loading = ref(false)
 const errorMsg = ref('')
 const sendingSms = ref(false)
 const smsCountdown = ref(0)
+const submitCooldown = ref(0)
+const remainingAttempts = ref(null)
+const captchaRequired = ref(false)
+const captchaImage = ref('')
 let countdownTimer = null
+let submitTimer = null
 
 const form = reactive({
   account: '',
   password: '',
   phone: '',
   smsCode: '',
+  captcha: '',
+  challengeId: '',
   remember: true,
 })
 
@@ -154,6 +181,14 @@ const smsBtnLabel = computed(() => {
   return '获取验证码'
 })
 
+const submitDisabled = computed(() => loading.value || submitCooldown.value > 0)
+
+const submitBtnLabel = computed(() => {
+  if (loading.value) return '登录中...'
+  if (submitCooldown.value > 0) return `${submitCooldown.value}s 后重试`
+  return '登 录'
+})
+
 function switchTab(next) {
   if (loading.value) return
   tab.value = next
@@ -161,40 +196,50 @@ function switchTab(next) {
 }
 
 async function handlePasswordLogin() {
-  if (loading.value) return
+  if (submitDisabled.value) return
   if (!form.account || !form.password) {
     errorMsg.value = '请输入账号和密码'
     return
   }
+  if (captchaRequired.value && !form.captcha) {
+    errorMsg.value = '请输入图形验证码'
+    return
+  }
+  startSubmitCooldown()
   loading.value = true
   try {
     const res = await loginByPassword({
       account: form.account,
       password: form.password,
+      captcha: form.captcha,
+      challengeId: form.challengeId,
+      remember: form.remember,
     })
     finishLogin(res)
   } catch (e) {
-    errorMsg.value = e.message || '登录失败,请稍后重试'
+    applyLoginError(e)
   } finally {
     loading.value = false
   }
 }
 
 async function handleMobileLogin() {
-  if (loading.value) return
+  if (submitDisabled.value) return
   if (!form.phone || !form.smsCode) {
     errorMsg.value = '请输入手机号与验证码'
     return
   }
+  startSubmitCooldown()
   loading.value = true
   try {
     const res = await loginByMobile({
       phone: form.phone,
       code: form.smsCode,
+      remember: form.remember,
     })
     finishLogin(res)
   } catch (e) {
-    errorMsg.value = e.message || '登录失败,请稍后重试'
+    applyLoginError(e)
   } finally {
     loading.value = false
   }
@@ -228,7 +273,31 @@ function startCountdown(seconds) {
   }, 1000)
 }
 
+function startSubmitCooldown() {
+  submitCooldown.value = 3
+  if (submitTimer) clearInterval(submitTimer)
+  submitTimer = setInterval(() => {
+    submitCooldown.value -= 1
+    if (submitCooldown.value <= 0) {
+      clearInterval(submitTimer)
+      submitTimer = null
+    }
+  }, 1000)
+}
+
+function applyLoginError(e) {
+  errorMsg.value = e.message || '登录失败,请稍后重试'
+  remainingAttempts.value = Number.isFinite(Number(e.remainingAttempts)) ? Number(e.remainingAttempts) : null
+  captchaRequired.value = Boolean(e.captchaRequired)
+  captchaImage.value = e.captchaImage || ''
+  form.challengeId = e.challengeId || form.challengeId
+}
+
 function finishLogin({ accessToken, user }) {
+  if (!accessToken) {
+    applyLoginError({ message: '登录响应缺少 access token' })
+    return
+  }
   setSession(accessToken, user)
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
   router.replace(redirect.startsWith('/') ? redirect : '/')
@@ -240,6 +309,7 @@ function onForgotPassword() {
 
 onUnmounted(() => {
   if (countdownTimer) clearInterval(countdownTimer)
+  if (submitTimer) clearInterval(submitTimer)
 })
 </script>
 
@@ -331,6 +401,36 @@ onUnmounted(() => {
   background: transparent;
 }
 .input-with-suffix input:focus { box-shadow: none; }
+
+.captcha-row {
+  display: grid;
+  grid-template-columns: 1fr 104px;
+  gap: 10px;
+}
+
+.captcha-img,
+.captcha-fallback {
+  height: 40px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.captcha-img {
+  width: 104px;
+  object-fit: cover;
+}
+
+.captcha-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  font-weight: 800;
+  letter-spacing: 2px;
+  user-select: none;
+}
+
 .sms-btn {
   border: none;
   border-left: 1px solid #e2e8f0;
