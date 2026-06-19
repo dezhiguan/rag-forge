@@ -40,7 +40,7 @@ test.describe('RAGForge password reset', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ code: 200, data: { access_token: 'reset-access-token', user: { displayName: 'admin' } } }),
+        body: JSON.stringify({ code: 200, data: { access_token: 'reset-access-token', user: { displayName: 'admin', ragRole: 'ADMIN' } } }),
       })
     })
 

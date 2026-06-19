@@ -17,5 +17,9 @@ public class ApiKey {
   private String apiKey;
   private Boolean enabled;
   private Integer rateLimit;
+  private String principalType;
+  private String principalId;
+  private String scopes;
+  private String allowedKbIds;
   private LocalDateTime createdAt;
 }

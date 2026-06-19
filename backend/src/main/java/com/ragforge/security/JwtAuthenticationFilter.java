@@ -2,6 +2,8 @@ package com.ragforge.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.Result;
+import com.ragforge.events.AuthEventService;
+import com.ragforge.events.AuthJwtToken;
 import com.ragforge.web.TraceIds;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,6 +27,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
   private final JwtVerifier jwtVerifier;
   private final ObjectMapper objectMapper;
+  private final AuthEventService authEventService;
 
   @Override
   protected void doFilterInternal(
@@ -33,10 +36,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     try {
       String token = bearerToken(request);
       if (StringUtils.hasText(token)) {
+        JwtClaims claims;
         RagAuthContext context;
         try {
-          context = jwtVerifier.toContext(jwtVerifier.verify(token));
+          claims = jwtVerifier.verify(token);
+          if (authEventService.isJwtRevoked(
+              new AuthJwtToken(claims.string("jti"), claims.userKey(), claims.longValue("iat")))) {
+            writeUnauthorized(response);
+            return;
+          }
+          context = jwtVerifier.toContext(claims);
         } catch (IllegalArgumentException | IllegalStateException ex) {
+          writeUnauthorized(response);
+          return;
+        } catch (RuntimeException ex) {
           writeUnauthorized(response);
           return;
         }

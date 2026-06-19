@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuth } from '../composables/useAuth'
+import { installRouteGuards } from './guards'
 
 const routes = [
   {
@@ -18,15 +18,16 @@ const routes = [
       { path: '', name: 'ResetPassword', component: () => import('../views/auth/ResetPassword.vue'), meta: { layout: 'auth', public: true } },
     ],
   },
-  { path: '/403', name: 'Forbidden', component: () => import('../views/Forbidden.vue'), meta: { icon: '!', label: '无权访问' } },
-  { path: '/', name: 'Dashboard', component: () => import('../views/Dashboard.vue'), meta: { icon: '🏠', label: '驾驶舱' } },
-  { path: '/knowledge', name: 'KnowledgeBase', component: () => import('../views/KnowledgeBase.vue'), meta: { icon: '📁', label: '知识库管理' } },
-  { path: '/knowledge/:kbId/documents', name: 'KnowledgeDocuments', component: () => import('../views/KnowledgeDocuments.vue'), meta: { icon: '📄', label: '文档列表' } },
-  { path: '/document/:id', name: 'DocumentDetail', component: () => import('../views/DocumentDetail.vue'), meta: { icon: '📄', label: '文档详情' } },
-  { path: '/debug', name: 'DebugConsole', component: () => import('../views/DebugConsole.vue'), meta: { icon: '🔍', label: '检索调试台' } },
-  { path: '/perf-probe', name: 'PerformanceProbe', component: () => import('../views/PerformanceProbe.vue'), meta: { icon: '⏱', label: '性能诊断' } },
-  { path: '/eval', name: 'EvaluationLab', component: () => import('../views/EvaluationLab.vue'), meta: { icon: '🧪', label: '评测实验室' } },
-  { path: '/api-gateway', name: 'ApiGateway', component: () => import('../views/ApiGateway.vue'), meta: { icon: '🔌', label: 'API 网关' } },
+  { path: '/403', name: 'Forbidden', component: () => import('../views/Forbidden.vue'), meta: { icon: '!', label: '无权访问', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'] } },
+  { path: '/', name: 'Dashboard', component: () => import('../views/Dashboard.vue'), meta: { icon: '🏠', label: '驾驶舱', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:dashboard:read' } },
+  { path: '/knowledge', name: 'KnowledgeBase', component: () => import('../views/KnowledgeBase.vue'), meta: { icon: '📁', label: '知识库管理', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:kb:read' } },
+  { path: '/knowledge/:kbId/documents', name: 'KnowledgeDocuments', component: () => import('../views/KnowledgeDocuments.vue'), meta: { icon: '📄', label: '文档列表', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:doc:read' } },
+  { path: '/document/:id', name: 'DocumentDetail', component: () => import('../views/DocumentDetail.vue'), meta: { icon: '📄', label: '文档详情', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:doc:read' } },
+  { path: '/debug', name: 'DebugConsole', component: () => import('../views/DebugConsole.vue'), meta: { icon: '🔍', label: '检索调试台', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:debug:run' } },
+  { path: '/perf-probe', name: 'PerformanceProbe', component: () => import('../views/PerformanceProbe.vue'), meta: { icon: '⏱', label: '性能诊断', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/eval', name: 'EvaluationLab', component: () => import('../views/EvaluationLab.vue'), meta: { icon: '🧪', label: '评测实验室', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/api', name: 'ApiGateway', component: () => import('../views/ApiGateway.vue'), meta: { icon: '🔌', label: 'API 网关', role: 'ADMIN', scope: 'rag:apikey:admin' } },
+  { path: '/api-gateway', redirect: '/api', meta: { role: 'ADMIN', scope: 'rag:apikey:admin' } },
 ]
 
 const router = createRouter({
@@ -34,16 +35,6 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
-  const { isAuthenticated } = useAuth()
-  if (to.meta.public) {
-    if (to.name === 'Login' && isAuthenticated.value) return { path: '/' }
-    return true
-  }
-  if (!isAuthenticated.value) {
-    return { path: '/login', query: { redirect: to.fullPath } }
-  }
-  return true
-})
+installRouteGuards(router)
 
 export default router

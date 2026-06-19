@@ -36,4 +36,12 @@ public record JwtClaims(Map<String, Object> values) {
     Long exp = longValue("exp");
     return exp == null || exp <= nowEpochSeconds;
   }
+
+  public String userKey() {
+    String userId = string("user_id");
+    if (userId != null) {
+      return userId;
+    }
+    return string("sub");
+  }
 }

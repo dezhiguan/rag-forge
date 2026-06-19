@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.config.ApiKeyProperties;
 import com.ragforge.mapper.ApiKeyMapper;
 import com.ragforge.model.entity.ApiKey;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -17,7 +18,7 @@ class ApiKeyInterceptorRateLimitTest {
 
   private ApiKeyInterceptor newInterceptor(StringRedisTemplate redis) {
     return new ApiKeyInterceptor(
-        mock(ApiKeyMapper.class), new ApiKeyProperties(), new ObjectMapper(), redis);
+        mock(ApiKeyMapper.class), new ApiKeyProperties(), new ObjectMapper(), redis, List.of());
   }
 
   private ApiKey keyWithLimit(int limit) {

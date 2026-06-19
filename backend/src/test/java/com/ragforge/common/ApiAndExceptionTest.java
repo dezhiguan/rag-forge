@@ -1,18 +1,16 @@
 package com.ragforge.common;
 
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ragforge.security.ApiKeyInterceptor;
 import com.ragforge.config.ApiKeyProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.security.ApiKeyInterceptor;
+import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.web.TraceResponseBodyAdvice;
 import com.ragforge.web.filter.TraceFilter;
 import com.ragforge.controller.HealthController;
@@ -27,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -41,12 +40,14 @@ class ApiAndExceptionTest {
 
   @BeforeEach
   void setUp() {
+    RagAuthContextHolder.clear();
+    SecurityContextHolder.clearContext();
     ApiKeyProperties apiKeyProperties = new ApiKeyProperties();
     apiKeyProperties.setWhitelistPaths(List.of("/api/v1/health"));
 
     ApiKeyInterceptor interceptor =
         new ApiKeyInterceptor(
-            apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate);
+            apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate, List.of());
 
     mockMvc =
         standaloneSetup(new HealthController(), new KnowledgeBaseController(knowledgeBaseService))
@@ -77,8 +78,6 @@ class ApiAndExceptionTest {
 
   @Test
   void kbWithoutApiKeyReturns401() throws Exception {
-    when(apiKeyMapper.selectCount(isNull())).thenReturn(1L);
-
     MvcResult result =
         mockMvc
             .perform(get("/api/v1/kb"))

@@ -34,9 +34,12 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuth } from '../composables/useAuth'
+import { canAccessRoute } from '../router/guards'
 
 const router = useRouter()
 const route = useRoute()
+const { ragRole, scopes } = useAuth()
 const collapsed = ref(false)
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
@@ -66,14 +69,16 @@ function onNavClick() {
   }
 }
 
-const navItems = [
-  { path: '/', icon: '🏠', label: '驾驶舱' },
-  { path: '/knowledge', icon: '📁', label: '知识库管理' },
-  { path: '/debug', icon: '🔍', label: '检索调试台' },
-  { path: '/perf-probe', icon: '⏱', label: '性能诊断' },
-  { path: '/eval', icon: '🧪', label: '评测实验室' },
-  { path: '/api-gateway', icon: '🔌', label: 'API 网关' },
+const ALL_NAV_ITEMS = [
+  { path: '/', icon: '🏠', label: '驾驶舱', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:dashboard:read' } },
+  { path: '/knowledge', icon: '📁', label: '知识库管理', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:kb:read' } },
+  { path: '/debug', icon: '🔍', label: '检索调试台', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:debug:run' } },
+  { path: '/perf-probe', icon: '⏱', label: '性能诊断', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/eval', icon: '🧪', label: '评测实验室', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/api', icon: '🔌', label: 'API 网关', meta: { role: 'ADMIN', scope: 'rag:apikey:admin' } },
 ]
+
+const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(item.meta, ragRole.value, scopes.value)))
 </script>
 
 <style scoped>
