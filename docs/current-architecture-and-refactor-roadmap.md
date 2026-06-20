@@ -1,6 +1,6 @@
 # RAGForge 当前真实架构与重构路线
 
-> 日期：2026-06-01  
+> 日期：2026-06-20
 > 视角：架构体检 / 当前实现校准 / 后续重构路线  
 > 说明：本文不替代 `docs/architecture.md` 的历史设计价值，但以后讨论系统现状、问题和重构优先级时，应优先参考本文。
 
@@ -51,17 +51,19 @@ query -> final answer
 
 | 层级 | 当前实现 | 架构判断 |
 |---|---|---|
-| 后端框架 | Spring Boot 3.2 + Java 17 | 合理，适合企业服务 |
+| 后端框架 | Spring Boot 3.5.x + Java 21 | 合理，适合企业服务 |
+| 认证与权限 | Spring Security + Auth Gateway JWT + JWKS + KB ACL + API Key 服务账号 | 已进入主链路，需要继续补管理体验和运维排障 |
 | ORM | MyBatis-Plus | 可接受，开发效率高 |
 | 业务库/向量库 | PostgreSQL + pgvector | 当前规模合理 |
 | 关键词检索 | Elasticsearch 8.x | 合理，但在 4C8G 上资源压力较大 |
 | 消息队列 | RocketMQ | 对简历项目偏重，但能展示异步处理能力 |
+| 缓存/限流/撤销状态 | Redis + Caffeine | Redis 已承载 API Key 限流、JWT 撤销和 ShedLock |
 | 文档解析 | Apache Tika / PDFBox | 合理 |
 | Embedding | DashScope text-embedding-v4 | 合理，1024 维 |
 | Query Rewrite | 当前走 DashScope/Qwen 配置 | 文档中 DeepSeek 口径需要更新 |
 | Reranker | 当前 Java 调 DashScope rerank API | 文档中 Python bge-reranker 口径需要更新 |
 | 前端 | Vue 3 + Vite | 合理 |
-| 部署 | 4C8G 数据层 + 2C4G 应用层 | v1 可用，但要承认资源边界 |
+| 部署 | 数据层 + 入口层 + 应用层同机 3 副本 | v1 可用，但仍不是跨机器高可用 |
 
 ### Reranker 口径
 
@@ -154,10 +156,11 @@ RetrievalService
 
 当前部署规划：
 
-| 服务器 | 规格 | 角色 | 组件 |
-|---|---|---|---|
-| ECS 云服务器 | 4 vCPU / 8 GiB / 40 GiB | 数据与检索层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ |
-| 轻量服务器 | 2 vCPU / 4 GiB / 50 GiB | 应用入口层 | Nginx、Vue 前端、RAG Java 后端 |
+| 服务器 | 角色 | 组件 |
+|---|---|---|
+| Server 1 | 数据与检索层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ |
+| Server 2 | 入口层 | Nginx、RAGForge 前端、CareerMate 前端 |
+| Server 3 | 应用层 | RAGForge backend 3 副本、CareerMate backend 3 副本 |
 
 建议容量口径：
 
@@ -192,6 +195,26 @@ PerformanceProbe
 - `DebugConsole` 是核心展示页，应继续打磨。
 - `EvaluationLab` 是质量可信度的关键，但要严肃化。
 - `PerformanceProbe` 可以长期保留，但要作为管理员工具，避免普通用户误用。
+- `Login` 和 `ResetPassword` 已接入 Auth Gateway 代理，属于后台管理入口的一部分。
+- 路由权限已加入角色和 scope 控制，但真实授权仍必须以后端为准。
+
+### 认证与权限状态
+
+已完成：
+
+- 后台 API 使用 Bearer JWT，JWT 校验 issuer、audience、JWKS 和时钟偏移。
+- 前端支持账号密码登录、手机号验证码登录、刷新 token、退出、全端退出和密码重置。
+- Auth Gateway 事件 webhook 使用 HMAC 签名，支持 session revoked 和 password changed 两类撤销事件。
+- 知识库已增加 owner、visibility、kb_type 和 `kb_acl`。
+- 搜索、MCP 和内部检索入口支持 API Key 服务账号。
+- API Key 已增加 `principal_type`、`principal_id`、`scopes`、`allowed_kb_ids` 和 Redis 分钟级限流。
+
+仍需继续增强：
+
+- API Key 页面需要补齐扩展字段编辑能力。
+- ACL 管理目前偏后端能力，缺少面向管理员的授权页面。
+- 本地开发登录依赖 Auth Gateway，建议补 mock auth 或最小联调文档。
+- 认证事件 webhook 的可观测指标和排障工具还可以补齐。
 
 ### 文案边界
 

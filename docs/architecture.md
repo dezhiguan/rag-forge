@@ -1,6 +1,6 @@
 # RAGForge 架构设计文档
 
-> 当前真实版本 | 2026-06-01
+> 当前真实版本 | 2026-06-20
 >
 > 说明：本文描述的是当前代码与部署的真实口径，不再沿用早期“架构设想版”的表述。  
 > 更细的重构路线见 [current-architecture-and-refactor-roadmap.md](./current-architecture-and-refactor-roadmap.md)。
@@ -31,17 +31,19 @@ query -> final answer
 
 | 层级 | 当前实现 | 说明 |
 | --- | --- | --- |
-| 后端框架 | Spring Boot 3.2 + Java 17 | 当前主实现 |
+| 后端框架 | Spring Boot 3.5.x + Java 21 | 当前主实现 |
+| 安全认证 | Spring Security + JWT + JWKS + Auth Gateway 代理 | 后台接口走 Bearer JWT，搜索/MCP 可走 JWT 或 API Key |
 | ORM | MyBatis-Plus | 业务 CRUD 和检索数据访问 |
 | 业务库 / 向量库 | PostgreSQL + pgvector | 业务表与向量统一存储 |
 | 关键词检索 | Elasticsearch 8.x | BM25 关键词召回 |
 | 消息队列 | RocketMQ 5.x | 文档异步处理 |
+| 缓存 / 限流 / 撤销状态 | Redis + Caffeine | API Key 限流、JWT 撤销、ShedLock、短 TTL 本地缓存 |
 | 文档解析 | Apache Tika / PDFBox | PDF、Markdown、TXT、Word 等 |
 | Embedding | DashScope `text-embedding-v4` | 当前文档向量化主模型 |
 | Query Rewrite | DashScope / Qwen 配置 | 当前实际代码口径，不是 DeepSeek |
 | Reranker | DashScope rerank API | 当前主链路口径，不是 Python bge |
 | 前端 | Vue 3 + Vite | 管理后台与调试台 |
-| 部署 | Docker Compose + Nginx | 双服务器部署为主 |
+| 部署 | Docker Compose + Nginx + SkyWalking Agent | 三层部署，Server 3 当前为同机 3 副本 |
 
 ### 1.1 需要特别说明的口径
 
@@ -115,9 +117,11 @@ query -> final answer
 
 ## 3. 页面与产品边界
 
-当前前端页面有 7 个核心页面：
+当前前端页面有登录页、密码重置页和 7 个核心业务页面：
 
 ```text
+Login
+ResetPassword
 Dashboard
 KnowledgeBase
 DocumentDetail
@@ -136,8 +140,23 @@ PerformanceProbe
 - `EvaluationLab`：评测集、实验和失败样本分析。
 - `ApiGateway`：API Key 管理。
 - `PerformanceProbe`：检索链路耗时诊断。
+- `Login` / `ResetPassword`：通过 RAGForge `/api/auth/*` 代理 Auth Gateway。
 
-### 3.2 产品边界
+### 3.2 认证与权限边界
+
+当前系统已经接入统一认证和知识库级权限控制：
+
+- 后台管理接口使用 Auth Gateway 颁发的 Bearer JWT。
+- JWT 校验 issuer、audience、JWKS、时钟偏移，并查询 Redis 判断 token 是否已撤销。
+- 前端路由按 `ragRole` 和 `scopes` 控制菜单与页面访问。
+- 后端方法级权限使用 `@PreAuthorize`，资源级权限使用 `KbAccessGuard`。
+- `ADMIN` 可访问非 `SYSTEM` 类型知识库；`KB_EDITOR` / `KB_VIEWER` 通过 JWT claims 或 `kb_acl` 获取知识库读写范围。
+- 外部检索、MCP 和内部检索入口可以使用 API Key，API Key 会转换成 `SERVICE_ACCOUNT` 上下文，并按 `allowed_kb_ids` 过滤知识库。
+- Auth Gateway 的 `session.revoked` 和 `user.password.changed` 事件通过 HMAC webhook 同步到 RAGForge，Redis 保存事件幂等、JTI 撤销和用户级 revoked-after 状态。
+
+详细说明见 [auth-and-permissions.md](./auth-and-permissions.md)。
+
+### 3.3 产品边界
 
 RAGForge 不是聊天产品。
 
@@ -149,12 +168,13 @@ RAGForge 不是聊天产品。
 
 ## 4. 部署现实
 
-当前采用两台服务器的部署思路。
+当前采用三层部署思路。
 
-| 服务器 | 规格 | 角色 | 组件 |
-| --- | --- | --- | --- |
-| ECS 云服务器 | 4 vCPU / 8 GiB / 40 GiB | 数据与检索层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ |
-| 轻量级服务器 | 2 vCPU / 4 GiB / 50 GiB | 应用入口层 | Nginx、Vue 前端、RAG Java 后端 |
+| 服务器 | 角色 | 组件 |
+| --- | --- | --- |
+| Server 1 | 数据与检索层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ |
+| Server 2 | 入口层 | Nginx、RAGForge 前端、CareerMate 前端 |
+| Server 3 | 应用层 | RAGForge backend `:8080/:8081/:8082`、CareerMate backend `:18080/:18081/:18082` |
 
 ### 4.1 容量口径
 
@@ -227,6 +247,7 @@ RAGForge 不是聊天产品。
 2. 监控和指标体系还不完整，需要生产告警闭环。
 3. 多实例部署前应处理共享文件存储、Worker/API 角色隔离和定时任务单实例执行。
 4. `full` 策略仍然较重，适合异步化或队列化。
+5. API Key 页面已经展示扩展字段，但编辑 `allowedKbIds`、`scopes`、`principal`、`rateLimit` 仍需补齐。
 
 ## 7. 推荐的后续工作方向
 

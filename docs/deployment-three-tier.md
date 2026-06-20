@@ -62,6 +62,18 @@ cat > /opt/shared/env/ragforge.env <<'EOF'
 SPRING_PROFILES_ACTIVE=prod
 SPRING_OUTPUT_ANSI_ENABLED=always
 JAVA_OPTS=-Xms512m -Xmx1g
+RAGFORGE_AUTH_ISSUER=https://auth.careermate.cn
+RAGFORGE_AUTH_AUDIENCE=ragforge-admin-api
+RAGFORGE_AUTH_JWKS_URL=http://auth.careermate.cn/.well-known/jwks.json
+RAGFORGE_AUTH_PROXY_BASE_URL=http://auth-gateway.auth-gateway.svc.cluster.local:8090
+RAGFORGE_AUTH_PROXY_CLIENT_ID=ragforge-admin-backend
+RAGFORGE_AUTH_PROXY_TARGET_AUDIENCE=ragforge-admin-api
+RAGFORGE_AUTH_PROXY_TOKEN_ENDPOINT_AUDIENCE=https://auth.careermate.cn/oauth/token
+RAGFORGE_AUTH_PROXY_CLIENT_ASSERTION_PRIVATE_KEY=<pem-private-key>
+RAGFORGE_AUTH_PROXY_CLIENT_ASSERTION_KID=ragforge-admin-backend
+RAGFORGE_AUTH_PROXY_PUBLIC_KEY_PEM=<pem-public-key>
+RAGFORGE_AUTH_PROXY_COOKIE_SECURE=true
+RAGFORGE_AUTH_EVENT_HMAC_SECRET=<same-as-auth-gateway-event-subscription-secret>
 EOF
 
 chmod 600 /opt/shared/env/common.env /opt/shared/env/ragforge.env
@@ -93,7 +105,7 @@ RAGForge 上传文件挂载在 Server 3 宿主机 `/data/files`（bind mount 到
 Server 3 使用 `/opt/shared/env` 注入运行配置：
 
 - `/opt/shared/env/common.env`：跨服务公共配置，例如 `DASHSCOPE_API_KEY`、`LLM_API_KEY`、`TZ`
-- `/opt/shared/env/ragforge.env`：RAGForge 专属配置，例如 `SPRING_PROFILES_ACTIVE`、`JAVA_OPTS`
+- `/opt/shared/env/ragforge.env`：RAGForge 专属配置，例如 `SPRING_PROFILES_ACTIVE`、`JAVA_OPTS`、Auth Gateway、JWKS、client assertion 和 webhook HMAC secret
 - `/opt/shared/env/careermate.env`：CareerMate 专属配置，例如 `DB_URL`、`JWT_SECRET`、`LLM_PROVIDER`
 
 这些文件**不入库**、不随 CI 同步。RAGForge 手工启动：
@@ -164,6 +176,7 @@ nc -vz -w 3 172.25.90.184 18080 18081 18082
 ```bash
 # Server 3 本机
 curl http://127.0.0.1:8080/api/v1/health
+curl http://127.0.0.1:8080/api/v1/.well-known/ragforge-admin-backend-jwks.json
 
 # Server 2 内网
 curl http://172.19.40.32:19080/api/v1/health

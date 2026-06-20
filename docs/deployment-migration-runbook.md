@@ -115,6 +115,18 @@ cat > /opt/shared/env/ragforge.env <<'EOF'
 SPRING_PROFILES_ACTIVE=prod
 SPRING_OUTPUT_ANSI_ENABLED=always
 JAVA_OPTS=-Xms512m -Xmx1g
+RAGFORGE_AUTH_ISSUER=https://auth.careermate.cn
+RAGFORGE_AUTH_AUDIENCE=ragforge-admin-api
+RAGFORGE_AUTH_JWKS_URL=http://auth.careermate.cn/.well-known/jwks.json
+RAGFORGE_AUTH_PROXY_BASE_URL=http://auth-gateway.auth-gateway.svc.cluster.local:8090
+RAGFORGE_AUTH_PROXY_CLIENT_ID=ragforge-admin-backend
+RAGFORGE_AUTH_PROXY_TARGET_AUDIENCE=ragforge-admin-api
+RAGFORGE_AUTH_PROXY_TOKEN_ENDPOINT_AUDIENCE=https://auth.careermate.cn/oauth/token
+RAGFORGE_AUTH_PROXY_CLIENT_ASSERTION_PRIVATE_KEY=<pem-private-key>
+RAGFORGE_AUTH_PROXY_CLIENT_ASSERTION_KID=ragforge-admin-backend
+RAGFORGE_AUTH_PROXY_PUBLIC_KEY_PEM=<pem-public-key>
+RAGFORGE_AUTH_PROXY_COOKIE_SECURE=true
+RAGFORGE_AUTH_EVENT_HMAC_SECRET=<same-as-auth-gateway-event-subscription-secret>
 EOF
 chmod 600 /opt/shared/env/ragforge.env
 ```
