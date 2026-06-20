@@ -1,0 +1,1170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>RAGForge 优化设计文档 V5 · 资深产品 + 资深架构师视角</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #ffffff;
+    --ink: #0f172a;
+    --muted: #475569;
+    --line: #e2e8f0;
+    --accent: #2563eb;
+    --accent-2: #0ea5e9;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --bad: #dc2626;
+    --code-bg: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Helvetica, Arial,
+                 "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: linear-gradient(180deg, #f1f5f9 0%, #ffffff 100%);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  header.hero {
+    background: linear-gradient(135deg, #1e3a8a 0%, #0ea5e9 100%);
+    color: #fff;
+    padding: 56px 40px 40px;
+  }
+  header.hero h1 {
+    margin: 0 0 8px;
+    font-size: 32px;
+    letter-spacing: 0.5px;
+  }
+  header.hero .sub {
+    opacity: 0.9;
+    font-size: 15px;
+  }
+  header.hero .meta {
+    margin-top: 16px;
+    font-size: 13px;
+    opacity: 0.85;
+  }
+  main {
+    max-width: 1160px;
+    margin: -24px auto 64px;
+    padding: 0 24px;
+  }
+  section.card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin: 20px 0;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  h2 {
+    font-size: 22px;
+    margin: 0 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--accent);
+    display: inline-block;
+  }
+  h3 {
+    font-size: 17px;
+    margin: 22px 0 10px;
+    color: #1e293b;
+  }
+  h4 {
+    font-size: 15px;
+    margin: 14px 0 6px;
+    color: #334155;
+  }
+  p { margin: 8px 0; color: #1e293b; }
+  ul, ol { margin: 6px 0 10px 22px; }
+  li { margin: 4px 0; }
+  code {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #be185d;
+  }
+  pre {
+    background: #0b1220;
+    color: #e2e8f0;
+    padding: 14px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.55;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre .k { color: #93c5fd; }
+  pre .s { color: #fcd34d; }
+  pre .c { color: #64748b; font-style: italic; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: #f8fafc; color: #334155; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .pill.new { background: #dcfce7; color: #166534; }
+  .pill.change { background: #fef3c7; color: #92400e; }
+  .pill.keep { background: #e0f2fe; color: #075985; }
+  .pill.risk { background: #fee2e2; color: #991b1b; }
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: #eff6ff;
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .callout.warn { border-left-color: var(--warn); background: #fffbeb; }
+  .callout.bad { border-left-color: var(--bad); background: #fef2f2; }
+  .callout.ok { border-left-color: var(--ok); background: #f0fdf4; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid-2 { grid-template-columns: 1fr; } }
+  .grid-2 .cell {
+    background: #fafbfc;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 18px;
+  }
+  .toc {
+    background: #fafbfc;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 22px;
+    columns: 2;
+    column-gap: 32px;
+  }
+  .toc a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .toc a:hover { text-decoration: underline; }
+  .arch-ascii {
+    background: #0b1220;
+    color: #cbd5e1;
+    padding: 16px;
+    border-radius: 8px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .scorecard td.before { color: var(--bad); font-weight: 600; }
+  .scorecard td.after { color: var(--ok); font-weight: 600; }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 24px;
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>RAGForge V5 · 优化设计文档</h1>
+  <div class="sub">从「企业级 RAG 基础设施」走向「企业级 RAG 平台」 — 由资深产品 + 资深架构师联合审视</div>
+  <div class="meta">
+    版本：V5（建议落地版） · 编制日期：2026-06-20 · 架构师：@guandezhi ·
+    上版基线：V4（2026-06-01）
+  </div>
+</header>
+
+<main>
+
+<section class="card">
+  <h2>0. 文档导航</h2>
+  <div class="toc">
+    <ol>
+      <li><a href="#bg">背景：V4 体检结论速览</a></li>
+      <li><a href="#goal">V5 目标与产品定位修正</a></li>
+      <li><a href="#overview">总体架构演进图</a></li>
+      <li><a href="#f1">能力 1：数据清洗管道（Cleaner）</a></li>
+      <li><a href="#f2">能力 2：多策略分块（Chunker Family）</a></li>
+      <li><a href="#f3">能力 3：Answer-as-LLM 应答层</a></li>
+      <li><a href="#f4">能力 4：对象存储（OSS）切换</a></li>
+      <li><a href="#f5">能力 5：多模态上传与索引</a></li>
+      <li><a href="#f6">能力 6：身份、去重与硬覆盖增量更新</a></li>
+      <li><a href="#data">数据模型变更（V13–V19）</a></li>
+      <li><a href="#api">API 变更清单</a></li>
+      <li><a href="#ui">前端页面变更</a></li>
+      <li><a href="#deploy">部署架构与容量演进</a></li>
+      <li><a href="#roadmap">灰度与迁移路线</a></li>
+      <li><a href="#risk">风险与权衡</a></li>
+      <li><a href="#score">改造前后能力评分</a></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="bg">
+  <h2>1. 背景：V4 体检结论速览</h2>
+  <p>在过去 24 小时的产品 + RAG 用户视角联合审视中，我们形成了以下判断：</p>
+  <ul>
+    <li><b>底座扎实</b>：Spring Boot 3.2 + PG/pgvector + ES + RocketMQ + 统一 <code>RetrievalService</code> + Flyway + Docker Compose + MCP，已具备企业级骨架。</li>
+    <li><b>身份与多租户已收口</b>（V9–V12）：<code>tenant_id</code>、<code>kb_acl</code>、JWT/JWKS、SERVICE_ACCOUNT、<code>retrieval_logs</code> 审计扩展。</li>
+    <li><b>仍欠的五块</b>：① 数据清洗缺失；② 分块只有字符滑窗；③ 没有答案侧产品形态；④ 文件存本机磁盘，不可多实例；⑤ 多模态文档处理（图、表、扫描件）整体塌方。</li>
+  </ul>
+  <div class="callout warn">
+    本文档的目标不是推倒 V4，而是<b>沿着 V4 的统一抽象（RetrievalService / pipeline 三件套 / RagAuthContext）顺势扩</b>。
+    新能力都以「可插拔策略」形式落入既有抽象，而不是新建一条平行链路。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="goal">
+  <h2>2. V5 目标与产品定位修正</h2>
+
+  <h3>2.1 一句话目标</h3>
+  <p>在不破坏「检索基础设施」定位的前提下，把 RAGForge 升级为 <b>"基础设施 + 可选应答层"</b> 的<b>企业级 RAG 平台</b>，覆盖
+  「多源接入 → 数据清洗 → 多策略分块 → 多模态索引 → 混合检索 → 可选 LLM 应答」全链路。</p>
+
+  <h3>2.2 产品定位修正</h3>
+  <table>
+    <tr><th>维度</th><th>V4 定位</th><th>V5 定位</th></tr>
+    <tr><td>核心产物</td><td>chunks + scores + metadata + latency</td><td>chunks 默认输出；answer + citations 作为<b>可选开关</b></td></tr>
+    <tr><td>对外形态</td><td>检索 API + 管理后台</td><td>检索 API + 应答 API + MCP + 嵌入式 Chat-with-Citation 组件</td></tr>
+    <tr><td>边界口径</td><td>"不做聊天产品"</td><td>"不强制聊天；提供应答能力，但应答是<b>可关闭、可替换、可审计</b>的"</td></tr>
+  </table>
+
+  <div class="callout">
+    <b>关键设计原则</b>：Answer-as-LLM 是 <i>opt-in</i> 而非 <i>opt-out</i>。
+    租户可在 KB 级配置 <code>answer_mode = OFF / PREVIEW / ON</code>，默认 <code>OFF</code>，保持与 V4 一致。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="overview">
+  <h2>3. 总体架构演进图</h2>
+
+  <h3>3.1 链路总览（V5）</h3>
+  <pre class="arch-ascii">
+┌────────────────────────────────────────────────────────────────────────────┐
+│                            数据接入层（V5 新增/扩展）                       │
+│  ┌─────────┐ ┌──────────┐ ┌────────────┐ ┌─────────────┐ ┌──────────────┐ │
+│  │ 文件上传 │ │ URL/网页 │ │ Confluence │ │ 多模态(图/音)│ │ DB / S3 Sync │ │
+│  └────┬────┘ └─────┬────┘ └──────┬─────┘ └──────┬──────┘ └──────┬───────┘ │
+└───────┼────────────┼────────────┼──────────────┼───────────────┼─────────┘
+        ▼            ▼            ▼              ▼               ▼
+                ┌──────────────────────────────────────────┐
+                │   OSS 对象存储（V5 替换本地磁盘）          │
+                │   阿里云 OSS / MinIO 兼容，签名直传        │
+                └──────────────────────┬───────────────────┘
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │  RocketMQ 文档处理管道（扩展） │
+                       └───────────────┬───────────────┘
+                                       ▼
+   ┌───────────────────────────────────────────────────────────────────┐
+   │                 文档处理流水线（V5 模块化重构）                   │
+   │                                                                   │
+   │  Parser ─▶ Cleaner ─▶ Chunker ─▶ Enricher ─▶ Embedder ─▶ Indexer  │
+   │   │         │ NEW      │ EXT     │ NEW       │           │        │
+   │   │         │          │         │           │           │        │
+   │   │   规则+LLM清洗    5 种分块  实体/摘要   多向量      PG + ES   │
+   │   │   去噪/纠错/脱敏  策略可配  生成      (text/img)              │
+   │   │                                                               │
+   │   ▼  Tika / PDFBox / Whisper / CLIP / OCR(PaddleOCR)              │
+   └───────────────────────────────────────────────────────────────────┘
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │  统一 RetrievalService（保留）│
+                       │  keyword/vector/hybrid/       │
+                       │  rewrite/full                 │
+                       └───────────────┬───────────────┘
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │  AnswerService（V5 新增）     │
+                       │  Prompt 编排 + 引用回链 + 流式 │
+                       │  answer_mode: OFF/PREVIEW/ON  │
+                       └───────────────┬───────────────┘
+                                       ▼
+              ┌────────────────────────┴───────────────────────┐
+              ▼                                                ▼
+   ┌────────────────────┐                          ┌────────────────────┐
+   │  /api/v1/search    │                          │  /api/v1/answer    │
+   │  返回 chunks（保留）│                          │  返回 answer+cites │
+   └────────────────────┘                          └────────────────────┘
+              ▼                                                ▼
+        MCP Tool: searchKnowledgeBase            MCP Tool: answerWithCitations (NEW)
+  </pre>
+
+  <h3>3.2 与 V4 的关系</h3>
+  <ul>
+    <li><b>保留</b>：RetrievalService、RocketMQ、PG/pgvector、ES、KbAccessGuard、所有 5 种检索策略。</li>
+    <li><b>替换</b>：FileStorageService 本地磁盘 → OSS 抽象；Chunker 单实现 → 策略族。</li>
+    <li><b>新增</b>：CleanerStage、AnswerService、MultiModalParser、TenantBilling（应答消耗计量）。</li>
+  </ul>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="f1">
+  <h2>4. 能力 1：数据清洗管道（Cleaner）<span class="pill new">NEW</span></h2>
+
+  <h3>4.1 为什么必须做</h3>
+  <p>当前链路：<code>Tika 解析 → 直接送 Chunker</code>。这导致：</p>
+  <ul>
+    <li>PDF 解析出的页眉/页脚/页码/水印 → 进入 chunk → 污染向量空间（同一份页脚被 reranker 当成"高频但无信息"误判）。</li>
+    <li>Word 留下的 <code> </code>、零宽字符、不可见控制符 → ES tokenizer 不一致。</li>
+    <li>合同/简历里 PII（手机/身份证/邮箱）原样入库 → 合规风险。</li>
+  </ul>
+
+  <h3>4.2 设计：分层 + 可配置 + 可审计</h3>
+  <pre class="arch-ascii">
+Cleaner 接口（SPI）：
+
+  CleanResult clean(RawText raw, CleanProfile profile)
+
+四层流水线：
+
+  L1 Normalize    ── unicode 归一化 / 去控制符 / 换行收敛 / 全半角统一
+  L2 Denoise      ── 页眉页脚识别（基于位置 + 重复度）/ 水印 / 目录 TOC
+  L3 PII Mask     ── 手机/身份证/邮箱/银行卡 → 哈希或*替换；保留长度
+  L4 LLM Rewrite  ── 可选；对扫描件 OCR 错字、断行错误做 LLM 兜底纠错
+                     仅在 profile.llmAssist = true 且文档置信度 < 0.7 时触发
+
+输出：CleanResult { cleanedText, removedRegions[], piiMap, llmTokensUsed }</pre>
+
+  <h3>4.3 配置粒度</h3>
+  <table>
+    <tr><th>层级</th><th>配置项</th><th>默认</th></tr>
+    <tr><td>租户</td><td>全局 PII 策略（脱敏 / 哈希 / 拒绝入库）</td><td>脱敏</td></tr>
+    <tr><td>知识库</td><td>启用层 L1–L4 开关、L4 模型选择</td><td>L1+L2+L3 开</td></tr>
+    <tr><td>文档</td><td>支持「跳过清洗」白名单（合同原文）</td><td>不跳过</td></tr>
+  </table>
+
+  <h3>4.4 可观测性</h3>
+  <ul>
+    <li>每文档保存 <code>clean_report</code>：删除区域、删除字符数、PII 命中数、LLM token 消耗。</li>
+    <li>新增 <b>"清洗对比"</b> 页：左原文 + 右清洗后 + 高亮 diff，供运营审计。</li>
+  </ul>
+
+  <div class="callout ok">
+    <b>验收</b>：取 50 份 PDF 作 ground truth，清洗后 chunk 重复率应下降 ≥ 40%，
+    召回精度（Top1）提升 ≥ 8%。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="f2">
+  <h2>5. 能力 2：多策略分块（Chunker Family）<span class="pill change">REWRITE</span></h2>
+
+  <h3>5.1 当前问题</h3>
+  <p>V4 只有 <b>固定字符窗口</b>，对结构化文档（Markdown / 论文 / 合同 / 财报）召回精度差，
+  且对用户不可见、不可调。</p>
+
+  <h3>5.2 五种策略</h3>
+  <table>
+    <tr>
+      <th>策略</th><th>适用场景</th><th>关键参数</th><th>实现路线</th>
+    </tr>
+    <tr>
+      <td><code>FIXED_WINDOW</code><span class="pill keep">KEEP</span></td>
+      <td>纯文本、低结构</td>
+      <td>chunkSize, overlap</td>
+      <td>保留现有实现，作为兜底</td>
+    </tr>
+    <tr>
+      <td><code>RECURSIVE</code><span class="pill new">NEW</span></td>
+      <td>通用文本（默认）</td>
+      <td>separators[], chunkSize, overlap</td>
+      <td>按 段落 → 句号 → 逗号 → 字符 递归</td>
+    </tr>
+    <tr>
+      <td><code>MARKDOWN_HEADING</code><span class="pill new">NEW</span></td>
+      <td>技术文档、Wiki、README</td>
+      <td>maxLevel, mergeBelow</td>
+      <td>按 H1/H2/H3 切，保留标题路径作为 chunk metadata</td>
+    </tr>
+    <tr>
+      <td><code>SEMANTIC</code><span class="pill new">NEW</span></td>
+      <td>论文、长文、知识科普</td>
+      <td>simThreshold, minLen, maxLen</td>
+      <td>句嵌入 + 相邻余弦相似度，低于阈值即切</td>
+    </tr>
+    <tr>
+      <td><code>TABLE_AWARE</code><span class="pill new">NEW</span></td>
+      <td>财报、合同、产品规格</td>
+      <td>tablePolicy(WHOLE/ROW), captionRange</td>
+      <td>识别表格区域整块/按行切，附上下文标题</td>
+    </tr>
+  </table>
+
+  <h3>5.3 抽象设计</h3>
+  <pre><span class="k">public interface</span> ChunkerStrategy {
+  String name();
+  <span class="k">boolean</span> supports(DocumentMeta meta);
+  List&lt;Chunk&gt; split(CleanedText text, ChunkParams params);
+}
+
+<span class="c">// 在 KB 上配置默认策略 + 兜底链：</span>
+<span class="c">// chunkerProfile: [MARKDOWN_HEADING, SEMANTIC, RECURSIVE]</span>
+<span class="c">// 第一个 supports() = true 的执行；否则 fallback。</span></pre>
+
+  <h3>5.4 配套：分块对比试验</h3>
+  <p>在 <code>EvaluationLab</code> 内新增 <b>「分块 A/B 试验」</b>：
+  同一文档、同一评测集，跑 N 种策略，对比 Top1/Top3/MRR + 平均 chunk 长度 + 总 chunk 数。
+  让用户用数据选策略，而不是凭感觉。</p>
+
+  <h3>5.5 数据兼容</h3>
+  <ul>
+    <li><code>document_chunks</code> 增加 <code>chunker_strategy</code>、<code>chunker_params_json</code>、<code>heading_path</code> 字段。</li>
+    <li><b>重切分</b>能力：文档级"重新分块"按钮，旧 chunks 软删除（保留 30 天，供回滚）。</li>
+  </ul>
+
+  <div class="callout warn">
+    <b>权衡</b>：SEMANTIC 分块需要额外 embedding 调用，单文档处理时长增加 30–60%。
+    建议默认 RECURSIVE，SEMANTIC 作为高级选项，按租户配额计费。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="f3">
+  <h2>6. 能力 3：Answer-as-LLM 应答层<span class="pill new">NEW</span></h2>
+
+  <h3>6.1 边界声明（重要）</h3>
+  <div class="callout bad">
+    引入应答层<b>不等于</b>把 RAGForge 改成聊天产品。我们的边界是：
+    <ul>
+      <li>应答能力是<b>可选开关</b>（KB 级 + API 级两级控制）。</li>
+      <li>应答<b>必须带 citations</b>，无引用的回答会被拦截。</li>
+      <li>应答<b>不存对话历史</b>（不做 ChatMemory），仅做单轮 RAG-QA。多轮交给上层 Agent。</li>
+    </ul>
+  </div>
+
+  <h3>6.2 接口</h3>
+  <pre>POST /api/v1/answer
+{
+  "kbIds": [16, 17],
+  "query": "Java 工程师在广州 25-30k 的常见技术栈是？",
+  "retrievalStrategy": "full",
+  "answerMode": "ON",        <span class="c">// OFF / PREVIEW / ON</span>
+  "stream": true,
+  "citationStyle": "INLINE", <span class="c">// INLINE 文中标号 / FOOTNOTE 结尾</span>
+  "maxTokens": 800
+}
+
+响应（SSE 流式）：
+{
+  "answer": "广州 25-30k Java 岗位最常见的技术栈是 [1] ...",
+  "citations": [
+    { "id": 1, "chunkId": 9912, "docId": 882, "title": "...", "score": 0.81,
+      "spanStart": 1240, "spanEnd": 1380 }
+  ],
+  "retrieval": { /* 复用 SearchResponse */ },
+  "tokens": { "prompt": 1820, "completion": 412 },
+  "latency": { "retrieval": 380, "llm": 2100, "total": 2520 }
+}</pre>
+
+  <h3>6.3 模块设计</h3>
+  <pre class="arch-ascii">
+AnswerService
+  ├─ RetrievalPhase     ── 调 RetrievalService.search(...)
+  ├─ PromptBuilder      ── 模板可在 KB 级配置；强制 citation 占位符
+  ├─ LlmClient          ── DashScope / DeepSeek / 私有 vLLM（SPI）
+  ├─ CitationLinker     ── 后处理：把 [n] 与 retrieval chunk 绑定，校验
+  ├─ GuardRails         ── 答非所问 / 无引用 / PII 泄漏 拦截
+  └─ AnswerAudit        ── 写 answer_logs（query / chunkIds / answer / tokens）</pre>
+
+  <h3>6.4 模型选择策略</h3>
+  <table>
+    <tr><th>场景</th><th>模型</th><th>理由</th></tr>
+    <tr><td>默认 PREVIEW 模式（演示）</td><td>Qwen-Plus / DeepSeek-V3</td><td>性价比高</td></tr>
+    <tr><td>正式 ON 模式（高质量）</td><td>Qwen-Max / Claude Sonnet 4.6</td><td>引用准确性</td></tr>
+    <tr><td>私有化</td><td>vLLM + Qwen 2.5 14B 自托管</td><td>合规客户</td></tr>
+  </table>
+
+  <h3>6.5 前端体现</h3>
+  <ul>
+    <li>新增 <b>「Answer Playground」</b> 页：左 query + 参数；右 流式 answer + 可点击的引用块；点击引用跳转到 DocumentDetail 高亮原文。</li>
+    <li>DebugConsole 增加「开启应答预览」开关，复用同一 AnswerService。</li>
+  </ul>
+
+  <div class="callout ok">
+    <b>验收</b>：100 条评测 query，应答必带引用，引用准确率 ≥ 90%，"无中生有"率 &lt; 3%。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="f4">
+  <h2>7. 能力 4：对象存储（OSS）切换<span class="pill change">REPLACE</span></h2>
+
+  <h3>7.1 当前问题</h3>
+  <ul>
+    <li>文件存 <code>/data/files/</code> 本机磁盘 → API 实例和 Worker 实例必须共享卷 → <b>无法水平扩容</b>。</li>
+    <li>磁盘容量与 ECS 绑死 → 容量天花板 = 单盘上限。</li>
+    <li>没有版本、没有生命周期、没有冷热分层。</li>
+  </ul>
+
+  <h3>7.2 抽象：ObjectStorage SPI</h3>
+  <pre><span class="k">public interface</span> ObjectStorage {
+  StoragePutResult put(String key, InputStream in, ObjectMeta meta);
+  InputStream get(String key);
+  String presignedGet(String key, Duration ttl);
+  String presignedPut(String key, Duration ttl, ObjectMeta meta);
+  <span class="k">void</span> delete(String key);
+  boolean exists(String key);
+}
+
+<span class="c">// 实现：</span>
+<span class="c">// - AliyunOssStorage   (生产)</span>
+<span class="c">// - MinioStorage       (私有化 / 本地开发)</span>
+<span class="c">// - LocalDiskStorage   (兼容 V4，保留兜底)</span></pre>
+
+  <h3>7.3 两种上传通道（V5 关键设计）</h3>
+  <p>不一刀切。<b>保留两个入口，汇合到同一个下游</b>：</p>
+  <pre class="arch-ascii">
+通道 A：后端中转（默认）              通道 B：presigned 直传（大文件 / 浏览器优化）
+POST /documents (multipart)         POST /uploads/presign
+        │                                  │
+        ├─ 鉴权 / 校验                      ├─ 鉴权 / 签发 PUT URL + uploadToken
+        ├─ 流式 PUT → OSS                   │
+        │                            客户端 PUT 文件 → OSS（不经后端）
+        │                                  │
+        │                            POST /documents/register (uploadToken + meta)
+        │                                  │
+        │                                  ├─ 校验 uploadToken (Redis 单次使用)
+        │                                  ├─ headObject 校验 OSS 对象存在 + 大小一致
+        │                                  │
+        └──────────────┬───────────────────┘
+                       ▼
+         ┌─────────────────────────┐
+         │  IngestService.register │  ← 共用层（不碰文件，纯指针操作）
+         │  - 身份解析 + 去重判定    │
+         │  - 新建 / SKIP / REPLACE │
+         │  - afterCommit MQ.send  │
+         └────────────┬────────────┘
+                      ▼
+                  MQ → Worker → ObjectStorage.get(bucket, key)
+                                 ↑ 第一次真正读文件字节
+  </pre>
+
+  <table>
+    <tr><th>场景</th><th>推荐通道</th><th>理由</th></tr>
+    <tr><td>浏览器小文件 (&lt; 50MB)、JD 文本、爬虫、MCP、脚本</td><td><b>A 后端中转</b></td><td>一步到位、统一接口、客户端零 OSS 依赖</td></tr>
+    <tr><td>浏览器大文件 (≥ 50MB)、需要进度条 / 断点续传</td><td><b>B presigned 直传</b></td><td>不经后端、无 multipart 上限压力</td></tr>
+    <tr><td>内网批量灌数据（Worker / Connector）</td><td>A 后端中转</td><td>走业务接口审计清晰</td></tr>
+  </table>
+
+  <p><b>自动路由</b>：A 通道遇到 <code>fileSize &gt; 50MB</code> 返回
+     <code>413</code> + <code>{"presignUrl": "/api/v1/uploads/presign"}</code>，
+     前端 SDK 拦到自动切 B 路径，用户无感。</p>
+
+  <h3>7.4 其他流程改造</h3>
+  <table>
+    <tr><th>流程</th><th>V4</th><th>V5</th></tr>
+    <tr><td>解析</td><td>Worker 从本地读</td><td>Worker 用 OSS SDK 流式读；PDF/Word 下载到 <code>/tmp</code> 处理后立即清理</td></tr>
+    <tr><td>下载</td><td>后端中转</td><td>后端返回 <b>presigned GET URL</b>，前端直连 OSS（5 min TTL）</td></tr>
+    <tr><td>删除</td><td><code>rm -f</code></td><td>硬覆盖时立刻删；或 rename 到 <code>_orphan/</code> 走 OSS 生命周期 7 天清理</td></tr>
+  </table>
+
+  <div class="callout ok">
+    <b>register 阶段完全不碰文件</b>。无论 A/B 通道，register 拿到的都只是 OSS 提货单
+    (<code>storageBucket + storageKey + md5</code>)，纯 DB 操作 + 发 MQ。
+    Worker 才在消费时通过 ObjectStorage SDK 从 OSS 拉文件 —— 这是应用层无状态的关键。
+  </div>
+
+  <h3>7.5 安全</h3>
+  <ul>
+    <li>OSS bucket 设置 <b>禁公共读</b>；所有访问走 presigned URL。</li>
+    <li>presigned URL 的 TTL：上传 15 min，下载 5 min。</li>
+    <li>租户隔离：bucket 内按 <code>{tenantId}/{kbId}/{docId}/</code> 前缀，配合 RAM Policy 限制跨租户访问。</li>
+    <li>大文件分片上传（≥ 100 MB）走 OSS MultipartUpload，前端拿到 <code>uploadId</code> 分片签名。</li>
+  </ul>
+
+  <h3>7.6 迁移路径（单写直切，不做双写灰度）</h3>
+  <ol>
+    <li>V5.0：T1 完成后直接切 <code>storage.backend = aliyun</code>，新文件直写 OSS；老文件路径保持指向本地。</li>
+    <li>V5.1（T12 收口）：跑一次性后台迁移任务，把存量文件从本地搬到 OSS（带 md5 校验 + 失败重试），迁移完成后更新 <code>documents.storage_bucket / storage_key</code>。</li>
+    <li>V5.2：本地 <code>/data/files</code> 目录退役；<code>LocalDiskStorage</code> 仅保留为本地开发环境兜底。</li>
+  </ol>
+  <p><b>架构师明确决定</b>：不实现 <code>DualWriteStorage</code> / 不做读回落 / 不做灰度切换。
+  代价是切换日没有降级路径，但收益是少一层抽象、少一类故障模式、Codex 工期少 0.5 天。
+  对应风险由 T1 启动时的 OSS bucket 连通性 fail-fast 自检兜底。</p>
+
+  <div class="callout ok">
+    <b>收益</b>：应用层无状态化达成 → 真正支持多实例水平扩容（这也是 <code>tasks.md</code> 的 🔜 项）。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="f5">
+  <h2>8. 能力 5：多模态上传与索引<span class="pill new">NEW</span></h2>
+
+  <h3>8.1 范围界定</h3>
+  <table>
+    <tr><th>模态</th><th>典型场景</th><th>V5 是否纳入</th></tr>
+    <tr><td>富文本 PDF（含图）</td><td>论文、产品手册</td><td>✅ 一期</td></tr>
+    <tr><td>扫描件 PDF / 图片</td><td>合同、票据</td><td>✅ 一期（OCR）</td></tr>
+    <tr><td>纯图片（架构图、流程图）</td><td>设计稿、白板</td><td>✅ 一期（图像描述 + CLIP 嵌入）</td></tr>
+    <tr><td>音频（会议录音）</td><td>访谈、会议纪要</td><td>✅ 二期（ASR → 走文本链路）</td></tr>
+    <tr><td>视频</td><td>培训视频</td><td>🔜 三期（抽帧 + ASR）</td></tr>
+  </table>
+
+  <h3>8.2 处理流水线</h3>
+  <pre class="arch-ascii">
+                          ┌──────────────────────┐
+        上传 ──▶ MIME 嗅探 │  Router               │
+                          └──┬──────────────┬─────┘
+                             │              │
+              ┌──────────────▼──┐     ┌────▼─────────────┐
+              │ TextPipeline    │     │ ImagePipeline    │
+              │ (V4 已有)        │     │ (NEW)            │
+              └──────────────┬──┘     └────┬─────────────┘
+                             │              │
+                             │   ┌──────────▼────────┐
+                             │   │ PaddleOCR / RapidOCR
+                             │   │ → 提取文字 chunks  │
+                             │   ├───────────────────┤
+                             │   │ Qwen-VL / GPT-4o   │
+                             │   │ → 生成图像描述     │
+                             │   ├───────────────────┤
+                             │   │ CLIP / BGE-VL      │
+                             │   │ → 1024 维图像嵌入  │
+                             │   └─────────┬─────────┘
+                             │             │
+                             └──────┬──────┘
+                                    ▼
+                          ┌──────────────────────────┐
+                          │ document_chunks          │
+                          │ chunk_modality:          │
+                          │   TEXT / IMAGE / OCR_TEXT│
+                          │ image_vector vector(1024)│
+                          │ image_url(OSS presigned) │
+                          └──────────────────────────┘
+  </pre>
+
+  <h3>8.3 检索改造</h3>
+  <ul>
+    <li><b>多向量召回</b>：vector 策略同时查 <code>text_vector</code> 和 <code>image_vector</code>，
+    在 RRF 融合时按模态权重（默认 0.7 / 0.3，KB 可配）。</li>
+    <li><b>"图问图"</b>：DebugConsole 支持上传图片作为 query，走 CLIP 编码 → image_vector 召回。</li>
+    <li>检索结果里同时返回 <code>imageUrl</code>（presigned GET），前端可直接渲染缩略图。</li>
+  </ul>
+
+  <h3>8.4 模型选择</h3>
+  <table>
+    <tr><th>能力</th><th>一期默认</th><th>私有化备选</th></tr>
+    <tr><td>OCR</td><td>阿里云 OCR / PaddleOCR-PP-Structure</td><td>RapidOCR 本地</td></tr>
+    <tr><td>图像理解</td><td>Qwen-VL-Max</td><td>InternVL / MiniCPM-V</td></tr>
+    <tr><td>图像嵌入</td><td>BGE-VL-base</td><td>同上自托管</td></tr>
+    <tr><td>ASR</td><td>阿里云 Paraformer</td><td>Whisper-large</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <b>权衡</b>：多模态显著拉高 Embedding/LLM token 成本与处理时长。
+    建议<b>按 KB 启用</b>，并在 ApiGateway 上加多模态配额，避免成本失控。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="f6">
+  <h2>9. 能力 6：身份、去重与硬覆盖增量更新<span class="pill new">NEW</span></h2>
+
+  <h3>9.1 为什么必须做</h3>
+  <p>V4 当前的去重只看 <code>(kb_id, content_md5)</code>。这对爬虫场景几乎失效：</p>
+  <ul>
+    <li>Boss 页面每次刷新都带"浏览量、刷新时间"等噪声 → md5 永远不同 → 永远去不掉重</li>
+    <li>合同更新一个金额条款 → md5 完全变 → 无法识别"这是同一份合同的新版本"</li>
+    <li>结果：KB 越爬越胖、检索召回里同质 chunk 重复，污染相关性排序</li>
+  </ul>
+  <div class="callout">
+    <b>V5 核心决策</b>：身份模型 + 硬覆盖式增量更新。<b>不做版本号、不做软删除、不留历史</b>，
+    简单可靠，对当前规模完全够用。
+  </div>
+
+  <h3>9.2 身份模型（三级优先级）</h3>
+  <table>
+    <tr><th>优先级</th><th>字段</th><th>典型来源</th><th>稳定性</th></tr>
+    <tr><td>1</td><td><code>externalId</code></td><td>Boss jobId / Confluence pageId / 内部工单号</td><td>最强：业务主键</td></tr>
+    <tr><td>2</td><td><code>sourceUrl</code></td><td>资源 URL</td><td>次强：URL 通常稳定</td></tr>
+    <tr><td>3</td><td><code>contentMd5</code></td><td>规范化字节哈希</td><td>最弱：内容微变即失效</td></tr>
+  </table>
+  <p>调用方在 <code>IngestCommand.identity</code> 里至少填一个，按非空优先级匹配。</p>
+
+  <h3>9.3 OnConflict 三种策略</h3>
+  <table>
+    <tr><th>策略</th><th>含义</th><th>典型场景</th></tr>
+    <tr><td><code>REJECT</code></td><td>身份冲突 → 409，调用方决定下一步</td><td>前端手动上传，默认</td></tr>
+    <tr><td><code>SKIP</code></td><td>身份冲突 + md5 一致 → 直接返回老 docId，无副作用</td><td>爬虫定时全量重爬</td></tr>
+    <tr><td><code>REPLACE</code></td><td>身份冲突 + md5 变化 → 原地硬覆盖（docId 不变）</td><td>爬虫主动更新 / 替换文档按钮</td></tr>
+  </table>
+
+  <h3>9.4 数据模型变更（V19）</h3>
+<pre>ALTER TABLE documents
+  ADD COLUMN external_id VARCHAR(128),
+  ADD COLUMN source_url  VARCHAR(1024),
+  ADD COLUMN content_md5 VARCHAR(64);
+
+<span class="c">-- 三层偏序唯一索引（NULL 不参与）</span>
+CREATE UNIQUE INDEX uk_doc_kb_external
+  ON documents (kb_id, external_id)
+  WHERE external_id IS NOT NULL;
+
+CREATE UNIQUE INDEX uk_doc_kb_url
+  ON documents (kb_id, source_url)
+  WHERE source_url IS NOT NULL AND external_id IS NULL;
+
+CREATE UNIQUE INDEX uk_doc_kb_md5
+  ON documents (kb_id, content_md5)
+  WHERE content_md5 IS NOT NULL AND external_id IS NULL AND source_url IS NULL;</pre>
+
+  <h3>9.5 REPLACE 完整流程（docId 不变）</h3>
+  <pre class="arch-ascii">
+IngestService.register(cmd) 在事务内：
+
+  1. 按 identity 查现有 docId（externalId → sourceUrl → md5 优先级）
+
+  2a. 没找到 → 走"新建"路径，INSERT + MQ.send(PROCESS, newDocId)
+
+  2b. 找到 → 比较 content_md5：
+      ├─ 一致 + onConflict=SKIP → 返回 oldDocId，无副作用（爬虫省钱）
+      ├─ onConflict=REJECT → 409 Conflict
+      └─ onConflict=REPLACE + md5 变化 → 走"替换"路径 ↓
+
+  3. 替换路径（事务内）：
+      a) 标记 doc.parse_status = REPROCESSING
+      b) DELETE FROM document_chunks WHERE document_id = oldDocId
+      c) UPDATE documents SET
+            storage_key  = newKey,
+            content_md5  = newMd5,
+            file_size    = newSize,
+            filename     = newFilename,
+            chunk_count  = 0,
+            updated_at   = NOW(),
+            parse_status = PENDING
+         WHERE id = oldDocId
+
+  4. afterCommit（事务提交后）：
+      - MQ.send(PROCESS, oldDocId)
+      - ES.deleteByQuery(document_id = oldDocId)
+      - objectStorage.delete(bucket, oldStorageKey)   <span class="c">// 不留历史</span>
+  </pre>
+
+  <h3>9.6 Worker 视角与状态机</h3>
+  <p>关键事实：<b>Worker 完全不知道这是替换还是新建</b>。事务已经把现场清干净
+  （DB chunks 删了、状态置回 PENDING、storage_key 指向新文件、ES 旧索引清了），
+  Worker 收到 MQ 消息只看到"一个 PENDING 的 doc 等被处理"，复用 V4 已有管道。</p>
+
+  <pre class="arch-ascii">
+状态机：
+
+  COMPLETED ──REPLACE触发──▶ PENDING ──Worker接管──▶ PROCESSING
+                                                       │
+                                ┌──────────────────────┼──────────────────────┐
+                                ▼                                             ▼
+                            COMPLETED                                       FAILED
+                            (新 chunks 全部就绪)                             (errorMsg 记录)
+                                                                              │
+                                                                              ▼
+                                                                      用户点"重新处理"
+                                                                       → PENDING → ...
+
+Worker 收到 PROCESS(docId) 后：
+
+  1. doc = documentMapper.selectById(docId)
+  2. 幂等守卫：
+     ├─ doc == null            → ACK 丢弃
+     ├─ status == COMPLETED    → ACK 跳过（已被另一条消息处理）
+     └─ status == PROCESSING   → ACK 跳过，除非 updated_at &gt; 5 分钟前（卡死复活）
+  3. CAS 更新：status = PROCESSING（更新影响 0 行就退出）
+  4. objectStorage.get(bucket, doc.storage_key)   ← 拉的是新文件
+  5. Parser → Cleaner → Chunker → Embedder → Indexer
+     · 所有 chunk 全部重新 embedding（不复用旧的）
+     · 新 chunk_id 全部由 BIGSERIAL 重新分配
+  6. UPDATE doc SET status=COMPLETED, chunk_count=N
+  </pre>
+
+  <h3>9.7 关键约束与注意点</h3>
+
+  <h4>① 所有 chunk 必须重新 embedding</h4>
+  <p>不复用任何旧 embedding。原因：</p>
+  <ul>
+    <li>内容微变即可让递归/语义分块的边界整体偏移，无法可靠对齐</li>
+    <li>embedding 模型可能升级，混用会有兼容性风险</li>
+    <li>简单 == 可靠，硬覆盖的核心价值是"新文档完全重生"</li>
+  </ul>
+  <p>成本估算：50 chunk 的文档 ≈ 50 次 embedding ≈ 0.001 元；爬虫每天 100 条更新 ≈ 一年 36 元。<b>不值得为这点钱搞 diff 优化</b>。</p>
+
+  <h4>② 重处理期间的"窗口期"</h4>
+  <p>从事务提交到 Worker 处理完之间，doc 的 chunks 是空的。<b>搜索接口必须过滤掉非 COMPLETED 的 doc</b>：</p>
+<pre><span class="c">// RetrievalService 内统一加</span>
+queryWrapper.eq(Document::getParseStatus, <span class="s">"COMPLETED"</span>);</pre>
+  <p>前端 DocumentDetail 显式画出 PROCESSING 状态条 + 进度提示，让用户知道"为什么搜不到"。</p>
+
+  <h4>③ ES / OSS 删除放在 afterCommit</h4>
+  <p>事务里只动 DB（chunks 删除 + documents 更新）。ES.deleteByQuery、OSS.delete 走
+  <code>TransactionSynchronizationManager.afterCommit</code>，保证 DB 是唯一真实来源：</p>
+<pre><span class="k">final</span> String oldKey = doc.getStorageKey();   <span class="c">// 事务开始时读，避免被 UPDATE 覆盖</span>
+TransactionSynchronizationManager.registerSynchronization(
+    <span class="k">new</span> TransactionSynchronization() {
+        @Override <span class="k">public void</span> afterCommit() {
+            esIndexer.deleteChunksOfDoc(oldDocId);
+            objectStorage.delete(bucket, oldKey);
+            mqProducer.send(PROCESS, oldDocId);
+        }
+    });</pre>
+
+  <h4>④ 爬虫 md5 必须规范化</h4>
+  <p>对 JD / 网页这类含噪声的源，<b>不要 hash 整页 HTML</b>，先拼接业务字段：</p>
+<pre>canonical = <span class="s">f"{title}|{desc}|{requirements}|{salary_min}-{salary_max}"</span>
+content_md5 = hashlib.md5(canonical.encode()).hexdigest()</pre>
+  <p>否则 SKIP 永远命中不了，每次都触发 REPLACE，embedding 费用白烧。</p>
+
+  <h4>⑤ 并发安全：同一 docId 连续两次 REPLACE</h4>
+  <ul>
+    <li>第二次 REPLACE 的事务会覆盖第一次的 storage_key（取的是事务开始时刻的 oldKey 删除）</li>
+    <li>Worker 拿到第一条 MQ → CAS 成功 → 拉到的实际是第二次的文件（DB 已被覆盖）</li>
+    <li>Worker 拿到第二条 MQ → CAS 失败（status=PROCESSING）→ ACK 跳过</li>
+    <li><b>最终结果是正确的</b>：用第二次的内容，无任何残留</li>
+  </ul>
+
+  <h4>⑥ Worker 卡死的复活机制</h4>
+  <p>CAS 更新加宽容窗口，避免上次卡死导致再也进不来：</p>
+<pre>UPDATE documents
+SET status = <span class="s">'PROCESSING'</span>, updated_at = NOW()
+WHERE id = ?
+  AND (status = <span class="s">'PENDING'</span>
+       OR (status = <span class="s">'PROCESSING'</span> AND updated_at &lt; NOW() - INTERVAL <span class="s">'5 minutes'</span>));</pre>
+
+  <h4>⑦ 评测集和 AnswerLog 的 chunk_id 失效</h4>
+  <p>硬覆盖让 <code>chunk_id</code> 全部重新分配。两个补丁：</p>
+  <ul>
+    <li>EvaluationLab 评测集存 <code>(document_id, expected_text_snippet)</code> 而非
+        硬绑 <code>expected_chunk_ids</code>，运行时按文本近似匹配</li>
+    <li>AnswerLog 持久化引用 chunk 的<b>文本快照</b>到 <code>citations_snapshot</code>，
+        回看不依赖 chunks 表</li>
+  </ul>
+
+  <h3>9.8 Python 爬虫最终样子</h3>
+<pre>def push_jd(jd):
+    <span class="c"># 规范化 md5：只 hash 业务字段，过滤页面噪声</span>
+    canonical = f<span class="s">"{jd['title']}|{jd['desc']}|{jd['req']}|{jd['salary']}"</span>
+    content_md5 = hashlib.md5(canonical.encode()).hexdigest()
+
+    files = {<span class="s">"file"</span>: (f<span class="s">"boss-{jd['job_id']}.html"</span>, jd[<span class="s">"raw_html"</span>], <span class="s">"text/html"</span>)}
+    data = {<span class="s">"meta"</span>: json.dumps({
+        <span class="s">"kbId"</span>: 16,
+        <span class="s">"identity"</span>: {
+            <span class="s">"externalId"</span>: f<span class="s">"boss:{jd['job_id']}"</span>,
+            <span class="s">"sourceUrl"</span>: jd[<span class="s">"url"</span>],
+            <span class="s">"contentMd5"</span>: content_md5,
+        },
+        <span class="s">"onConflict"</span>: <span class="s">"REPLACE"</span>,        <span class="c"># 变了就硬覆盖</span>
+        <span class="s">"ingestSource"</span>: <span class="s">"boss-scraper"</span>,
+        <span class="s">"metadata"</span>: {...},
+    })}
+    r = requests.post(f<span class="s">"{RAGFORGE}/api/v1/documents"</span>,
+                      files=files, data=data,
+                      headers={<span class="s">"X-Api-Key"</span>: API_KEY})
+    body = r.json()
+    <span class="c"># status: CREATED / SKIPPED / REPLACED</span>
+    print(body[<span class="s">"status"</span>], body[<span class="s">"documentId"</span>])</pre>
+
+  <h3>9.9 三种返回状态</h3>
+  <table>
+    <tr><th>status</th><th>含义</th><th>HTTP</th></tr>
+    <tr><td><code>CREATED</code></td><td>新建文档</td><td>201</td></tr>
+    <tr><td><code>SKIPPED</code></td><td>身份已存在且 md5 一致，未改动</td><td>200</td></tr>
+    <tr><td><code>REPLACED</code></td><td>身份已存在但 md5 变化，已原地覆盖，正在重处理</td><td>200</td></tr>
+    <tr><td>—</td><td>身份冲突 + onConflict=REJECT</td><td>409</td></tr>
+  </table>
+
+  <div class="callout ok">
+    <b>验收</b>：boss-scraper 重爬 100 条 JD（其中 70 条内容未变、30 条薪资变了），
+    系统应：70 个 SKIPPED（0 次 embedding 调用）、30 个 REPLACED（每个文档重新 embedding）、
+    KB 内 doc 数量不增加。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="data">
+  <h2>10. 数据模型变更（V13–V19 迁移）</h2>
+
+  <table>
+    <tr><th>迁移</th><th>表 / 字段</th><th>说明</th></tr>
+    <tr>
+      <td>V13</td>
+      <td><code>documents</code> 增 <code>clean_report_json</code>, <code>clean_profile_id</code></td>
+      <td>清洗审计</td>
+    </tr>
+    <tr>
+      <td>V13</td>
+      <td>新表 <code>clean_profiles</code></td>
+      <td>租户/KB 级清洗配置</td>
+    </tr>
+    <tr>
+      <td>V14</td>
+      <td><code>document_chunks</code> 增 <code>chunker_strategy</code>, <code>chunker_params_json</code>, <code>heading_path</code></td>
+      <td>分块溯源</td>
+    </tr>
+    <tr>
+      <td>V14</td>
+      <td><code>knowledge_bases</code> 增 <code>chunker_profile_json</code></td>
+      <td>KB 级分块默认</td>
+    </tr>
+    <tr>
+      <td>V15</td>
+      <td>新表 <code>answer_logs</code>（query, kbIds, chunkIds, answer, tokens, principal, latency, trace_id）</td>
+      <td>应答审计 + 计费</td>
+    </tr>
+    <tr>
+      <td>V15</td>
+      <td><code>knowledge_bases</code> 增 <code>answer_mode</code>, <code>answer_model</code>, <code>prompt_template_id</code></td>
+      <td>应答开关与模板</td>
+    </tr>
+    <tr>
+      <td>V16</td>
+      <td><code>documents</code> 增 <code>storage_backend</code>, <code>storage_key</code>, <code>storage_bucket</code></td>
+      <td>OSS 寻址</td>
+    </tr>
+    <tr>
+      <td>V17</td>
+      <td><code>document_chunks</code> 增 <code>chunk_modality</code> (TEXT/IMAGE/OCR_TEXT), <code>image_vector vector(1024)</code>, <code>image_key</code></td>
+      <td>多模态</td>
+    </tr>
+    <tr>
+      <td>V17</td>
+      <td>HNSW 索引建在 <code>image_vector</code></td>
+      <td>图像向量检索性能</td>
+    </tr>
+    <tr>
+      <td>V18</td>
+      <td>新表 <code>tenant_quotas</code>（embed_tokens, llm_tokens, multimodal_calls, period）</td>
+      <td>配额与计费</td>
+    </tr>
+    <tr>
+      <td>V19</td>
+      <td><code>documents</code> 增 <code>external_id</code>, <code>source_url</code>, <code>content_md5</code>；
+          三层偏序 UNIQUE 索引（NULL 不参与）</td>
+      <td>身份模型与硬覆盖去重</td>
+    </tr>
+    <tr>
+      <td>V19</td>
+      <td><code>documents.parse_status</code> 状态枚举扩展：增加 <code>REPROCESSING</code>（事务过渡态）</td>
+      <td>REPLACE 期间的中间状态</td>
+    </tr>
+    <tr>
+      <td>V19</td>
+      <td><code>answer_logs</code> 增 <code>citations_snapshot</code> JSONB（chunk 文本快照）</td>
+      <td>chunk_id 失效后的应答回看稳定性</td>
+    </tr>
+    <tr>
+      <td>V19</td>
+      <td><code>eval_questions</code> 增 <code>expected_text_snippets</code>；保留 <code>expected_chunk_ids</code> 兼容</td>
+      <td>评测集对硬覆盖不再脆弱</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="api">
+  <h2>11. API 变更清单</h2>
+  <table>
+    <tr><th>接口</th><th>类型</th><th>说明</th></tr>
+    <tr><td><code>POST /api/v1/uploads/presign</code></td><td class="after">NEW</td><td>申请 OSS 直传 URL + uploadToken（B 通道，大文件场景）</td></tr>
+    <tr><td><code>POST /api/v1/documents</code></td><td class="before">CHANGE</td><td>A 通道：multipart 后端中转；body 增 <code>identity</code> + <code>onConflict</code>；返回 <code>status: CREATED/SKIPPED/REPLACED</code></td></tr>
+    <tr><td><code>POST /api/v1/documents/register</code></td><td class="after">NEW</td><td>B 通道：presigned 完成后注册（uploadToken + identity + meta）</td></tr>
+    <tr><td><code>POST /api/v1/documents/{id}/reprocess</code></td><td class="after">NEW</td><td>FAILED 后用户手动重试：parse_status=PENDING + 发 MQ</td></tr>
+    <tr><td><code>POST /api/v1/documents/{id}/reclean</code></td><td class="after">NEW</td><td>触发重新清洗</td></tr>
+    <tr><td><code>POST /api/v1/documents/{id}/rechunk</code></td><td class="after">NEW</td><td>触发重新分块（指定策略）</td></tr>
+    <tr><td><code>GET /api/v1/documents/{id}/clean-report</code></td><td class="after">NEW</td><td>清洗对比数据</td></tr>
+    <tr><td><code>POST /api/v1/search</code></td><td>KEEP</td><td>保留；可选 <code>modality=text|image|both</code></td></tr>
+    <tr><td><code>POST /api/v1/answer</code></td><td class="after">NEW</td><td>RAG-QA 应答（SSE 流式）</td></tr>
+    <tr><td><code>POST /api/v1/search/by-image</code></td><td class="after">NEW</td><td>上传图片作 query</td></tr>
+    <tr><td><code>GET /api/v1/kb/{id}/config</code></td><td class="before">CHANGE</td><td>新增 cleanProfile / chunkerProfile / answerMode 配置</td></tr>
+    <tr><td>MCP Tool <code>answerWithCitations</code></td><td class="after">NEW</td><td>暴露给 Claude Desktop / 上层 Agent</td></tr>
+  </table>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="ui">
+  <h2>12. 前端页面变更</h2>
+  <table>
+    <tr><th>页面</th><th>变更</th><th>说明</th></tr>
+    <tr><td>Dashboard</td><td class="before">扩展</td><td>+ 应答调用量、Token 消耗、多模态用量、清洗命中数</td></tr>
+    <tr><td>KnowledgeBase</td><td class="before">扩展</td><td>+ 清洗策略、分块策略、应答开关、多模态开关四个 Tab；文档列表新增 ingestSource / status 过滤</td></tr>
+    <tr><td>DocumentDetail</td><td class="before">扩展</td><td>+ 清洗对比视图、重切分按钮、模态分布饼图、<b>状态徽标</b>（PROCESSING/REPROCESSING/FAILED）、<b>重新处理</b>按钮、身份字段（externalId/sourceUrl）展示</td></tr>
+    <tr><td>DebugConsole</td><td class="before">扩展</td><td>+ 应答预览开关、图查图、引用回链高亮</td></tr>
+    <tr><td>EvaluationLab</td><td class="before">扩展</td><td>+ 分块 A/B、应答评测（带 LLM-as-judge）</td></tr>
+    <tr><td>ApiGateway</td><td class="before">扩展</td><td>+ 配额管理、应答模型选择</td></tr>
+    <tr><td>AnswerPlayground</td><td class="after">NEW</td><td>面向终端用户/演示的"Chat with Citation"</td></tr>
+    <tr><td>CleanInspector</td><td class="after">NEW</td><td>清洗运营页（管理员）</td></tr>
+    <tr><td>UploadWizard</td><td class="after">NEW</td><td>多模态分流上传向导（图/PDF/音频）</td></tr>
+  </table>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="deploy">
+  <h2>13. 部署架构与容量演进</h2>
+
+  <pre class="arch-ascii">
+                            ┌────────────────┐
+                            │   阿里云 OSS    │   ← 文件存储（替换本地）
+                            └────────────────┘
+                                    │
+       ┌─────────────────┬──────────┴──────────┬─────────────────┐
+       ▼                 ▼                     ▼                 ▼
+ ┌──────────┐     ┌──────────────┐      ┌──────────────┐   ┌──────────────┐
+ │  API x N │     │ Worker-Text  │      │ Worker-Image │   │ Worker-Eval  │
+ │ (无状态)  │     │ (CPU 密集)   │      │ (GPU 友好)   │   │ (轻量)        │
+ └────┬─────┘     └──────┬───────┘      └──────┬───────┘   └──────┬───────┘
+      │                  │                     │                  │
+      └─────────────┬────┴─────────────┬───────┴──────────────────┘
+                    ▼                  ▼
+             ┌──────────────┐  ┌──────────────┐
+             │ RocketMQ      │  │  Redis       │
+             │ (异步管道)     │  │  缓存/限流    │
+             └──────┬───────┘  └──────────────┘
+                    ▼
+        ┌───────────────────────────┐
+        │ PostgreSQL 15 + pgvector  │  ← 业务 + text_vector + image_vector
+        │ Elasticsearch 8           │  ← BM25
+        └───────────────────────────┘
+  </pre>
+
+  <table>
+    <tr><th>阶段</th><th>规模</th><th>部署形态</th></tr>
+    <tr><td>V5.0</td><td>1 万文档 / 10 万 chunk</td><td>API x2 + Worker x2，PG/ES 单实例</td></tr>
+    <tr><td>V5.1</td><td>5 万文档 / 50 万 chunk</td><td>+ Image Worker (GPU)，PG 主备</td></tr>
+    <tr><td>V5.2</td><td>20 万文档 / 200 万 chunk</td><td>评估迁移向量库到 Milvus / Qdrant</td></tr>
+  </table>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="roadmap">
+  <h2>14. 灰度与迁移路线（建议 6–8 周）</h2>
+
+  <table>
+    <tr><th>周</th><th>里程碑</th><th>关键交付</th></tr>
+    <tr><td>W1</td><td>OSS 双通道上传</td><td>ObjectStorage SPI + AliyunOss 实现（fail-fast 自检）+ A 通道（后端中转）+ B 通道（presigned + uploadToken）；<b>单写直切，不做双写灰度</b></td></tr>
+    <tr><td>W2</td><td><b>身份 + 硬覆盖增量更新</b></td><td>V19 迁移（external_id/source_url/content_md5）+ IngestService 重构 + REJECT/SKIP/REPLACE + Worker 状态机 + 搜索 COMPLETED 过滤</td></tr>
+    <tr><td>W3</td><td>Cleaner L1–L3</td><td>规则清洗 + 清洗对比页 + 50 文档 A/B 验证</td></tr>
+    <tr><td>W4</td><td>多策略分块</td><td>5 种 Chunker + KB 级配置 + EvaluationLab 接入</td></tr>
+    <tr><td>W5</td><td>AnswerService（PREVIEW）</td><td>引用回链 + GuardRails + Playground 页 + citations_snapshot</td></tr>
+    <tr><td>W6</td><td>多模态一期</td><td>图片/扫描件 OCR + Qwen-VL 描述 + image_vector</td></tr>
+    <tr><td>W7</td><td>应答 ON + 配额计费</td><td>tenant_quotas + ApiGateway 配额面板 + LLM-as-judge 评测</td></tr>
+    <tr><td>W8</td><td>OSS 存量迁移 + 文档收口</td><td>一次性后台任务把存量本地文件搬到 OSS（md5 校验）+ 更新 architecture.md / tasks.md / 安全多租户专章</td></tr>
+  </table>
+
+  <div class="callout warn">
+    每个里程碑都遵循 V4 的协作模式：架构师出 Cursor prompt（含禁止项 / 字段设计 / Playwright 验收标准），
+    Cursor 写代码，架构师审 PR。
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card" id="risk">
+  <h2>15. 风险与权衡</h2>
+  <table>
+    <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+    <tr>
+      <td>Answer-as-LLM 越界稀释"基础设施"定位</td>
+      <td><span class="pill risk">高</span></td>
+      <td>opt-in + 强制引用 + 不存对话历史 + 文档反复强调边界</td>
+    </tr>
+    <tr>
+      <td>多模态处理成本失控</td>
+      <td><span class="pill risk">高</span></td>
+      <td>租户配额 + KB 级开关 + 私有化备选模型</td>
+    </tr>
+    <tr>
+      <td>OSS 切换期间数据丢失 / 配置错误</td>
+      <td><span class="pill risk">高</span></td>
+      <td>放弃灰度双写，改为 <b>启动 fail-fast 自检</b>（HeadBucket 失败拒绝启动）+ T12 存量迁移走 md5 校验 + 失败重试；切换日认账风险，回滚靠回退镜像</td>
+    </tr>
+    <tr>
+      <td>语义/标题分块降低导入吞吐</td>
+      <td><span class="pill change">中</span></td>
+      <td>默认 RECURSIVE，SEMANTIC 走异步配额</td>
+    </tr>
+    <tr>
+      <td>清洗误删合同关键条款</td>
+      <td><span class="pill risk">高</span></td>
+      <td>"跳过清洗"白名单 + 清洗对比可审计 + L4 LLM 默认关闭</td>
+    </tr>
+    <tr>
+      <td>多模态向量空间不一致</td>
+      <td><span class="pill change">中</span></td>
+      <td>文本与图像分列两个 vector 字段，RRF 融合，不混入同一空间</td>
+    </tr>
+    <tr>
+      <td>硬覆盖丢失历史版本（无法回看 / 回滚）</td>
+      <td><span class="pill change">中</span></td>
+      <td>明确产品定位"不留历史"；OSS 旧 key 可选 rename 到 <code>_orphan/</code> 走 7 天生命周期；
+          AnswerLog 的 <code>citations_snapshot</code> 保留引用文本快照</td>
+    </tr>
+    <tr>
+      <td>爬虫未做 md5 规范化，REPLACE 频繁触发</td>
+      <td><span class="pill change">中</span></td>
+      <td>SDK 默认提供 <code>normalize_md5(fields)</code> 工具方法；文档明确给出反例和正例</td>
+    </tr>
+    <tr>
+      <td>重处理窗口期搜索返回 0 hits（用户困惑）</td>
+      <td><span class="pill change">低</span></td>
+      <td>RetrievalService 默认过滤非 COMPLETED；DocumentDetail 显式画"重新处理中"状态条</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ====================================================================== -->
+<section class="card scorecard" id="score">
+  <h2>16. 改造前后能力评分对比</h2>
+  <table>
+    <tr>
+      <th>维度</th><th>V4（产品 + RAG 用户视角综合）</th><th>V5 目标</th>
+    </tr>
+    <tr><td>主链路闭环</td><td class="before">8/10</td><td class="after">9/10</td></tr>
+    <tr><td>数据接入广度</td><td class="before">3/10</td><td class="after">7/10</td></tr>
+    <tr><td>身份模型 / 去重 / 增量更新</td><td class="before">2/10</td><td class="after">8/10</td></tr>
+    <tr><td>数据清洗</td><td class="before">2/10</td><td class="after">8/10</td></tr>
+    <tr><td>分块灵活性</td><td class="before">3/10</td><td class="after">9/10</td></tr>
+    <tr><td>检索能力</td><td class="before">7/10</td><td class="after">8/10</td></tr>
+    <tr><td>引用与答案产品形态</td><td class="before">4/10</td><td class="after">8/10</td></tr>
+    <tr><td>多模态</td><td class="before">2/10</td><td class="after">7/10</td></tr>
+    <tr><td>多租户与权限</td><td class="before">7/10</td><td class="after">8/10</td></tr>
+    <tr><td>评测与监控</td><td class="before">4/10</td><td class="after">7/10</td></tr>
+    <tr><td>可水平扩容（应用无状态）</td><td class="before">3/10</td><td class="after">9/10</td></tr>
+    <tr><td>私有化能力</td><td class="before">4/10</td><td class="after">7/10</td></tr>
+    <tr>
+      <th>综合</th>
+      <th class="before">4.5/10</th>
+      <th class="after">约 7.8/10</th>
+    </tr>
+  </table>
+
+  <div class="callout ok">
+    <b>结论</b>：V5 完成后，RAGForge 将从「工程级 RAG 基础设施」升级为
+    <b>「企业级 RAG 平台」</b>，并仍然保持
+    <i>"上层 Agent 友好、可作为 CareerMate 等业务的核心检索/应答能力"</i>
+    的中立姿态。
+  </div>
+</section>
+
+</main>
+
+<footer>
+  RAGForge V5 优化设计 · 由资深产品 + 资深架构师视角编制 · @guandezhi · 2026-06-20
+</footer>
+
+</body>
+</html>

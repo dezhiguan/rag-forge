@@ -63,8 +63,8 @@ ragforge:
 storage:
   backend: aliyun
   aliyun:
-    endpoint: ${ALIYUN_OSS_ENDPOINT:oss-cn-shenzhen.aliyuncs.com}
-    bucket: ${ALIYUN_OSS_BUCKET:ragforge-dev}
+    endpoint: ${ALIYUN_OSS_ENDPOINT:oss-cn-guangzhou.aliyuncs.com}
+    bucket: ${ALIYUN_OSS_BUCKET:rag-raw-docs}
     accessKeyId: ${ALIYUN_OSS_AK}
     accessKeySecret: ${ALIYUN_OSS_SK}
   local:
