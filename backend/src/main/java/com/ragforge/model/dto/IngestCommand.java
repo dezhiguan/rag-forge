@@ -11,6 +11,7 @@ public class IngestCommand {
   private String filename;
   private Long sizeBytes;
   private String contentType;
+  private String fileBytesMd5;
   private Identity identity;
   private OnConflict onConflict = OnConflict.REJECT;
   private String ingestSource;

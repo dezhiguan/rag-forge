@@ -55,7 +55,7 @@ class IngestServiceImplTest {
 
   @Test
   void resolveIdentityPrefersExternalIdOverSourceUrlAndMd5() {
-    Document external = existing(10L, "old-key", "old-md5");
+    Document external = existing(10L, "old-key", "md5");
     when(documentMapper.selectByExternalIdForUpdate(1L, "ext")).thenReturn(external);
 
     IngestResult result =
@@ -69,7 +69,7 @@ class IngestServiceImplTest {
 
   @Test
   void resolveIdentityFallsBackFromSourceUrlToMd5() {
-    Document bySourceUrl = existing(20L, "old-key", "old-md5");
+    Document bySourceUrl = existing(20L, "old-key", "md5");
     when(documentMapper.selectBySourceUrlForUpdate(1L, "https://example.com/a"))
         .thenReturn(bySourceUrl);
 
@@ -94,7 +94,45 @@ class IngestServiceImplTest {
     assertThatThrownBy(
             () -> ingestService.register(command(1L, identity("ext", null, "new-md5"), OnConflict.REJECT)))
         .isInstanceOf(BizException.class)
-        .hasMessage("DOC_IDENTITY_CONFLICT");
+        .hasMessage("DOC_IDENTITY_CONFLICT")
+        .satisfies(
+            ex -> {
+              BizException biz = (BizException) ex;
+              assertThat(biz.getCode()).isEqualTo(409);
+              assertThat(biz.getData()).containsEntry("existingDocId", 10L);
+            });
+
+    verifyNoInteractions(chunkMapper, mqProducer, esIndexService, objectStorage);
+  }
+
+  @Test
+  void skipReturnsSkippedWhenMd5IsSame() {
+    when(documentMapper.selectByExternalIdForUpdate(1L, "ext"))
+        .thenReturn(existing(10L, "old-key", "same-md5"));
+
+    IngestResult result =
+        ingestService.register(command(1L, identity("ext", null, "same-md5"), OnConflict.SKIP));
+
+    assertThat(result.getStatus()).isEqualTo(IngestResult.Status.SKIPPED);
+    assertThat(result.getDocumentId()).isEqualTo(10L);
+    verifyNoInteractions(chunkMapper, mqProducer, esIndexService, objectStorage);
+  }
+
+  @Test
+  void skipThrowsWhenMd5Changed() {
+    when(documentMapper.selectByExternalIdForUpdate(1L, "ext"))
+        .thenReturn(existing(10L, "old-key", "old-md5"));
+
+    assertThatThrownBy(
+            () -> ingestService.register(command(1L, identity("ext", null, "new-md5"), OnConflict.SKIP)))
+        .isInstanceOf(BizException.class)
+        .hasMessage("DOC_CONTENT_CHANGED_USE_REPLACE")
+        .satisfies(
+            ex -> {
+              BizException biz = (BizException) ex;
+              assertThat(biz.getCode()).isEqualTo(409);
+              assertThat(biz.getData()).containsEntry("existingDocId", 10L);
+            });
 
     verifyNoInteractions(chunkMapper, mqProducer, esIndexService, objectStorage);
   }
@@ -176,6 +214,7 @@ class IngestServiceImplTest {
     cmd.setFilename("new.pdf");
     cmd.setSizeBytes(20L);
     cmd.setContentType("application/pdf");
+    cmd.setFileBytesMd5("file-bytes-md5");
     cmd.setIdentity(identity);
     cmd.setOnConflict(onConflict);
     cmd.setIngestSource("unit");

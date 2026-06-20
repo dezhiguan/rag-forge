@@ -73,7 +73,7 @@ public interface DocumentMapper extends BaseMapper<Document> {
           file_path = #{cmd.storageKey},
           file_size = #{cmd.sizeBytes},
           file_type = #{cmd.contentType},
-          file_md5 = #{cmd.identity.contentMd5},
+          file_md5 = #{cmd.fileBytesMd5},
           external_id = #{cmd.identity.externalId},
           source_url = #{cmd.identity.sourceUrl},
           content_md5 = #{cmd.identity.contentMd5},

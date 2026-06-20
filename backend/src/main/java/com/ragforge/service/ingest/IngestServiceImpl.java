@@ -12,6 +12,7 @@ import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.storage.ObjectStorage;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -48,8 +49,18 @@ public class IngestServiceImpl implements IngestService {
     OnConflict onConflict = cmd.getOnConflict() == null ? OnConflict.REJECT : cmd.getOnConflict();
 
     return switch (onConflict) {
-      case REJECT -> throw new BizException(409, "DOC_IDENTITY_CONFLICT");
-      case SKIP -> IngestResult.skipped(existing.getId());
+      case REJECT ->
+          throw new BizException(
+              409, "DOC_IDENTITY_CONFLICT", Map.of("existingDocId", existing.getId()));
+      case SKIP -> {
+        if (!md5Same) {
+          throw new BizException(
+              409,
+              "DOC_CONTENT_CHANGED_USE_REPLACE",
+              Map.of("existingDocId", existing.getId()));
+        }
+        yield IngestResult.skipped(existing.getId());
+      }
       case REPLACE -> md5Same ? IngestResult.skipped(existing.getId()) : doReplace(existing, cmd);
     };
   }
@@ -83,7 +94,7 @@ public class IngestServiceImpl implements IngestService {
     doc.setStorageKey(cmd.getStorageKey());
     doc.setFileSize(cmd.getSizeBytes());
     doc.setFileType(cmd.getContentType());
-    doc.setFileMd5(cmd.getIdentity().getContentMd5());
+    doc.setFileMd5(cmd.getFileBytesMd5());
     doc.setExternalId(cmd.getIdentity().getExternalId());
     doc.setSourceUrl(cmd.getIdentity().getSourceUrl());
     doc.setContentMd5(cmd.getIdentity().getContentMd5());

@@ -1,5 +1,6 @@
 package com.ragforge.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -16,6 +17,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 import com.ragforge.common.BizException;
 import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.common.PageResult;
+import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
@@ -39,6 +41,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
@@ -121,6 +124,119 @@ class DocumentControllerTest {
 
     verify(objectStorage).put(eq("test-bucket"), org.mockito.ArgumentMatchers.contains("/16/"), any(), any());
     verify(ingestService).register(any());
+  }
+
+  @Test
+  void uploadV5_preservesClientBusinessContentMd5AndSetsFileBytesMd5() throws Exception {
+    when(kbAccessGuard.canWrite(16L)).thenReturn(true);
+    when(ingestService.register(any())).thenReturn(IngestResult.created(9912L));
+    ArgumentCaptor<IngestCommand> captor = ArgumentCaptor.forClass(IngestCommand.class);
+
+    MockMultipartFile file =
+        new MockMultipartFile("file", "jd.pdf", "application/pdf", "hello".getBytes());
+    mockMvc
+        .perform(
+            multipart("/api/v1/documents")
+                .file(file)
+                .param(
+                    "meta",
+                    """
+                    {
+                      "kbId": 16,
+                      "identity": { "externalId": "boss-1", "contentMd5": "business-md5" },
+                      "onConflict": "REJECT"
+                    }
+                    """))
+        .andExpect(status().isOk());
+
+    verify(ingestService).register(captor.capture());
+    IngestCommand cmd = captor.getValue();
+    assertThat(cmd.getIdentity().getContentMd5()).isEqualTo("business-md5");
+    assertThat(cmd.getFileBytesMd5()).isEqualTo("5d41402abc4b2a76b9719d911017c592");
+  }
+
+  @Test
+  void uploadV5_fallsBackToFileBytesMd5WhenBusinessContentMd5Missing() throws Exception {
+    when(kbAccessGuard.canWrite(16L)).thenReturn(true);
+    when(ingestService.register(any())).thenReturn(IngestResult.created(9912L));
+    ArgumentCaptor<IngestCommand> captor = ArgumentCaptor.forClass(IngestCommand.class);
+
+    MockMultipartFile file =
+        new MockMultipartFile("file", "jd.pdf", "application/pdf", "hello".getBytes());
+    mockMvc
+        .perform(
+            multipart("/api/v1/documents")
+                .file(file)
+                .param(
+                    "meta",
+                    """
+                    {
+                      "kbId": 16,
+                      "identity": { "externalId": "boss-1" },
+                      "onConflict": "REJECT"
+                    }
+                    """))
+        .andExpect(status().isOk());
+
+    verify(ingestService).register(captor.capture());
+    IngestCommand cmd = captor.getValue();
+    assertThat(cmd.getIdentity().getContentMd5()).isEqualTo("5d41402abc4b2a76b9719d911017c592");
+    assertThat(cmd.getFileBytesMd5()).isEqualTo("5d41402abc4b2a76b9719d911017c592");
+  }
+
+  @Test
+  void uploadV5_deletesNewObjectWhenRegisterSkipped() throws Exception {
+    when(kbAccessGuard.canWrite(16L)).thenReturn(true);
+    when(ingestService.register(any())).thenReturn(IngestResult.skipped(8810L));
+
+    MockMultipartFile file =
+        new MockMultipartFile("file", "jd.pdf", "application/pdf", "hello".getBytes());
+    mockMvc
+        .perform(
+            multipart("/api/v1/documents")
+                .file(file)
+                .param(
+                    "meta",
+                    """
+                    {
+                      "kbId": 16,
+                      "identity": { "externalId": "boss-1" },
+                      "onConflict": "SKIP"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documentId").value(8810))
+        .andExpect(jsonPath("$.status").value("SKIPPED"));
+
+    verify(objectStorage).delete(eq("test-bucket"), org.mockito.ArgumentMatchers.contains("/16/"));
+  }
+
+  @Test
+  void uploadV5_conflictResponseIncludesExistingDocId() throws Exception {
+    when(kbAccessGuard.canWrite(16L)).thenReturn(true);
+    when(ingestService.register(any()))
+        .thenThrow(new BizException(409, "DOC_IDENTITY_CONFLICT", java.util.Map.of("existingDocId", 8810L)));
+
+    MockMultipartFile file =
+        new MockMultipartFile("file", "jd.pdf", "application/pdf", "hello".getBytes());
+    mockMvc
+        .perform(
+            multipart("/api/v1/documents")
+                .file(file)
+                .param(
+                    "meta",
+                    """
+                    {
+                      "kbId": 16,
+                      "identity": { "externalId": "boss-1" },
+                      "onConflict": "REJECT"
+                    }
+                    """))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("DOC_IDENTITY_CONFLICT"))
+        .andExpect(jsonPath("$.existingDocId").value(8810));
+
+    verify(objectStorage).delete(eq("test-bucket"), org.mockito.ArgumentMatchers.contains("/16/"));
   }
 
   @Test

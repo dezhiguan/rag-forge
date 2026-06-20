@@ -40,6 +40,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -54,6 +55,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
+@Slf4j
 public class DocumentController {
 
   private static final long RELAY_UPLOAD_LIMIT_BYTES = 50L * 1024L * 1024L;
@@ -188,11 +190,14 @@ public class DocumentController {
           var out = Files.newOutputStream(tempFile)) {
         in.transferTo(out);
       }
-      String contentMd5 = HexFormat.of().formatHex(digest.digest());
+      String fileBytesMd5 = HexFormat.of().formatHex(digest.digest());
+      cmd.setFileBytesMd5(fileBytesMd5);
       if (cmd.getIdentity() == null) {
         cmd.setIdentity(new Identity());
       }
-      cmd.getIdentity().setContentMd5(contentMd5);
+      if (cmd.getIdentity().getContentMd5() == null || cmd.getIdentity().getContentMd5().isBlank()) {
+        cmd.getIdentity().setContentMd5(fileBytesMd5);
+      }
 
       String originalFilename = cleanFilename(file.getOriginalFilename());
       key = storageKey(kbId, originalFilename);
@@ -205,12 +210,15 @@ public class DocumentController {
       ObjectMeta objectMeta = new ObjectMeta();
       objectMeta.setContentType(file.getContentType());
       objectMeta.setSizeBytes(file.getSize());
-      objectMeta.setUserMeta(Map.of("content-md5", contentMd5, "kb-id", String.valueOf(kbId)));
+      objectMeta.setUserMeta(Map.of("content-md5", fileBytesMd5, "kb-id", String.valueOf(kbId)));
       try (InputStream in = Files.newInputStream(tempFile)) {
         objectStorage.put(bucket, key, in, objectMeta);
       }
 
       IngestResult result = ingestService.register(cmd);
+      if (result.getStatus() == IngestResult.Status.SKIPPED) {
+        safeDelete(bucket, key);
+      }
       return ResponseEntity.ok(
           Map.of("documentId", result.getDocumentId(), "status", result.getStatus().name()));
     } catch (BizException e) {
@@ -219,14 +227,20 @@ public class DocumentController {
       }
       if (e.getCode() == 409 && "DOC_IDENTITY_CONFLICT".equals(e.getMessage())) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(Map.of("error", "DOC_IDENTITY_CONFLICT", "existingDocId", ""));
+            .body(
+                Map.of(
+                    "error",
+                    "DOC_IDENTITY_CONFLICT",
+                    "existingDocId",
+                    e.getData() == null ? "" : e.getData().getOrDefault("existingDocId", "")));
       }
       throw e;
     } catch (Exception e) {
       if (key != null) {
         safeDelete(bucket, key);
       }
-      throw new BizException(500, "DOCUMENT_UPLOAD_FAILED: " + e.getMessage());
+      log.warn("V5 relay upload failed", e);
+      throw new BizException(500, "DOCUMENT_UPLOAD_FAILED");
     } finally {
       if (tempFile != null) {
         try {
