@@ -11,6 +11,7 @@ import com.ragforge.model.dto.SearchRequest;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.security.KbAccessGuard;
+import com.ragforge.service.RetrievalLogService;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,10 +25,11 @@ class SearchAuthorizationTest {
 
   @Mock private RetrievalService retrievalService;
   @Mock private KbAccessGuard kbAccessGuard;
+  @Mock private RetrievalLogService retrievalLogService;
 
   @Test
   void requestedUnauthorizedKb_returnsKbAccessDenied() {
-    SearchController controller = new SearchController(retrievalService, kbAccessGuard);
+    SearchController controller = new SearchController(retrievalService, kbAccessGuard, retrievalLogService);
     SearchRequest req = request();
     req.setKbIds(List.of(99L));
     when(kbAccessGuard.filterReadable(List.of(99L))).thenReturn(Set.of());
@@ -39,7 +41,7 @@ class SearchAuthorizationTest {
 
   @Test
   void emptyKbIds_autoFillsAllReadableKbIds() {
-    SearchController controller = new SearchController(retrievalService, kbAccessGuard);
+    SearchController controller = new SearchController(retrievalService, kbAccessGuard, retrievalLogService);
     SearchRequest req = request();
     when(kbAccessGuard.allReadableKbIds()).thenReturn(new LinkedHashSet<>(List.of(1L, 2L)));
     when(retrievalService.retrieve(eq("java"), eq(List.of(1L, 2L)), any(), any(), any(), eq(8), eq(5), any()))
@@ -52,7 +54,7 @@ class SearchAuthorizationTest {
 
   @Test
   void noReadableKbIds_returnsKbAccessDenied() {
-    SearchController controller = new SearchController(retrievalService, kbAccessGuard);
+    SearchController controller = new SearchController(retrievalService, kbAccessGuard, retrievalLogService);
     SearchRequest req = request();
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of());
 

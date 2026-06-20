@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
+import com.ragforge.common.TextNormalizer;
 import com.ragforge.config.EvalProperties;
 import com.ragforge.mapper.EvalDatasetMapper;
 import com.ragforge.mapper.EvalExperimentMapper;
@@ -20,6 +21,7 @@ import com.ragforge.model.vo.ChunkPreviewVO;
 import com.ragforge.model.vo.EvalExperimentVO;
 import com.ragforge.model.vo.EvalFailureSampleVO;
 import com.ragforge.model.vo.EvalResultDetailVO;
+import com.ragforge.model.vo.EvalTextSnippetMatchVO;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.SearchResult;
 import com.ragforge.service.EvalExperimentService;
@@ -55,6 +57,7 @@ import org.springframework.util.StringUtils;
 public class EvalExperimentServiceImpl implements EvalExperimentService {
 
   private static final TypeReference<List<Long>> LONG_LIST_TYPE = new TypeReference<>() {};
+  private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {};
 
   private final EvalExperimentMapper evalExperimentMapper;
   private final EvalResultMapper evalResultMapper;
@@ -202,20 +205,26 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       detail.setQuestionId(result.getQuestionId());
       detail.setQuestion(q != null ? q.getQuestion() : "");
       List<Long> expected = q != null ? parseLongList(q.getExpectedDocIds()) : List.of();
+      List<String> expectedTextSnippets =
+          q != null ? parseStringList(q.getExpectedTextSnippets()) : List.of();
       List<Long> recalled = parseLongList(result.getRecalledChunkIds());
       List<ChunkPreviewVO> expectedChunks = buildChunkPreviews(expected, chunkMap);
       List<ChunkPreviewVO> recalledChunks = buildChunkPreviews(recalled, chunkMap);
+      List<EvalTextSnippetMatchVO> textMatches =
+          buildTextSnippetMatches(expectedTextSnippets, recalledChunks);
       detail.setExpectedChunkIds(expected);
+      detail.setExpectedTextSnippets(expectedTextSnippets);
       detail.setRecalledChunkIds(recalled);
       detail.setExpectedChunks(expectedChunks);
       detail.setRecalledChunks(recalledChunks);
+      detail.setExpectedTextMatches(textMatches);
       detail.setHitAt(result.getHitAt());
       detail.setTop1Hit(result.getHitAt() != null && result.getHitAt() == 1);
       detail.setTop3Hit(Boolean.TRUE.equals(result.getHit()));
       detail.setMrr(mrrFromHitAt(result.getHitAt()));
       detail.setLatencyMs(result.getLatencyMs());
       detail.setFailureReason(result.getFailureReason());
-      Integer expectedBestRank = bestRank(recalled, expected);
+      Integer expectedBestRank = firstRank(bestRank(recalled, expected), bestTextMatchRank(textMatches, recalled));
       detail.setExpectedBestRank(expectedBestRank);
       detail.setExpectedInTopK(expectedBestRank != null);
       detail.setExpectedInTop3(expectedBestRank != null && expectedBestRank <= 3);
@@ -232,9 +241,11 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
         sample.setFailureReason(result.getFailureReason());
         sample.setSuggestion(detail.getSuggestion());
         sample.setExpectedChunkIds(expected);
+        sample.setExpectedTextSnippets(expectedTextSnippets);
         sample.setRecalledChunkIds(recalled);
         sample.setExpectedChunks(expectedChunks);
         sample.setRecalledChunks(recalledChunks);
+        sample.setExpectedTextMatches(textMatches);
         sample.setExpectedBestRank(expectedBestRank);
         sample.setExpectedInTopK(expectedBestRank != null);
         sample.setExpectedInTop3(expectedBestRank != null && expectedBestRank <= 3);
@@ -283,25 +294,18 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       Long experimentId,
       Long questionId,
       List<Long> expectedChunkIds,
+      List<String> expectedTextSnippets,
       List<SearchResult> results,
       int topK) {
+    List<SearchResult> topResults = results.stream().limit(topK).toList();
     List<Long> recalledChunkIds =
-        results.stream()
-            .limit(topK)
+        topResults.stream()
             .map(SearchResult::getChunkId)
             .filter(id -> id != null && id > 0)
             .toList();
 
     Set<Long> expectedSet = toLongSet(expectedChunkIds);
-
-    int hitAt = 0;
-    for (int i = 0; i < Math.min(3, recalledChunkIds.size()); i++) {
-      Long chunkId = recalledChunkIds.get(i);
-      if (chunkId != null && expectedSet.contains(chunkId.longValue())) {
-        hitAt = i + 1;
-        break;
-      }
-    }
+    Integer hitAt = firstRank(bestRank(recalledChunkIds, expectedSet), bestTextRank(topResults, expectedTextSnippets));
     log.info("buildEvalResult questionId={} expected={} recalled(top3)={} hitAt={} expectedClass={} recalledClass={}",
         questionId,
         expectedChunkIds.stream().map(n -> n.getClass().getSimpleName() + "(" + n + ")").toList(),
@@ -309,17 +313,23 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
         hitAt,
         expectedChunkIds.isEmpty() ? "empty" : expectedChunkIds.get(0).getClass().getSimpleName(),
         recalledChunkIds.isEmpty() ? "empty" : recalledChunkIds.get(0).getClass().getSimpleName());
-    boolean top3Hit = hitAt > 0;
+    boolean top3Hit = hitAt != null && hitAt <= 3;
 
     EvalResult row = new EvalResult();
     row.setExperimentId(experimentId);
     row.setQuestionId(questionId);
     row.setHit(top3Hit);
-    row.setHitAt(hitAt == 0 ? null : hitAt);
+    row.setHitAt(hitAt);
     row.setRecalledChunkIds(writeJson(recalledChunkIds));
     row.setScore(results.isEmpty() ? BigDecimal.ZERO : BigDecimal.valueOf(primaryScore(results.get(0))));
     row.setFailureReason(
-        top3Hit ? null : classifyFailure(expectedChunkIds, recalledChunkIds, bestRank(recalledChunkIds, expectedSet)));
+        top3Hit
+            ? null
+            : classifyFailure(
+                expectedChunkIds,
+                expectedTextSnippets,
+                recalledChunkIds,
+                firstRank(bestRank(recalledChunkIds, expectedSet), bestTextRank(topResults, expectedTextSnippets))));
     return row;
   }
 
@@ -381,12 +391,14 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       double vectorWeight,
       EvalQuestion question) {
     List<Long> expectedChunkIds = parseLongList(question.getExpectedDocIds());
+    List<String> expectedTextSnippets = parseStringList(question.getExpectedTextSnippets());
     long start = System.currentTimeMillis();
     try {
       List<SearchResult> results = search(question.getQuestion(), kbId, strategy, topK, vectorWeight);
       int latencyMs = (int) (System.currentTimeMillis() - start);
       EvalResult evalResult =
-          buildEvalResult(experimentId, question.getId(), expectedChunkIds, results, topK);
+          buildEvalResult(
+              experimentId, question.getId(), expectedChunkIds, expectedTextSnippets, results, topK);
       evalResult.setLatencyMs(latencyMs);
       return new EvalQuestionRunResult(
           evalResult,
@@ -463,8 +475,13 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   }
 
   private String classifyFailure(
-      List<Long> expectedChunkIds, List<Long> recalledChunkIds, Integer expectedBestRank) {
-    if (expectedChunkIds == null || expectedChunkIds.isEmpty()) {
+      List<Long> expectedChunkIds,
+      List<String> expectedTextSnippets,
+      List<Long> recalledChunkIds,
+      Integer expectedBestRank) {
+    boolean hasChunkIds = expectedChunkIds != null && !expectedChunkIds.isEmpty();
+    boolean hasTextSnippets = expectedTextSnippets != null && !expectedTextSnippets.isEmpty();
+    if (!hasChunkIds && !hasTextSnippets) {
       return "标注缺失";
     }
     if (recalledChunkIds == null || recalledChunkIds.isEmpty()) {
@@ -494,6 +511,49 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       }
     }
     return null;
+  }
+
+  private static Integer bestTextRank(List<SearchResult> results, List<String> expectedTextSnippets) {
+    if (results == null || results.isEmpty() || expectedTextSnippets == null || expectedTextSnippets.isEmpty()) {
+      return null;
+    }
+    for (int i = 0; i < results.size(); i++) {
+      SearchResult result = results.get(i);
+      for (String snippet : expectedTextSnippets) {
+        if (TextNormalizer.normalizedContains(result.getContent(), snippet)) {
+          return i + 1;
+        }
+      }
+    }
+    return null;
+  }
+
+  private static Integer bestTextMatchRank(
+      List<EvalTextSnippetMatchVO> matches, List<Long> recalledChunkIds) {
+    if (matches == null || matches.isEmpty() || recalledChunkIds == null || recalledChunkIds.isEmpty()) {
+      return null;
+    }
+    Integer best = null;
+    for (EvalTextSnippetMatchVO match : matches) {
+      if (!Boolean.TRUE.equals(match.getMatched()) || match.getMatchedChunkId() == null) {
+        continue;
+      }
+      int idx = recalledChunkIds.indexOf(match.getMatchedChunkId());
+      if (idx >= 0 && (best == null || idx + 1 < best)) {
+        best = idx + 1;
+      }
+    }
+    return best;
+  }
+
+  private static Integer firstRank(Integer chunkRank, Integer textRank) {
+    if (chunkRank == null) {
+      return textRank;
+    }
+    if (textRank == null) {
+      return chunkRank;
+    }
+    return Math.min(chunkRank, textRank);
   }
 
   private static Set<Long> toLongSet(List<Long> values) {
@@ -582,6 +642,17 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     }
   }
 
+  private List<String> parseStringList(String json) {
+    if (!StringUtils.hasText(json)) {
+      return Collections.emptyList();
+    }
+    try {
+      return objectMapper.readValue(json, STRING_LIST_TYPE);
+    } catch (JsonProcessingException e) {
+      return Collections.emptyList();
+    }
+  }
+
   private String writeJson(List<Long> list) {
     try {
       return objectMapper.writeValueAsString(list);
@@ -621,10 +692,44 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   private static ChunkPreviewVO toChunkPreview(DocumentChunk chunk) {
     ChunkPreviewVO vo = new ChunkPreviewVO();
     vo.setChunkId(chunk.getId());
+    vo.setDocId(chunk.getDocId());
     vo.setChunkIndex(chunk.getChunkIndex());
     vo.setContent(chunk.getContent());
     vo.setTokenCount(chunk.getTokenCount());
     return vo;
+  }
+
+  private static List<EvalTextSnippetMatchVO> buildTextSnippetMatches(
+      List<String> snippets, List<ChunkPreviewVO> recalledChunks) {
+    if (snippets == null || snippets.isEmpty()) {
+      return Collections.emptyList();
+    }
+    List<EvalTextSnippetMatchVO> matches = new ArrayList<>();
+    for (String snippet : snippets) {
+      EvalTextSnippetMatchVO vo = new EvalTextSnippetMatchVO();
+      vo.setTextSnippet(snippet);
+      ChunkPreviewVO matched = findMatchedChunk(snippet, recalledChunks);
+      vo.setMatched(matched != null);
+      if (matched != null) {
+        vo.setMatchedChunkId(matched.getChunkId());
+        vo.setMatchedDocId(matched.getDocId());
+        vo.setMatchedContent(matched.getContent());
+      }
+      matches.add(vo);
+    }
+    return matches;
+  }
+
+  private static ChunkPreviewVO findMatchedChunk(String snippet, List<ChunkPreviewVO> chunks) {
+    if (chunks == null || chunks.isEmpty()) {
+      return null;
+    }
+    for (ChunkPreviewVO chunk : chunks) {
+      if (TextNormalizer.normalizedContains(chunk.getContent(), snippet)) {
+        return chunk;
+      }
+    }
+    return null;
   }
 
   private static BigDecimal rate(int hit, int total) {

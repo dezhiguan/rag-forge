@@ -30,6 +30,7 @@ import org.springframework.util.StringUtils;
 public class EvalQuestionServiceImpl implements EvalQuestionService {
 
   private static final TypeReference<List<Long>> LONG_LIST_TYPE = new TypeReference<>() {};
+  private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {};
 
   private final EvalQuestionMapper evalQuestionMapper;
   private final EvalDatasetMapper evalDatasetMapper;
@@ -56,7 +57,8 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
   @Transactional
   public EvalQuestionVO create(Long datasetId, CreateEvalQuestionDTO dto) {
     evalDatasetService.requireDataset(datasetId);
-    EvalQuestion question = buildQuestion(datasetId, dto.getQuestion(), dto.getExpectedChunkIds());
+    EvalQuestion question =
+        buildQuestion(datasetId, dto.getQuestion(), dto.getExpectedChunkIds(), dto.getExpectedTextSnippets());
     evalQuestionMapper.insert(question);
     incrementQuestionCount(datasetId, 1);
     return toVO(question);
@@ -75,7 +77,11 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
             .map(
                 dto -> {
                   EvalQuestion question =
-                      buildQuestion(datasetId, dto.getQuestion(), dto.getExpectedChunkIds());
+                      buildQuestion(
+                          datasetId,
+                          dto.getQuestion(),
+                          dto.getExpectedChunkIds(),
+                          dto.getExpectedTextSnippets());
                   evalQuestionMapper.insert(question);
                   return toVO(question);
                 })
@@ -104,6 +110,7 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     }
     question.setQuestion(dto.getQuestion().trim());
     question.setExpectedDocIds(serializeChunkIds(dto.getExpectedChunkIds()));
+    question.setExpectedTextSnippets(serializeTextSnippets(dto.getExpectedTextSnippets()));
     evalQuestionMapper.updateById(question);
     return toVO(question);
   }
@@ -122,11 +129,13 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     incrementQuestionCount(datasetId, -1);
   }
 
-  private EvalQuestion buildQuestion(Long datasetId, String questionText, List<Long> chunkIds) {
+  private EvalQuestion buildQuestion(
+      Long datasetId, String questionText, List<Long> chunkIds, List<String> textSnippets) {
     EvalQuestion question = new EvalQuestion();
     question.setDatasetId(datasetId);
     question.setQuestion(questionText.trim());
     question.setExpectedDocIds(serializeChunkIds(chunkIds));
+    question.setExpectedTextSnippets(serializeTextSnippets(textSnippets));
     return question;
   }
 
@@ -146,6 +155,7 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     vo.setDatasetId(entity.getDatasetId());
     vo.setQuestion(entity.getQuestion());
     vo.setExpectedChunkIds(parseChunkIds(entity.getExpectedDocIds()));
+    vo.setExpectedTextSnippets(parseTextSnippets(entity.getExpectedTextSnippets()));
     return vo;
   }
 
@@ -166,6 +176,36 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     }
     try {
       return objectMapper.readValue(json, LONG_LIST_TYPE);
+    } catch (JsonProcessingException e) {
+      return Collections.emptyList();
+    }
+  }
+
+  private String serializeTextSnippets(List<String> snippets) {
+    if (CollectionUtils.isEmpty(snippets)) {
+      return "[]";
+    }
+    List<String> cleaned =
+        snippets.stream()
+            .filter(StringUtils::hasText)
+            .map(String::trim)
+            .toList();
+    if (cleaned.isEmpty()) {
+      return "[]";
+    }
+    try {
+      return objectMapper.writeValueAsString(cleaned);
+    } catch (JsonProcessingException e) {
+      throw new BizException("期望文本片段序列化失败");
+    }
+  }
+
+  private List<String> parseTextSnippets(String json) {
+    if (!StringUtils.hasText(json)) {
+      return Collections.emptyList();
+    }
+    try {
+      return objectMapper.readValue(json, STRING_LIST_TYPE);
     } catch (JsonProcessingException e) {
       return Collections.emptyList();
     }

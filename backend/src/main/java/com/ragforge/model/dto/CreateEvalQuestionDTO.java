@@ -11,4 +11,5 @@ public class CreateEvalQuestionDTO {
   private String question;
 
   private List<Long> expectedChunkIds;
+  private List<String> expectedTextSnippets;
 }

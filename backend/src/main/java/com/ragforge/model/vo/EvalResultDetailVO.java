@@ -8,9 +8,11 @@ public class EvalResultDetailVO {
   private Long questionId;
   private String question;
   private List<Long> expectedChunkIds;
+  private List<String> expectedTextSnippets;
   private List<Long> recalledChunkIds;
   private List<ChunkPreviewVO> expectedChunks;
   private List<ChunkPreviewVO> recalledChunks;
+  private List<EvalTextSnippetMatchVO> expectedTextMatches;
   private Integer hitAt;
   private boolean top1Hit;
   private boolean top3Hit;

@@ -135,8 +135,8 @@
                       <table class="questions-table">
                         <thead>
                           <tr>
-                            <th style="width: 50%;">问题</th>
-                            <th>期望 Chunk IDs</th>
+                            <th style="width: 44%;">问题</th>
+                            <th>期望标注</th>
                             <th style="width: 80px;">操作</th>
                           </tr>
                         </thead>
@@ -151,8 +151,11 @@
                           </tr>
                           <tr v-for="q in questionsMap[ds.id]?.list || []" :key="q.id">
                             <td class="question-text">{{ q.question }}</td>
-                            <td class="chunk-ids" :title="formatChunkIds(q.expectedChunkIds)">
-                              {{ formatChunkIds(q.expectedChunkIds) }}
+                            <td class="chunk-ids">
+                              <div :title="formatChunkIds(q.expectedChunkIds)">Chunk: {{ formatChunkIds(q.expectedChunkIds) }}</div>
+                              <div v-if="(q.expectedTextSnippets || []).length" class="text-snippet-line">
+                                文本: {{ formatTextSnippets(q.expectedTextSnippets) }}
+                              </div>
                             </td>
                             <td>
                               <span class="link-action" @click.stop="openEditQuestion(ds.id, q)">
@@ -306,6 +309,10 @@
               <span>问题 *</span>
               <textarea v-model="questionForm.question" rows="3" placeholder="输入评测问题" />
             </label>
+            <label class="field">
+              <span>期望文本片段（可选，每行一个）</span>
+              <textarea v-model="expectedTextSnippetsInput" rows="3" placeholder="用于硬覆盖后稳定评测，例如文档中的关键原文片段" />
+            </label>
             <div class="modal-actions">
               <button class="btn-ghost" @click="showAddQuestion = false">取消</button>
               <button class="btn-primary" :disabled="searchingCandidates" @click="onSearchCandidates">
@@ -319,7 +326,10 @@
               <span>问题</span>
               <div class="question-preview">{{ questionForm.question }}</div>
             </div>
-            <div class="selected-count">已选 {{ selectedChunkIds.length }} 个 chunk</div>
+            <div class="selected-count">
+              已选 {{ selectedChunkIds.length }} 个 chunk
+              <span v-if="parsedExpectedTextSnippets.length"> · {{ parsedExpectedTextSnippets.length }} 个文本片段</span>
+            </div>
             <div v-if="!candidateChunks.length" class="empty-hint">未检索到候选 Chunk</div>
             <div v-else class="candidate-list">
               <label
@@ -477,6 +487,16 @@
                       <div v-if="(r.expectedChunks || []).length > 3" class="chunk-preview-more">+{{ (r.expectedChunks || []).length - 3 }} 条</div>
                     </div>
                     <span v-else :title="formatChunkIds(r.expectedChunkIds)">{{ formatChunkIds(r.expectedChunkIds) }}</span>
+                    <div v-if="(r.expectedTextSnippets || []).length" class="text-match-list">
+                      <div
+                        v-for="match in r.expectedTextMatches || []"
+                        :key="match.textSnippet"
+                        :class="['text-match-item', match.matched ? 'text-match-hit' : 'text-match-miss']"
+                      >
+                        <span>{{ match.matched ? '文本命中' : '文本未命中' }}</span>
+                        <span :title="match.textSnippet">{{ previewChunk(match.textSnippet) }}</span>
+                      </div>
+                    </div>
                   </td>
                   <td class="chunk-cell">
                     <div v-if="(r.recalledChunks || []).length" class="chunk-preview-list">
@@ -569,6 +589,16 @@
                     <div v-if="(item.expectedChunks || []).length > 2" class="chunk-preview-more">+{{ (item.expectedChunks || []).length - 2 }} 条</div>
                   </div>
                   <span v-else :title="formatChunkIds(item.expectedChunkIds)">{{ formatChunkIds(item.expectedChunkIds) }}</span>
+                  <div v-if="(item.expectedTextSnippets || []).length" class="text-match-list">
+                    <div
+                      v-for="match in item.expectedTextMatches || []"
+                      :key="match.textSnippet"
+                      :class="['text-match-item', match.matched ? 'text-match-hit' : 'text-match-miss']"
+                    >
+                      <span>{{ match.matched ? '文本命中' : '文本未命中' }}</span>
+                      <span :title="match.textSnippet">{{ previewChunk(match.textSnippet) }}</span>
+                    </div>
+                  </div>
                 </td>
                 <td class="chunk-cell">
                   <div v-if="(item.recalledChunks || []).length" class="chunk-preview-list">
@@ -738,6 +768,7 @@ const addQuestionDatasetId = ref(null)
 const editingQuestionId = ref(null)
 const addQuestionStep = ref(1)
 const questionForm = ref({ question: '' })
+const expectedTextSnippetsInput = ref('')
 const candidateChunks = ref([])
 const selectedChunkIds = ref([])
 
@@ -787,6 +818,8 @@ const runForm = ref({
   topK: 8,
   ablation: false,
 })
+
+const parsedExpectedTextSnippets = computed(() => parseExpectedTextSnippets(expectedTextSnippetsInput.value))
 
 async function loadDatasets() {
   loadingDatasets.value = true
@@ -873,6 +906,7 @@ function openAddQuestion(datasetId) {
   editingQuestionId.value = null
   addQuestionStep.value = 1
   questionForm.value = { question: '' }
+  expectedTextSnippetsInput.value = ''
   candidateChunks.value = []
   selectedChunkIds.value = []
   showAddQuestion.value = true
@@ -883,6 +917,7 @@ function openEditQuestion(datasetId, question) {
   editingQuestionId.value = question.id
   addQuestionStep.value = 1
   questionForm.value = { question: question.question || '' }
+  expectedTextSnippetsInput.value = (question.expectedTextSnippets || []).join('\n')
   candidateChunks.value = []
   selectedChunkIds.value = [...(question.expectedChunkIds || [])]
   showAddQuestion.value = true
@@ -935,6 +970,7 @@ async function onAddQuestion() {
     const payload = {
       question: questionForm.value.question.trim(),
       expectedChunkIds: selectedChunkIds.value,
+      expectedTextSnippets: parsedExpectedTextSnippets.value,
     }
     if (editingQuestionId.value) {
       await updateEvalQuestion(addQuestionDatasetId.value, editingQuestionId.value, payload)
@@ -1144,6 +1180,18 @@ function formatChunkIds(ids) {
   return ids.join(', ')
 }
 
+function parseExpectedTextSnippets(raw) {
+  return (raw || '')
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function formatTextSnippets(snippets) {
+  if (!snippets?.length) return '—'
+  return snippets.map((item) => previewChunk(item)).join(' / ')
+}
+
 function kbNameOf(ds) {
   if (!ds) return '—'
   const kb = kbList.value.find((item) => item.id === ds.kbId)
@@ -1183,12 +1231,14 @@ function failureBadgeClass(reason) {
 function failureRankText(item) {
   if (!item) return '—'
   const recalledCount = item.recalledCount ?? item.recalledChunkIds?.length ?? 0
-  if (!item.expectedChunkIds?.length) return `未标注标准 Chunk，召回 ${recalledCount} 条`
+  const hasChunkIds = !!item.expectedChunkIds?.length
+  const hasTextSnippets = !!item.expectedTextSnippets?.length
+  if (!hasChunkIds && !hasTextSnippets) return `未标注标准 Chunk，召回 ${recalledCount} 条`
   if (!item.recalledChunkIds?.length) return '没有召回结果'
   if (item.expectedBestRank != null) {
-    return `标准 Chunk 在第 ${item.expectedBestRank} 位，未进入 Top3`
+    return `标准标注在第 ${item.expectedBestRank} 位，未进入 Top3`
   }
-  return `标准 Chunk 未进入 TopK，召回 ${recalledCount} 条`
+  return `标准标注未进入 TopK，召回 ${recalledCount} 条`
 }
 
 function failureSuggestion(reason, strategy) {
@@ -1443,6 +1493,13 @@ onMounted(async () => {
   max-width: 260px;
   vertical-align: top;
 }
+.text-snippet-line {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+}
 .chunk-preview-list {
   display: flex;
   flex-direction: column;
@@ -1485,6 +1542,30 @@ onMounted(async () => {
   color: var(--text-muted);
   font-size: 9px;
   padding-left: 2px;
+}
+.text-match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.text-match-item {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  border-radius: 6px;
+  padding: 5px 7px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.text-match-hit {
+  background: rgba(16, 185, 129, 0.08);
+  color: #047857;
+}
+.text-match-miss {
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
 }
 .chunk-detail-modal {
   max-width: 780px;

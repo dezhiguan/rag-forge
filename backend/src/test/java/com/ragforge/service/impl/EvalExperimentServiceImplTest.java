@@ -273,6 +273,66 @@ class EvalExperimentServiceImplTest {
     assertThat(vo.getStrategy()).isEqualTo("rewrite");
   }
 
+  @Test
+  void runExperiment_matchesExpectedTextSnippetsWithNormalizedContent() throws Exception {
+    EvalDataset dataset = dataset(1L, 10L, "ds-1");
+    EvalQuestion q1 = questionWithSnippets(1L, 1L, "q", "[]", "[\"Alpha Beta\"]");
+    when(evalDatasetMapper.selectById(1L)).thenReturn(dataset);
+    when(evalQuestionMapper.selectList(any())).thenReturn(List.of(q1));
+    doAnswer(
+            inv -> {
+              EvalExperiment exp = inv.getArgument(0);
+              exp.setId(70L);
+              return 1;
+            })
+        .when(evalExperimentMapper)
+        .insert(any(EvalExperiment.class));
+    SearchResult hit = searchResult(901L, 0.5, 0.0);
+    hit.setContent("alpha   beta content");
+    when(retrievalService.retrieve(anyString(), anyList(), any(), anyString(), any(), anyInt(), anyInt()))
+        .thenReturn(outputWith(hit));
+    doAnswer(
+            inv -> {
+              List<EvalResult> rows = inv.getArgument(1);
+              assertThat(rows).hasSize(1);
+              assertThat(rows.get(0).getHit()).isTrue();
+              assertThat(rows.get(0).getHitAt()).isEqualTo(1);
+              assertThat(rows.get(0).getFailureReason()).isNull();
+              return new int[][] {{1}};
+            })
+        .when(jdbcTemplate)
+        .batchUpdate(anyString(), anyList(), eq(100), any());
+    when(evalExperimentMapper.selectById(70L)).thenReturn(completedExperiment(70L, 1L));
+    when(evalResultMapper.selectList(any())).thenReturn(List.of(resultRow(70L, 1L, true, 1, "[901]", null)));
+    when(evalQuestionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(q1));
+    when(documentChunkMapper.selectBatchIds(anyCollection())).thenReturn(List.of(chunk(901L, "alpha beta content")));
+
+    var vo = evalExperimentService.runExperiment(1L, "vector", null, null);
+
+    assertThat(vo.getResults().get(0).getExpectedTextSnippets()).containsExactly("Alpha Beta");
+    assertThat(vo.getResults().get(0).getExpectedTextMatches().get(0).getMatched()).isTrue();
+  }
+
+  @Test
+  void getDetail_buildsExpectedTextMatchDetails() {
+    EvalExperiment exp = completedExperiment(80L, 1L);
+    EvalQuestion q1 = questionWithSnippets(1L, 1L, "q", "[]", "[\"AlphaBeta\"]");
+    EvalResult r1 = resultRow(80L, 1L, true, 1, "[301]", null);
+
+    when(evalExperimentMapper.selectById(80L)).thenReturn(exp);
+    when(evalDatasetMapper.selectById(1L)).thenReturn(dataset(1L, 10L, "ds-1"));
+    when(evalResultMapper.selectList(any())).thenReturn(List.of(r1));
+    when(evalQuestionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(q1));
+    when(documentChunkMapper.selectBatchIds(anyCollection())).thenReturn(List.of(chunk(301L, "alpha beta text")));
+
+    var detail = evalExperimentService.getDetail(80L);
+
+    var result = detail.getResults().get(0);
+    assertThat(result.getExpectedTextSnippets()).containsExactly("AlphaBeta");
+    assertThat(result.getExpectedTextMatches()).hasSize(1);
+    assertThat(result.getExpectedTextMatches().get(0).getMatchedChunkId()).isEqualTo(301L);
+  }
+
   private static EvalDataset dataset(long id, long kbId, String name) {
     EvalDataset dataset = new EvalDataset();
     dataset.setId(id);
@@ -282,11 +342,17 @@ class EvalExperimentServiceImplTest {
   }
 
   private static EvalQuestion question(long id, long datasetId, String text, String expectedJson) {
+    return questionWithSnippets(id, datasetId, text, expectedJson, null);
+  }
+
+  private static EvalQuestion questionWithSnippets(
+      long id, long datasetId, String text, String expectedJson, String expectedTextSnippetsJson) {
     EvalQuestion question = new EvalQuestion();
     question.setId(id);
     question.setDatasetId(datasetId);
     question.setQuestion(text);
     question.setExpectedDocIds(expectedJson);
+    question.setExpectedTextSnippets(expectedTextSnippetsJson);
     return question;
   }
 
@@ -349,6 +415,7 @@ class EvalExperimentServiceImplTest {
   private static DocumentChunk chunk(long id, String content) {
     DocumentChunk chunk = new DocumentChunk();
     chunk.setId(id);
+    chunk.setDocId(id + 1000);
     chunk.setChunkIndex(0);
     chunk.setContent(content);
     chunk.setTokenCount(10);

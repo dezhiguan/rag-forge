@@ -10,9 +10,11 @@ public class EvalFailureSampleVO {
   private String failureReason;
   private String suggestion;
   private List<Long> expectedChunkIds;
+  private List<String> expectedTextSnippets;
   private List<Long> recalledChunkIds;
   private List<ChunkPreviewVO> expectedChunks;
   private List<ChunkPreviewVO> recalledChunks;
+  private List<EvalTextSnippetMatchVO> expectedTextMatches;
   private Integer expectedBestRank;
   private Boolean expectedInTopK;
   private Boolean expectedInTop3;

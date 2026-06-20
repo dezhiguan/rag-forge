@@ -49,6 +49,7 @@ class EvalQuestionServiceImplTest {
     CreateEvalQuestionDTO dto = new CreateEvalQuestionDTO();
     dto.setQuestion("  what is RAG?  ");
     dto.setExpectedChunkIds(List.of(1L, 2L));
+    dto.setExpectedTextSnippets(List.of("  stable text  "));
 
     EvalDataset dataset = dataset(5L, 2);
     when(evalDatasetMapper.selectById(5L)).thenReturn(dataset);
@@ -57,10 +58,29 @@ class EvalQuestionServiceImplTest {
 
     assertThat(vo.getQuestion()).isEqualTo("what is RAG?");
     assertThat(vo.getExpectedChunkIds()).containsExactly(1L, 2L);
+    assertThat(vo.getExpectedTextSnippets()).containsExactly("stable text");
     verify(evalQuestionMapper).insert(any(EvalQuestion.class));
     ArgumentCaptor<EvalDataset> captor = ArgumentCaptor.forClass(EvalDataset.class);
     verify(evalDatasetMapper).updateById(captor.capture());
     assertThat(captor.getValue().getQuestionCount()).isEqualTo(3);
+  }
+
+  @Test
+  void update_persistsExpectedTextSnippets() {
+    EvalQuestion question = question(7L, 5L, "q", "[1]");
+    when(evalQuestionMapper.selectById(7L)).thenReturn(question);
+
+    CreateEvalQuestionDTO dto = new CreateEvalQuestionDTO();
+    dto.setQuestion("updated");
+    dto.setExpectedChunkIds(List.of(2L));
+    dto.setExpectedTextSnippets(List.of("片段 A", "  ", "片段 B"));
+
+    var vo = evalQuestionService.update(5L, 7L, dto);
+
+    assertThat(vo.getExpectedTextSnippets()).containsExactly("片段 A", "片段 B");
+    ArgumentCaptor<EvalQuestion> captor = ArgumentCaptor.forClass(EvalQuestion.class);
+    verify(evalQuestionMapper).updateById(captor.capture());
+    assertThat(captor.getValue().getExpectedTextSnippets()).isEqualTo("[\"片段 A\",\"片段 B\"]");
   }
 
   @Test

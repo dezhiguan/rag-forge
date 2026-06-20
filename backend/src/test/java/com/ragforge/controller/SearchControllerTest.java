@@ -13,6 +13,7 @@ import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.model.dto.SearchRequest;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.security.KbAccessGuard;
+import com.ragforge.service.RetrievalLogService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
 import java.util.List;
@@ -32,6 +33,7 @@ class SearchControllerTest {
 
   @Mock private RetrievalService retrievalService;
   @Mock private KbAccessGuard kbAccessGuard;
+  @Mock private RetrievalLogService retrievalLogService;
 
   private MockMvc mockMvc;
 
@@ -41,7 +43,7 @@ class SearchControllerTest {
     validator.afterPropertiesSet();
 
     mockMvc =
-        standaloneSetup(new SearchController(retrievalService, kbAccessGuard))
+        standaloneSetup(new SearchController(retrievalService, kbAccessGuard, retrievalLogService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .setValidator(validator)
@@ -122,6 +124,8 @@ class SearchControllerTest {
             eq(5),
             eq(3),
             isNull());
+    verify(retrievalLogService)
+        .logAsync(eq("Java"), eq("hybrid"), eq(List.of(17L)), isNull(), eq(5), eq(1), eq(120L), eq(List.of(hit)));
   }
 
   @Test

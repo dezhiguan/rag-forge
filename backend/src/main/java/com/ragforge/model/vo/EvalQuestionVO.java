@@ -10,4 +10,5 @@ public class EvalQuestionVO {
   private Long datasetId;
   private String question;
   private List<Long> expectedChunkIds;
+  private List<String> expectedTextSnippets;
 }

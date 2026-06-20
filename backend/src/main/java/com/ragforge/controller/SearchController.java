@@ -6,6 +6,7 @@ import com.ragforge.model.dto.SearchRequest;
 import com.ragforge.model.vo.SearchResponse;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.security.KbAccessGuard;
+import com.ragforge.service.RetrievalLogService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ public class SearchController {
 
   private final RetrievalService retrievalService;
   private final KbAccessGuard kbAccessGuard;
+  private final RetrievalLogService retrievalLogService;
 
   @PostMapping("/search")
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','SERVICE_ACCOUNT')")
@@ -62,6 +64,15 @@ public class SearchController {
         output.getStrategy(),
         output.getResults() == null ? 0 : output.getResults().size(),
         output.getLatencyMs());
+    retrievalLogService.logAsync(
+        req.getQuery(),
+        output.getStrategy(),
+        req.getKbIds(),
+        output.getRewrittenQueries(),
+        req.getTopK(),
+        output.getResults() == null ? 0 : output.getResults().size(),
+        output.getLatencyMs(),
+        output.getResults());
 
     return Result.ok(
         new SearchResponse(
