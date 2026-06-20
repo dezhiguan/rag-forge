@@ -92,12 +92,36 @@ function normalizeLoginResponse(body) {
 function normalizeAuthError(error) {
   const body = error?.response?.data
   const payload = body?.data || body || {}
+  const code = payload.code || body?.code || payload.error || body?.error || error?.code || 'AUTH_REQUEST_FAILED'
+  const rawMessage = payload.message || payload.msg || body?.msg || error?.message || ''
   return {
-    code: payload.code || body?.code || error?.code || 'AUTH_REQUEST_FAILED',
-    message: payload.message || payload.msg || body?.msg || error?.message || '认证请求失败',
+    code,
+    message: friendlyAuthMessage(code, rawMessage),
     remainingAttempts: payload.remainingAttempts ?? payload.remaining_attempts,
     captchaRequired: Boolean(payload.captchaRequired ?? payload.captcha_required),
     captchaImage: payload.captchaImage || payload.captcha_image || '',
     challengeId: payload.challengeId || payload.challenge_id || '',
   }
+}
+
+function friendlyAuthMessage(code, message) {
+  const text = `${code || ''} ${message || ''}`.toUpperCase()
+  if (text.includes('SMS_SEND_TOO_FREQUENT')) return '验证码已发送，请稍后再试'
+  if (
+    text.includes('SMS_PHONE_DAY_LIMITED') ||
+    text.includes('SMS_IP_MINUTE_LIMITED') ||
+    text.includes('SMS_PROVIDER_RATE_LIMITED') ||
+    text.includes('TOO MANY') ||
+    text.includes('LIMIT')
+  ) {
+    return '验证码发送过于频繁，请稍后再试'
+  }
+  if (text.includes('SMS_CODE_INVALID')) return '验证码错误或已过期，请重新获取'
+  if (text.includes('BAD_CREDENTIALS')) return '账号或密码不正确'
+  if (text.includes('PLATFORM_ROLE_DENIED')) return '当前账号没有 RAGForge 管理权限，请联系管理员开通'
+  if (text.includes('PASSWORD_WEAK')) return '密码至少需要 8 位'
+  if (text.includes('PASSWORD_RESET_LOCKED')) return '操作过于频繁，请稍后再试'
+  if (text.includes('SMS_PROVIDER') || text.includes('ALIYUN')) return '短信服务暂时不可用，请稍后再试'
+  if (message && !/gateway/i.test(message)) return message
+  return '认证请求失败，请稍后再试'
 }
