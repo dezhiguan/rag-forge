@@ -45,6 +45,7 @@ public class VectorSearchService {
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
             WHERE dc.content_vector IS NOT NULL
+              AND d.parse_status = 'COMPLETED'
             """);
 
     if (kbIds != null && !kbIds.isEmpty()) {
@@ -212,6 +213,7 @@ public class VectorSearchService {
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
             WHERE dc.content_vector IS NOT NULL
+              AND d.parse_status = 'COMPLETED'
           """);
       appendFilters(sql, kbIds, docIds, filter);
       sql.append(

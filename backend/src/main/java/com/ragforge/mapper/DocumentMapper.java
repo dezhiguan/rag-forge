@@ -53,8 +53,18 @@ public interface DocumentMapper extends BaseMapper<Document> {
   Document selectByContentMd5ForUpdate(
       @Param("kbId") Long kbId, @Param("contentMd5") String contentMd5);
 
-  @Update("UPDATE documents SET parse_status = #{status} WHERE id = #{id}")
+  @Update("UPDATE documents SET parse_status = #{status}, updated_at = NOW() WHERE id = #{id}")
   int updateStatus(@Param("id") Long id, @Param("status") String status);
+
+  @Update(
+      """
+      UPDATE documents
+      SET parse_status = 'PROCESSING', updated_at = NOW()
+      WHERE id = #{id}
+        AND (parse_status = 'PENDING'
+             OR (parse_status = 'PROCESSING' AND updated_at < NOW() - INTERVAL '5 minutes'))
+      """)
+  int markProcessingIfRunnable(@Param("id") Long id);
 
   @Update(
       """
@@ -71,7 +81,8 @@ public interface DocumentMapper extends BaseMapper<Document> {
           ingest_source = #{cmd.ingestSource},
           chunk_type = #{cmd.chunkType},
           chunk_count = 0,
-          error_msg = NULL
+          error_msg = NULL,
+          updated_at = NOW()
       WHERE id = #{id}
       """)
   int replaceFields(@Param("id") Long id, @Param("cmd") IngestCommand cmd);

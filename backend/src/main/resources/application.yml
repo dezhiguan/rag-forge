@@ -26,7 +26,8 @@ spring:
   servlet:
     multipart:
       max-file-size: 50MB
-      max-request-size: 50MB
+      max-request-size: 60MB
+      file-size-threshold: 1MB
   cache:
     type: caffeine
     cache-names: queryRewrite

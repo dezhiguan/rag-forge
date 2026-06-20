@@ -2,6 +2,7 @@ package com.ragforge.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -14,13 +15,19 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 
 import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.common.PageResult;
+import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
 import com.ragforge.model.vo.DocumentVO;
+import com.ragforge.security.KbAccessGuard;
+import com.ragforge.service.ingest.IngestService;
 import com.ragforge.service.DocumentService;
+import com.ragforge.storage.ObjectStorage;
+import com.ragforge.storage.StorageProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,21 +47,89 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 class DocumentControllerTest {
 
   @Mock private DocumentService documentService;
+  @Mock private IngestService ingestService;
+  @Mock private ObjectStorage objectStorage;
+  @Mock private KbAccessGuard kbAccessGuard;
 
   private MockMvc mockMvc;
+  private StorageProperties storageProperties;
 
   @BeforeEach
   void setUp() {
     LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
     validator.afterPropertiesSet();
+    storageProperties = new StorageProperties();
+    storageProperties.getAliyun().setBucket("test-bucket");
 
     mockMvc =
-        standaloneSetup(new DocumentController(documentService))
+        standaloneSetup(
+                new DocumentController(
+                    documentService,
+                    ingestService,
+                    objectStorage,
+                    storageProperties,
+                    kbAccessGuard,
+                    new ObjectMapper()))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(
                 new ResourceHttpMessageConverter(), new MappingJackson2HttpMessageConverter())
             .setValidator(validator)
             .build();
+  }
+
+  @Test
+  void uploadV5_streamsToObjectStorageAndRegistersIngest() throws Exception {
+    when(kbAccessGuard.canWrite(16L)).thenReturn(true);
+    when(ingestService.register(any()))
+        .thenReturn(IngestResult.created(9912L));
+
+    MockMultipartFile file =
+        new MockMultipartFile("file", "jd.pdf", "application/pdf", "hello".getBytes());
+    mockMvc
+        .perform(
+            multipart("/api/v1/documents")
+                .file(file)
+                .param(
+                    "meta",
+                    """
+                    {
+                      "kbId": 16,
+                      "identity": { "externalId": "boss-1" },
+                      "onConflict": "REJECT",
+                      "ingestSource": "boss-scraper",
+                      "chunkType": "JD",
+                      "metadata": {"source":"boss"}
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documentId").value(9912))
+        .andExpect(jsonPath("$.status").value("CREATED"));
+
+    verify(objectStorage).put(eq("test-bucket"), org.mockito.ArgumentMatchers.contains("/16/"), any(), any());
+    verify(ingestService).register(any());
+  }
+
+  @Test
+  void uploadV5_rejectsFilesAboveRelayLimit() throws Exception {
+    when(kbAccessGuard.canWrite(16L)).thenReturn(true);
+    MockMultipartFile file =
+        new MockMultipartFile("file", "large.pdf", "application/pdf", new byte[0]) {
+          @Override
+          public long getSize() {
+            return 60L * 1024L * 1024L;
+          }
+        };
+    mockMvc
+        .perform(
+            multipart("/api/v1/documents")
+                .file(file)
+                .param("meta", "{\"kbId\":16,\"identity\":{\"externalId\":\"boss-large\"}}"))
+        .andExpect(status().isPayloadTooLarge())
+        .andExpect(jsonPath("$.error").value("FILE_TOO_LARGE_FOR_RELAY"))
+        .andExpect(jsonPath("$.presignUrl").value("/api/v1/uploads/presign"))
+        .andExpect(jsonPath("$.limitMb").value(50));
+
+    verifyNoInteractions(objectStorage, ingestService);
   }
 
   @Test

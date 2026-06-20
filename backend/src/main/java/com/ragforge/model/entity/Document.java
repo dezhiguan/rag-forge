@@ -30,6 +30,7 @@ public class Document {
   private String errorMsg;
   private String chunkType;
   private LocalDateTime createdAt;
+  private LocalDateTime updatedAt;
 
   public String getStorageKey() {
     return filePath;

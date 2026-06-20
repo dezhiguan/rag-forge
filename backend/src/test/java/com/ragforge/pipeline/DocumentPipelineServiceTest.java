@@ -30,6 +30,7 @@ import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
+import com.ragforge.storage.ObjectStorage;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -63,6 +64,7 @@ class DocumentPipelineServiceTest {
   @Mock private EmbeddingService embeddingService;
   @Mock private EsIndexService esIndexService;
   @Mock private JdbcTemplate jdbcTemplate;
+  @Mock private ObjectStorage objectStorage;
 
   @Spy @InjectMocks private DocumentPipelineService documentPipelineService;
 
@@ -102,11 +104,8 @@ class DocumentPipelineServiceTest {
     documentPipelineService.processDocument(1L);
 
     verify(documentPipelineService).cleanupArtifacts(1L);
-    verify(documentPipelineService).updateStatus(1L, "parsing");
-    verify(documentPipelineService).updateStatus(1L, "chunking");
-    verify(documentPipelineService).updateStatus(1L, "embedding");
-    verify(documentPipelineService).updateStatus(1L, "indexing");
-    verify(documentPipelineService).updateStatus(1L, "completed");
+    verify(documentPipelineService, org.mockito.Mockito.times(4)).updateStatus(1L, "PROCESSING");
+    verify(documentPipelineService).updateStatus(1L, "COMPLETED");
     verify(documentPipelineService).updateDocumentChunkCount(1L, 2);
     verify(documentPipelineService).incrementKbCount(10L, 2, true);
   }
@@ -119,7 +118,7 @@ class DocumentPipelineServiceTest {
         .isInstanceOf(BizException.class)
         .hasMessageContaining("文档不存在");
 
-    verify(documentPipelineService).updateStatusWithError(eq(404L), eq("failed"), anyString());
+    verify(documentPipelineService).updateStatusWithError(eq(404L), eq("FAILED"), anyString());
   }
 
   @Test
@@ -135,7 +134,7 @@ class DocumentPipelineServiceTest {
         .isInstanceOf(BizException.class)
         .hasMessageContaining("Embedding 数量");
 
-    verify(documentPipelineService).updateStatusWithError(eq(2L), eq("failed"), anyString());
+    verify(documentPipelineService).updateStatusWithError(eq(2L), eq("FAILED"), anyString());
   }
 
   @Test
@@ -169,14 +168,14 @@ class DocumentPipelineServiceTest {
         .isInstanceOf(RuntimeException.class)
         .hasMessageContaining("parse failed");
 
-    verify(documentPipelineService).updateStatusWithError(eq(4L), eq("failed"), anyString());
+    verify(documentPipelineService).updateStatusWithError(eq(4L), eq("FAILED"), anyString());
   }
 
   @Test
   void processDocument_reprocessDoesNotIncrementDocCount() throws Exception {
     Document doc = document(5L, 10L, "v2.md");
     doc.setVersion(2);
-    doc.setParseStatus("pending");
+    doc.setParseStatus("PENDING");
     List<Chunk> chunks = List.of(new Chunk(0, "text", 4));
     List<float[]> vectors = List.of(new float[] {0.1f});
     List<DocumentChunk> inserted = List.of(chunkEntity(300L, 0));
@@ -281,7 +280,7 @@ class DocumentPipelineServiceTest {
     doc.setFilename(filename);
     doc.setFilePath("/data/" + filename);
     doc.setFileType("md");
-    doc.setParseStatus("pending");
+    doc.setParseStatus("PENDING");
     doc.setVersion(1);
     doc.setChunkType("RESUME");
     return doc;

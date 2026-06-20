@@ -16,6 +16,10 @@ import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
+import com.ragforge.storage.ObjectStorage;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,13 +40,13 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class DocumentPipelineService {
 
-  private static final String STATUS_PARSING = "parsing";
-  private static final String STATUS_CHUNKING = "chunking";
-  private static final String STATUS_EMBEDDING = "embedding";
-  private static final String STATUS_INDEXING = "indexing";
-  private static final String STATUS_COMPLETED = "completed";
-  private static final String STATUS_FAILED = "failed";
-  private static final String STATUS_PENDING = "pending";
+  private static final String STATUS_PARSING = "PROCESSING";
+  private static final String STATUS_CHUNKING = "PROCESSING";
+  private static final String STATUS_EMBEDDING = "PROCESSING";
+  private static final String STATUS_INDEXING = "PROCESSING";
+  private static final String STATUS_COMPLETED = "COMPLETED";
+  private static final String STATUS_FAILED = "FAILED";
+  private static final String STATUS_PENDING = "PENDING";
 
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper documentChunkMapper;
@@ -52,6 +56,7 @@ public class DocumentPipelineService {
   private final EmbeddingService embeddingService;
   private final EsIndexService esIndexService;
   private final JdbcTemplate jdbcTemplate;
+  private final ObjectStorage objectStorage;
 
   @Lazy @Autowired private DocumentPipelineService self;
 
@@ -99,7 +104,27 @@ public class DocumentPipelineService {
       self.updateStatus(documentId, STATUS_PARSING);
 
       stageStart = System.currentTimeMillis();
-      ParseResult parseResult = documentParser.parse(doc.getFilePath(), doc.getFileType());
+      Path objectTempFile = null;
+      ParseResult parseResult;
+      try {
+        String parsePath = doc.getFilePath();
+        if (StringUtils.hasText(doc.getStorageBucket())) {
+          objectTempFile = Files.createTempFile("ragforge-object-", suffixFor(doc.getFilename()));
+          try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
+            Files.copy(in, objectTempFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+          }
+          parsePath = objectTempFile.toString();
+        }
+        parseResult = documentParser.parse(parsePath, doc.getFileType());
+      } finally {
+        if (objectTempFile != null) {
+          try {
+            Files.deleteIfExists(objectTempFile);
+          } catch (Exception ignored) {
+            // 临时文件清理失败不影响文档处理结果。
+          }
+        }
+      }
       String text = parseResult.getText() == null ? "" : parseResult.getText();
       textLength = text.length();
       parseLatencyMs = System.currentTimeMillis() - stageStart;
@@ -178,7 +203,10 @@ public class DocumentPipelineService {
           System.currentTimeMillis() - totalStart,
           e);
       self.updateStatusWithError(documentId, STATUS_FAILED, e.getMessage());
-      throw e;
+      if (e instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+      throw new BizException("文档处理失败: " + e.getMessage());
     }
   }
 
@@ -196,6 +224,7 @@ public class DocumentPipelineService {
         new LambdaUpdateWrapper<Document>()
             .eq(Document::getId, docId)
             .set(Document::getParseStatus, status)
+            .set(Document::getUpdatedAt, LocalDateTime.now())
             .set(Document::getErrorMsg, null));
   }
 
@@ -206,6 +235,7 @@ public class DocumentPipelineService {
         new LambdaUpdateWrapper<Document>()
             .eq(Document::getId, docId)
             .set(Document::getParseStatus, status)
+            .set(Document::getUpdatedAt, LocalDateTime.now())
             .set(Document::getErrorMsg, truncateError(errorMsg)));
   }
 
@@ -301,7 +331,8 @@ public class DocumentPipelineService {
         null,
         new LambdaUpdateWrapper<Document>()
             .eq(Document::getId, docId)
-            .set(Document::getChunkCount, count));
+            .set(Document::getChunkCount, count)
+            .set(Document::getUpdatedAt, LocalDateTime.now()));
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -330,5 +361,17 @@ public class DocumentPipelineService {
 
   private static int coalesce(Integer value, int defaultValue) {
     return value == null ? defaultValue : value;
+  }
+
+  private static String suffixFor(String filename) {
+    if (!StringUtils.hasText(filename)) {
+      return ".bin";
+    }
+    int dot = filename.lastIndexOf('.');
+    if (dot < 0 || dot == filename.length() - 1) {
+      return ".bin";
+    }
+    String suffix = filename.substring(dot);
+    return suffix.length() > 20 ? ".bin" : suffix;
   }
 }

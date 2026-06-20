@@ -41,6 +41,7 @@ public class EsSearchService {
                               q.bool(
                                   b -> {
                                     b.must(m -> m.match(ma -> ma.field("content").query(query)));
+                                    b.filter(f -> f.term(t -> t.field("parse_status").value("COMPLETED")));
                                     if (kbIds != null && !kbIds.isEmpty()) {
                                       List<FieldValue> values =
                                           kbIds.stream().map(FieldValue::of).toList();

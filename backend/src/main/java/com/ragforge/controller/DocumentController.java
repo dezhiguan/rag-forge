@@ -1,16 +1,38 @@
 package com.ragforge.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.common.BizException;
 import com.ragforge.common.PageResult;
 import com.ragforge.common.Result;
+import com.ragforge.model.dto.Identity;
+import com.ragforge.model.dto.IngestCommand;
+import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
 import com.ragforge.model.vo.DocumentVO;
+import com.ragforge.security.KbAccessGuard;
+import com.ragforge.security.RagAuthContext;
+import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.DocumentService;
+import com.ragforge.service.ingest.IngestService;
+import com.ragforge.storage.ObjectMeta;
+import com.ragforge.storage.ObjectStorage;
+import com.ragforge.storage.StorageProperties;
 import jakarta.validation.constraints.Min;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,7 +51,96 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class DocumentController {
 
+  private static final long RELAY_UPLOAD_LIMIT_BYTES = 50L * 1024L * 1024L;
+  private static final int RELAY_UPLOAD_LIMIT_MB = 50;
+
   private final DocumentService documentService;
+  private final IngestService ingestService;
+  private final ObjectStorage objectStorage;
+  private final StorageProperties storageProperties;
+  private final KbAccessGuard kbAccessGuard;
+  private final ObjectMapper objectMapper;
+
+  @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public ResponseEntity<?> uploadV5(
+      @RequestParam("file") MultipartFile file, @RequestParam("meta") String metaJson) {
+    IngestCommand cmd = parseMeta(metaJson);
+    Long kbId = cmd.getKbId();
+    if (!kbAccessGuard.canWrite(kbId)) {
+      throw new BizException(403, "KB_WRITE_FORBIDDEN");
+    }
+    if (file.getSize() > RELAY_UPLOAD_LIMIT_BYTES) {
+      return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+          .body(
+              Map.of(
+                  "error",
+                  "FILE_TOO_LARGE_FOR_RELAY",
+                  "presignUrl",
+                  "/api/v1/uploads/presign",
+                  "limitMb",
+                  RELAY_UPLOAD_LIMIT_MB));
+    }
+
+    Path tempFile = null;
+    String bucket = defaultBucket(cmd.getStorageBucket());
+    String key = null;
+    try {
+      tempFile = Files.createTempFile("ragforge-upload-", ".bin");
+      MessageDigest digest = MessageDigest.getInstance("MD5");
+      try (InputStream raw = file.getInputStream();
+          DigestInputStream in = new DigestInputStream(raw, digest);
+          var out = Files.newOutputStream(tempFile)) {
+        in.transferTo(out);
+      }
+      String contentMd5 = HexFormat.of().formatHex(digest.digest());
+      if (cmd.getIdentity() == null) {
+        cmd.setIdentity(new Identity());
+      }
+      cmd.getIdentity().setContentMd5(contentMd5);
+
+      String originalFilename = cleanFilename(file.getOriginalFilename());
+      key = storageKey(kbId, originalFilename);
+      cmd.setStorageBucket(bucket);
+      cmd.setStorageKey(key);
+      cmd.setFilename(originalFilename);
+      cmd.setSizeBytes(file.getSize());
+      cmd.setContentType(file.getContentType());
+
+      ObjectMeta objectMeta = new ObjectMeta();
+      objectMeta.setContentType(file.getContentType());
+      objectMeta.setSizeBytes(file.getSize());
+      objectMeta.setUserMeta(Map.of("content-md5", contentMd5, "kb-id", String.valueOf(kbId)));
+      try (InputStream in = Files.newInputStream(tempFile)) {
+        objectStorage.put(bucket, key, in, objectMeta);
+      }
+
+      IngestResult result = ingestService.register(cmd);
+      return ResponseEntity.ok(
+          Map.of("documentId", result.getDocumentId(), "status", result.getStatus().name()));
+    } catch (BizException e) {
+      if (key != null && e.getCode() == 409) {
+        safeDelete(bucket, key);
+      }
+      if (e.getCode() == 409 && "DOC_IDENTITY_CONFLICT".equals(e.getMessage())) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(Map.of("error", "DOC_IDENTITY_CONFLICT", "existingDocId", ""));
+      }
+      throw e;
+    } catch (Exception e) {
+      if (key != null) {
+        safeDelete(bucket, key);
+      }
+      throw new BizException(500, "DOCUMENT_UPLOAD_FAILED: " + e.getMessage());
+    } finally {
+      if (tempFile != null) {
+        try {
+          Files.deleteIfExists(tempFile);
+        } catch (Exception ignored) {
+          // 临时文件清理失败不影响请求结果。
+        }
+      }
+    }
+  }
 
   @PostMapping("/kb/{kbId}/documents")
   @PreAuthorize("@kbAccessGuard.canWrite(#kbId)")
@@ -118,5 +229,51 @@ public class DocumentController {
   public Result<DocumentUploadResultVO> uploadText(
       @RequestBody @jakarta.validation.Valid TextUploadRequest request) {
     return Result.ok(documentService.uploadText(request));
+  }
+
+  private IngestCommand parseMeta(String metaJson) {
+    try {
+      return objectMapper.readValue(metaJson, IngestCommand.class);
+    } catch (Exception e) {
+      throw new BizException(400, "INVALID_UPLOAD_META");
+    }
+  }
+
+  private String storageKey(Long kbId, String filename) {
+    RagAuthContext context = RagAuthContextHolder.get();
+    String tenantId = context == null || context.tenantId() == null ? "default" : context.tenantId();
+    return cleanPathPart(tenantId) + "/" + kbId + "/" + UUID.randomUUID() + "/" + filename;
+  }
+
+  private String defaultBucket(String requestedBucket) {
+    if (requestedBucket != null && !requestedBucket.isBlank()) {
+      return requestedBucket;
+    }
+    String bucket = storageProperties.getAliyun().getBucket();
+    return bucket == null || bucket.isBlank() ? "local" : bucket;
+  }
+
+  private void safeDelete(String bucket, String key) {
+    try {
+      objectStorage.delete(bucket, key);
+    } catch (Exception ignored) {
+      // 上传登记失败后的对象清理是 best-effort，不能掩盖主错误。
+    }
+  }
+
+  private static String cleanFilename(String originalFilename) {
+    if (originalFilename == null || originalFilename.isBlank()) {
+      return "upload.bin";
+    }
+    String cleaned = originalFilename.replace('\\', '/');
+    int slash = cleaned.lastIndexOf('/');
+    if (slash >= 0) {
+      cleaned = cleaned.substring(slash + 1);
+    }
+    return cleaned.replaceAll("[\\r\\n]", "_");
+  }
+
+  private static String cleanPathPart(String value) {
+    return value.replaceAll("[^A-Za-z0-9._-]", "_");
   }
 }

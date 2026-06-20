@@ -76,6 +76,7 @@ public class EsIndexService {
                     .properties("doc_id", Property.of(p -> p.long_(l -> l)))
                     .properties("kb_id", Property.of(p -> p.long_(l -> l)))
                     .properties("filename", Property.of(p -> p.keyword(k -> k)))
+                    .properties("parse_status", Property.of(p -> p.keyword(k -> k)))
                     .properties(
                         "content",
                         Property.of(
@@ -221,6 +222,7 @@ public class EsIndexService {
     m.put("doc_id", chunk.getDocId());
     m.put("kb_id", chunk.getKbId());
     m.put("filename", doc.getFilename());
+    m.put("parse_status", doc.getParseStatus());
     m.put("content", chunk.getContent());
     m.put("chunk_index", chunk.getChunkIndex());
 
