@@ -89,6 +89,7 @@ public class IngestServiceImpl implements IngestService {
     doc.setContentMd5(cmd.getIdentity().getContentMd5());
     doc.setStorageBucket(cmd.getStorageBucket());
     doc.setIngestSource(cmd.getIngestSource());
+    doc.setIndexedContent(cmd.getIndexedContent());
     doc.setParseStatus(STATUS_PENDING);
     doc.setChunkCount(0);
     doc.setChunkType(cmd.getChunkType());

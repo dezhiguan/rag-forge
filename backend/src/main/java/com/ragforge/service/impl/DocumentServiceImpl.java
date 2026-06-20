@@ -9,7 +9,6 @@ import com.ragforge.common.PageResult;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
-import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
@@ -52,12 +51,12 @@ public class DocumentServiceImpl implements DocumentService {
 
   private static final int MAX_BYTES = 50 * 1024 * 1024;
   private static final String STATUS_DELETED = "deleted";
-  private static final String PARSE_STATUS_PENDING = "pending";
+  private static final String PARSE_STATUS_PENDING = "PENDING";
 
   private static final Set<String> ALLOWED_EXTENSIONS =
       Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm");
 
-  private static final String STATUS_PROCESSING = "processing";
+  private static final String STATUS_PROCESSING = "PROCESSING";
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
@@ -79,7 +78,7 @@ public class DocumentServiceImpl implements DocumentService {
     validateFile(file);
 
     String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
-    String fileType = extractExtension(originalFilename);
+    String fileType = file.getContentType();
     String fileMd5 = calculateSha256(file);
 
     Document existing =
@@ -87,7 +86,7 @@ public class DocumentServiceImpl implements DocumentService {
             new LambdaQueryWrapper<Document>()
                 .eq(Document::getKbId, kbId)
                 .eq(Document::getFileMd5, fileMd5)
-                .ne(Document::getParseStatus, "failed")
+                .ne(Document::getParseStatus, "FAILED")
                 .orderByDesc(Document::getId)
                 .last("LIMIT 1"));
 
@@ -150,7 +149,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     String originalFilename = Objects.requireNonNull(file.getOriginalFilename());
-    String fileType = extractExtension(originalFilename);
+    String fileType = file.getContentType();
     String fileMd5 = calculateSha256(file);
 
     int oldChunkCount = coalesce(existing.getChunkCount(), 0);
@@ -302,7 +301,7 @@ public class DocumentServiceImpl implements DocumentService {
     if (doc == null) {
       throw new BizException(404, "文档不存在");
     }
-    if (!"failed".equals(doc.getParseStatus())) {
+    if (!"FAILED".equals(doc.getParseStatus())) {
       throw new BizException("只有失败状态的文档可以重试");
     }
 
@@ -338,72 +337,13 @@ public class DocumentServiceImpl implements DocumentService {
       int kbChunkCount = coalesce(kb.getChunkCount(), 0);
       int docChunkCount = coalesce(doc.getChunkCount(), 0);
 
-      if ("completed".equals(doc.getParseStatus())) {
+      if ("COMPLETED".equals(doc.getParseStatus())) {
         kb.setDocCount(Math.max(0, kbDocCount - 1));
         kb.setChunkCount(Math.max(0, kbChunkCount - docChunkCount));
       }
       kb.setUpdatedAt(LocalDateTime.now());
       knowledgeBaseMapper.updateById(kb);
     }
-  }
-
-  @Override
-  @Transactional
-  public DocumentUploadResultVO uploadText(TextUploadRequest request) {
-    requireActiveKb(request.getKbId());
-
-    String content = request.getContent();
-    if (content == null || content.isBlank()) {
-      throw new BizException(400, "文本内容不能为空");
-    }
-    if (content.length() > 500_000) {
-      throw new BizException(400, "文本内容超过 500,000 字符限制");
-    }
-
-    String title = request.getTitle().trim();
-    byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-    String fileMd5 = sha256Hex(bytes);
-
-    Document existing =
-        documentMapper.selectOne(
-            new LambdaQueryWrapper<Document>()
-                .eq(Document::getKbId, request.getKbId())
-                .eq(Document::getFileMd5, fileMd5)
-                .ne(Document::getParseStatus, STATUS_DELETED)
-                .last("LIMIT 1"));
-    if (existing != null) {
-      DocumentUploadResultVO result = new DocumentUploadResultVO();
-      result.setDocId(existing.getId());
-      result.setFilename(existing.getFilename());
-      result.setStatus(existing.getParseStatus());
-      result.setSkipped(true);
-      return result;
-    }
-
-    String filename = title + ".md";
-    String filePath = fileStorageService.storeBytes(bytes, filename);
-
-    Document doc = new Document();
-    doc.setKbId(request.getKbId());
-    doc.setFilename(filename);
-    doc.setFilePath(filePath);
-    doc.setFileSize((long) bytes.length);
-    doc.setFileType("md");
-    doc.setFileMd5(fileMd5);
-    doc.setVersion(1);
-    doc.setParseStatus(PARSE_STATUS_PENDING);
-    doc.setChunkType(request.getChunkType());
-    doc.setCreatedAt(LocalDateTime.now());
-    documentMapper.insert(doc);
-
-    documentProcessProducer.send(doc.getId());
-
-    DocumentUploadResultVO result = new DocumentUploadResultVO();
-    result.setDocId(doc.getId());
-    result.setFilename(filename);
-    result.setStatus(PARSE_STATUS_PENDING);
-    result.setSkipped(false);
-    return result;
   }
 
   private KnowledgeBase requireActiveKb(Long kbId) {
@@ -481,15 +421,6 @@ public class DocumentServiceImpl implements DocumentService {
       return HexFormat.of().formatHex(digest);
     } catch (Exception e) {
       throw new BizException(500, "计算文件摘要失败");
-    }
-  }
-
-  private String sha256Hex(byte[] bytes) {
-    try {
-      MessageDigest md = MessageDigest.getInstance("SHA-256");
-      return HexFormat.of().formatHex(md.digest(bytes));
-    } catch (Exception e) {
-      throw new BizException(500, "计算文本摘要失败");
     }
   }
 

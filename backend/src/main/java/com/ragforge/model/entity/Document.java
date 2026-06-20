@@ -24,6 +24,7 @@ public class Document {
   private String contentMd5;
   private String storageBucket;
   private String ingestSource;
+  private String indexedContent;
   private Integer version;
   private String parseStatus;
   private Integer chunkCount;

@@ -79,6 +79,7 @@ public interface DocumentMapper extends BaseMapper<Document> {
           content_md5 = #{cmd.identity.contentMd5},
           storage_bucket = #{cmd.storageBucket},
           ingest_source = #{cmd.ingestSource},
+          indexed_content = #{cmd.indexedContent},
           chunk_type = #{cmd.chunkType},
           chunk_count = 0,
           error_msg = NULL,

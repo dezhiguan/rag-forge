@@ -1,7 +1,6 @@
 package com.ragforge.service;
 
 import com.ragforge.common.PageResult;
-import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
@@ -33,5 +32,4 @@ public interface DocumentService {
 
   void reprocess(Long id);
 
-  DocumentUploadResultVO uploadText(TextUploadRequest request);
 }

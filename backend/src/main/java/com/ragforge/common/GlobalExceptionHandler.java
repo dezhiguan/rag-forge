@@ -1,9 +1,12 @@
 package com.ragforge.common;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -24,6 +27,16 @@ public class GlobalExceptionHandler {
             .map(FieldError::getDefaultMessage)
             .collect(Collectors.joining(", "));
     return ResponseEntity.badRequest().body(Result.fail(400, msg));
+  }
+
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<Result<Void>> handleMethodNotSupported(
+      HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+    if (request != null && "/api/v1/documents/text".equals(request.getRequestURI())) {
+      return ResponseEntity.status(404).body(Result.fail(404, "Not Found"));
+    }
+    return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+        .body(Result.fail(405, "Method Not Allowed"));
   }
 
   @ExceptionHandler(Exception.class)

@@ -17,7 +17,6 @@ import com.ragforge.common.BizException;
 import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.common.PageResult;
 import com.ragforge.model.dto.IngestResult;
-import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
@@ -364,11 +363,7 @@ class DocumentControllerTest {
   }
 
   @Test
-  void uploadText_acceptsJsonBody() throws Exception {
-    DocumentUploadResultVO result = new DocumentUploadResultVO();
-    result.setDocId(20L);
-    when(documentService.uploadText(any(TextUploadRequest.class))).thenReturn(result);
-
+  void uploadTextRoute_isRemoved() throws Exception {
     mockMvc
         .perform(
             post("/api/v1/documents/text")
@@ -377,8 +372,7 @@ class DocumentControllerTest {
                     """
                     {"kbId":1,"title":"note.txt","content":"hello world","chunkType":"GENERAL"}
                     """))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.docId").value(20));
+        .andExpect(status().isNotFound());
   }
 
   private static RagAuthContext authContext(String tenantId, Set<Long> writableKbIds) {

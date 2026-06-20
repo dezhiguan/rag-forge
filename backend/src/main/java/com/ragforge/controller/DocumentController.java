@@ -9,7 +9,6 @@ import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.dto.PresignUploadRequest;
 import com.ragforge.model.dto.RegisterUploadRequest;
-import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
@@ -319,13 +318,6 @@ public class DocumentController {
   public Result<Void> reprocess(@PathVariable Long id) {
     documentService.reprocess(id);
     return Result.ok();
-  }
-
-  @PostMapping("/documents/text")
-  @PreAuthorize("@kbAccessGuard.canWrite(#request.kbId)")
-  public Result<DocumentUploadResultVO> uploadText(
-      @RequestBody @jakarta.validation.Valid TextUploadRequest request) {
-    return Result.ok(documentService.uploadText(request));
   }
 
   private IngestCommand parseMeta(String metaJson) {

@@ -18,6 +18,7 @@ import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
 import com.ragforge.storage.ObjectStorage;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -104,27 +105,7 @@ public class DocumentPipelineService {
       self.updateStatus(documentId, STATUS_PARSING);
 
       stageStart = System.currentTimeMillis();
-      Path objectTempFile = null;
-      ParseResult parseResult;
-      try {
-        String parsePath = doc.getFilePath();
-        if (StringUtils.hasText(doc.getStorageBucket())) {
-          objectTempFile = Files.createTempFile("ragforge-object-", suffixFor(doc.getFilename()));
-          try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
-            Files.copy(in, objectTempFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-          }
-          parsePath = objectTempFile.toString();
-        }
-        parseResult = documentParser.parse(parsePath, doc.getFileType());
-      } finally {
-        if (objectTempFile != null) {
-          try {
-            Files.deleteIfExists(objectTempFile);
-          } catch (Exception ignored) {
-            // 临时文件清理失败不影响文档处理结果。
-          }
-        }
-      }
+      ParseResult parseResult = resolveText(doc);
       String text = parseResult.getText() == null ? "" : parseResult.getText();
       textLength = text.length();
       parseLatencyMs = System.currentTimeMillis() - stageStart;
@@ -361,6 +342,75 @@ public class DocumentPipelineService {
 
   private static int coalesce(Integer value, int defaultValue) {
     return value == null ? defaultValue : value;
+  }
+
+  private ParseResult resolveText(Document doc) throws Exception {
+    if (StringUtils.hasText(doc.getIndexedContent())) {
+      return new ParseResult(doc.getIndexedContent(), 0L, 1);
+    }
+
+    String contentType = normalizeContentType(doc.getFileType());
+    if (contentType.startsWith("text/")) {
+      long start = System.currentTimeMillis();
+      return new ParseResult(readRawText(doc), System.currentTimeMillis() - start, 1);
+    }
+
+    if (isTikaContentType(contentType)) {
+      return parseWithTika(doc);
+    }
+
+    if (contentType.startsWith("image/")) {
+      throw new BizException(415, "IMAGE_CONTENT_NOT_SUPPORTED_UNTIL_T10");
+    }
+
+    throw new BizException(415, "UNSUPPORTED_CONTENT_TYPE: " + contentType);
+  }
+
+  private ParseResult parseWithTika(Document doc) throws Exception {
+    Path objectTempFile = null;
+    try {
+      String parsePath = doc.getFilePath();
+      if (StringUtils.hasText(doc.getStorageBucket())) {
+        objectTempFile = Files.createTempFile("ragforge-object-", suffixFor(doc.getFilename()));
+        try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
+          Files.copy(in, objectTempFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        parsePath = objectTempFile.toString();
+      }
+      return documentParser.parse(parsePath, doc.getFileType());
+    } finally {
+      if (objectTempFile != null) {
+        try {
+          Files.deleteIfExists(objectTempFile);
+        } catch (Exception ignored) {
+          // 临时文件清理失败不影响文档处理结果。
+        }
+      }
+    }
+  }
+
+  private String readRawText(Document doc) throws Exception {
+    if (StringUtils.hasText(doc.getStorageBucket())) {
+      try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
+        return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+      }
+    }
+    return Files.readString(Path.of(doc.getFilePath()), StandardCharsets.UTF_8);
+  }
+
+  private static String normalizeContentType(String contentType) {
+    if (!StringUtils.hasText(contentType)) {
+      return "";
+    }
+    int semicolon = contentType.indexOf(';');
+    String normalized = semicolon >= 0 ? contentType.substring(0, semicolon) : contentType;
+    return normalized.trim().toLowerCase(java.util.Locale.ROOT);
+  }
+
+  private static boolean isTikaContentType(String contentType) {
+    return contentType.equals("application/pdf")
+        || contentType.equals("application/msword")
+        || contentType.startsWith("application/vnd.openxmlformats-");
   }
 
   private static String suffixFor(String filename) {

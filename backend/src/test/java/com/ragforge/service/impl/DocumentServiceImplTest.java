@@ -15,7 +15,6 @@ import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
-import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
@@ -69,7 +68,7 @@ class DocumentServiceImplTest {
     var result = documentService.upload(1L, file);
 
     assertThat(result.isExists()).isFalse();
-    assertThat(result.getStatus()).isEqualTo("processing");
+    assertThat(result.getStatus()).isEqualTo("PROCESSING");
     assertThat(result.getDocument().getFilename()).isEqualTo("resume.pdf");
     verify(documentMapper).insert(any(Document.class));
     verify(documentProcessProducer).send(any());
@@ -78,7 +77,7 @@ class DocumentServiceImplTest {
   @Test
   void upload_duplicateWithoutOverwrite_returnsExisting() {
     when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
-    Document existing = doc(9L, 1L, "old.pdf", "completed");
+    Document existing = doc(9L, 1L, "old.pdf", "COMPLETED");
     when(documentMapper.selectOne(any())).thenReturn(existing);
 
     MockMultipartFile file =
@@ -95,7 +94,7 @@ class DocumentServiceImplTest {
   @Test
   void upload_duplicateWithOverwrite_replacesDocument() {
     when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
-    Document existing = doc(9L, 1L, "old.pdf", "completed");
+    Document existing = doc(9L, 1L, "old.pdf", "COMPLETED");
     existing.setFilePath("/data/old.pdf");
     existing.setChunkCount(3);
     existing.setVersion(2);
@@ -157,7 +156,7 @@ class DocumentServiceImplTest {
   @Test
   void replaceDocument_updatesExistingDocument() {
     when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
-    Document existing = doc(5L, 1L, "old.md", "completed");
+    Document existing = doc(5L, 1L, "old.md", "COMPLETED");
     existing.setFilePath("/data/old.md");
     existing.setChunkCount(2);
     when(documentMapper.selectById(5L)).thenReturn(existing);
@@ -189,7 +188,7 @@ class DocumentServiceImplTest {
   @Test
   void listByKbAndGetById_returnMappedViews() {
     when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
-    Document doc = doc(3L, 1L, "a.pdf", "completed");
+    Document doc = doc(3L, 1L, "a.pdf", "COMPLETED");
     when(documentMapper.selectPage(any(Page.class), any())).thenAnswer(inv -> {
       Page<Document> page = inv.getArgument(0);
       page.setRecords(List.of(doc));
@@ -205,7 +204,7 @@ class DocumentServiceImplTest {
 
   @Test
   void listChunks_capsPageSizeAndMapsRows() {
-    Document doc = doc(3L, 1L, "a.pdf", "completed");
+    Document doc = doc(3L, 1L, "a.pdf", "COMPLETED");
     when(documentMapper.selectById(3L)).thenReturn(doc);
     DocumentChunk chunk = new DocumentChunk();
     chunk.setChunkIndex(0);
@@ -226,14 +225,14 @@ class DocumentServiceImplTest {
 
   @Test
   void getStatus_returnsParseInfo() {
-    Document doc = doc(4L, 1L, "a.pdf", "failed");
+    Document doc = doc(4L, 1L, "a.pdf", "FAILED");
     doc.setErrorMsg("parse error");
     doc.setChunkCount(0);
     when(documentMapper.selectById(4L)).thenReturn(doc);
 
     var status = documentService.getStatus(4L);
 
-    assertThat(status.getParseStatus()).isEqualTo("failed");
+    assertThat(status.getParseStatus()).isEqualTo("FAILED");
     assertThat(status.getErrorMsg()).isEqualTo("parse error");
   }
 
@@ -241,7 +240,7 @@ class DocumentServiceImplTest {
   void download_returnsAttachment(@TempDir Path tempDir) throws Exception {
     Path file = tempDir.resolve("doc.pdf");
     Files.writeString(file, "bytes", StandardCharsets.UTF_8);
-    Document doc = doc(8L, 1L, "doc.pdf", "completed");
+    Document doc = doc(8L, 1L, "doc.pdf", "COMPLETED");
     doc.setFilePath(file.toString());
     when(documentMapper.selectById(8L)).thenReturn(doc);
 
@@ -253,7 +252,7 @@ class DocumentServiceImplTest {
 
   @Test
   void download_missingFile_throws404() {
-    Document doc = doc(8L, 1L, "doc.pdf", "completed");
+    Document doc = doc(8L, 1L, "doc.pdf", "COMPLETED");
     doc.setFilePath("/missing/doc.pdf");
     when(documentMapper.selectById(8L)).thenReturn(doc);
 
@@ -264,7 +263,7 @@ class DocumentServiceImplTest {
 
   @Test
   void reprocess_onlyFailedDocuments() {
-    Document completed = doc(7L, 1L, "b.pdf", "completed");
+    Document completed = doc(7L, 1L, "b.pdf", "COMPLETED");
     when(documentMapper.selectById(7L)).thenReturn(completed);
     assertThatThrownBy(() -> documentService.reprocess(7L))
         .isInstanceOf(BizException.class)
@@ -274,7 +273,7 @@ class DocumentServiceImplTest {
 
   @Test
   void delete_removesArtifactsAndUpdatesKbCounters() {
-    Document doc = doc(10L, 1L, "done.pdf", "completed");
+    Document doc = doc(10L, 1L, "done.pdf", "COMPLETED");
     doc.setFilePath("/data/done.pdf");
     doc.setChunkCount(5);
     kb.setDocCount(2);
@@ -291,48 +290,6 @@ class DocumentServiceImplTest {
     verify(knowledgeBaseMapper).updateById(captor.capture());
     assertThat(captor.getValue().getDocCount()).isEqualTo(1);
     assertThat(captor.getValue().getChunkCount()).isEqualTo(5);
-  }
-
-  @Test
-  void uploadText_createsOrSkipsDuplicate() {
-    when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
-    when(documentMapper.selectOne(any())).thenReturn(null);
-    when(fileStorageService.storeBytes(any(), any())).thenReturn("/data/title.md");
-
-    TextUploadRequest request = new TextUploadRequest();
-    request.setKbId(1L);
-    request.setTitle("Title");
-    request.setContent("hello markdown");
-    request.setChunkType("RESUME");
-
-    var created = documentService.uploadText(request);
-    assertThat(created.isSkipped()).isFalse();
-    assertThat(created.getFilename()).isEqualTo("Title.md");
-    verify(documentProcessProducer).send(any());
-
-    Document existing = doc(12L, 1L, "Title.md", "completed");
-    when(documentMapper.selectOne(any())).thenReturn(existing);
-    var skipped = documentService.uploadText(request);
-    assertThat(skipped.isSkipped()).isTrue();
-    assertThat(skipped.getDocId()).isEqualTo(12L);
-  }
-
-  @Test
-  void uploadText_validatesContent() {
-    when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
-    TextUploadRequest request = new TextUploadRequest();
-    request.setKbId(1L);
-    request.setTitle("t");
-    request.setContent("   ");
-
-    assertThatThrownBy(() -> documentService.uploadText(request))
-        .isInstanceOf(BizException.class)
-        .hasMessageContaining("不能为空");
-
-    request.setContent("x".repeat(500_001));
-    assertThatThrownBy(() -> documentService.uploadText(request))
-        .isInstanceOf(BizException.class)
-        .hasMessageContaining("500,000");
   }
 
   @Test
@@ -370,7 +327,7 @@ class DocumentServiceImplTest {
     doc.setFilename(filename);
     doc.setFilePath("/data/" + filename);
     doc.setFileSize(10L);
-    doc.setFileType("pdf");
+    doc.setFileType("application/pdf");
     doc.setFileMd5("abc");
     doc.setVersion(1);
     doc.setParseStatus(status);

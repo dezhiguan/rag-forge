@@ -31,6 +31,7 @@ import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
 import com.ragforge.storage.ObjectStorage;
+import java.io.ByteArrayInputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -194,6 +195,60 @@ class DocumentPipelineServiceTest {
   }
 
   @Test
+  void processDocument_indexedContentSkipsParserAndObjectRead() throws Exception {
+    Document doc = document(6L, 10L, "page.html");
+    doc.setFileType("text/html");
+    doc.setStorageBucket("bucket");
+    doc.setStorageKey("tn/kb/page.html");
+    doc.setIndexedContent("干净文本");
+    List<Chunk> chunks = List.of(new Chunk(0, "干净文本", 4));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(400L, 0));
+
+    when(documentMapper.selectById(6L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(textChunker.chunk("干净文本", 500, 50)).thenReturn(chunks);
+    when(embeddingService.embedBatch(List.of("干净文本"))).thenReturn(vectors);
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(eq(6L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"));
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(6L);
+
+    verify(documentParser, never()).parse(anyString(), anyString());
+    verify(objectStorage, never()).get(anyString(), anyString());
+    verify(textChunker).chunk("干净文本", 500, 50);
+  }
+
+  @Test
+  void processDocument_textMimeReadsObjectAsTextWithoutParser() throws Exception {
+    Document doc = document(7L, 10L, "page.html");
+    doc.setFileType("text/html; charset=utf-8");
+    doc.setStorageBucket("bucket");
+    doc.setStorageKey("tn/kb/page.html");
+    List<Chunk> chunks = List.of(new Chunk(0, "<h1>raw</h1>", 12));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(500L, 0));
+
+    when(documentMapper.selectById(7L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(objectStorage.get("bucket", "tn/kb/page.html"))
+        .thenReturn(new ByteArrayInputStream("<h1>raw</h1>".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    when(textChunker.chunk("<h1>raw</h1>", 500, 50)).thenReturn(chunks);
+    when(embeddingService.embedBatch(List.of("<h1>raw</h1>"))).thenReturn(vectors);
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(eq(7L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"));
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(7L);
+
+    verify(documentParser, never()).parse(anyString(), anyString());
+    verify(textChunker).chunk("<h1>raw</h1>", 500, 50);
+  }
+
+  @Test
   void insertChunks_batchesLargeInput() throws Exception {
     List<Chunk> chunks = new ArrayList<>();
     List<float[]> vectors = new ArrayList<>();
@@ -279,7 +334,7 @@ class DocumentPipelineServiceTest {
     doc.setKbId(kbId);
     doc.setFilename(filename);
     doc.setFilePath("/data/" + filename);
-    doc.setFileType("md");
+    doc.setFileType("application/pdf");
     doc.setParseStatus("PENDING");
     doc.setVersion(1);
     doc.setChunkType("RESUME");
