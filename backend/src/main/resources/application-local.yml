@@ -1,0 +1,8 @@
+spring:
+  config:
+    import: optional:file:backend/.env[.properties],optional:file:.env[.properties]
+
+storage:
+  backend: local
+  local:
+    rootPath: ${RAGFORGE_UPLOAD_PATH:${app.file.storage-path:./data/files}}

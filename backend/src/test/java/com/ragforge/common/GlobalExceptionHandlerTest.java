@@ -40,7 +40,7 @@ class GlobalExceptionHandlerTest {
   void bizExceptionReturns500() throws Exception {
     mockMvc
         .perform(get("/test/biz"))
-        .andExpect(status().isOk())
+        .andExpect(status().isInternalServerError())
         .andExpect(jsonPath("$.code").value(500))
         .andExpect(jsonPath("$.msg").value("错误"));
   }
@@ -52,7 +52,7 @@ class GlobalExceptionHandlerTest {
             post("/test/validate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
-        .andExpect(status().isOk())
+        .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value(400));
   }
 

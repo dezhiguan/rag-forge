@@ -48,6 +48,16 @@ ragforge:
   files:
     upload-path: /data/files/
 
+storage:
+  backend: aliyun
+  aliyun:
+    endpoint: ${ALIYUN_OSS_ENDPOINT:oss-cn-shenzhen.aliyuncs.com}
+    bucket: ${ALIYUN_OSS_BUCKET:ragforge-prod}
+    accessKeyId: ${ALIYUN_OSS_AK}
+    accessKeySecret: ${ALIYUN_OSS_SK}
+  local:
+    rootPath: ${RAGFORGE_UPLOAD_PATH:/data/files}
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true

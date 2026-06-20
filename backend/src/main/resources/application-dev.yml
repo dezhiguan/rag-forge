@@ -59,3 +59,13 @@ logging:
 ragforge:
   auth:
     jwks-url: ${RAGFORGE_AUTH_JWKS_URL:http://127.0.0.1:8090/.well-known/jwks.json}
+
+storage:
+  backend: aliyun
+  aliyun:
+    endpoint: ${ALIYUN_OSS_ENDPOINT:oss-cn-shenzhen.aliyuncs.com}
+    bucket: ${ALIYUN_OSS_BUCKET:ragforge-dev}
+    accessKeyId: ${ALIYUN_OSS_AK}
+    accessKeySecret: ${ALIYUN_OSS_SK}
+  local:
+    rootPath: ${RAGFORGE_UPLOAD_PATH:/data/files}

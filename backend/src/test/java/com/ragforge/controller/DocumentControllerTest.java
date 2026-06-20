@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.ResourceHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -50,7 +51,8 @@ class DocumentControllerTest {
     mockMvc =
         standaloneSetup(new DocumentController(documentService))
             .setControllerAdvice(new GlobalExceptionHandler())
-            .setMessageConverters(new MappingJackson2HttpMessageConverter())
+            .setMessageConverters(
+                new ResourceHttpMessageConverter(), new MappingJackson2HttpMessageConverter())
             .setValidator(validator)
             .build();
   }

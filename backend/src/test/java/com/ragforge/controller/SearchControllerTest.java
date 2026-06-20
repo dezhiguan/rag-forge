@@ -55,7 +55,7 @@ class SearchControllerTest {
             post("/api/v1/search")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":\"   \"}"))
-        .andExpect(status().isOk())
+        .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value(400));
   }
 
