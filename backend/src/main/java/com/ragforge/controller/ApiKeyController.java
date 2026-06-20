@@ -3,6 +3,7 @@ package com.ragforge.controller;
 import com.ragforge.common.Result;
 import com.ragforge.model.entity.ApiKey;
 import com.ragforge.service.ApiKeyService;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,18 +25,18 @@ public class ApiKeyController {
   private final ApiKeyService apiKeyService;
 
   @GetMapping
-  public Result<List<ApiKey>> listAll() {
-    return Result.ok(apiKeyService.listAll());
+  public Result<List<ApiKeyView>> listAll() {
+    return Result.ok(apiKeyService.listAll().stream().map(ApiKeyView::from).toList());
   }
 
   @PostMapping
-  public Result<ApiKey> create(@RequestBody CreateApiKeyRequest req) {
-    return Result.ok(apiKeyService.create(req.getKeyName()));
+  public Result<ApiKeyCreatedView> create(@RequestBody CreateApiKeyRequest req) {
+    return Result.ok(ApiKeyCreatedView.from(apiKeyService.create(req.getKeyName())));
   }
 
   @PutMapping("/{id}/enable")
-  public Result<ApiKey> enable(@PathVariable Long id, @RequestBody EnableRequest req) {
-    return Result.ok(apiKeyService.enable(id, req.isEnabled()));
+  public Result<ApiKeyView> enable(@PathVariable Long id, @RequestBody EnableRequest req) {
+    return Result.ok(ApiKeyView.from(apiKeyService.enable(id, req.isEnabled())));
   }
 
   @DeleteMapping("/{id}")
@@ -54,5 +55,57 @@ public class ApiKeyController {
   @lombok.Data
   public static class EnableRequest {
     private boolean enabled;
+  }
+
+  public record ApiKeyView(
+      Long id,
+      String keyName,
+      Boolean enabled,
+      Integer rateLimit,
+      String principalType,
+      String principalId,
+      String scopes,
+      String allowedKbIds,
+      LocalDateTime createdAt) {
+
+    static ApiKeyView from(ApiKey apiKey) {
+      return new ApiKeyView(
+          apiKey.getId(),
+          apiKey.getKeyName(),
+          apiKey.getEnabled(),
+          apiKey.getRateLimit(),
+          apiKey.getPrincipalType(),
+          apiKey.getPrincipalId(),
+          apiKey.getScopes(),
+          apiKey.getAllowedKbIds(),
+          apiKey.getCreatedAt());
+    }
+  }
+
+  public record ApiKeyCreatedView(
+      Long id,
+      String keyName,
+      String apiKey,
+      Boolean enabled,
+      Integer rateLimit,
+      String principalType,
+      String principalId,
+      String scopes,
+      String allowedKbIds,
+      LocalDateTime createdAt) {
+
+    static ApiKeyCreatedView from(ApiKey apiKey) {
+      return new ApiKeyCreatedView(
+          apiKey.getId(),
+          apiKey.getKeyName(),
+          apiKey.getApiKey(),
+          apiKey.getEnabled(),
+          apiKey.getRateLimit(),
+          apiKey.getPrincipalType(),
+          apiKey.getPrincipalId(),
+          apiKey.getScopes(),
+          apiKey.getAllowedKbIds(),
+          apiKey.getCreatedAt());
+    }
   }
 }

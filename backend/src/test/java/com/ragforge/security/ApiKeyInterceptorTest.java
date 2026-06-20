@@ -110,6 +110,19 @@ class ApiKeyInterceptorTest {
   }
 
   @Test
+  void adminApiKeyPathIsNotWhitelisted() throws Exception {
+    StringWriter responseBody = stubResponseWriter();
+    when(request.getRequestURI()).thenReturn("/api/v1/admin/api-keys");
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isFalse();
+    verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    verify(apiKeyMapper, never()).selectOne(any());
+    assertThat(responseBody.toString()).contains("\"code\":401");
+  }
+
+  @Test
   void invalidApiKey_returns401() throws Exception {
     StringWriter responseBody = stubResponseWriter();
     when(request.getRequestURI()).thenReturn("/api/v1/search");

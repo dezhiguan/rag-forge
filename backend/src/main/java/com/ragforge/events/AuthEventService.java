@@ -124,10 +124,31 @@ public class AuthEventService {
     if (!StringUtils.hasText(userKey)) {
       return;
     }
-    long occurredAt = payload.occurredAt() == null ? Instant.now().getEpochSecond() : payload.occurredAt();
+    long occurredAt = occurredAtEpochSeconds(payload);
     redisTemplate
         .opsForValue()
         .set(USER_REVOKED_AFTER_PREFIX + userKey, String.valueOf(occurredAt), properties.getUserRevocationTtl());
+  }
+
+  private long occurredAtEpochSeconds(AuthEventPayload payload) {
+    Object value = payload.occurredAt();
+    if (value == null) {
+      return Instant.now().getEpochSecond();
+    }
+    if (value instanceof Number number) {
+      return number.longValue();
+    }
+    String text = String.valueOf(value).trim();
+    try {
+      return Long.parseLong(text);
+    } catch (NumberFormatException ignored) {
+      // Try ISO-8601 below.
+    }
+    try {
+      return Instant.parse(text).getEpochSecond();
+    } catch (RuntimeException ignored) {
+      return Instant.now().getEpochSecond();
+    }
   }
 
   private String userKey(AuthEventPayload payload) {

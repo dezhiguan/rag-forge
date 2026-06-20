@@ -42,12 +42,14 @@ class ApiKeyControllerTest {
     ApiKey key = new ApiKey();
     key.setId(1L);
     key.setKeyName("ci-key");
+    key.setApiKey("sk-rf-secret");
     when(apiKeyService.listAll()).thenReturn(List.of(key));
 
     mockMvc
         .perform(get("/api/v1/admin/api-keys"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data[0].keyName").value("ci-key"));
+        .andExpect(jsonPath("$.data[0].keyName").value("ci-key"))
+        .andExpect(jsonPath("$.data[0].apiKey").doesNotExist());
   }
 
   @Test
@@ -55,6 +57,7 @@ class ApiKeyControllerTest {
     ApiKey key = new ApiKey();
     key.setId(2L);
     key.setKeyName("new-key");
+    key.setApiKey("sk-rf-new");
     when(apiKeyService.create("new-key")).thenReturn(key);
 
     mockMvc
@@ -63,7 +66,8 @@ class ApiKeyControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"keyName\":\"new-key\"}"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.keyName").value("new-key"));
+        .andExpect(jsonPath("$.data.keyName").value("new-key"))
+        .andExpect(jsonPath("$.data.apiKey").value("sk-rf-new"));
   }
 
   @Test
@@ -71,6 +75,7 @@ class ApiKeyControllerTest {
     ApiKey key = new ApiKey();
     key.setId(3L);
     key.setEnabled(false);
+    key.setApiKey("sk-rf-secret");
     when(apiKeyService.enable(3L, false)).thenReturn(key);
 
     mockMvc
@@ -79,7 +84,8 @@ class ApiKeyControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"enabled\":false}"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.enabled").value(false));
+        .andExpect(jsonPath("$.data.enabled").value(false))
+        .andExpect(jsonPath("$.data.apiKey").doesNotExist());
   }
 
   @Test
