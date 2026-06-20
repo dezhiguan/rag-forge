@@ -7,6 +7,8 @@ import com.ragforge.common.Result;
 import com.ragforge.model.dto.Identity;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
+import com.ragforge.model.dto.PresignUploadRequest;
+import com.ragforge.model.dto.RegisterUploadRequest;
 import com.ragforge.model.dto.TextUploadRequest;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
@@ -18,6 +20,8 @@ import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.DocumentService;
 import com.ragforge.service.ingest.IngestService;
+import com.ragforge.service.upload.UploadTokenService;
+import com.ragforge.service.upload.UploadTokenService.TokenPayload;
 import com.ragforge.storage.ObjectMeta;
 import com.ragforge.storage.ObjectStorage;
 import com.ragforge.storage.StorageProperties;
@@ -27,6 +31,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
@@ -53,6 +59,7 @@ public class DocumentController {
 
   private static final long RELAY_UPLOAD_LIMIT_BYTES = 50L * 1024L * 1024L;
   private static final int RELAY_UPLOAD_LIMIT_MB = 50;
+  private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private final DocumentService documentService;
   private final IngestService ingestService;
@@ -60,6 +67,96 @@ public class DocumentController {
   private final StorageProperties storageProperties;
   private final KbAccessGuard kbAccessGuard;
   private final ObjectMapper objectMapper;
+  private final UploadTokenService uploadTokenService;
+
+  @PostMapping("/uploads/presign")
+  public ResponseEntity<?> presignUpload(@RequestBody PresignUploadRequest request) {
+    if (request.getKbId() == null || !kbAccessGuard.canWrite(request.getKbId())) {
+      throw new BizException(403, "KB_WRITE_FORBIDDEN");
+    }
+    if (request.getDeclaredSize() == null || request.getDeclaredSize() <= 0) {
+      throw new BizException(400, "DECLARED_SIZE_REQUIRED");
+    }
+    String filename = cleanFilename(request.getFilename());
+    String bucket = defaultBucket(null);
+    String tokenTenantId = currentTenantId();
+    String uploadId = randomUploadId();
+    String key =
+        cleanPathPart(tokenTenantId)
+            + "/kb_"
+            + request.getKbId()
+            + "/"
+            + uploadId
+            + "/"
+            + filename;
+
+    TokenPayload payload = new TokenPayload();
+    payload.setTenantId(tokenTenantId);
+    payload.setKbId(request.getKbId());
+    payload.setStorageBucket(bucket);
+    payload.setStorageKey(key);
+    payload.setFilename(filename);
+    payload.setContentType(request.getContentType());
+    payload.setDeclaredSize(request.getDeclaredSize());
+    String token = uploadTokenService.issue(payload);
+
+    ObjectMeta meta = new ObjectMeta();
+    meta.setContentType(request.getContentType());
+    meta.setSizeBytes(request.getDeclaredSize());
+    meta.setUserMeta(Map.of("kb-id", String.valueOf(request.getKbId()), "tenant-id", tokenTenantId));
+    String presignedPutUrl =
+        objectStorage.presignedPut(bucket, key, UploadTokenService.TOKEN_TTL, meta);
+
+    return ResponseEntity.ok(
+        Map.of(
+            "uploadToken",
+            token,
+            "presignedPutUrl",
+            presignedPutUrl,
+            "storageBucket",
+            bucket,
+            "storageKey",
+            key,
+            "expiresAt",
+            Instant.ofEpochSecond(payload.getExpiresAt()).toString()));
+  }
+
+  @PostMapping("/documents/register")
+  public ResponseEntity<?> registerUploadedDocument(@RequestBody RegisterUploadRequest request) {
+    TokenPayload payload = uploadTokenService.consume(request.getUploadToken());
+    RagAuthContext context = RagAuthContextHolder.get();
+    if (context == null || !payload.getTenantId().equals(currentTenantId())) {
+      throw new BizException(403, "UPLOAD_TOKEN_TENANT_FORBIDDEN");
+    }
+    if (!payload.getKbId().equals(request.getKbId())) {
+      throw new BizException(403, "UPLOAD_TOKEN_KB_FORBIDDEN");
+    }
+
+    ObjectMeta head = objectStorage.head(payload.getStorageBucket(), payload.getStorageKey());
+    if (head == null) {
+      throw new BizException(422, "UPLOAD_NOT_FOUND");
+    }
+    if (head.getSizeBytes() == null || !head.getSizeBytes().equals(payload.getDeclaredSize())) {
+      throw new BizException(422, "SIZE_MISMATCH");
+    }
+
+    IngestCommand cmd = new IngestCommand();
+    cmd.setKbId(payload.getKbId());
+    cmd.setStorageBucket(payload.getStorageBucket());
+    cmd.setStorageKey(payload.getStorageKey());
+    cmd.setFilename(payload.getFilename());
+    cmd.setSizeBytes(head.getSizeBytes());
+    cmd.setContentType(head.getContentType());
+    cmd.setIdentity(request.getIdentity());
+    cmd.setOnConflict(request.getOnConflict());
+    cmd.setIngestSource(request.getIngestSource());
+    cmd.setChunkType(request.getChunkType());
+    cmd.setMetadata(request.getMetadata());
+
+    IngestResult result = ingestService.register(cmd);
+    return ResponseEntity.ok(
+        Map.of("documentId", result.getDocumentId(), "status", result.getStatus().name()));
+  }
 
   @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public ResponseEntity<?> uploadV5(
@@ -240,9 +337,13 @@ public class DocumentController {
   }
 
   private String storageKey(Long kbId, String filename) {
-    RagAuthContext context = RagAuthContextHolder.get();
-    String tenantId = context == null || context.tenantId() == null ? "default" : context.tenantId();
+    String tenantId = currentTenantId();
     return cleanPathPart(tenantId) + "/" + kbId + "/" + UUID.randomUUID() + "/" + filename;
+  }
+
+  private String currentTenantId() {
+    RagAuthContext context = RagAuthContextHolder.get();
+    return context == null || context.tenantId() == null ? "default" : context.tenantId();
   }
 
   private String defaultBucket(String requestedBucket) {
@@ -275,5 +376,11 @@ public class DocumentController {
 
   private static String cleanPathPart(String value) {
     return value.replaceAll("[^A-Za-z0-9._-]", "_");
+  }
+
+  private static String randomUploadId() {
+    byte[] bytes = new byte[16];
+    SECURE_RANDOM.nextBytes(bytes);
+    return "uplt_" + HexFormat.of().formatHex(bytes);
   }
 }

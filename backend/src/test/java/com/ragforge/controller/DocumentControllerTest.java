@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
+import com.ragforge.common.BizException;
 import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.common.PageResult;
 import com.ragforge.model.dto.IngestResult;
@@ -23,12 +24,19 @@ import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
 import com.ragforge.model.vo.DocumentVO;
 import com.ragforge.security.KbAccessGuard;
+import com.ragforge.security.RagAuthContext;
+import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.ingest.IngestService;
 import com.ragforge.service.DocumentService;
+import com.ragforge.service.upload.UploadTokenService;
+import com.ragforge.service.upload.UploadTokenService.TokenPayload;
+import com.ragforge.storage.ObjectMeta;
 import com.ragforge.storage.ObjectStorage;
 import com.ragforge.storage.StorageProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,6 +58,7 @@ class DocumentControllerTest {
   @Mock private IngestService ingestService;
   @Mock private ObjectStorage objectStorage;
   @Mock private KbAccessGuard kbAccessGuard;
+  @Mock private UploadTokenService uploadTokenService;
 
   private MockMvc mockMvc;
   private StorageProperties storageProperties;
@@ -69,12 +78,18 @@ class DocumentControllerTest {
                     objectStorage,
                     storageProperties,
                     kbAccessGuard,
-                    new ObjectMapper()))
+                    new ObjectMapper(),
+                    uploadTokenService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(
                 new ResourceHttpMessageConverter(), new MappingJackson2HttpMessageConverter())
             .setValidator(validator)
             .build();
+  }
+
+  @AfterEach
+  void tearDown() {
+    RagAuthContextHolder.clear();
   }
 
   @Test
@@ -130,6 +145,120 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.limitMb").value(50));
 
     verifyNoInteractions(objectStorage, ingestService);
+  }
+
+  @Test
+  void presignUpload_returnsTokenAndPresignedPutUrl() throws Exception {
+    RagAuthContextHolder.set(authContext("tn_test", Set.of(16L)));
+    when(kbAccessGuard.canWrite(16L)).thenReturn(true);
+    when(uploadTokenService.issue(any()))
+        .thenAnswer(
+            inv -> {
+              TokenPayload payload = inv.getArgument(0);
+              payload.setUploadToken("uplt_signed-token");
+              payload.setExpiresAt(1_783_000_000L);
+              return "uplt_signed-token";
+            });
+    when(objectStorage.presignedPut(eq("test-bucket"), any(), any(), any()))
+        .thenReturn("https://oss.example/put");
+
+    mockMvc
+        .perform(
+            post("/api/v1/uploads/presign")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"kbId":16,"filename":"big.pdf","contentType":"application/pdf","declaredSize":83886080}
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.uploadToken").value("uplt_signed-token"))
+        .andExpect(jsonPath("$.presignedPutUrl").value("https://oss.example/put"))
+        .andExpect(jsonPath("$.storageBucket").value("test-bucket"))
+        .andExpect(jsonPath("$.storageKey").value(org.hamcrest.Matchers.containsString("tn_test/kb_16/uplt_")))
+        .andExpect(jsonPath("$.expiresAt").value("2026-07-02T13:46:40Z"));
+  }
+
+  @Test
+  void registerUploadedDocument_consumesTokenHeadsObjectAndRegisters() throws Exception {
+    RagAuthContextHolder.set(authContext("tn_test", Set.of(16L)));
+    TokenPayload payload = tokenPayload("tn_test", 16L, 83886080L);
+    when(uploadTokenService.consume("uplt_signed-token")).thenReturn(payload);
+    when(objectStorage.head("test-bucket", "tn_test/kb_16/uplt_a/big.pdf"))
+        .thenReturn(new ObjectMeta("application/pdf", 83886080L, "etag", null));
+    when(ingestService.register(any())).thenReturn(IngestResult.replaced(9912L));
+
+    mockMvc
+        .perform(
+            post("/api/v1/documents/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"uploadToken":"uplt_signed-token","kbId":16,"identity":{"externalId":"boss-1"},"onConflict":"REPLACE","ingestSource":"web-upload-large"}
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documentId").value(9912))
+        .andExpect(jsonPath("$.status").value("REPLACED"));
+  }
+
+  @Test
+  void registerUploadedDocument_replayReturnsTokenInvalid() throws Exception {
+    when(uploadTokenService.consume("uplt_replay")).thenThrow(new BizException(409, "TOKEN_INVALID"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/documents/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"uploadToken\":\"uplt_replay\",\"kbId\":16}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.msg").value("TOKEN_INVALID"));
+  }
+
+  @Test
+  void registerUploadedDocument_rejectsKbMismatchAfterGetDel() throws Exception {
+    RagAuthContextHolder.set(authContext("tn_test", Set.of(16L)));
+    when(uploadTokenService.consume("uplt_signed-token"))
+        .thenReturn(tokenPayload("tn_test", 15L, 10L));
+
+    mockMvc
+        .perform(
+            post("/api/v1/documents/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"uploadToken\":\"uplt_signed-token\",\"kbId\":16}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.msg").value("UPLOAD_TOKEN_KB_FORBIDDEN"));
+  }
+
+  @Test
+  void registerUploadedDocument_rejectsSizeMismatch() throws Exception {
+    RagAuthContextHolder.set(authContext("tn_test", Set.of(16L)));
+    TokenPayload payload = tokenPayload("tn_test", 16L, 1024L);
+    when(uploadTokenService.consume("uplt_signed-token")).thenReturn(payload);
+    when(objectStorage.head("test-bucket", "tn_test/kb_16/uplt_a/big.pdf"))
+        .thenReturn(new ObjectMeta("application/pdf", 10L * 1024L * 1024L, "etag", null));
+
+    mockMvc
+        .perform(
+            post("/api/v1/documents/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"uploadToken\":\"uplt_signed-token\",\"kbId\":16,\"identity\":{\"externalId\":\"x\"}}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.msg").value("SIZE_MISMATCH"));
+  }
+
+  @Test
+  void registerUploadedDocument_rejectsTenantMismatch() throws Exception {
+    RagAuthContextHolder.set(authContext("tn_other", Set.of(16L)));
+    when(uploadTokenService.consume("uplt_signed-token"))
+        .thenReturn(tokenPayload("tn_test", 16L, 1024L));
+
+    mockMvc
+        .perform(
+            post("/api/v1/documents/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"uploadToken\":\"uplt_signed-token\",\"kbId\":16}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.msg").value("UPLOAD_TOKEN_TENANT_FORBIDDEN"));
   }
 
   @Test
@@ -250,5 +379,24 @@ class DocumentControllerTest {
                     """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.docId").value(20));
+  }
+
+  private static RagAuthContext authContext(String tenantId, Set<Long> writableKbIds) {
+    return new RagAuthContext(
+        100L, tenantId, "USER", Set.of(), writableKbIds, Set.of(), "user", "100");
+  }
+
+  private static TokenPayload tokenPayload(String tenantId, Long kbId, Long declaredSize) {
+    TokenPayload payload = new TokenPayload();
+    payload.setUploadToken("uplt_signed-token");
+    payload.setTenantId(tenantId);
+    payload.setKbId(kbId);
+    payload.setStorageBucket("test-bucket");
+    payload.setStorageKey("tn_test/kb_16/uplt_a/big.pdf");
+    payload.setFilename("big.pdf");
+    payload.setContentType("application/pdf");
+    payload.setDeclaredSize(declaredSize);
+    payload.setExpiresAt(1_783_000_000L);
+    return payload;
   }
 }
