@@ -218,6 +218,12 @@
       <scope>test</scope>
     </dependency>
 
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+
     <!-- Spring AI MCP Server（HTTP SSE transport） -->
     <dependency>
       <groupId>org.springframework.ai</groupId>
