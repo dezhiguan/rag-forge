@@ -50,12 +50,12 @@ public class AuthGatewayProxyClient {
     postJson("/auth/sms/send", Map.of("phone", phone, "scene", scene), Map.class);
   }
 
-  public Object resetInit(String account) {
-    return postJson("/auth/password/reset/init", Map.of("account", account), Object.class);
+  public Object resetInit(String account, String phone) {
+    return postJson("/auth/password/reset/init", Map.of("account", account, "phone", phone), Object.class);
   }
 
-  public Object resetVerify(String account, String code) {
-    return postJson("/auth/password/reset/verify", Map.of("account", account, "code", code), Object.class);
+  public Object resetVerify(String account, String phone, String code) {
+    return postJson("/auth/password/reset/verify", Map.of("account", account, "phone", phone, "code", code), Object.class);
   }
 
   public TokenResponse resetConfirm(String resetTicket, String newPassword) {

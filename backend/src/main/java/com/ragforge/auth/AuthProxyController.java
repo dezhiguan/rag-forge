@@ -63,12 +63,12 @@ public class AuthProxyController {
 
   @PostMapping("/password/reset/init")
   public Result<Object> resetInit(@RequestBody ResetInitRequest request) {
-    return Result.ok(client.resetInit(request.account()));
+    return Result.ok(client.resetInit(request.account(), request.phone()));
   }
 
   @PostMapping("/password/reset/verify")
   public Result<Object> resetVerify(@RequestBody ResetVerifyRequest request) {
-    return Result.ok(client.resetVerify(request.account(), request.code()));
+    return Result.ok(client.resetVerify(request.account(), request.phone(), request.code()));
   }
 
   @PostMapping("/password/reset/confirm")
