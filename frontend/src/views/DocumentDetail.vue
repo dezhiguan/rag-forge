@@ -15,7 +15,10 @@
       <template v-else-if="doc">
         <header class="doc-header">
           <div class="doc-header-main">
-            <h1 class="doc-title">{{ doc.filename }}</h1>
+            <div class="doc-title-group">
+              <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
+              <h1 class="doc-title">{{ doc.filename }}</h1>
+            </div>
             <div class="doc-header-actions">
               <button
                 type="button"
@@ -31,21 +34,40 @@
               <span>{{ formatBytes(doc.fileSize) }}</span>
               <span class="dot">·</span>
               <span>v{{ doc.version ?? 1 }}</span>
-              <span class="dot">·</span>
-              <span
-                class="badge"
-                :class="docStatusClass(doc.parseStatus)"
-                :title="doc.parseStatus === 'failed' ? doc.errorMsg || '处理失败' : undefined"
-              >
-                <span v-if="isProcessing(doc.parseStatus)" class="status-icon spin">⟳</span>
-                <span v-else-if="doc.parseStatus === 'completed'" class="status-icon ok">✓</span>
-                {{ docStatusLabel(doc.parseStatus) }}
-              </span>
             </div>
           </div>
         </header>
 
-        <div v-if="doc.parseStatus === 'completed'" class="doc-layout">
+        <section v-if="hasIdentityInfo" class="identity-section">
+          <div class="section-title">身份信息</div>
+          <div class="meta-list">
+            <div class="meta-row">
+              <span class="meta-key">externalId</span>
+              <span class="meta-val">{{ doc.externalId || '—' }}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-key">sourceUrl</span>
+              <span class="meta-val">
+                <a v-if="doc.sourceUrl" :href="doc.sourceUrl" target="_blank" rel="noopener noreferrer">
+                  {{ doc.sourceUrl }}
+                </a>
+                <span v-else>—</span>
+              </span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-key">来源通道</span>
+              <span class="meta-val">{{ doc.ingestSource || '—' }}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-key">内容 md5</span>
+              <span class="meta-val">
+                <code>{{ doc.contentMd5 || '—' }}</code>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <div v-if="isCompletedDoc" class="doc-layout">
           <div class="doc-left" @scroll="onChunksScroll">
             <div class="section-title">
               📄 Chunks（{{ chunks.length }} / {{ chunkTotal }}）
@@ -120,9 +142,7 @@
               <div class="meta-row">
                 <span class="meta-key">状态</span>
                 <span class="meta-val">
-                  <span class="badge" :class="docStatusClass(doc.parseStatus)">
-                    {{ docStatusLabel(doc.parseStatus) }}
-                  </span>
+                  <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
                 </span>
               </div>
             </div>
@@ -130,13 +150,12 @@
           </div>
         </div>
 
-        <div v-else-if="doc.parseStatus === 'failed'" class="processing-panel failed">
+        <div v-else-if="isFailedDoc" class="processing-panel failed">
           <div class="processing-title">处理失败</div>
-          <span class="status-icon fail">✗</span>
-          <span class="badge badge-red">失败</span>
+          <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
           <p class="processing-error">{{ doc.errorMsg || '未知错误' }}</p>
-          <button class="btn-primary btn-retry" :disabled="retrying" @click="onReprocess">
-            {{ retrying ? '提交中…' : '重试' }}
+          <button class="btn-primary btn-retry" :disabled="retrying" @click="confirmReprocess">
+            {{ retrying ? '提交中…' : '重新处理' }}
           </button>
         </div>
 
@@ -145,7 +164,7 @@
           <div class="processing-title">处理中，请稍候…</div>
           <div class="processing-status">
             当前阶段：
-            <span class="badge badge-amber">{{ docStatusLabel(doc.parseStatus) }}</span>
+            <StatusBadge :status="doc.parseStatus" />
           </div>
         </div>
       </template>
@@ -165,7 +184,10 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
+import 'element-plus/es/components/message-box/style/css'
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
+import StatusBadge from '../components/StatusBadge.vue'
 import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
 import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument } from '../api/document'
 
@@ -173,10 +195,8 @@ const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import { navigateBackFromDocument } from '../composables/useDocumentNav'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import {
-  docStatusClass,
-  docStatusLabel,
-  isProcessing,
   isTerminal,
+  normalizeDocStatus,
   summarizeContent,
 } from '../composables/useDocumentStatus'
 
@@ -194,6 +214,17 @@ const chunkError = ref(false)
 const { start: startPolling, stop: stopPolling } = useDocumentPolling()
 
 const hasMoreChunks = computed(() => chunks.value.length < chunkTotal.value)
+const normalizedStatus = computed(() => normalizeDocStatus(doc.value?.parseStatus))
+const isCompletedDoc = computed(() => normalizedStatus.value === 'completed')
+const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
+const hasIdentityInfo = computed(() =>
+  Boolean(
+    doc.value?.externalId
+      || doc.value?.sourceUrl
+      || doc.value?.contentMd5
+      || doc.value?.ingestSource,
+  ),
+)
 
 const breadcrumbItems = computed(() => {
   if (loading.value && !doc.value) {
@@ -229,7 +260,7 @@ async function loadDetail() {
     const res = await getDocument(id)
     doc.value = res.data ?? null
     resetChunks()
-    if (doc.value?.parseStatus === 'completed') {
+    if (normalizeDocStatus(doc.value?.parseStatus) === 'completed') {
       await loadChunksPage(1)
     }
   } finally {
@@ -288,7 +319,7 @@ function setupPolling() {
       doc.value.errorMsg = status.errorMsg
     },
     async (status) => {
-      if (status.parseStatus === 'completed') {
+      if (normalizeDocStatus(status.parseStatus) === 'completed') {
         await loadDetail()
       }
     },
@@ -320,12 +351,30 @@ async function onDeleteDoc() {
   onBack()
 }
 
+async function confirmReprocess() {
+  if (!doc.value || retrying.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定重新处理文档「${doc.value.filename}」？这会重新解析、分块并触发向量化。`,
+      '重新处理文档',
+      {
+        confirmButtonText: '重新处理',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch {
+    return
+  }
+  await onReprocess()
+}
+
 async function onReprocess() {
   if (!doc.value) return
   retrying.value = true
   try {
-    await reprocessDocument(doc.value.id)
-    doc.value.parseStatus = 'pending'
+    const res = await reprocessDocument(doc.value.id)
+    doc.value.parseStatus = res.data?.status || res.status || 'PENDING'
     doc.value.errorMsg = null
     doc.value.chunkCount = 0
     resetChunks()
@@ -399,6 +448,15 @@ function formatBytes(bytes) {
   flex-shrink: 0;
 }
 
+.doc-title-group {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .link-btn {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -424,8 +482,7 @@ function formatBytes(bytes) {
 }
 
 .doc-title {
-  margin: 0 0 8px;
-  flex: 1;
+  margin: 0;
   min-width: 0;
   font-size: 18px;
   font-weight: 700;
@@ -547,7 +604,28 @@ function formatBytes(bytes) {
 }
 
 .meta-val {
+  min-width: 0;
   font-weight: 500;
+  word-break: break-word;
+}
+
+.meta-val a {
+  color: var(--blue);
+}
+
+.meta-val code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: #334155;
+  word-break: break-all;
+}
+
+.identity-section {
+  margin-bottom: 16px;
+  padding: 16px 20px 4px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 
 .badge {

@@ -2,7 +2,7 @@ import { onUnmounted } from 'vue'
 import { getDocumentStatus } from '../api/document'
 import { isTerminal } from './useDocumentStatus'
 
-const POLL_INTERVAL_MS = 2000
+const POLL_INTERVAL_MS = 5000
 
 export function useDocumentPolling() {
   const timers = new Map()

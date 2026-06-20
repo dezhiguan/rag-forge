@@ -1,29 +1,39 @@
 export const PROCESSING_STATUSES = [
   'pending',
+  'processing',
+  'reprocessing',
   'parsing',
   'chunking',
   'embedding',
   'indexing',
 ]
 
+export function normalizeDocStatus(parseStatus) {
+  return parseStatus == null ? '' : String(parseStatus).trim().toLowerCase()
+}
+
 export function isProcessing(parseStatus) {
-  return PROCESSING_STATUSES.includes(parseStatus)
+  return PROCESSING_STATUSES.includes(normalizeDocStatus(parseStatus))
 }
 
 export function isTerminal(parseStatus) {
-  return parseStatus === 'completed' || parseStatus === 'failed'
+  const status = normalizeDocStatus(parseStatus)
+  return status === 'completed' || status === 'failed'
 }
 
 export function docStatusClass(parseStatus) {
-  if (parseStatus === 'completed') return 'badge-green'
-  if (parseStatus === 'failed') return 'badge-red'
+  const status = normalizeDocStatus(parseStatus)
+  if (status === 'completed') return 'badge-green'
+  if (status === 'failed') return 'badge-red'
   if (isProcessing(parseStatus)) return 'badge-amber'
   return 'badge-gray'
 }
 
 export function docStatusLabel(parseStatus) {
   const map = {
-    pending: '待处理',
+    pending: '排队中',
+    processing: '处理中',
+    reprocessing: '重新处理中',
     parsing: '解析中',
     chunking: '分块中',
     embedding: '向量化',
@@ -32,9 +42,9 @@ export function docStatusLabel(parseStatus) {
     failed: '失败',
   }
   if (isProcessing(parseStatus)) {
-    return map[parseStatus] || '处理中'
+    return map[normalizeDocStatus(parseStatus)] || '处理中'
   }
-  return map[parseStatus] || parseStatus || '-'
+  return map[normalizeDocStatus(parseStatus)] || parseStatus || '-'
 }
 
 export function summarizeContent(text, maxLen = 100) {

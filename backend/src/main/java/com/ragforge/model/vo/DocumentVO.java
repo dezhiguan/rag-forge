@@ -16,6 +16,10 @@ public class DocumentVO {
   private String parseStatus;
   private Integer chunkCount;
   private String errorMsg;
+  private String externalId;
+  private String sourceUrl;
+  private String contentMd5;
+  private String ingestSource;
   private LocalDateTime createdAt;
 
   // 来自关联知识库的冗余字段，方便展示
@@ -24,4 +28,3 @@ public class DocumentVO {
   private Integer chunkSize;
   private Integer chunkOverlap;
 }
-

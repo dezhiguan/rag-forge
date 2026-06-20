@@ -221,6 +221,10 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setParseStatus(doc.getParseStatus());
     vo.setChunkCount(doc.getChunkCount());
     vo.setErrorMsg(doc.getErrorMsg());
+    vo.setExternalId(doc.getExternalId());
+    vo.setSourceUrl(doc.getSourceUrl());
+    vo.setContentMd5(doc.getContentMd5());
+    vo.setIngestSource(doc.getIngestSource());
     vo.setCreatedAt(doc.getCreatedAt());
     if (kb != null) {
       vo.setKbName(kb.getName());
@@ -436,6 +440,10 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setParseStatus(doc.getParseStatus());
     vo.setChunkCount(doc.getChunkCount());
     vo.setErrorMsg(doc.getErrorMsg());
+    vo.setExternalId(doc.getExternalId());
+    vo.setSourceUrl(doc.getSourceUrl());
+    vo.setContentMd5(doc.getContentMd5());
+    vo.setIngestSource(doc.getIngestSource());
     vo.setCreatedAt(doc.getCreatedAt());
     return vo;
   }
