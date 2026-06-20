@@ -101,7 +101,9 @@ class LocalDiskStorageTest {
     ObjectMeta head = storage.head("local", "large.pdf");
     assertThat(head).isNotNull();
     assertThat(head.getSizeBytes()).isEqualTo(Files.size(source));
-    assertThat(md5(tempDir.resolve("large.pdf"))).isEqualTo(expectedMd5);
+    try (InputStream downloaded = storage.get("local", "large.pdf")) {
+      assertThat(md5(downloaded)).isEqualTo(expectedMd5);
+    }
   }
 
   private static void writePdfLikeFile(Path path, long sizeBytes) throws Exception {
@@ -119,8 +121,14 @@ class LocalDiskStorageTest {
   }
 
   private static String md5(Path path) throws Exception {
+    try (InputStream in = Files.newInputStream(path)) {
+      return md5(in);
+    }
+  }
+
+  private static String md5(InputStream source) throws Exception {
     MessageDigest digest = MessageDigest.getInstance("MD5");
-    try (InputStream in = new DigestInputStream(Files.newInputStream(path), digest)) {
+    try (InputStream in = new DigestInputStream(source, digest)) {
       byte[] buffer = new byte[1024 * 1024];
       while (in.read(buffer) != -1) {
         // Drain stream into digest.
