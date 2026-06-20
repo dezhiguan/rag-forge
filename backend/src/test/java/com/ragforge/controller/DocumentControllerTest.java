@@ -377,6 +377,55 @@ class DocumentControllerTest {
   }
 
   @Test
+  void registerUploadedDocument_deletesObjectWhenRegisterSkipped() throws Exception {
+    RagAuthContextHolder.set(authContext("tn_test", Set.of(16L)));
+    TokenPayload payload = tokenPayload("tn_test", 16L, 83886080L);
+    when(uploadTokenService.consume("uplt_signed-token")).thenReturn(payload);
+    when(objectStorage.head("test-bucket", "tn_test/kb_16/uplt_a/big.pdf"))
+        .thenReturn(new ObjectMeta("application/pdf", 83886080L, "etag", null));
+    when(ingestService.register(any())).thenReturn(IngestResult.skipped(8810L));
+
+    mockMvc
+        .perform(
+            post("/api/v1/documents/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"uploadToken":"uplt_signed-token","kbId":16,"identity":{"externalId":"boss-1"},"onConflict":"SKIP"}
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documentId").value(8810))
+        .andExpect(jsonPath("$.status").value("SKIPPED"));
+
+    verify(objectStorage).delete("test-bucket", "tn_test/kb_16/uplt_a/big.pdf");
+  }
+
+  @Test
+  void registerUploadedDocument_conflictExposesExistingDocIdViaGlobalExceptionHandler() throws Exception {
+    RagAuthContextHolder.set(authContext("tn_test", Set.of(16L)));
+    TokenPayload payload = tokenPayload("tn_test", 16L, 83886080L);
+    when(uploadTokenService.consume("uplt_signed-token")).thenReturn(payload);
+    when(objectStorage.head("test-bucket", "tn_test/kb_16/uplt_a/big.pdf"))
+        .thenReturn(new ObjectMeta("application/pdf", 83886080L, "etag", null));
+    when(ingestService.register(any()))
+        .thenThrow(
+            new BizException(
+                409, "DOC_IDENTITY_CONFLICT", java.util.Map.of("existingDocId", 8810L)));
+
+    mockMvc
+        .perform(
+            post("/api/v1/documents/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"uploadToken":"uplt_signed-token","kbId":16,"identity":{"externalId":"boss-1"},"onConflict":"REJECT"}
+                    """))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.msg").value("DOC_IDENTITY_CONFLICT"))
+        .andExpect(jsonPath("$.data.existingDocId").value(8810));
+  }
+
+  @Test
   void upload_delegatesToService() throws Exception {
     DocumentUploadResultVO result = new DocumentUploadResultVO();
     result.setDocId(10L);

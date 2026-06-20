@@ -155,6 +155,9 @@ public class DocumentController {
     cmd.setMetadata(request.getMetadata());
 
     IngestResult result = ingestService.register(cmd);
+    if (result.getStatus() == IngestResult.Status.SKIPPED) {
+      safeDelete(payload.getStorageBucket(), payload.getStorageKey());
+    }
     return ResponseEntity.ok(
         Map.of("documentId", result.getDocumentId(), "status", result.getStatus().name()));
   }

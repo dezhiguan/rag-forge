@@ -1,6 +1,8 @@
 package com.ragforge.common;
 
+import com.ragforge.web.TraceIds;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -16,8 +18,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
   @ExceptionHandler(BizException.class)
-  public ResponseEntity<Result<Void>> handleBizException(BizException ex) {
-    return ResponseEntity.status(ex.getCode()).body(Result.fail(ex.getCode(), ex.getMessage()));
+  public ResponseEntity<Result<Map<String, Object>>> handleBizException(BizException ex) {
+    Result<Map<String, Object>> body =
+        new Result<>(ex.getCode(), ex.getMessage(), ex.getData(), TraceIds.current());
+    return ResponseEntity.status(ex.getCode()).body(body);
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)

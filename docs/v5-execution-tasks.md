@@ -1,6 +1,7 @@
 # RAGForge V5 执行任务清单（Codex 提示词版）
 
 - T1-T5 hotfix ✅ ecd6aea 2026-06-21
+- T5 hotfix-2 (B 通道 SKIP OSS 孤儿 + BizException.data 透传) ✅ 2026-06-21
 
 > 编制：2026-06-20 · 架构师：@guandezhi
 > 用法：找到要执行的任务 → **复制 `=== COPY START ===` 与 `=== COPY END ===` 之间的全部内容** → 粘贴到 Codex
