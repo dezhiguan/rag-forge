@@ -17,13 +17,17 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 import com.ragforge.common.BizException;
 import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.common.PageResult;
+import com.ragforge.common.RelayUploadLimits;
+import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
+import com.ragforge.model.entity.Document;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
 import com.ragforge.model.vo.DocumentVO;
+import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.security.KbAccessGuard;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
@@ -61,6 +65,8 @@ class DocumentControllerTest {
   @Mock private ObjectStorage objectStorage;
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private UploadTokenService uploadTokenService;
+  @Mock private DocumentMapper documentMapper;
+  @Mock private DocumentProcessProducer mqProducer;
 
   private MockMvc mockMvc;
   private StorageProperties storageProperties;
@@ -81,7 +87,9 @@ class DocumentControllerTest {
                     storageProperties,
                     kbAccessGuard,
                     new ObjectMapper(),
-                    uploadTokenService))
+                    uploadTokenService,
+                    documentMapper,
+                    mqProducer))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(
                 new ResourceHttpMessageConverter(), new MappingJackson2HttpMessageConverter())
@@ -260,6 +268,23 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.limitMb").value(50));
 
     verifyNoInteractions(objectStorage, ingestService);
+  }
+
+  @Test
+  void globalExceptionHandler_translatesMaxUploadSizeToPayloadTooLarge() {
+    org.springframework.web.multipart.MaxUploadSizeExceededException ex =
+        new org.springframework.web.multipart.MaxUploadSizeExceededException(
+            RelayUploadLimits.RELAY_UPLOAD_LIMIT_BYTES);
+
+    org.springframework.http.ResponseEntity<java.util.Map<String, Object>> response =
+        new com.ragforge.common.GlobalExceptionHandler().handleMaxUploadSize(ex);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(413);
+    java.util.Map<String, Object> body = response.getBody();
+    assertThat(body).isNotNull();
+    assertThat(body).containsEntry("error", "FILE_TOO_LARGE_FOR_RELAY");
+    assertThat(body).containsEntry("presignUrl", "/api/v1/uploads/presign");
+    assertThat(body).containsEntry("limitMb", 50);
   }
 
   @Test
@@ -519,12 +544,40 @@ class DocumentControllerTest {
   }
 
   @Test
-  void deleteAndReprocess_delegateToService() throws Exception {
+  void delete_delegatesToService() throws Exception {
     mockMvc.perform(delete("/api/v1/documents/13")).andExpect(status().isOk());
-    mockMvc.perform(post("/api/v1/documents/13/reprocess")).andExpect(status().isOk());
 
     verify(documentService).delete(13L);
-    verify(documentService).reprocess(13L);
+  }
+
+  @Test
+  void reprocess_failedDocument_setsPendingAndSendsMq() throws Exception {
+    Document doc = new Document();
+    doc.setId(13L);
+    doc.setParseStatus("FAILED");
+    when(documentMapper.selectById(13L)).thenReturn(doc);
+
+    mockMvc
+        .perform(post("/api/v1/documents/13/reprocess"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documentId").value(13))
+        .andExpect(jsonPath("$.status").value("PENDING"));
+
+    verify(documentMapper).updateStatus(13L, "PENDING");
+    verify(mqProducer).send(13L);
+  }
+
+  @Test
+  void reprocess_processingDocument_returnsConflict() throws Exception {
+    Document doc = new Document();
+    doc.setId(14L);
+    doc.setParseStatus("PROCESSING");
+    when(documentMapper.selectById(14L)).thenReturn(doc);
+
+    mockMvc
+        .perform(post("/api/v1/documents/14/reprocess"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.msg").value("ALREADY_IN_PROGRESS"));
   }
 
   @Test

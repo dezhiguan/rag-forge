@@ -3,17 +3,21 @@ package com.ragforge.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
 import com.ragforge.common.PageResult;
+import com.ragforge.common.RelayUploadLimits;
 import com.ragforge.common.Result;
+import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.model.dto.Identity;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.dto.PresignUploadRequest;
 import com.ragforge.model.dto.RegisterUploadRequest;
+import com.ragforge.model.entity.Document;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
 import com.ragforge.model.vo.DocumentVO;
+import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.security.KbAccessGuard;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
@@ -42,6 +46,9 @@ import org.springframework.http.ResponseEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -58,8 +65,6 @@ import org.springframework.web.multipart.MultipartFile;
 @Slf4j
 public class DocumentController {
 
-  private static final long RELAY_UPLOAD_LIMIT_BYTES = 50L * 1024L * 1024L;
-  private static final int RELAY_UPLOAD_LIMIT_MB = 50;
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private final DocumentService documentService;
@@ -69,6 +74,8 @@ public class DocumentController {
   private final KbAccessGuard kbAccessGuard;
   private final ObjectMapper objectMapper;
   private final UploadTokenService uploadTokenService;
+  private final DocumentMapper documentMapper;
+  private final DocumentProcessProducer mqProducer;
 
   @PostMapping("/uploads/presign")
   public ResponseEntity<?> presignUpload(@RequestBody PresignUploadRequest request) {
@@ -170,16 +177,16 @@ public class DocumentController {
     if (!kbAccessGuard.canWrite(kbId)) {
       throw new BizException(403, "KB_WRITE_FORBIDDEN");
     }
-    if (file.getSize() > RELAY_UPLOAD_LIMIT_BYTES) {
+    if (file.getSize() > RelayUploadLimits.RELAY_UPLOAD_LIMIT_BYTES) {
       return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
           .body(
               Map.of(
                   "error",
                   "FILE_TOO_LARGE_FOR_RELAY",
                   "presignUrl",
-                  "/api/v1/uploads/presign",
+                  RelayUploadLimits.PRESIGN_URL,
                   "limitMb",
-                  RELAY_UPLOAD_LIMIT_MB));
+                  RelayUploadLimits.RELAY_UPLOAD_LIMIT_MB));
     }
 
     Path tempFile = null;
@@ -332,9 +339,42 @@ public class DocumentController {
 
   @PostMapping("/documents/{id}/reprocess")
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR') and @kbAccessGuard.canWriteDocument(#id)")
-  public Result<Void> reprocess(@PathVariable Long id) {
-    documentService.reprocess(id);
-    return Result.ok();
+  @Transactional
+  public ResponseEntity<Map<String, Object>> reprocess(@PathVariable Long id) {
+    Document doc = documentMapper.selectById(id);
+    if (doc == null) {
+      throw new BizException(404, "DOCUMENT_NOT_FOUND");
+    }
+
+    String status = normalizeStatus(doc.getParseStatus());
+    if ("PENDING".equals(status) || "PROCESSING".equals(status) || "REPROCESSING".equals(status)) {
+      throw new BizException(409, "ALREADY_IN_PROGRESS");
+    }
+    if (!"FAILED".equals(status) && !"COMPLETED".equals(status)) {
+      throw new BizException(409, "REPROCESS_NOT_ALLOWED");
+    }
+
+    documentMapper.updateStatus(id, "PENDING");
+    sendProcessAfterCommit(id);
+    return ResponseEntity.ok(Map.of("documentId", id, "status", "PENDING"));
+  }
+
+  private void sendProcessAfterCommit(Long documentId) {
+    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+      mqProducer.send(documentId);
+      return;
+    }
+    TransactionSynchronizationManager.registerSynchronization(
+        new TransactionSynchronization() {
+          @Override
+          public void afterCommit() {
+            mqProducer.send(documentId);
+          }
+        });
+  }
+
+  private String normalizeStatus(String status) {
+    return status == null ? "" : status.trim().toUpperCase();
   }
 
   private IngestCommand parseMeta(String metaJson) {
