@@ -1294,3 +1294,4 @@ docs/security-and-multitenancy.md 必须包含（必须按此章节结构）：
 - T11 ⏳
 - T12 ⏳
 - T1 ✅ d33b8ec 2026-06-20
+- T2 ✅ 299963f 2026-06-20
