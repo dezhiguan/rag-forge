@@ -10,6 +10,7 @@ import com.ragforge.common.BizException;
 import com.ragforge.model.dto.SearchRequest;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
+import com.ragforge.search.VectorSearchService;
 import com.ragforge.security.KbAccessGuard;
 import com.ragforge.service.RetrievalLogService;
 import java.util.LinkedHashSet;
@@ -24,12 +25,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class SearchAuthorizationTest {
 
   @Mock private RetrievalService retrievalService;
+  @Mock private VectorSearchService vectorSearchService;
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private RetrievalLogService retrievalLogService;
 
   @Test
   void requestedUnauthorizedKb_returnsKbAccessDenied() {
-    SearchController controller = new SearchController(retrievalService, kbAccessGuard, retrievalLogService);
+    SearchController controller =
+        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService);
     SearchRequest req = request();
     req.setKbIds(List.of(99L));
     when(kbAccessGuard.filterReadable(List.of(99L))).thenReturn(Set.of());
@@ -41,7 +44,8 @@ class SearchAuthorizationTest {
 
   @Test
   void emptyKbIds_autoFillsAllReadableKbIds() {
-    SearchController controller = new SearchController(retrievalService, kbAccessGuard, retrievalLogService);
+    SearchController controller =
+        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService);
     SearchRequest req = request();
     when(kbAccessGuard.allReadableKbIds()).thenReturn(new LinkedHashSet<>(List.of(1L, 2L)));
     when(retrievalService.retrieve(eq("java"), any(), eq(List.of(1L, 2L)), any(), any(), any(), eq(8), eq(5), any(), eq("text")))
@@ -54,7 +58,8 @@ class SearchAuthorizationTest {
 
   @Test
   void noReadableKbIds_returnsKbAccessDenied() {
-    SearchController controller = new SearchController(retrievalService, kbAccessGuard, retrievalLogService);
+    SearchController controller =
+        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService);
     SearchRequest req = request();
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of());
 

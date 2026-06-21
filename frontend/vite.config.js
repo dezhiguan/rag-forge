@@ -11,6 +11,10 @@ export default defineConfig({
         target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/api/auth': {
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
 })

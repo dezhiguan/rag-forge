@@ -16,6 +16,7 @@ import com.ragforge.security.KbAccessGuard;
 import com.ragforge.service.RetrievalLogService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
+import com.ragforge.search.VectorSearchService;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,7 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 class SearchControllerTest {
 
   @Mock private RetrievalService retrievalService;
+  @Mock private VectorSearchService vectorSearchService;
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private RetrievalLogService retrievalLogService;
 
@@ -43,7 +45,9 @@ class SearchControllerTest {
     validator.afterPropertiesSet();
 
     mockMvc =
-        standaloneSetup(new SearchController(retrievalService, kbAccessGuard, retrievalLogService))
+        standaloneSetup(
+                new SearchController(
+                    retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .setValidator(validator)

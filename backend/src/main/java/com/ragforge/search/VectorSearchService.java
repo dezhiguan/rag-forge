@@ -112,6 +112,7 @@ public class VectorSearchService {
               result.setChunkIndex(rs.getInt("chunk_index"));
               result.setVectorScore(rs.getDouble("similarity"));
               result.setChunkType(rs.getString("chunk_type"));
+              result.setChunkModality(rs.getString("chunk_modality"));
               return result;
             });
     long dbLatencyMs = System.currentTimeMillis() - dbStart;

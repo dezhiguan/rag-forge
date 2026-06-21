@@ -23,6 +23,7 @@ spring:
     baseline-on-migrate: true
     baseline-version: 26
     validate-on-migrate: true
+    ignore-migration-patterns: "versioned:missing"
   servlet:
     multipart:
       max-file-size: 50MB

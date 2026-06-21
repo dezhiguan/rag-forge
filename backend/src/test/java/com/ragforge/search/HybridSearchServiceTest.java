@@ -171,20 +171,7 @@ class HybridSearchServiceTest {
             vectorSearchService,
             esSearchService,
             retrievalProperties,
-            Executors.newCachedThreadPool());
-
-    when(vectorSearchService.search(any(), anyList(), any(), anyInt(), any()))
-        .thenAnswer(
-            inv -> {
-              Thread.sleep(500);
-              return List.of(result(1L, 0.9, 0.0));
-            });
-    when(esSearchService.search(any(), anyList(), any(), anyInt(), any()))
-        .thenAnswer(
-            inv -> {
-              Thread.sleep(500);
-              return List.of(result(2L, 0.0, 0.85));
-            });
+            command -> {});
 
     HybridSearchOutput output =
         hybridSearchService.searchWithMetrics("q", List.of(1L), null, 5, 0.55);

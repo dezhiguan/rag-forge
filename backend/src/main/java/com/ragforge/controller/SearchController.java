@@ -3,13 +3,17 @@ package com.ragforge.controller;
 import com.ragforge.common.BizException;
 import com.ragforge.common.Result;
 import com.ragforge.model.dto.SearchRequest;
+import com.ragforge.model.dto.ImageSearchRequest;
 import com.ragforge.model.vo.SearchResponse;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.security.KbAccessGuard;
 import com.ragforge.service.RetrievalLogService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
+import com.ragforge.search.SearchResult;
+import com.ragforge.search.VectorSearchService;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SearchController {
 
   private final RetrievalService retrievalService;
+  private final VectorSearchService vectorSearchService;
   private final KbAccessGuard kbAccessGuard;
   private final RetrievalLogService retrievalLogService;
 
@@ -93,5 +98,30 @@ public class SearchController {
             output.getVectorLatencyMs(),
             output.getKeywordLatencyMs(),
             output.getRerankLatencyMs()));
+  }
+
+  @PostMapping("/search/by-image")
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','SERVICE_ACCOUNT')")
+  public Result<SearchResponse> searchByImage(@Valid @RequestBody ImageSearchRequest req) {
+    if (req.getQueryImageBase64() == null || req.getQueryImageBase64().isBlank()) {
+      throw new BizException(400, "IMAGE_QUERY_REQUIRED");
+    }
+    boolean requestedSpecificKbs = req.getKbIds() != null && !req.getKbIds().isEmpty();
+    Set<Long> readableKbIds =
+        requestedSpecificKbs ? kbAccessGuard.filterReadable(req.getKbIds()) : kbAccessGuard.allReadableKbIds();
+    if (readableKbIds.isEmpty()) {
+      throw new BizException(403, "KB_ACCESS_DENIED");
+    }
+    long start = System.currentTimeMillis();
+    List<SearchResult> results =
+        vectorSearchService.searchImage(
+            req.getQuery(),
+            req.getQueryImageBase64(),
+            new ArrayList<>(readableKbIds),
+            req.getDocIds(),
+            req.getTopK(),
+            req.getFilter());
+    long latencyMs = System.currentTimeMillis() - start;
+    return Result.ok(new SearchResponse(results, latencyMs, "image-vector", null, null, latencyMs, null, null));
   }
 }

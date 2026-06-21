@@ -59,6 +59,19 @@ public interface DocumentMapper extends BaseMapper<Document> {
   @Update(
       """
       UPDATE documents
+      SET clean_profile_id = #{profileId},
+          clean_report_json = #{reportJson,typeHandler=com.ragforge.mybatis.handler.JsonbStringTypeHandler},
+          updated_at = NOW()
+      WHERE id = #{id}
+      """)
+  int updateCleanReport(
+      @Param("id") Long id,
+      @Param("profileId") Long profileId,
+      @Param("reportJson") String reportJson);
+
+  @Update(
+      """
+      UPDATE documents
       SET parse_status = 'PROCESSING', updated_at = NOW()
       WHERE id = #{id}
         AND (parse_status = 'PENDING'

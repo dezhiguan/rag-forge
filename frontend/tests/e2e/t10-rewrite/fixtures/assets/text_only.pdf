@@ -1,0 +1,31 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 1493 >>
+stream
+BT /F1 16 Tf 72 760 Td (RAGForge text-only fixture) Tj /F1 11 Tf 0 -32 Td (RAGForge unified vector search validates Spring Boot and PostgreSQL retrieval. The first paragraph explains the upload controller, object storage handoff, document registration, worker state machine, and vector indexing path in a single end to end flow that should be searchable after processing completes.\nThe second paragraph is intentionally longer so the recursive chunker emits multiple text chunks under the default profile. It mentions parser, cleaner, chunker, embedder, indexer, Elasticsearch, PostgreSQL, and pgvector so E2E search can use stable keywords without relying on generated wording.\nThe third paragraph describes system architecture containing Spring Boot, PostgreSQL, Redis, RocketMQ, DashScope embeddings, qwen3 vl embedding, and the unified vl vector column. This paragraph verifies that text-only files still use TEXT modality after the multimodal rewrite.\nThe fourth paragraph adds enough deterministic plain English and Chinese tokens for chunk boundaries: ingestion pipeline, retrieval service, hybrid search, vector search, reranking, knowledge base permission checks, and document detail status badges should all remain compatible.\nThe fifth paragraph closes the fixture with repeated architecture context for recall validation. Spring Boot services read from PostgreSQL, store chunks with vl_vector dimension 2560, and return ranked chunks through the DebugConsole search API.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer << /Root 1 0 R /Size 6 >>
+startxref
+1856
+%%EOF

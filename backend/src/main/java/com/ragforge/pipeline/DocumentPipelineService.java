@@ -387,13 +387,7 @@ public class DocumentPipelineService {
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void updateCleanReport(Long docId, Long profileId, String reportJson) {
-    documentMapper.update(
-        null,
-        new LambdaUpdateWrapper<Document>()
-            .eq(Document::getId, docId)
-            .set(Document::getCleanProfileId, profileId)
-            .set(Document::getCleanReportJson, reportJson)
-            .set(Document::getUpdatedAt, LocalDateTime.now()));
+    documentMapper.updateCleanReport(docId, profileId, reportJson);
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
