@@ -152,7 +152,8 @@ public class CleanerAcceptanceRunner implements ApplicationRunner {
 
       CleanResult cleaned =
           cleaningPipeline.clean(
-              new RawText(rawText, contentType(doc), source.getPageCount()), new CleanProfile());
+              new RawText(rawText, contentType(doc), source.getPageCount(), source.getPageBoundaries()),
+              new CleanProfile());
       String cleanedText = cleaned.getCleanedText() == null ? "" : cleaned.getCleanedText();
       List<Chunk> chunksB = textChunker.chunk(cleanedText);
 
@@ -181,7 +182,8 @@ public class CleanerAcceptanceRunner implements ApplicationRunner {
     if (localPath.isAbsolute() && Files.isRegularFile(localPath)) {
       Files.copy(localPath, temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
       ParseResult parsed = documentParser.parse(temp.toString(), parserType(doc));
-      return new SourceText(nullToEmpty(parsed.getText()), parsed.getPageCount(), "LOCAL_FILE");
+      return new SourceText(
+          nullToEmpty(parsed.getText()), parsed.getPageCount(), parsed.getPageBoundaries(), "LOCAL_FILE");
     }
     try {
       try (InputStream in = objectStorage.get(doc.getBucket(), doc.getStorageKey())) {
@@ -191,11 +193,12 @@ public class CleanerAcceptanceRunner implements ApplicationRunner {
         Files.copy(in, temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
       }
       ParseResult parsed = documentParser.parse(temp.toString(), parserType(doc));
-      return new SourceText(nullToEmpty(parsed.getText()), parsed.getPageCount(), "OBJECT_STORAGE");
+      return new SourceText(
+          nullToEmpty(parsed.getText()), parsed.getPageCount(), parsed.getPageBoundaries(), "OBJECT_STORAGE");
     } catch (Exception objectError) {
       String fallback = loadChunkFallback(doc.getId());
       if (!fallback.isBlank()) {
-        return new SourceText(fallback, 1, "PG_CHUNKS_FALLBACK");
+        return new SourceText(fallback, 1, List.of(), "PG_CHUNKS_FALLBACK");
       }
       throw objectError;
     }
@@ -213,13 +216,16 @@ public class CleanerAcceptanceRunner implements ApplicationRunner {
       return 0.0;
     }
     int duplicatePairs = 0;
-    for (int i = 1; i < chunks.size(); i++) {
-      double similarity = jaccard(chunks.get(i - 1).getContent(), chunks.get(i).getContent());
-      if (similarity > 0.95) {
-        duplicatePairs++;
+    for (int i = 0; i < chunks.size(); i++) {
+      for (int j = i + 1; j < chunks.size(); j++) {
+        double similarity = jaccard(chunks.get(i).getContent(), chunks.get(j).getContent());
+        if (similarity > 0.95) {
+          duplicatePairs++;
+        }
       }
     }
-    return duplicatePairs * 1.0 / (chunks.size() - 1);
+    int totalPairs = chunks.size() * (chunks.size() - 1) / 2;
+    return duplicatePairs * 1.0 / totalPairs;
   }
 
   private double jaccard(String left, String right) {
@@ -559,6 +565,7 @@ public class CleanerAcceptanceRunner implements ApplicationRunner {
   private static class SourceText {
     private final String text;
     private final int pageCount;
+    private final List<String> pageBoundaries;
     private final String source;
   }
 

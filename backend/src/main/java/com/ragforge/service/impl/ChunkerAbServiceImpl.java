@@ -137,6 +137,7 @@ public class ChunkerAbServiceImpl implements ChunkerAbService {
       meta.setDocId(entry.getKey());
       meta.setContentType("MARKDOWN_HEADING".equals(strategy.name()) ? "text/markdown" : "text/plain");
       meta.setFilename("MARKDOWN_HEADING".equals(strategy.name()) ? "chunker-ab.md" : "chunker-ab.txt");
+      meta.setTextLength(entry.getValue() == null ? 0 : entry.getValue().length());
       if (!strategy.supports(meta)) {
         continue;
       }

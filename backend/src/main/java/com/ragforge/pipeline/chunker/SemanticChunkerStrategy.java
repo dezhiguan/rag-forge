@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SemanticChunkerStrategy implements ChunkerStrategy {
 
+  private static final long MIN_TEXT_LENGTH = 2000;
+
   private final EmbeddingService embeddingService;
   private final Cache<String, float[]> embeddingCache =
       Caffeine.newBuilder().maximumSize(4096).expireAfterWrite(Duration.ofHours(6)).build();
@@ -25,7 +27,7 @@ public class SemanticChunkerStrategy implements ChunkerStrategy {
 
   @Override
   public boolean supports(DocumentMeta meta) {
-    return true;
+    return meta != null && meta.getTextLength() >= MIN_TEXT_LENGTH;
   }
 
   @Override

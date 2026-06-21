@@ -25,7 +25,7 @@ public class L2DenoiseCleaner implements Cleaner {
   @Override
   public CleanResult clean(RawText raw, CleanProfile profile) {
     String text = raw == null || raw.getText() == null ? "" : raw.getText();
-    List<String> pages = splitPages(text);
+    List<String> pages = splitPages(raw, text);
     Set<String> repeatedEdgeLines = repeatedEdgeLines(pages);
     List<RemovedRegion> regions = new ArrayList<>();
     StringBuilder cleaned = new StringBuilder(text.length());
@@ -48,7 +48,10 @@ public class L2DenoiseCleaner implements Cleaner {
     return result;
   }
 
-  private static List<String> splitPages(String text) {
+  private static List<String> splitPages(RawText raw, String text) {
+    if (raw != null && raw.getPageBoundaries() != null && raw.getPageBoundaries().size() > 1) {
+      return raw.getPageBoundaries();
+    }
     String[] parts = text.split("\\f|\\n\\s*(?:第\\s*\\d+\\s*页|Page\\s+\\d+)\\s*\\n", -1);
     if (parts.length <= 1) {
       return List.of(text);

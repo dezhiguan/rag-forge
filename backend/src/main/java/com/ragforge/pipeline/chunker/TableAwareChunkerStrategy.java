@@ -2,11 +2,16 @@ package com.ragforge.pipeline.chunker;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
 public class TableAwareChunkerStrategy implements ChunkerStrategy {
+
+  private static final Set<String> SUPPORTED_CONTENT_TYPES =
+      Set.of("text/markdown", "text/html", "application/pdf");
 
   @Override
   public String name() {
@@ -15,7 +20,15 @@ public class TableAwareChunkerStrategy implements ChunkerStrategy {
 
   @Override
   public boolean supports(DocumentMeta meta) {
-    return true;
+    if (meta == null || meta.getContentType() == null) {
+      return false;
+    }
+    String contentType = meta.getContentType().trim().toLowerCase(Locale.ROOT);
+    int semicolon = contentType.indexOf(';');
+    if (semicolon >= 0) {
+      contentType = contentType.substring(0, semicolon).trim();
+    }
+    return SUPPORTED_CONTENT_TYPES.contains(contentType);
   }
 
   @Override

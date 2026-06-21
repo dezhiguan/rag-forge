@@ -7,10 +7,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
@@ -46,15 +49,24 @@ public class TikaDocumentParser implements DocumentParser {
     }
 
     long start = System.currentTimeMillis();
-    String text = extractText(file);
+    List<String> pageBoundaries = List.of();
+    String text;
+    int pageCount;
+    if ("pdf".equals(normalizedType)) {
+      pageBoundaries = extractPdfPages(file);
+      text = String.join("\f", pageBoundaries);
+      pageCount = pageBoundaries.size();
+    } else {
+      text = extractText(file);
+      pageCount = 1;
+    }
     long parseTimeMs = System.currentTimeMillis() - start;
-    int pageCount = resolvePageCount(filePath, normalizedType);
 
     if ("pdf".equals(normalizedType) && pageCount > 0 && text.trim().isEmpty()) {
       log.warn("可能为扫描件，无文字层: {}", filePath);
     }
 
-    return new ParseResult(text, parseTimeMs, pageCount);
+    return new ParseResult(text, parseTimeMs, pageCount, pageBoundaries);
   }
 
   private String extractText(File file) {
@@ -77,12 +89,16 @@ public class TikaDocumentParser implements DocumentParser {
     }
   }
 
-  private int resolvePageCount(String filePath, String fileType) {
-    if (!"pdf".equals(fileType)) {
-      return 1;
-    }
-    try (PDDocument document = PDDocument.load(new File(filePath))) {
-      return document.getNumberOfPages();
+  private List<String> extractPdfPages(File file) {
+    try (PDDocument document = PDDocument.load(file)) {
+      PDFTextStripper stripper = new PDFTextStripper();
+      List<String> pages = new ArrayList<>(document.getNumberOfPages());
+      for (int page = 1; page <= document.getNumberOfPages(); page++) {
+        stripper.setStartPage(page);
+        stripper.setEndPage(page);
+        pages.add(stripper.getText(document));
+      }
+      return pages;
     } catch (IOException e) {
       throw new BizException("文档解析失败：" + e.getMessage());
     }
@@ -92,6 +108,17 @@ public class TikaDocumentParser implements DocumentParser {
     if (fileType == null) {
       return "";
     }
-    return fileType.toLowerCase(Locale.ROOT);
+    String normalized = fileType.toLowerCase(Locale.ROOT);
+    int semicolon = normalized.indexOf(';');
+    if (semicolon >= 0) {
+      normalized = normalized.substring(0, semicolon);
+    }
+    normalized = normalized.trim();
+    return switch (normalized) {
+      case "application/pdf" -> "pdf";
+      case "text/markdown" -> "md";
+      case "text/html" -> "html";
+      default -> normalized;
+    };
   }
 }

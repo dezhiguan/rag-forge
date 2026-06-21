@@ -121,7 +121,9 @@ public class DocumentPipelineService {
       ResolvedCleanProfile resolvedProfile = cleanProfileService.resolveForKb(doc.getKbId());
       CleanProfile cleanProfile = resolvedProfile.getProfile();
       CleanResult cleanResult =
-          cleaningPipeline.clean(new RawText(text, doc.getFileType(), parseResult.getPageCount()), cleanProfile);
+          cleaningPipeline.clean(
+              new RawText(text, doc.getFileType(), parseResult.getPageCount(), parseResult.getPageBoundaries()),
+              cleanProfile);
       self.updateCleanReport(
           documentId,
           resolvedProfile.getProfileId(),

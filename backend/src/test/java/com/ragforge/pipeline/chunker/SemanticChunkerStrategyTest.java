@@ -16,6 +16,24 @@ class SemanticChunkerStrategyTest {
   @Mock private EmbeddingService embeddingService;
 
   @Test
+  void supportsReturnsFalseForShortText() {
+    SemanticChunkerStrategy strategy = new SemanticChunkerStrategy(embeddingService);
+    DocumentMeta meta = new DocumentMeta();
+    meta.setTextLength(1999);
+
+    assertThat(strategy.supports(meta)).isFalse();
+  }
+
+  @Test
+  void supportsReturnsTrueForLongText() {
+    SemanticChunkerStrategy strategy = new SemanticChunkerStrategy(embeddingService);
+    DocumentMeta meta = new DocumentMeta();
+    meta.setTextLength(2000);
+
+    assertThat(strategy.supports(meta)).isTrue();
+  }
+
+  @Test
   void splitMergesSimilarAdjacentSentencesAndCutsDissimilarOnes() {
     when(embeddingService.embed("用户登录成功。")).thenReturn(new float[] {1.0f, 0.0f});
     when(embeddingService.embed("登录后进入首页。")).thenReturn(new float[] {0.9f, 0.1f});

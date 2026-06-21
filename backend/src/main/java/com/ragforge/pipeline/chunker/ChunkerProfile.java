@@ -7,7 +7,7 @@ import lombok.Data;
 @Data
 public class ChunkerProfile {
 
-  private String defaultStrategy = "RECURSIVE";
+  private String defaultStrategy = "MARKDOWN_HEADING";
   private List<String> fallbackChain = new ArrayList<>(List.of("RECURSIVE", "FIXED_WINDOW"));
   private ChunkParams params = new ChunkParams();
 }

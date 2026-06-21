@@ -12,4 +12,5 @@ public class DocumentMeta {
   private Long kbId;
   private String filename;
   private String contentType;
+  private long textLength;
 }

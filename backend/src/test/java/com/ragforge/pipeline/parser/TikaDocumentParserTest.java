@@ -51,6 +51,7 @@ class TikaDocumentParserTest {
     assertTrue(result.getText().contains("你好") || result.getText().contains("RAGForge"));
     assertTrue(result.getParseTimeMs() >= 0);
     assertTrue(result.getPageCount() > 0);
+    assertEquals(result.getPageCount(), result.getPageBoundaries().size());
   }
 
   @Test

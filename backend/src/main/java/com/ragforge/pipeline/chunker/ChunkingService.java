@@ -25,8 +25,8 @@ public class ChunkingService {
   public ChunkingResult split(Document doc, KnowledgeBase kb, String text) {
     ChunkerProfile profile = resolveProfile(kb);
     applyLegacyKbParams(profile, kb);
-    DocumentMeta meta = buildMeta(doc, kb);
     CleanedText cleanedText = new CleanedText(text == null ? "" : text);
+    DocumentMeta meta = buildMeta(doc, kb, cleanedText);
 
     Map<String, ChunkerStrategy> strategyByName =
         strategies.stream()
@@ -63,10 +63,10 @@ public class ChunkingService {
         profile.setParams(new ChunkParams());
       }
       if (!StringUtils.hasText(profile.getDefaultStrategy())) {
-        profile.setDefaultStrategy("RECURSIVE");
+        profile.setDefaultStrategy("MARKDOWN_HEADING");
       }
       if (profile.getFallbackChain() == null || profile.getFallbackChain().isEmpty()) {
-        profile.setFallbackChain(List.of(profile.getDefaultStrategy(), "FIXED_WINDOW"));
+        profile.setFallbackChain(List.of("RECURSIVE", "FIXED_WINDOW"));
       }
       return profile;
     } catch (Exception e) {
@@ -96,7 +96,7 @@ public class ChunkingService {
     return chain.stream().filter(Objects::nonNull).map(ChunkingService::normalizeName).distinct().toList();
   }
 
-  private static DocumentMeta buildMeta(Document doc, KnowledgeBase kb) {
+  private static DocumentMeta buildMeta(Document doc, KnowledgeBase kb, CleanedText cleanedText) {
     DocumentMeta meta = new DocumentMeta();
     if (doc != null) {
       meta.setDocId(doc.getId());
@@ -106,6 +106,7 @@ public class ChunkingService {
     } else if (kb != null) {
       meta.setKbId(kb.getId());
     }
+    meta.setTextLength(cleanedText == null || cleanedText.getText() == null ? 0 : cleanedText.getText().length());
     return meta;
   }
 
@@ -115,6 +116,8 @@ public class ChunkingService {
       chunk.setSeq(i);
       if (chunk.getChunkParamsJson() == null) {
         chunk.setChunkParamsJson(new LinkedHashMap<>());
+      } else if (!(chunk.getChunkParamsJson() instanceof LinkedHashMap)) {
+        chunk.setChunkParamsJson(new LinkedHashMap<>(chunk.getChunkParamsJson()));
       }
       chunk.getChunkParamsJson().put("strategy", strategyName);
     }

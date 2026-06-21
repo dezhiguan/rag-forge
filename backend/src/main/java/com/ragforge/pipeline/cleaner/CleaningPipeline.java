@@ -26,7 +26,13 @@ public class CleaningPipeline {
         continue;
       }
       CleanResult stage =
-          cleaner.clean(new RawText(text, raw == null ? null : raw.getContentType(), raw == null ? null : raw.getPageCount()), effectiveProfile);
+          cleaner.clean(
+              new RawText(
+                  text,
+                  raw == null ? null : raw.getContentType(),
+                  raw == null ? null : raw.getPageCount(),
+                  raw == null ? List.of() : raw.getPageBoundaries()),
+              effectiveProfile);
       text = stage.getCleanedText() == null ? "" : stage.getCleanedText();
       if (stage.getRemovedRegions() != null) {
         removedRegions.addAll(stage.getRemovedRegions());

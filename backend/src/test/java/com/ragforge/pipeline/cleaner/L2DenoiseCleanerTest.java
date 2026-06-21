@@ -2,6 +2,7 @@ package com.ragforge.pipeline.cleaner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class L2DenoiseCleanerTest {
@@ -42,5 +43,35 @@ class L2DenoiseCleanerTest {
     CleanResult result = cleaner.clean(new RawText("Header\nreal content\nFooter", "text/plain", 1), new CleanProfile());
     assertThat(result.getCleanedText()).contains("Header", "real content", "Footer");
     assertThat(result.getRemovedRegions()).isEmpty();
+  }
+
+  @Test
+  void clean_usesPageBoundariesWhenTextHasNoFormFeed() {
+    String text =
+        """
+        Company Header
+        first page content
+        Footer 1
+        Company Header
+        second page content
+        Footer 2
+        """;
+    List<String> pages =
+        List.of(
+            """
+            Company Header
+            first page content
+            Footer 1
+            """,
+            """
+            Company Header
+            second page content
+            Footer 2
+            """);
+
+    CleanResult result = cleaner.clean(new RawText(text, "application/pdf", 2, pages), new CleanProfile());
+
+    assertThat(result.getCleanedText()).contains("first page content", "second page content");
+    assertThat(result.getCleanedText()).doesNotContain("Company Header");
   }
 }
