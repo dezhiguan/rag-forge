@@ -28,9 +28,7 @@ class ImagePipelineServiceTest {
 
   @Mock private DocumentMapper documentMapper;
   @Mock private ObjectStorage objectStorage;
-  @Mock private OcrClient ocrClient;
-  @Mock private VisionCaptionClient visionCaptionClient;
-  @Mock private ImageEmbeddingClient imageEmbeddingClient;
+  @Mock private ImagePipelineSupport imagePipelineSupport;
   @Mock private EsIndexService esIndexService;
   @Mock private JdbcTemplate jdbcTemplate;
 
@@ -42,9 +40,7 @@ class ImagePipelineServiceTest {
         new ImagePipelineService(
             documentMapper,
             objectStorage,
-            ocrClient,
-            visionCaptionClient,
-            imageEmbeddingClient,
+            imagePipelineSupport,
             esIndexService,
             jdbcTemplate);
   }
@@ -61,9 +57,12 @@ class ImagePipelineServiceTest {
     when(documentMapper.selectById(7L)).thenReturn(doc);
     when(objectStorage.get("bucket", "tenant/kb/arch.png"))
         .thenReturn(new ByteArrayInputStream(new byte[] {1, 2, 3}));
-    when(imageEmbeddingClient.embedImage(any(), any())).thenReturn(new float[1024]);
-    when(ocrClient.recognize(any(), any(), any())).thenThrow(new RuntimeException("ocr down"));
-    when(visionCaptionClient.describe(any(), any(), any())).thenReturn("架构图描述");
+    DocumentChunk noOcr = new DocumentChunk();
+    noOcr.setChunkModality(ChunkModality.IMAGE_NO_OCR);
+    DocumentChunk desc = new DocumentChunk();
+    desc.setChunkModality(ChunkModality.IMAGE_DESC);
+    when(imagePipelineSupport.processStandaloneImage(any(), any(), any(), any(Integer.class), any()))
+        .thenReturn(List.of(noOcr, desc));
     doNothing().when(jdbcTemplate).query(any(PreparedStatementCreator.class), any(RowCallbackHandler.class));
 
     service.processImageDocument(7L);

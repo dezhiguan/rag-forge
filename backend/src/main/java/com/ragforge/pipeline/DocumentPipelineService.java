@@ -14,6 +14,11 @@ import com.ragforge.pipeline.chunker.Chunk;
 import com.ragforge.pipeline.chunker.ChunkingResult;
 import com.ragforge.pipeline.chunker.ChunkingService;
 import com.ragforge.pipeline.embedder.EmbeddingService;
+import com.ragforge.pipeline.image.EmbeddedImageExtractor;
+import com.ragforge.pipeline.image.ExtractedImage;
+import com.ragforge.pipeline.image.ImageChunkContext;
+import com.ragforge.pipeline.image.ImagePipelineService;
+import com.ragforge.pipeline.image.ImagePipelineSupport;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
@@ -24,7 +29,9 @@ import com.ragforge.pipeline.cleaner.CleaningPipeline;
 import com.ragforge.pipeline.cleaner.RawText;
 import com.ragforge.pipeline.cleaner.ResolvedCleanProfile;
 import com.ragforge.storage.ObjectStorage;
+import com.ragforge.storage.ObjectMeta;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,6 +41,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +67,9 @@ public class DocumentPipelineService {
   private static final String STATUS_COMPLETED = "COMPLETED";
   private static final String STATUS_FAILED = "FAILED";
   private static final String STATUS_PENDING = "PENDING";
+  private static final int MIN_IMAGE_BYTES = 8 * 1024;
+  private static final int MAX_CONCURRENT_IMAGE_TASKS = 3;
+  private static final long MAX_IMAGE_PROCESSING_MS_PER_DOC = 120_000L;
 
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper documentChunkMapper;
@@ -69,6 +83,9 @@ public class DocumentPipelineService {
   private final CleaningPipeline cleaningPipeline;
   private final CleanProfileService cleanProfileService;
   private final ObjectMapper objectMapper;
+  private final ImagePipelineSupport imagePipelineSupport;
+  private final ImagePipelineService imagePipelineService;
+  private final List<EmbeddedImageExtractor> embeddedImageExtractors;
 
   @Lazy @Autowired private DocumentPipelineService self;
 
@@ -169,10 +186,15 @@ public class DocumentPipelineService {
         throw new BizException("ES 索引写入失败，等待重试或补偿");
       }
 
+      List<DocumentChunk> imageChunks = processEmbeddedImages(parseResult.getImages(), doc, kb, chunks.size());
+      if (!imageChunks.isEmpty()) {
+        chunkCount += imageChunks.size();
+      }
+
       stageStart = System.currentTimeMillis();
       self.updateStatus(documentId, STATUS_COMPLETED);
-      self.updateDocumentChunkCount(documentId, chunks.size());
-      self.incrementKbCount(doc.getKbId(), chunks.size(), incrementDocCount);
+      self.updateDocumentChunkCount(documentId, chunks.size() + imageChunks.size());
+      self.incrementKbCount(doc.getKbId(), chunks.size() + imageChunks.size(), incrementDocCount);
       finalizeLatencyMs = System.currentTimeMillis() - stageStart;
 
       log.info(
@@ -446,7 +468,13 @@ public class DocumentPipelineService {
     String contentType = normalizeContentType(doc.getFileType());
     if (contentType.startsWith("text/")) {
       long start = System.currentTimeMillis();
-      return new ParseResult(readRawText(doc), System.currentTimeMillis() - start, 1);
+      String rawText = readRawText(doc);
+      return new ParseResult(
+          rawText,
+          System.currentTimeMillis() - start,
+          1,
+          List.of(),
+          extractEmbeddedImagesFromObject(doc));
     }
 
     if (isTikaContentType(contentType)) {
@@ -483,6 +511,109 @@ public class DocumentPipelineService {
     }
   }
 
+  private List<DocumentChunk> processEmbeddedImages(
+      List<ExtractedImage> images, Document doc, KnowledgeBase kb, int startChunkIndex) {
+    if (images == null || images.isEmpty() || !"ON".equalsIgnoreCase(kb.getImageProcessingMode())) {
+      return List.of();
+    }
+    long deadline = System.currentTimeMillis() + MAX_IMAGE_PROCESSING_MS_PER_DOC;
+    Semaphore concurrency = new Semaphore(MAX_CONCURRENT_IMAGE_TASKS);
+    AtomicInteger nextChunkIndex = new AtomicInteger(startChunkIndex);
+    List<CompletableFuture<List<DocumentChunk>>> futures = new ArrayList<>();
+    for (ExtractedImage image : images) {
+      futures.add(
+          CompletableFuture.supplyAsync(
+              () -> processOneEmbeddedImage(image, doc, deadline, concurrency, nextChunkIndex)));
+    }
+
+    List<DocumentChunk> allImageChunks = new ArrayList<>();
+    for (CompletableFuture<List<DocumentChunk>> future : futures) {
+      long remainingMs = Math.max(1, deadline - System.currentTimeMillis());
+      try {
+        allImageChunks.addAll(future.get(remainingMs, TimeUnit.MILLISECONDS));
+      } catch (Exception e) {
+        log.warn("Embedded image future skipped: docId={} err={}", doc.getId(), e.getMessage());
+      }
+    }
+
+    if (allImageChunks.isEmpty()) {
+      return List.of();
+    }
+    try {
+      List<DocumentChunk> inserted = imagePipelineService.insertImageChunks(allImageChunks);
+      esIndexService.indexChunks(inserted, doc);
+      return inserted;
+    } catch (Exception e) {
+      log.warn("Embedded image chunks skipped after processing: docId={} err={}", doc.getId(), e.getMessage());
+      return List.of();
+    }
+  }
+
+  private List<DocumentChunk> processOneEmbeddedImage(
+      ExtractedImage image,
+      Document doc,
+      long deadline,
+      Semaphore concurrency,
+      AtomicInteger nextChunkIndex) {
+    boolean acquired = false;
+    try {
+      concurrency.acquire();
+      acquired = true;
+      if (System.currentTimeMillis() > deadline || image == null || image.getBytes() == null) {
+        return List.of();
+      }
+      if (image.getBytes().length < MIN_IMAGE_BYTES) {
+        return List.of();
+      }
+      String imageKey = embeddedImageKey(doc, image);
+      if (StringUtils.hasText(doc.getStorageBucket())) {
+        objectStorage.put(
+            doc.getStorageBucket(),
+            imageKey,
+            new ByteArrayInputStream(image.getBytes()),
+            new ObjectMeta(image.getContentType(), (long) image.getBytes().length, null, Map.of()));
+      }
+      return imagePipelineSupport.processSingleImage(
+          image.getBytes(),
+          image.getContentType(),
+          doc,
+          ImageChunkContext.of(image),
+          nextChunkIndex.getAndAdd(2),
+          imageKey);
+    } catch (Exception e) {
+      log.warn(
+          "Embedded image failed (skip): docId={} fig={} err={}",
+          doc.getId(),
+          image == null ? null : image.getFigureIndex(),
+          e.getMessage());
+      return List.of();
+    } finally {
+      if (acquired) {
+        concurrency.release();
+      }
+    }
+  }
+
+  private static String embeddedImageKey(Document doc, ExtractedImage image) {
+    String base = StringUtils.hasText(doc.getStorageKey()) ? doc.getStorageKey() : "doc-" + doc.getId();
+    return "%s/embedded/p%s_fig%s.%s"
+        .formatted(
+            base,
+            image.getPageNo() == null ? 0 : image.getPageNo(),
+            image.getFigureIndex() == null ? 0 : image.getFigureIndex(),
+            extensionFor(image.getContentType()));
+  }
+
+  private static String extensionFor(String contentType) {
+    String normalized = normalizeContentType(contentType);
+    return switch (normalized) {
+      case "image/jpeg" -> "jpg";
+      case "image/gif" -> "gif";
+      case "image/webp" -> "webp";
+      default -> "png";
+    };
+  }
+
   private String readRawText(Document doc) throws Exception {
     if (StringUtils.hasText(doc.getStorageBucket())) {
       try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
@@ -490,6 +621,41 @@ public class DocumentPipelineService {
       }
     }
     return Files.readString(Path.of(doc.getFilePath()), StandardCharsets.UTF_8);
+  }
+
+  private List<ExtractedImage> extractEmbeddedImagesFromObject(Document doc) {
+    String contentType = normalizeContentType(doc.getFileType());
+    EmbeddedImageExtractor extractor =
+        embeddedImageExtractors.stream()
+            .filter(candidate -> candidate.supports(contentType))
+            .findFirst()
+            .orElse(null);
+    if (extractor == null) {
+      return List.of();
+    }
+    Path temp = null;
+    try {
+      temp = Files.createTempFile("ragforge-embedded-", suffixFor(doc.getFilename()));
+      if (StringUtils.hasText(doc.getStorageBucket())) {
+        try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
+          Files.copy(in, temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+      } else {
+        Files.copy(Path.of(doc.getFilePath()), temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+      }
+      return extractor.extract(temp, contentType);
+    } catch (Exception e) {
+      log.warn("Embedded image extraction skipped for text doc: docId={} err={}", doc.getId(), e.getMessage());
+      return List.of();
+    } finally {
+      if (temp != null) {
+        try {
+          Files.deleteIfExists(temp);
+        } catch (Exception ignored) {
+          // 临时文件清理失败不影响主链路。
+        }
+      }
+    }
   }
 
   private static String normalizeContentType(String contentType) {

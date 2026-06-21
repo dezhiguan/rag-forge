@@ -31,6 +31,8 @@ public class KnowledgeBase {
   @TableField(value = "chunker_profile_json", typeHandler = JsonbStringTypeHandler.class)
   private String chunkerProfileJson;
 
+  private String imageProcessingMode;
+
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 }

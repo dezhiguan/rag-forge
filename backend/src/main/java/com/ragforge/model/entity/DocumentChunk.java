@@ -36,6 +36,9 @@ public class DocumentChunk {
   @TableField(value = "chunker_params_json", typeHandler = JsonbStringTypeHandler.class)
   private String chunkerParamsJson;
 
+  @TableField(value = "chunk_metadata_json", typeHandler = JsonbStringTypeHandler.class)
+  private String chunkMetadataJson;
+
   private String headingPath;
   private String chunkModality;
   private String imageKey;

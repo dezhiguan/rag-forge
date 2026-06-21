@@ -30,6 +30,11 @@ import com.ragforge.pipeline.chunker.ChunkParams;
 import com.ragforge.pipeline.chunker.ChunkingResult;
 import com.ragforge.pipeline.chunker.ChunkingService;
 import com.ragforge.pipeline.embedder.EmbeddingService;
+import com.ragforge.pipeline.image.EmbeddedImageExtractor;
+import com.ragforge.pipeline.image.ExtractedImage;
+import com.ragforge.pipeline.image.ImageChunkContext;
+import com.ragforge.pipeline.image.ImagePipelineService;
+import com.ragforge.pipeline.image.ImagePipelineSupport;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.cleaner.CleanProfile;
 import com.ragforge.pipeline.cleaner.CleanProfileService;
@@ -40,6 +45,7 @@ import com.ragforge.pipeline.cleaner.ResolvedCleanProfile;
 import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
 import com.ragforge.storage.ObjectStorage;
+import java.util.Map;
 import java.io.ByteArrayInputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -77,6 +83,8 @@ class DocumentPipelineServiceTest {
   @Mock private ObjectStorage objectStorage;
   @Mock private CleaningPipeline cleaningPipeline;
   @Mock private CleanProfileService cleanProfileService;
+  @Mock private ImagePipelineSupport imagePipelineSupport;
+  @Mock private ImagePipelineService imagePipelineService;
 
   @Spy @InjectMocks private DocumentPipelineService documentPipelineService;
 
@@ -84,6 +92,7 @@ class DocumentPipelineServiceTest {
   void setUp() {
     ReflectionTestUtils.setField(documentPipelineService, "self", documentPipelineService);
     ReflectionTestUtils.setField(documentPipelineService, "objectMapper", new ObjectMapper());
+    ReflectionTestUtils.setField(documentPipelineService, "embeddedImageExtractors", List.<EmbeddedImageExtractor>of());
     stubPipelineSideEffects();
     when(cleanProfileService.resolveForKb(anyLong()))
         .thenReturn(new ResolvedCleanProfile(null, new CleanProfile()));
@@ -306,6 +315,70 @@ class DocumentPipelineServiceTest {
   }
 
   @Test
+  void processDocument_imageProcessingOffSkipsEmbeddedImages() throws Exception {
+    Document doc = document(9L, 10L, "mixed.pdf");
+    KnowledgeBase kb = knowledgeBase(10L);
+    kb.setImageProcessingMode("OFF");
+    List<Chunk> chunks = List.of(new Chunk(0, "text", 4));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(700L, 0));
+    ExtractedImage image = extractedImage(0);
+
+    when(documentMapper.selectById(9L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString()))
+        .thenReturn(new ParseResult("text", 1L, 1, List.of("text"), List.of(image)));
+    when(chunkingService.split(eq(doc), eq(kb), eq("text"))).thenReturn(chunkingResult(chunks));
+    when(embeddingService.embedBatch(List.of("text"))).thenReturn(vectors);
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(eq(9L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(9L);
+
+    verify(imagePipelineSupport, never()).processSingleImage(any(), any(), any(), any(), anyInt(), any());
+    verify(imagePipelineService, never()).insertImageChunks(anyList());
+    verify(documentPipelineService).updateDocumentChunkCount(9L, 1);
+  }
+
+  @Test
+  void processDocument_imageProcessingOnProcessesEmbeddedImages() throws Exception {
+    Document doc = document(10L, 10L, "mixed.pdf");
+    KnowledgeBase kb = knowledgeBase(10L);
+    kb.setImageProcessingMode("ON");
+    List<Chunk> chunks = List.of(new Chunk(0, "text", 4));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> insertedText = List.of(chunkEntity(800L, 0));
+    DocumentChunk imageDesc = chunkEntity(801L, 1);
+    imageDesc.setChunkModality("IMAGE_DESC");
+    DocumentChunk ocrText = chunkEntity(802L, 2);
+    ocrText.setChunkModality("OCR_TEXT");
+    List<DocumentChunk> imageChunks = List.of(ocrText, imageDesc);
+
+    when(documentMapper.selectById(10L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString()))
+        .thenReturn(new ParseResult("text", 1L, 1, List.of("text"), List.of(extractedImage(0))));
+    when(chunkingService.split(eq(doc), eq(kb), eq("text"))).thenReturn(chunkingResult(chunks));
+    when(embeddingService.embedBatch(List.of("text"))).thenReturn(vectors);
+    doReturn(insertedText)
+        .when(documentPipelineService)
+        .insertChunks(eq(10L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
+    when(esIndexService.indexChunks(insertedText, doc)).thenReturn(true);
+    when(imagePipelineSupport.processSingleImage(any(), any(), eq(doc), any(ImageChunkContext.class), eq(1), anyString()))
+        .thenReturn(imageChunks);
+    when(imagePipelineService.insertImageChunks(imageChunks)).thenReturn(imageChunks);
+    when(esIndexService.indexChunks(imageChunks, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(10L);
+
+    verify(imagePipelineSupport).processSingleImage(any(), eq("image/png"), eq(doc), any(ImageChunkContext.class), eq(1), anyString());
+    verify(imagePipelineService).insertImageChunks(imageChunks);
+    verify(documentPipelineService).updateDocumentChunkCount(10L, 3);
+  }
+
+  @Test
   void insertChunks_batchesLargeInput() throws Exception {
     List<Chunk> chunks = new ArrayList<>();
     List<float[]> vectors = new ArrayList<>();
@@ -405,7 +478,14 @@ class DocumentPipelineServiceTest {
     kb.setChunkOverlap(50);
     kb.setDocCount(0);
     kb.setChunkCount(0);
+    kb.setImageProcessingMode("OFF");
     return kb;
+  }
+
+  private static ExtractedImage extractedImage(int index) {
+    byte[] bytes = new byte[9 * 1024];
+    bytes[0] = 1;
+    return new ExtractedImage(bytes, "image/png", 1, index, "surrounding text", "Figure " + index);
   }
 
   private static ChunkingResult chunkingResult(List<Chunk> chunks) {

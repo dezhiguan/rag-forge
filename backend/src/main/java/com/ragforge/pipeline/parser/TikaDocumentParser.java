@@ -1,12 +1,15 @@
 package com.ragforge.pipeline.parser;
 
 import com.ragforge.common.BizException;
+import com.ragforge.pipeline.image.EmbeddedImageExtractor;
+import com.ragforge.pipeline.image.ExtractedImage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -19,6 +22,7 @@ import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.parser.Parser;
 import org.apache.tika.sax.BodyContentHandler;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.xml.sax.SAXException;
 
@@ -30,6 +34,16 @@ public class TikaDocumentParser implements DocumentParser {
       Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm");
 
   private final Parser parser = new AutoDetectParser();
+  private final List<EmbeddedImageExtractor> imageExtractors;
+
+  public TikaDocumentParser() {
+    this(List.of());
+  }
+
+  @Autowired
+  public TikaDocumentParser(List<EmbeddedImageExtractor> imageExtractors) {
+    this.imageExtractors = imageExtractors == null ? List.of() : imageExtractors;
+  }
 
   @Override
   public ParseResult parse(String filePath, String fileType) {
@@ -61,12 +75,28 @@ public class TikaDocumentParser implements DocumentParser {
       pageCount = 1;
     }
     long parseTimeMs = System.currentTimeMillis() - start;
+    List<ExtractedImage> images = extractImages(file.toPath(), fileType);
 
     if ("pdf".equals(normalizedType) && pageCount > 0 && text.trim().isEmpty()) {
       log.warn("可能为扫描件，无文字层: {}", filePath);
     }
 
-    return new ParseResult(text, parseTimeMs, pageCount, pageBoundaries);
+    return new ParseResult(text, parseTimeMs, pageCount, pageBoundaries, images);
+  }
+
+  private List<ExtractedImage> extractImages(Path filePath, String fileType) {
+    for (EmbeddedImageExtractor extractor : imageExtractors) {
+      if (!extractor.supports(fileType)) {
+        continue;
+      }
+      try {
+        return extractor.extract(filePath, fileType);
+      } catch (Exception e) {
+        log.warn("Embedded image extraction skipped: file={} type={} err={}", filePath, fileType, e.getMessage());
+        return List.of();
+      }
+    }
+    return List.of();
   }
 
   private String extractText(File file) {
@@ -116,6 +146,8 @@ public class TikaDocumentParser implements DocumentParser {
     normalized = normalized.trim();
     return switch (normalized) {
       case "application/pdf" -> "pdf";
+      case "application/msword" -> "doc";
+      case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx";
       case "text/markdown" -> "md";
       case "text/html" -> "html";
       default -> normalized;

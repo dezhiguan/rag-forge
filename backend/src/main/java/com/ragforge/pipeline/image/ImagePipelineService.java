@@ -1,6 +1,5 @@
 package com.ragforge.pipeline.image;
 
-import com.pgvector.PGvector;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.model.entity.Document;
@@ -11,7 +10,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,9 +30,7 @@ public class ImagePipelineService {
 
   private final DocumentMapper documentMapper;
   private final ObjectStorage objectStorage;
-  private final OcrClient ocrClient;
-  private final VisionCaptionClient visionCaptionClient;
-  private final ImageEmbeddingClient imageEmbeddingClient;
+  private final ImagePipelineSupport imagePipelineSupport;
   private final EsIndexService esIndexService;
   private final JdbcTemplate jdbcTemplate;
 
@@ -49,26 +45,8 @@ public class ImagePipelineService {
       cleanup(documentId);
 
       byte[] imageBytes = loadImage(doc);
-      float[] imageVector = imageEmbeddingClient.embedImage(imageBytes, doc.getFileType());
-      List<DocumentChunk> chunks = new ArrayList<>();
-
-      try {
-        OcrResult ocr = ocrClient.recognize(imageBytes, doc.getFileType(), doc.getFilename());
-        if (StringUtils.hasText(ocr.getText())) {
-          chunks.add(buildChunk(doc, 0, ocr.getText(), ChunkModality.OCR_TEXT, imageVector));
-        } else {
-          chunks.add(buildChunk(doc, 0, "OCR 未识别到文字", ChunkModality.IMAGE_NO_OCR, imageVector));
-        }
-      } catch (Exception e) {
-        log.warn("OCR failed but image pipeline will continue: docId={} error={}", documentId, e.getMessage());
-        chunks.add(buildChunk(doc, 0, "OCR 失败：" + e.getMessage(), ChunkModality.IMAGE_NO_OCR, imageVector));
-      }
-
-      String description = visionCaptionClient.describe(imageBytes, doc.getFileType(), doc.getFilename());
-      if (!StringUtils.hasText(description)) {
-        description = "图片文件：" + doc.getFilename();
-      }
-      chunks.add(buildChunk(doc, chunks.size(), description, ChunkModality.IMAGE_DESC, imageVector));
+      List<DocumentChunk> chunks =
+          imagePipelineSupport.processStandaloneImage(imageBytes, doc.getFileType(), doc, 0, doc.getStorageKey());
 
       List<DocumentChunk> inserted = insertImageChunks(chunks);
       esIndexService.indexChunks(inserted, doc);
@@ -105,7 +83,7 @@ public class ImagePipelineService {
             """
             INSERT INTO document_chunks (
               doc_id, kb_id, chunk_index, content, content_vector, image_vector,
-              token_count, chunk_type, chunk_modality, image_key, created_at
+              token_count, chunk_type, chunk_modality, image_key, chunk_metadata_json, created_at
             )
             VALUES
             """);
@@ -113,7 +91,7 @@ public class ImagePipelineService {
       if (i > 0) {
         sql.append(", ");
       }
-      sql.append("(?, ?, ?, ?, NULL, ?::vector, ?, ?, ?, ?, ?)");
+      sql.append("(?, ?, ?, ?, NULL, ?::vector, ?, ?, ?, ?, ?::jsonb, ?)");
     }
     sql.append(" RETURNING id, chunk_index");
 
@@ -132,6 +110,7 @@ public class ImagePipelineService {
             ps.setString(idx++, chunk.getChunkType());
             ps.setString(idx++, chunk.getChunkModality());
             ps.setString(idx++, chunk.getImageKey());
+            ps.setString(idx++, chunk.getChunkMetadataJson());
             ps.setObject(idx++, now);
           }
           return ps;
@@ -177,21 +156,6 @@ public class ImagePipelineService {
       }
     }
     return Files.readAllBytes(Path.of(doc.getFilePath()));
-  }
-
-  private DocumentChunk buildChunk(
-      Document doc, int index, String content, String modality, float[] imageVector) {
-    DocumentChunk chunk = new DocumentChunk();
-    chunk.setDocId(doc.getId());
-    chunk.setKbId(doc.getKbId());
-    chunk.setChunkIndex(index);
-    chunk.setContent(content);
-    chunk.setTokenCount(content == null ? 0 : Math.max(1, content.length() / 2));
-    chunk.setChunkType(modality);
-    chunk.setChunkModality(modality);
-    chunk.setImageKey(doc.getStorageKey());
-    chunk.setImageVector(new PGvector(imageVector));
-    return chunk;
   }
 
   private static String truncate(String message) {
