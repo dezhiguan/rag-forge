@@ -44,7 +44,7 @@ public class SecurityConfig {
                 auth.requestMatchers("/api/v1/health", "/actuator/health", "/api/auth/**").permitAll()
                     .requestMatchers("/api/v1/.well-known/ragforge-admin-backend-jwks.json").permitAll()
                     .requestMatchers("/api/v1/events/**").permitAll()
-                    .requestMatchers("/api/v1/search", "/api/v1/internal/**", "/mcp/**", "/sse", "/sse/**")
+                    .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/internal/**", "/mcp/**", "/sse", "/sse/**")
                     .access(
                         (authentication, context) ->
                             new AuthorizationDecision(

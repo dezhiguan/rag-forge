@@ -32,6 +32,9 @@ public class KnowledgeBase {
   private String chunkerProfileJson;
 
   private String imageProcessingMode;
+  private String answerMode;
+  private String answerModel;
+  private Long promptTemplateId;
 
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;

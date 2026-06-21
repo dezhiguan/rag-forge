@@ -42,8 +42,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         RagAuthContext context;
         try {
           claims = jwtVerifier.verify(token);
-          if (authEventService.isJwtRevoked(
-              new AuthJwtToken(claims.string("jti"), claims.userKey(), claims.longValue("iat")))) {
+          if (isJwtRevoked(claims)) {
             writeUnauthorized(response);
             return;
           }
@@ -72,6 +71,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     } finally {
       RagAuthContextHolder.clear();
       SecurityContextHolder.clearContext();
+    }
+  }
+
+  private boolean isJwtRevoked(JwtClaims claims) {
+    try {
+      return authEventService.isJwtRevoked(
+          new AuthJwtToken(claims.string("jti"), claims.userKey(), claims.longValue("iat")));
+    } catch (RuntimeException ex) {
+      log.warn("JWT revocation check unavailable, continuing with signature-verified token: {}", ex.getMessage());
+      return false;
     }
   }
 

@@ -1,7 +1,10 @@
 package com.ragforge.common;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.web.TraceIds;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -18,11 +21,16 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
   @ExceptionHandler(BizException.class)
-  public ResponseEntity<Result<Map<String, Object>>> handleBizException(BizException ex) {
+  public void handleBizException(BizException ex, HttpServletResponse response) throws IOException {
     Result<Map<String, Object>> body =
         new Result<>(ex.getCode(), ex.getMessage(), ex.getData(), TraceIds.current());
-    return ResponseEntity.status(ex.getCode()).body(body);
+    response.setStatus(ex.getCode());
+    response.setContentType("application/json");
+    response.setCharacterEncoding("UTF-8");
+    OBJECT_MAPPER.writeValue(response.getWriter(), body);
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)

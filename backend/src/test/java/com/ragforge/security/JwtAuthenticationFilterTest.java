@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.events.AuthEventService;
+import java.util.Set;
 import java.util.Map;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,10 +59,12 @@ class JwtAuthenticationFilterTest {
   }
 
   @Test
-  void redisFailureDuringRevocationCheckReturnsServerError() throws Exception {
+  void redisFailureDuringRevocationCheckContinuesWithVerifiedToken() throws Exception {
     String token = "header.payload.signature";
     JwtClaims claims = new JwtClaims(Map.of("jti", "jti-1", "sub", "42", "iat", 100));
     when(jwtVerifier.verify(token)).thenReturn(claims);
+    when(jwtVerifier.toContext(claims))
+        .thenReturn(new RagAuthContext(42L, "tn_1", "ADMIN", Set.of(), Set.of(), Set.of(), "USER", "user:42"));
     when(authEventService.isJwtRevoked(org.mockito.ArgumentMatchers.any())).thenThrow(new RuntimeException("redis down"));
 
     MockHttpServletRequest request = new MockHttpServletRequest();
@@ -71,7 +74,7 @@ class JwtAuthenticationFilterTest {
 
     filter.doFilter(request, response, chain);
 
-    assertThat(response.getStatus()).isEqualTo(500);
-    verify(chain, never()).doFilter(request, response);
+    assertThat(response.getStatus()).isEqualTo(200);
+    verify(chain).doFilter(request, response);
   }
 }

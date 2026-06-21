@@ -38,6 +38,12 @@ public class L3PiiMaskCleaner implements Cleaner {
     return result;
   }
 
+  public String mask(String text) {
+    CleanProfile profile = new CleanProfile();
+    profile.setPiiPolicy(PiiPolicy.MASK);
+    return clean(new RawText(text, "text/plain", 1), profile).getCleanedText();
+  }
+
   private String replace(
       String text,
       Pattern pattern,

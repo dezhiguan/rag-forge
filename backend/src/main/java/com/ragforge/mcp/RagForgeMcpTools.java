@@ -1,6 +1,9 @@
 package com.ragforge.mcp;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ragforge.answer.AnswerModels.AnswerRequest;
+import com.ragforge.answer.AnswerModels.AnswerResponse;
+import com.ragforge.answer.AnswerService;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.search.RetrievalService;
@@ -24,6 +27,7 @@ import java.util.stream.Collectors;
 public class RagForgeMcpTools {
 
     private final RetrievalService retrievalService;
+    private final AnswerService answerService;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KbAccessGuard kbAccessGuard;
 
@@ -101,6 +105,29 @@ public class RagForgeMcpTools {
             log.warn("MCP listKnowledgeBases failed: {}", e.getMessage());
             return "获取知识库列表失败：" + e.getMessage();
         }
+    }
+
+    @Tool(name = "answerWithCitations",
+            description = "用 RAGForge 知识库回答问题，返回带引用的答案（含图片 URL）")
+    public AnswerResponse answer(
+            @ToolParam(description = "用户问题") String query,
+            @ToolParam(description = "知识库 ID 列表") List<Long> kbIds) {
+        List<Long> requested = kbIds == null ? List.of() : kbIds;
+        Set<Long> readableKbIds = requested.isEmpty()
+                ? kbAccessGuard.allReadableKbIds()
+                : kbAccessGuard.filterReadable(requested);
+        if (readableKbIds.isEmpty()) {
+            throw new IllegalArgumentException("没有可访问的知识库。");
+        }
+        AnswerRequest request = new AnswerRequest();
+        request.setQuery(query);
+        request.setKbIds(new ArrayList<>(readableKbIds));
+        request.setRetrievalStrategy("hybrid");
+        request.setAnswerMode("ON");
+        request.setStream(false);
+        request.setTopK(10);
+        request.setMaxTokens(800);
+        return answerService.answerBlocking(request);
     }
 
     private List<Long> parseKbIds(String kbIds) {
