@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.ragforge.model.dto.SearchRequest.SearchFilter;
 import com.ragforge.pipeline.embedder.EmbeddingService;
+import com.ragforge.pipeline.image.ImageEmbeddingClient;
 import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -29,13 +30,14 @@ import org.springframework.jdbc.core.RowMapper;
 class VectorSearchServiceTest {
 
   @Mock private EmbeddingService embedder;
+  @Mock private ImageEmbeddingClient imageEmbeddingClient;
   @Mock private JdbcTemplate jdbcTemplate;
 
   private VectorSearchService vectorSearchService;
 
   @BeforeEach
   void setUp() {
-    vectorSearchService = new VectorSearchService(embedder, jdbcTemplate);
+    vectorSearchService = new VectorSearchService(embedder, imageEmbeddingClient, jdbcTemplate);
   }
 
   @Test

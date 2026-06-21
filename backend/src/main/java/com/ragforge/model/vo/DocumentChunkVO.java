@@ -10,4 +10,6 @@ public class DocumentChunkVO {
   private Integer tokenCount;
   private String chunkerStrategy;
   private String headingPath;
+  private String chunkModality;
+  private String imageKey;
 }

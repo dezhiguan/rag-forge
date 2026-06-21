@@ -33,6 +33,19 @@
             </select>
           </div>
           <div class="param-row">
+            <div class="param-label">检索模态</div>
+            <select v-model="config.modality" class="param-select">
+              <option value="text">text（文本）</option>
+              <option value="image">image（图问图）</option>
+              <option value="both">both（文本 + 图像）</option>
+            </select>
+          </div>
+          <div v-if="config.modality === 'image' || config.modality === 'both'" class="param-row">
+            <div class="param-label">Query 图片</div>
+            <input class="param-file" type="file" accept="image/*" @change="onQueryImageChange">
+            <div v-if="queryImageName" class="param-hint">{{ queryImageName }}</div>
+          </div>
+          <div class="param-row">
             <div class="param-label">Top-K <span style="color:var(--text-muted);font-weight:400;font-size:10px">返回结果数</span></div>
             <div class="param-slider">
               <input type="range" v-model.number="config.topK" min="1" max="20">
@@ -160,6 +173,7 @@
                   >
                 </label>
                 <span class="result-doc">📄 {{ r.filename }} #{{ r.chunkIndex }}</span>
+                <span v-if="r.chunkModality" class="result-modality">{{ r.chunkModality }}</span>
                 <span
                   class="result-score"
                   :style="{ color: scoreColor(displayScore(r)) }"
@@ -342,7 +356,10 @@ const config = reactive({
   rerankTopN: 5,
   compareMode: '单策略',
   compareStrategyB: 'hybrid',
+  modality: 'text',
 })
+const queryImageBase64 = ref('')
+const queryImageName = ref('')
 
 const compareModes = ['单策略', 'A/B 对比', '五路对比']
 const compareResults = ref([])
@@ -625,6 +642,10 @@ function buildPayload(q, strategy) {
     query: q,
     topK: config.topK,
     strategy,
+    modality: config.modality,
+  }
+  if ((config.modality === 'image' || config.modality === 'both') && queryImageBase64.value) {
+    payload.queryImageBase64 = queryImageBase64.value
   }
   if (config.kbId != null) {
     payload.kbIds = [config.kbId]
@@ -643,8 +664,12 @@ function buildPayload(q, strategy) {
 
 async function doSearch() {
   const q = query.value.trim()
-  if (!q) {
+  if (!q && config.modality !== 'image') {
     alert('请输入检索查询')
+    return
+  }
+  if (config.modality === 'image' && !queryImageBase64.value) {
+    alert('请选择 Query 图片')
     return
   }
 
@@ -656,7 +681,7 @@ async function doSearch() {
   const strategies = resolveStrategies()
   try {
     const searches = strategies.map(async (s) => {
-      const payload = buildPayload(q, s)
+      const payload = buildPayload(q || 'image-query', s)
       const start = performance.now()
       try {
         const res = await searchApi(payload)
@@ -722,6 +747,19 @@ async function doSearch() {
   } finally {
     searching.value = false
   }
+}
+
+function onQueryImageChange(event) {
+  const file = event.target.files?.[0]
+  queryImageBase64.value = ''
+  queryImageName.value = ''
+  if (!file) return
+  queryImageName.value = `${file.name} · ${(file.size / 1024).toFixed(1)} KB`
+  const reader = new FileReader()
+  reader.onload = () => {
+    queryImageBase64.value = String(reader.result || '')
+  }
+  reader.readAsDataURL(file)
 }
 
 async function doLlmGenerate() {
@@ -899,6 +937,7 @@ onMounted(async () => {
 .param-slider input[type="range"] { flex: 1; height: 4px; -webkit-appearance: none; background: var(--border); border-radius: 2px; outline: none; }
 .param-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--blue); border-radius: 50%; cursor: pointer; }
 .param-val { font-size: 11px; font-weight: 600; color: var(--text); min-width: 28px; text-align: right; }
+.param-file { color: var(--text-secondary); font-size: 12px; width: 100%; }
 .param-hint { margin: -2px 0 10px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
 .divider { border-top: 1px solid var(--border); margin: 12px 0; }
 .radio-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; font-size: 11px; }
@@ -922,6 +961,7 @@ onMounted(async () => {
 .result-check input { cursor: pointer; }
 .result-doc { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-score { font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.result-modality { border: 1px solid rgba(14, 165, 233, 0.28); border-radius: 6px; background: rgba(14, 165, 233, 0.08); color: #0369a1; flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 2px 6px; }
 .result-text { color: var(--gray); line-height: 1.5; margin-bottom: 4px; word-break: break-word; }
 .result-text :deep(mark.hl) { background: #fef08a; color: inherit; padding: 0 2px; border-radius: 2px; }
 .result-meta { color: var(--text-muted); font-size: 9px; line-height: 1.5; word-break: break-word; }

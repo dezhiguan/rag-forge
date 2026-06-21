@@ -88,8 +88,24 @@ public class RetrievalService {
       int topK,
       int rerankTopN,
       com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    return retrieve(
+        query, null, kbIds, docIds, strategy, vectorWeight, topK, rerankTopN, filter, null);
+  }
+
+  public RetrievalOutput retrieve(
+      String query,
+      String queryImageBase64,
+      List<Long> kbIds,
+      List<Long> docIds,
+      String strategy,
+      Double vectorWeight,
+      int topK,
+      int rerankTopN,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter,
+      String modality) {
     requireKbScope(kbIds);
     String normalizedStrategy = normalizeStrategy(strategy);
+    String normalizedModality = normalizeModality(modality);
     Semaphore semaphore = semaphoreFor(normalizedStrategy);
     int timeoutMs = timeoutMsFor(normalizedStrategy);
     boolean acquired = false;
@@ -105,13 +121,15 @@ public class RetrievalService {
               () ->
                   retrieveInternal(
                       query,
+                      queryImageBase64,
                       kbIds,
                       docIds,
                       normalizedStrategy,
                       vectorWeight,
                       topK,
                       rerankTopN,
-                      filter),
+                      filter,
+                      normalizedModality),
               retrievalExecutor);
       return future.get(timeoutMs, TimeUnit.MILLISECONDS);
     } catch (TimeoutException e) {
@@ -149,13 +167,15 @@ public class RetrievalService {
 
   private RetrievalOutput retrieveInternal(
       String query,
+      String queryImageBase64,
       List<Long> kbIds,
       List<Long> docIds,
       String normalizedStrategy,
       Double vectorWeight,
       int topK,
       int rerankTopN,
-      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter,
+      String modality) {
     long start = System.currentTimeMillis();
     double normalizedVectorWeight = normalizeVectorWeight(vectorWeight);
 
@@ -175,7 +195,17 @@ public class RetrievalService {
     Long rerankLatencyMs = null;
     List<SearchResult> results;
 
-    if ("rewrite".equals(normalizedStrategy)) {
+    if ("image".equals(modality)) {
+      long vectorStart = System.currentTimeMillis();
+      results = vectorSearchService.searchImage(query, queryImageBase64, kbIds, docIds, topK, filter);
+      vectorLatencyMs = System.currentTimeMillis() - vectorStart;
+      normalizedStrategy = "image";
+    } else if ("both".equals(modality)) {
+      long vectorStart = System.currentTimeMillis();
+      results = searchMultimodal(query, queryImageBase64, kbIds, docIds, topK, filter);
+      vectorLatencyMs = System.currentTimeMillis() - vectorStart;
+      normalizedStrategy = "both";
+    } else if ("rewrite".equals(normalizedStrategy)) {
       long rewriteStart = System.currentTimeMillis();
       rewrittenQueries = queryRewriter.rewrite(query);
       rewriteLatencyMs = System.currentTimeMillis() - rewriteStart;
@@ -448,7 +478,50 @@ public class RetrievalService {
     copy.setBm25Score(src.getBm25Score());
     copy.setFinalScore(src.getFinalScore());
     copy.setChunkType(src.getChunkType());
+    copy.setChunkModality(src.getChunkModality());
+    copy.setImageKey(src.getImageKey());
     return copy;
+  }
+
+  private List<SearchResult> searchMultimodal(
+      String query,
+      String queryImageBase64,
+      List<Long> kbIds,
+      List<Long> docIds,
+      int topK,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    int recallTopK = Math.max(topK * 4, 20);
+    List<SearchResult> textResults = vectorSearchService.search(query, kbIds, docIds, recallTopK, filter);
+    List<SearchResult> imageResults =
+        vectorSearchService.searchImage(query, queryImageBase64, kbIds, docIds, recallTopK, filter);
+    Map<Long, SearchResult> dedup = new LinkedHashMap<>();
+    Map<Long, Double> scores = new LinkedHashMap<>();
+    mergeRrf(textResults, dedup, scores, retrievalProperties.getMultimodalTextWeight());
+    mergeRrf(imageResults, dedup, scores, retrievalProperties.getMultimodalImageWeight());
+    List<SearchResult> merged = new ArrayList<>(dedup.values());
+    for (SearchResult result : merged) {
+      result.setFinalScore(scores.getOrDefault(result.getChunkId(), 0.0));
+    }
+    merged.sort(Comparator.comparingDouble(SearchResult::getFinalScore).reversed());
+    return merged.size() > topK ? new ArrayList<>(merged.subList(0, topK)) : merged;
+  }
+
+  private static void mergeRrf(
+      List<SearchResult> source,
+      Map<Long, SearchResult> dedup,
+      Map<Long, Double> scores,
+      double weight) {
+    if (source == null || source.isEmpty() || weight <= 0) {
+      return;
+    }
+    for (int i = 0; i < source.size(); i++) {
+      SearchResult item = source.get(i);
+      if (item.getChunkId() == null) {
+        continue;
+      }
+      dedup.computeIfAbsent(item.getChunkId(), id -> cloneResult(item));
+      scores.merge(item.getChunkId(), weight * (1.0 / (RRF_K + i + 1)), Double::sum);
+    }
   }
 
   private static List<SearchResult> applyRerankResults(
@@ -499,6 +572,16 @@ public class RetrievalService {
       return 0.55;
     }
     return Math.max(0, Math.min(1, raw));
+  }
+
+  private static String normalizeModality(String raw) {
+    if ("image".equalsIgnoreCase(raw)) {
+      return "image";
+    }
+    if ("both".equalsIgnoreCase(raw)) {
+      return "both";
+    }
+    return "text";
   }
 
   private static int queryLength(String query) {

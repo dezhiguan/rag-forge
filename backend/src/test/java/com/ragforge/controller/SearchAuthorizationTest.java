@@ -44,12 +44,12 @@ class SearchAuthorizationTest {
     SearchController controller = new SearchController(retrievalService, kbAccessGuard, retrievalLogService);
     SearchRequest req = request();
     when(kbAccessGuard.allReadableKbIds()).thenReturn(new LinkedHashSet<>(List.of(1L, 2L)));
-    when(retrievalService.retrieve(eq("java"), eq(List.of(1L, 2L)), any(), any(), any(), eq(8), eq(5), any()))
+    when(retrievalService.retrieve(eq("java"), any(), eq(List.of(1L, 2L)), any(), any(), any(), eq(8), eq(5), any(), eq("text")))
         .thenReturn(new RetrievalOutput(List.of(), 1L, "vector", null, null, 1L, null, null));
 
     controller.search(req);
 
-    verify(retrievalService).retrieve(eq("java"), eq(List.of(1L, 2L)), any(), any(), any(), eq(8), eq(5), any());
+    verify(retrievalService).retrieve(eq("java"), any(), eq(List.of(1L, 2L)), any(), any(), any(), eq(8), eq(5), any(), eq("text"));
   }
 
   @Test

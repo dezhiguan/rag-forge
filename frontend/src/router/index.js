@@ -22,6 +22,7 @@ const routes = [
   { path: '/', name: 'Dashboard', component: () => import('../views/Dashboard.vue'), meta: { icon: '🏠', label: '驾驶舱', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:dashboard:read' } },
   { path: '/knowledge', name: 'KnowledgeBase', component: () => import('../views/KnowledgeBase.vue'), meta: { icon: '📁', label: '知识库管理', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:kb:read' } },
   { path: '/knowledge/:kbId/documents', name: 'KnowledgeDocuments', component: () => import('../views/KnowledgeDocuments.vue'), meta: { icon: '📄', label: '文档列表', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:doc:read' } },
+  { path: '/uploads/wizard', name: 'UploadWizard', component: () => import('../views/UploadWizard.vue'), meta: { icon: '⬆', label: '上传向导', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:doc:write' } },
   { path: '/document/:id', name: 'DocumentDetail', component: () => import('../views/DocumentDetail.vue'), meta: { icon: '📄', label: '文档详情', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:doc:read' } },
   { path: '/debug', name: 'DebugConsole', component: () => import('../views/DebugConsole.vue'), meta: { icon: '🔍', label: '检索调试台', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:debug:run' } },
   { path: '/perf-probe', name: 'PerformanceProbe', component: () => import('../views/PerformanceProbe.vue'), meta: { icon: '⏱', label: '性能诊断', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },

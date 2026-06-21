@@ -91,8 +91,15 @@
               <div v-for="c in chunks" :key="c.chunkIndex" class="chunk-card">
                 <div class="chunk-head">
                   <span class="chunk-title">#{{ c.chunkIndex }}</span>
-                  <span class="chunk-tokens">{{ c.chunkerStrategy || 'FIXED_WINDOW' }} · {{ c.tokenCount ?? 0 }} tokens</span>
+                  <span v-if="c.chunkModality" class="chunk-modality">{{ c.chunkModality }}</span>
+                  <span class="chunk-tokens">{{ c.chunkerStrategy || (c.chunkModality?.startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW') }} · {{ c.tokenCount ?? 0 }} tokens</span>
                 </div>
+                <img
+                  v-if="isImageDoc && c.imageKey"
+                  class="chunk-thumb"
+                  :src="downloadUrl"
+                  alt="文档缩略图"
+                >
                 <div v-if="c.headingPath" class="chunk-heading">{{ c.headingPath }}</div>
                 <div class="chunk-text" :title="c.content">{{ summarizeContent(c.content) }}</div>
               </div>
@@ -258,6 +265,8 @@ const hasMoreChunks = computed(() => chunks.value.length < chunkTotal.value)
 const normalizedStatus = computed(() => normalizeDocStatus(doc.value?.parseStatus))
 const isCompletedDoc = computed(() => normalizedStatus.value === 'completed')
 const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
+const isImageDoc = computed(() => (doc.value?.fileType || '').toLowerCase().startsWith('image/'))
+const downloadUrl = computed(() => doc.value?.id ? `/api/v1/documents/${doc.value.id}/download` : '')
 const canRechunk = computed(() => doc.value && !['pending', 'processing', 'reprocessing'].includes(normalizedStatus.value))
 const hasIdentityInfo = computed(() =>
   Boolean(
@@ -652,8 +661,8 @@ function piiLabel(key) {
 
 .chunk-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   margin-bottom: 6px;
 }
 
@@ -666,6 +675,27 @@ function piiLabel(key) {
 .chunk-tokens {
   font-size: 11px;
   color: var(--text-muted);
+  margin-left: auto;
+}
+
+.chunk-modality {
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+}
+
+.chunk-thumb {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  margin: 4px 0 8px;
 }
 
 .chunk-heading {

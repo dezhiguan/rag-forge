@@ -2,7 +2,6 @@ package com.ragforge.model.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.Data;
@@ -10,7 +9,6 @@ import lombok.Data;
 @Data
 public class SearchRequest {
 
-  @NotBlank(message = "查询内容不能为空")
   private String query;
 
   private List<Long> kbIds;
@@ -20,6 +18,12 @@ public class SearchRequest {
 
   /** vector | keyword | rewrite | hybrid | full */
   private String strategy = "vector";
+
+  /** text | image | both */
+  private String modality = "text";
+
+  /** data URL or pure base64 image payload, used when modality=image/both. */
+  private String queryImageBase64;
 
   /** only used by hybrid strategy */
   private Double vectorWeight = 0.55;

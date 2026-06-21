@@ -1,6 +1,8 @@
 package com.ragforge.search;
 
 import com.pgvector.PGvector;
+import com.ragforge.pipeline.image.ImageEmbeddingClient;
+import java.util.Base64;
 import com.ragforge.pipeline.embedder.EmbeddingService;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 public class VectorSearchService {
 
   private final EmbeddingService embedder;
+  private final ImageEmbeddingClient imageEmbeddingClient;
   private final JdbcTemplate jdbcTemplate;
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
@@ -41,6 +44,7 @@ public class VectorSearchService {
         new StringBuilder(
             """
             SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
+                   dc.chunk_modality, dc.image_key,
                    1 - (dc.content_vector <=> ?::vector) AS similarity
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
@@ -209,6 +213,7 @@ public class VectorSearchService {
           """
           SELECT * FROM (
             SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
+                   dc.chunk_modality, dc.image_key,
                    1 - (dc.content_vector <=> ?::vector) AS similarity
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
@@ -287,7 +292,69 @@ public class VectorSearchService {
     result.setChunkIndex(rs.getInt("chunk_index"));
     result.setVectorScore(rs.getDouble("similarity"));
     result.setChunkType(rs.getString("chunk_type"));
+    result.setChunkModality(rs.getString("chunk_modality"));
+    result.setImageKey(rs.getString("image_key"));
     return result;
+  }
+
+  public List<SearchResult> searchImage(
+      String query,
+      String queryImageBase64,
+      List<Long> kbIds,
+      List<Long> docIds,
+      int topK,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    requireKbScope(kbIds);
+    float[] vector =
+        hasText(queryImageBase64)
+            ? imageEmbeddingClient.embedImage(decodeImageBase64(queryImageBase64), "image/*")
+            : imageEmbeddingClient.embedText(query == null ? "" : query);
+    return searchImageByVector(vector, kbIds, docIds, topK, filter);
+  }
+
+  private List<SearchResult> searchImageByVector(
+      float[] vector,
+      List<Long> kbIds,
+      List<Long> docIds,
+      int topK,
+      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    PGvector pgVector = new PGvector(vector);
+    StringBuilder sql =
+        new StringBuilder(
+            """
+            SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
+                   dc.chunk_modality, dc.image_key,
+                   1 - (dc.image_vector <=> ?::vector) AS similarity
+            FROM document_chunks dc
+            JOIN documents d ON dc.doc_id = d.id
+            WHERE dc.image_vector IS NOT NULL
+              AND d.parse_status = 'COMPLETED'
+            """);
+    appendFilters(sql, kbIds, docIds, filter);
+    sql.append(" ORDER BY dc.image_vector <=> ?::vector LIMIT ?");
+    return jdbcTemplate.query(
+        sql.toString(),
+        ps -> {
+          int idx = 1;
+          ps.setObject(idx++, pgVector);
+          idx = bindFilters(ps, idx, kbIds, docIds, filter);
+          ps.setObject(idx++, pgVector);
+          ps.setInt(idx, topK);
+        },
+        (rs, rowNum) -> mapSearchResult(rs.getLong("id"), rs));
+  }
+
+  private static boolean hasText(String value) {
+    return value != null && !value.isBlank();
+  }
+
+  private static byte[] decodeImageBase64(String raw) {
+    String payload = raw == null ? "" : raw.trim();
+    int comma = payload.indexOf(',');
+    if (payload.startsWith("data:") && comma >= 0) {
+      payload = payload.substring(comma + 1);
+    }
+    return Base64.getDecoder().decode(payload);
   }
 
   private static void requireKbScope(List<Long> kbIds) {

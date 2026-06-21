@@ -33,9 +33,17 @@ public class SearchController {
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','SERVICE_ACCOUNT')")
   public Result<SearchResponse> search(@Valid @RequestBody SearchRequest req) {
     int queryLen = req.getQuery() == null ? 0 : req.getQuery().length();
+    boolean imageOnly = "image".equalsIgnoreCase(req.getModality());
+    if (!imageOnly && (req.getQuery() == null || req.getQuery().isBlank())) {
+      throw new BizException(400, "QUERY_REQUIRED");
+    }
+    if (imageOnly && (req.getQueryImageBase64() == null || req.getQueryImageBase64().isBlank())) {
+      throw new BizException(400, "QUERY_IMAGE_REQUIRED");
+    }
     log.info(
-        "ragforge.api search received strategy={} kbCount={} topK={} queryLen={}",
+        "ragforge.api search received strategy={} modality={} kbCount={} topK={} queryLen={}",
         req.getStrategy(),
+        req.getModality(),
         req.getKbIds() == null ? 0 : req.getKbIds().size(),
         req.getTopK(),
         queryLen);
@@ -51,13 +59,15 @@ public class SearchController {
     RetrievalOutput output =
         retrievalService.retrieve(
             req.getQuery(),
+            req.getQueryImageBase64(),
             req.getKbIds(),
             req.getDocIds(),
             req.getStrategy(),
             req.getVectorWeight(),
             req.getTopK(),
             req.getRerankTopN(),
-            req.getFilter());
+            req.getFilter(),
+            req.getModality());
 
     log.info(
         "ragforge.api search completed strategy={} resultCount={} latencyMs={}",

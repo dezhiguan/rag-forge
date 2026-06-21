@@ -14,4 +14,6 @@ public class SearchResult {
   private double bm25Score;
   private double finalScore;
   private String chunkType;
+  private String chunkModality;
+  private String imageKey;
 }

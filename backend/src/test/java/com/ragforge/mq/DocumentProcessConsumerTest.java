@@ -5,7 +5,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.model.entity.Document;
 import com.ragforge.pipeline.DocumentPipelineService;
+import com.ragforge.pipeline.image.ImagePipelineService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,21 +19,38 @@ class DocumentProcessConsumerTest {
 
   @Mock private DocumentMapper documentMapper;
   @Mock private DocumentPipelineService pipelineService;
+  @Mock private ImagePipelineService imagePipelineService;
 
   private DocumentProcessConsumer consumer;
 
   @BeforeEach
   void setUp() {
-    consumer = new DocumentProcessConsumer(documentMapper, pipelineService);
+    consumer = new DocumentProcessConsumer(documentMapper, pipelineService, imagePipelineService);
   }
 
   @Test
   void onMessageProcessesWhenCasClaimsDocument() {
     when(documentMapper.markProcessingIfRunnable(10L)).thenReturn(1);
+    Document doc = new Document();
+    doc.setFileType("application/pdf");
+    when(documentMapper.selectById(10L)).thenReturn(doc);
 
     consumer.onMessage(10L);
 
     verify(pipelineService).processDocument(10L);
+  }
+
+  @Test
+  void onMessageRoutesImageToImagePipeline() {
+    when(documentMapper.markProcessingIfRunnable(10L)).thenReturn(1);
+    Document doc = new Document();
+    doc.setFileType("image/png");
+    when(documentMapper.selectById(10L)).thenReturn(doc);
+
+    consumer.onMessage(10L);
+
+    verify(imagePipelineService).processImageDocument(10L);
+    verify(pipelineService, never()).processDocument(10L);
   }
 
   @Test
@@ -41,5 +60,6 @@ class DocumentProcessConsumerTest {
     consumer.onMessage(10L);
 
     verify(pipelineService, never()).processDocument(10L);
+    verify(imagePipelineService, never()).processImageDocument(10L);
   }
 }

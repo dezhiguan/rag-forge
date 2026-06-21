@@ -83,13 +83,15 @@ class SearchControllerTest {
 
     when(retrievalService.retrieve(
             eq("Java"),
+            isNull(),
             eq(List.of(17L)),
             isNull(),
             eq("hybrid"),
             eq(0.6),
             eq(5),
             eq(3),
-            isNull()))
+            isNull(),
+            eq("text")))
         .thenReturn(output);
 
     mockMvc
@@ -117,13 +119,15 @@ class SearchControllerTest {
     verify(retrievalService)
         .retrieve(
             eq("Java"),
+            isNull(),
             eq(List.of(17L)),
             isNull(),
             eq("hybrid"),
             eq(0.6),
             eq(5),
             eq(3),
-            isNull());
+            isNull(),
+            eq("text"));
     verify(retrievalLogService)
         .logAsync(eq("Java"), eq("hybrid"), eq(List.of(17L)), isNull(), eq(5), eq(1), eq(120L), eq(List.of(hit)));
   }
@@ -137,13 +141,15 @@ class SearchControllerTest {
 
     when(retrievalService.retrieve(
             eq("spring"),
+            isNull(),
             eq(List.of(17L)),
             isNull(),
             eq("vector"),
             eq(0.55),
             eq(8),
             eq(5),
-            org.mockito.ArgumentMatchers.any(SearchRequest.SearchFilter.class)))
+            org.mockito.ArgumentMatchers.any(SearchRequest.SearchFilter.class),
+            eq("text")))
         .thenReturn(output);
 
     mockMvc
@@ -164,6 +170,7 @@ class SearchControllerTest {
     verify(retrievalService)
         .retrieve(
             eq("spring"),
+            isNull(),
             eq(List.of(17L)),
             isNull(),
             eq("vector"),
@@ -174,6 +181,7 @@ class SearchControllerTest {
                 filter ->
                     filter != null
                         && filter.getChunkType() != null
-                        && filter.getChunkType().containsAll(List.of("JD", "RESUME"))));
+                        && filter.getChunkType().containsAll(List.of("JD", "RESUME"))),
+            eq("text"));
   }
 }
