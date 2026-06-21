@@ -6,6 +6,7 @@ import com.ragforge.maintenance.DataCalibrationReport;
 import com.ragforge.maintenance.EsRepairReport;
 import com.ragforge.maintenance.EsIndexRepairJob;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/admin/maintenance")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
+@Profile("!acceptance")
 public class MaintenanceController {
 
   private final DataCalibrationJob dataCalibrationJob;
