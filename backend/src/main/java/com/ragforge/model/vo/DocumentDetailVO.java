@@ -7,5 +7,6 @@ import lombok.Data;
 public class DocumentDetailVO extends DocumentVO {
 
   private List<DocumentChunkVO> chunks;
+  private String cleanReportJson;
+  private Long cleanProfileId;
 }
-

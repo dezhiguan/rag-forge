@@ -16,7 +16,14 @@ import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
+import com.ragforge.pipeline.cleaner.CleanProfile;
+import com.ragforge.pipeline.cleaner.CleanProfileService;
+import com.ragforge.pipeline.cleaner.CleanResult;
+import com.ragforge.pipeline.cleaner.CleaningPipeline;
+import com.ragforge.pipeline.cleaner.RawText;
+import com.ragforge.pipeline.cleaner.ResolvedCleanProfile;
 import com.ragforge.storage.ObjectStorage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -58,6 +65,9 @@ public class DocumentPipelineService {
   private final EsIndexService esIndexService;
   private final JdbcTemplate jdbcTemplate;
   private final ObjectStorage objectStorage;
+  private final CleaningPipeline cleaningPipeline;
+  private final CleanProfileService cleanProfileService;
+  private final ObjectMapper objectMapper;
 
   @Lazy @Autowired private DocumentPipelineService self;
 
@@ -109,6 +119,16 @@ public class DocumentPipelineService {
       String text = parseResult.getText() == null ? "" : parseResult.getText();
       textLength = text.length();
       parseLatencyMs = System.currentTimeMillis() - stageStart;
+
+      ResolvedCleanProfile resolvedProfile = cleanProfileService.resolveForKb(doc.getKbId());
+      CleanProfile cleanProfile = resolvedProfile.getProfile();
+      CleanResult cleanResult =
+          cleaningPipeline.clean(new RawText(text, doc.getFileType(), parseResult.getPageCount()), cleanProfile);
+      self.updateCleanReport(
+          documentId,
+          resolvedProfile.getProfileId(),
+          buildCleanReport(text, cleanResult, cleanProfile));
+      text = cleanResult.getCleanedText() == null ? "" : cleanResult.getCleanedText();
 
       self.updateStatus(documentId, STATUS_CHUNKING);
 
@@ -317,6 +337,17 @@ public class DocumentPipelineService {
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void updateCleanReport(Long docId, Long profileId, String reportJson) {
+    documentMapper.update(
+        null,
+        new LambdaUpdateWrapper<Document>()
+            .eq(Document::getId, docId)
+            .set(Document::getCleanProfileId, profileId)
+            .set(Document::getCleanReportJson, reportJson)
+            .set(Document::getUpdatedAt, LocalDateTime.now()));
+  }
+
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void incrementKbCount(Long kbId, int chunkCount, boolean incrementDocCount) {
     KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
     if (kb == null) {
@@ -342,6 +373,30 @@ public class DocumentPipelineService {
 
   private static int coalesce(Integer value, int defaultValue) {
     return value == null ? defaultValue : value;
+  }
+
+  private String buildCleanReport(String originalText, CleanResult result, CleanProfile profile) {
+    Map<String, Object> report = new HashMap<>();
+    report.put("originalSample", sample(originalText));
+    report.put("cleanedSample", sample(result.getCleanedText()));
+    report.put("removedRegions", result.getRemovedRegions());
+    report.put("piiHits", result.getPiiHits());
+    report.put("llmTokensUsed", result.getLlmTokensUsed());
+    report.put("profile", profile);
+    report.put("originalLength", originalText == null ? 0 : originalText.length());
+    report.put("cleanedLength", result.getCleanedText() == null ? 0 : result.getCleanedText().length());
+    try {
+      return objectMapper.writeValueAsString(report);
+    } catch (Exception e) {
+      return "{\"error\":\"clean_report_serialize_failed\"}";
+    }
+  }
+
+  private static String sample(String text) {
+    if (text == null) {
+      return "";
+    }
+    return text.length() > 8000 ? text.substring(0, 8000) : text;
   }
 
   private ParseResult resolveText(Document doc) throws Exception {

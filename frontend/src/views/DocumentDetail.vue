@@ -146,6 +146,36 @@
                 </span>
               </div>
             </div>
+            <section v-if="cleanReport" class="clean-panel">
+              <div class="section-title">清洗对比</div>
+              <div class="clean-metrics">
+                <span>原文 {{ cleanReport.originalLength ?? 0 }} 字</span>
+                <span>清洗后 {{ cleanReport.cleanedLength ?? 0 }} 字</span>
+                <span>移除 {{ (cleanReport.removedRegions || []).length }} 处</span>
+              </div>
+              <div v-if="Object.keys(cleanReport.piiHits || {}).length" class="pii-hits">
+                <span v-for="[key, count] in Object.entries(cleanReport.piiHits || {})" :key="key">
+                  {{ piiLabel(key) }} {{ count }}
+                </span>
+              </div>
+              <div class="clean-compare">
+                <div class="clean-col">
+                  <div class="clean-col-title">原文样本</div>
+                  <pre class="clean-text">{{ cleanReport.originalSample || '—' }}</pre>
+                </div>
+                <div class="clean-col">
+                  <div class="clean-col-title">清洗后样本</div>
+                  <pre class="clean-text"><template v-for="line in cleanDiffLines" :key="line.index"><span :class="{ 'diff-line': line.changed }">{{ line.text }}</span>
+</template></pre>
+                </div>
+              </div>
+              <div v-if="(cleanReport.removedRegions || []).length" class="removed-list">
+                <div v-for="(r, idx) in (cleanReport.removedRegions || []).slice(0, 8)" :key="idx" class="removed-item">
+                  <span>{{ r.reason }}</span>
+                  <code>{{ summarizeContent(r.text || '') }}</code>
+                </div>
+              </div>
+            </section>
             <div class="search-action" @click="$router.push({ path: '/debug', query: { kbId: doc.kbId, docId: doc.id, docFilename: doc.filename } })">🔍 在此文档中检索 →</div>
           </div>
         </div>
@@ -225,6 +255,16 @@ const hasIdentityInfo = computed(() =>
       || doc.value?.ingestSource,
   ),
 )
+const cleanReport = computed(() => parseCleanReport(doc.value?.cleanReportJson))
+const cleanDiffLines = computed(() => {
+  const original = (cleanReport.value?.originalSample || '').split('\n')
+  const cleaned = (cleanReport.value?.cleanedSample || '').split('\n')
+  return cleaned.map((line, index) => ({
+    index,
+    text: line,
+    changed: line !== original[index],
+  }))
+})
 
 const breadcrumbItems = computed(() => {
   if (loading.value && !doc.value) {
@@ -399,6 +439,25 @@ function formatBytes(bytes) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
   return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`
+}
+
+function parseCleanReport(raw) {
+  if (!raw) return null
+  if (typeof raw === 'object') return raw
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function piiLabel(key) {
+  return ({
+    phone: '手机号',
+    idCard: '身份证',
+    email: '邮箱',
+    bankCard: '银行卡',
+  })[key] || key
 }
 </script>
 
@@ -693,6 +752,111 @@ function formatBytes(bytes) {
   background: #eff6ff;
 }
 
+.clean-panel {
+  margin: 18px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.clean-metrics,
+.pii-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.clean-metrics span,
+.pii-hits span {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px 7px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pii-hits span {
+  border-color: rgba(220, 38, 38, 0.22);
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.clean-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.clean-col {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  overflow: hidden;
+}
+
+.clean-col-title {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.clean-text {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 9px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.55;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.diff-line {
+  display: block;
+  margin: 0 -3px;
+  padding: 0 3px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.removed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.removed-item {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  background: #fff;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.removed-item span {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.removed-item code {
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .processing-panel {
   display: flex;
   flex-direction: column;
@@ -772,6 +936,14 @@ function formatBytes(bytes) {
 
   .doc-right {
     padding: 14px;
+  }
+
+  .clean-compare {
+    grid-template-columns: 1fr;
+  }
+
+  .removed-item {
+    grid-template-columns: 1fr;
   }
 
   .doc-header {

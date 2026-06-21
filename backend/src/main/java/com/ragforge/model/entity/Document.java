@@ -1,13 +1,15 @@
 package com.ragforge.model.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.ragforge.mybatis.handler.JsonbStringTypeHandler;
 import java.time.LocalDateTime;
 import lombok.Data;
 
 @Data
-@TableName("documents")
+@TableName(value = "documents", autoResultMap = true)
 public class Document {
 
   @TableId(type = IdType.AUTO)
@@ -25,6 +27,9 @@ public class Document {
   private String storageBucket;
   private String ingestSource;
   private String indexedContent;
+  @TableField(value = "clean_report_json", typeHandler = JsonbStringTypeHandler.class)
+  private String cleanReportJson;
+  private Long cleanProfileId;
   private Integer version;
   private String parseStatus;
   private Integer chunkCount;

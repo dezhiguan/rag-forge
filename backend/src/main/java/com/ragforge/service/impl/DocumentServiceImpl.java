@@ -225,6 +225,8 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setSourceUrl(doc.getSourceUrl());
     vo.setContentMd5(doc.getContentMd5());
     vo.setIngestSource(doc.getIngestSource());
+    vo.setCleanReportJson(doc.getCleanReportJson());
+    vo.setCleanProfileId(doc.getCleanProfileId());
     vo.setCreatedAt(doc.getCreatedAt());
     if (kb != null) {
       vo.setKbName(kb.getName());

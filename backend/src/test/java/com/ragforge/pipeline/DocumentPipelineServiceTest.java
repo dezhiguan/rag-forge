@@ -18,6 +18,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ragforge.common.BizException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
@@ -28,6 +29,12 @@ import com.ragforge.pipeline.chunker.Chunk;
 import com.ragforge.pipeline.chunker.TextChunker;
 import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.indexer.EsIndexService;
+import com.ragforge.pipeline.cleaner.CleanProfile;
+import com.ragforge.pipeline.cleaner.CleanProfileService;
+import com.ragforge.pipeline.cleaner.CleanResult;
+import com.ragforge.pipeline.cleaner.CleaningPipeline;
+import com.ragforge.pipeline.cleaner.RawText;
+import com.ragforge.pipeline.cleaner.ResolvedCleanProfile;
 import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
 import com.ragforge.storage.ObjectStorage;
@@ -66,13 +73,20 @@ class DocumentPipelineServiceTest {
   @Mock private EsIndexService esIndexService;
   @Mock private JdbcTemplate jdbcTemplate;
   @Mock private ObjectStorage objectStorage;
+  @Mock private CleaningPipeline cleaningPipeline;
+  @Mock private CleanProfileService cleanProfileService;
 
   @Spy @InjectMocks private DocumentPipelineService documentPipelineService;
 
   @BeforeEach
   void setUp() {
     ReflectionTestUtils.setField(documentPipelineService, "self", documentPipelineService);
+    ReflectionTestUtils.setField(documentPipelineService, "objectMapper", new ObjectMapper());
     stubPipelineSideEffects();
+    when(cleanProfileService.resolveForKb(anyLong()))
+        .thenReturn(new ResolvedCleanProfile(null, new CleanProfile()));
+    when(cleaningPipeline.clean(any(RawText.class), any(CleanProfile.class)))
+        .thenAnswer(inv -> CleanResult.of(inv.<RawText>getArgument(0).getText()));
   }
 
   private void stubPipelineSideEffects() {
@@ -80,6 +94,7 @@ class DocumentPipelineServiceTest {
     doNothing().when(documentPipelineService).updateStatus(anyLong(), anyString());
     doNothing().when(documentPipelineService).updateStatusWithError(anyLong(), anyString(), anyString());
     doNothing().when(documentPipelineService).updateDocumentChunkCount(anyLong(), anyInt());
+    doNothing().when(documentPipelineService).updateCleanReport(anyLong(), any(), anyString());
     doNothing().when(documentPipelineService).incrementKbCount(anyLong(), anyInt(), anyBoolean());
   }
 
@@ -108,7 +123,33 @@ class DocumentPipelineServiceTest {
     verify(documentPipelineService, org.mockito.Mockito.times(4)).updateStatus(1L, "PROCESSING");
     verify(documentPipelineService).updateStatus(1L, "COMPLETED");
     verify(documentPipelineService).updateDocumentChunkCount(1L, 2);
+    verify(documentPipelineService).updateCleanReport(eq(1L), eq(null), anyString());
     verify(documentPipelineService).incrementKbCount(10L, 2, true);
+  }
+
+  @Test
+  void processDocument_usesCleanedTextBeforeChunking() throws Exception {
+    Document doc = document(8L, 10L, "resume.md");
+    List<Chunk> chunks = List.of(new Chunk(0, "电话：138****1234", 14));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(600L, 0));
+
+    when(documentMapper.selectById(8L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("电话：13800138000", 1L, 1));
+    when(cleaningPipeline.clean(any(RawText.class), any(CleanProfile.class)))
+        .thenReturn(CleanResult.of("电话：138****1234"));
+    when(textChunker.chunk("电话：138****1234", 500, 50)).thenReturn(chunks);
+    when(embeddingService.embedBatch(List.of("电话：138****1234"))).thenReturn(vectors);
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(eq(8L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"));
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(8L);
+
+    verify(textChunker).chunk("电话：138****1234", 500, 50);
+    verify(embeddingService).embedBatch(List.of("电话：138****1234"));
   }
 
   @Test
