@@ -18,6 +18,7 @@ import com.ragforge.common.BizException;
 import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.common.PageResult;
 import com.ragforge.common.RelayUploadLimits;
+import com.ragforge.document.service.impl.DocumentUploadApplicationServiceImpl;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
@@ -82,14 +83,15 @@ class DocumentControllerTest {
         standaloneSetup(
                 new DocumentController(
                     documentService,
-                    ingestService,
-                    objectStorage,
-                    storageProperties,
-                    kbAccessGuard,
-                    new ObjectMapper(),
-                    uploadTokenService,
-                    documentMapper,
-                    mqProducer))
+                    new DocumentUploadApplicationServiceImpl(
+                        ingestService,
+                        objectStorage,
+                        storageProperties,
+                        kbAccessGuard,
+                        new ObjectMapper(),
+                        uploadTokenService,
+                        documentMapper,
+                        mqProducer)))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(
                 new ResourceHttpMessageConverter(), new MappingJackson2HttpMessageConverter())
