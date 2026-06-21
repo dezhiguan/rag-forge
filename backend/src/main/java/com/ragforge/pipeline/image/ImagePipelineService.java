@@ -33,6 +33,7 @@ public class ImagePipelineService {
   private final ImagePipelineSupport imagePipelineSupport;
   private final EsIndexService esIndexService;
   private final JdbcTemplate jdbcTemplate;
+  private final MultimodalProperties multimodalProperties;
 
   public void processImageDocument(Long documentId) {
     long start = System.currentTimeMillis();
@@ -43,6 +44,15 @@ public class ImagePipelineService {
       }
       updateStatus(documentId, STATUS_PROCESSING, null);
       cleanup(documentId);
+      if (!multimodalProperties.isEnabled()) {
+        updateChunkCount(documentId, 0);
+        updateStatus(documentId, STATUS_COMPLETED, null);
+        log.info(
+            "Image pipeline skipped because multimodal is disabled: docId={} latencyMs={}",
+            documentId,
+            System.currentTimeMillis() - start);
+        return;
+      }
 
       byte[] imageBytes = loadImage(doc);
       List<DocumentChunk> chunks =

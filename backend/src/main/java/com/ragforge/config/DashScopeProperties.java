@@ -14,6 +14,14 @@ public class DashScopeProperties {
 
   private String model = "text-embedding-v4";
 
+  private String visionModel = "qwen-vl-max";
+
+  private String imageEmbeddingModel = "multimodal-embedding-v1";
+
+  private String visionEndpoint = "";
+
+  private String imageEmbeddingEndpoint = "";
+
   /** DashScope text-embedding-v4 allows at most 10 texts per request. */
   private int batchSize = 10;
 

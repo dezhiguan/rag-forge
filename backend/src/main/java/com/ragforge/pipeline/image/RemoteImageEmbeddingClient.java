@@ -3,6 +3,7 @@ package com.ragforge.pipeline.image;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
+import com.ragforge.config.DashScopeProperties;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,12 +19,15 @@ public class RemoteImageEmbeddingClient implements ImageEmbeddingClient {
   private static final int DIMENSION = 1024;
 
   private final MultimodalProperties properties;
+  private final DashScopeProperties dashScopeProperties;
   private final ObjectMapper objectMapper;
   private final HttpClient httpClient;
   private final Semaphore semaphore;
 
-  public RemoteImageEmbeddingClient(MultimodalProperties properties, ObjectMapper objectMapper) {
+  public RemoteImageEmbeddingClient(
+      MultimodalProperties properties, DashScopeProperties dashScopeProperties, ObjectMapper objectMapper) {
     this.properties = properties;
+    this.dashScopeProperties = dashScopeProperties;
     this.objectMapper = objectMapper;
     this.httpClient =
         HttpClient.newBuilder()
@@ -34,18 +38,34 @@ public class RemoteImageEmbeddingClient implements ImageEmbeddingClient {
 
   @Override
   public float[] embedImage(byte[] imageBytes, String contentType) {
-    if (!StringUtils.hasText(properties.getImageEmbeddingEndpoint())) {
+    if (!StringUtils.hasText(dashScopeProperties.getImageEmbeddingEndpoint())) {
       return deterministicVector(Base64.getEncoder().encodeToString(imageBytes), DIMENSION);
     }
-    return call(Map.of("type", "image", "contentType", contentType, "imageBase64", Base64.getEncoder().encodeToString(imageBytes)));
+    return call(
+        Map.of(
+            "model",
+            dashScopeProperties.getImageEmbeddingModel(),
+            "type",
+            "image",
+            "contentType",
+            contentType,
+            "imageBase64",
+            Base64.getEncoder().encodeToString(imageBytes)));
   }
 
   @Override
   public float[] embedText(String query) {
-    if (!StringUtils.hasText(properties.getImageEmbeddingEndpoint())) {
+    if (!StringUtils.hasText(dashScopeProperties.getImageEmbeddingEndpoint())) {
       return deterministicVector(query == null ? "" : query, DIMENSION);
     }
-    return call(Map.of("type", "text", "text", query == null ? "" : query));
+    return call(
+        Map.of(
+            "model",
+            dashScopeProperties.getImageEmbeddingModel(),
+            "type",
+            "text",
+            "text",
+            query == null ? "" : query));
   }
 
   private float[] call(Map<String, Object> payload) {
@@ -53,14 +73,14 @@ public class RemoteImageEmbeddingClient implements ImageEmbeddingClient {
     try {
       semaphore.acquire();
       acquired = true;
-      HttpRequest.Builder builder =
+          HttpRequest.Builder builder =
           HttpRequest.newBuilder()
-              .uri(URI.create(properties.getImageEmbeddingEndpoint()))
+              .uri(URI.create(dashScopeProperties.getImageEmbeddingEndpoint()))
               .timeout(Duration.ofMillis(properties.getTimeoutMs()))
               .header("Content-Type", "application/json")
               .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)));
-      if (StringUtils.hasText(properties.getApiKey())) {
-        builder.header("Authorization", "Bearer " + properties.getApiKey());
+      if (StringUtils.hasText(dashScopeProperties.getApiKey())) {
+        builder.header("Authorization", "Bearer " + dashScopeProperties.getApiKey());
       }
       HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() / 100 != 2) {

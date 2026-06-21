@@ -10,10 +10,12 @@ public class MultimodalProperties {
   private boolean enabled = true;
   private int timeoutMs = 30000;
   private int maxConcurrent = 1;
-  private String ocrEndpoint = "";
-  private String captionEndpoint = "";
-  private String imageEmbeddingEndpoint = "";
-  private String apiKey = "";
-  private double textWeight = 0.7;
-  private double imageWeight = 0.3;
+  private Embedded embedded = new Embedded();
+
+  @Data
+  public static class Embedded {
+    private int minImageBytes = 8 * 1024;
+    private int maxConcurrentImageTasks = 3;
+    private long maxProcessingMsPerDoc = 120000L;
+  }
 }

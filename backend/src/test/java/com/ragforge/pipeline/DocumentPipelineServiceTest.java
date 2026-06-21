@@ -35,6 +35,7 @@ import com.ragforge.pipeline.image.ExtractedImage;
 import com.ragforge.pipeline.image.ImageChunkContext;
 import com.ragforge.pipeline.image.ImagePipelineService;
 import com.ragforge.pipeline.image.ImagePipelineSupport;
+import com.ragforge.pipeline.image.MultimodalProperties;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.cleaner.CleanProfile;
 import com.ragforge.pipeline.cleaner.CleanProfileService;
@@ -85,6 +86,7 @@ class DocumentPipelineServiceTest {
   @Mock private CleanProfileService cleanProfileService;
   @Mock private ImagePipelineSupport imagePipelineSupport;
   @Mock private ImagePipelineService imagePipelineService;
+  @Spy private MultimodalProperties multimodalProperties = new MultimodalProperties();
 
   @Spy @InjectMocks private DocumentPipelineService documentPipelineService;
 

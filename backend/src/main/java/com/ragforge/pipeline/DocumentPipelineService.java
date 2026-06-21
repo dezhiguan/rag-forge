@@ -19,6 +19,7 @@ import com.ragforge.pipeline.image.ExtractedImage;
 import com.ragforge.pipeline.image.ImageChunkContext;
 import com.ragforge.pipeline.image.ImagePipelineService;
 import com.ragforge.pipeline.image.ImagePipelineSupport;
+import com.ragforge.pipeline.image.MultimodalProperties;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.parser.DocumentParser;
 import com.ragforge.pipeline.parser.ParseResult;
@@ -67,9 +68,6 @@ public class DocumentPipelineService {
   private static final String STATUS_COMPLETED = "COMPLETED";
   private static final String STATUS_FAILED = "FAILED";
   private static final String STATUS_PENDING = "PENDING";
-  private static final int MIN_IMAGE_BYTES = 8 * 1024;
-  private static final int MAX_CONCURRENT_IMAGE_TASKS = 3;
-  private static final long MAX_IMAGE_PROCESSING_MS_PER_DOC = 120_000L;
 
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper documentChunkMapper;
@@ -86,6 +84,7 @@ public class DocumentPipelineService {
   private final ImagePipelineSupport imagePipelineSupport;
   private final ImagePipelineService imagePipelineService;
   private final List<EmbeddedImageExtractor> embeddedImageExtractors;
+  private final MultimodalProperties multimodalProperties;
 
   @Lazy @Autowired private DocumentPipelineService self;
 
@@ -513,11 +512,14 @@ public class DocumentPipelineService {
 
   private List<DocumentChunk> processEmbeddedImages(
       List<ExtractedImage> images, Document doc, KnowledgeBase kb, int startChunkIndex) {
-    if (images == null || images.isEmpty() || !"ON".equalsIgnoreCase(kb.getImageProcessingMode())) {
+    if (!multimodalProperties.isEnabled()
+        || images == null
+        || images.isEmpty()
+        || !"ON".equalsIgnoreCase(kb.getImageProcessingMode())) {
       return List.of();
     }
-    long deadline = System.currentTimeMillis() + MAX_IMAGE_PROCESSING_MS_PER_DOC;
-    Semaphore concurrency = new Semaphore(MAX_CONCURRENT_IMAGE_TASKS);
+    long deadline = System.currentTimeMillis() + embeddedImageMaxProcessingMsPerDoc();
+    Semaphore concurrency = new Semaphore(embeddedImageMaxConcurrentTasks());
     AtomicInteger nextChunkIndex = new AtomicInteger(startChunkIndex);
     List<CompletableFuture<List<DocumentChunk>>> futures = new ArrayList<>();
     for (ExtractedImage image : images) {
@@ -562,7 +564,7 @@ public class DocumentPipelineService {
       if (System.currentTimeMillis() > deadline || image == null || image.getBytes() == null) {
         return List.of();
       }
-      if (image.getBytes().length < MIN_IMAGE_BYTES) {
+      if (image.getBytes().length < embeddedImageMinBytes()) {
         return List.of();
       }
       String imageKey = embeddedImageKey(doc, image);
@@ -683,5 +685,17 @@ public class DocumentPipelineService {
     }
     String suffix = filename.substring(dot);
     return suffix.length() > 20 ? ".bin" : suffix;
+  }
+
+  private int embeddedImageMinBytes() {
+    return Math.max(0, multimodalProperties.getEmbedded().getMinImageBytes());
+  }
+
+  private int embeddedImageMaxConcurrentTasks() {
+    return Math.max(1, multimodalProperties.getEmbedded().getMaxConcurrentImageTasks());
+  }
+
+  private long embeddedImageMaxProcessingMsPerDoc() {
+    return Math.max(1L, multimodalProperties.getEmbedded().getMaxProcessingMsPerDoc());
   }
 }

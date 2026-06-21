@@ -104,10 +104,10 @@ ragforge:
     enabled: ${RAGFORGE_MULTIMODAL_ENABLED:true}
     timeout-ms: ${RAGFORGE_MULTIMODAL_TIMEOUT_MS:30000}
     max-concurrent: ${RAGFORGE_MULTIMODAL_MAX_CONCURRENT:1}
-    ocr-endpoint: ${RAGFORGE_OCR_ENDPOINT:}
-    caption-endpoint: ${RAGFORGE_VISION_CAPTION_ENDPOINT:}
-    image-embedding-endpoint: ${RAGFORGE_IMAGE_EMBEDDING_ENDPOINT:}
-    api-key: ${RAGFORGE_MULTIMODAL_API_KEY:${DASHSCOPE_API_KEY:}}
+    embedded:
+      min-image-bytes: ${RAGFORGE_EMBEDDED_IMAGE_MIN_BYTES:8192}
+      max-concurrent-image-tasks: ${RAGFORGE_EMBEDDED_IMAGE_MAX_CONCURRENT:3}
+      max-processing-ms-per-doc: ${RAGFORGE_EMBEDDED_IMAGE_MAX_PROCESSING_MS_PER_DOC:120000}
 
 server:
   tomcat:
@@ -126,7 +126,11 @@ app:
   dashscope:
     api-key: ${DASHSCOPE_API_KEY:your-key-here}
     model: text-embedding-v4
+    vision-model: qwen-vl-max
+    image-embedding-model: multimodal-embedding-v1
     base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    vision-endpoint: ${DASHSCOPE_VISION_ENDPOINT:}
+    image-embedding-endpoint: ${DASHSCOPE_IMAGE_EMBEDDING_ENDPOINT:}
     rewrite-model: qwen-turbo
     rerank-model: qwen3-rerank
     batch-size: 10

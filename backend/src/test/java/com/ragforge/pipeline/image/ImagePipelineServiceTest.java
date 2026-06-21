@@ -33,16 +33,19 @@ class ImagePipelineServiceTest {
   @Mock private JdbcTemplate jdbcTemplate;
 
   private ImagePipelineService service;
+  private MultimodalProperties multimodalProperties;
 
   @BeforeEach
   void setUp() {
+    multimodalProperties = new MultimodalProperties();
     service =
         new ImagePipelineService(
             documentMapper,
             objectStorage,
             imagePipelineSupport,
             esIndexService,
-            jdbcTemplate);
+            jdbcTemplate,
+            multimodalProperties);
   }
 
   @Test
@@ -76,5 +79,23 @@ class ImagePipelineServiceTest {
     verify(jdbcTemplate).update("DELETE FROM document_chunks WHERE doc_id = ?", 7L);
     verify(jdbcTemplate).update("UPDATE documents SET chunk_count = ?, updated_at = NOW() WHERE id = ?", 2, 7L);
     verify(documentMapper).selectById(7L);
+  }
+
+  @Test
+  void processImageDocumentSkipsWhenMultimodalDisabled() {
+    multimodalProperties.setEnabled(false);
+    Document doc = new Document();
+    doc.setId(8L);
+    doc.setKbId(3L);
+    doc.setFilename("arch.png");
+    doc.setFileType("image/png");
+    when(documentMapper.selectById(8L)).thenReturn(doc);
+
+    service.processImageDocument(8L);
+
+    verify(jdbcTemplate).update("DELETE FROM document_chunks WHERE doc_id = ?", 8L);
+    verify(jdbcTemplate).update("UPDATE documents SET chunk_count = ?, updated_at = NOW() WHERE id = ?", 0, 8L);
+    verify(esIndexService).deleteByDocId(8L);
+    verify(esIndexService, org.mockito.Mockito.never()).indexChunks(any(), any());
   }
 }
