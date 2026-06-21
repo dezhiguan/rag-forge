@@ -26,7 +26,9 @@ import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.pipeline.chunker.Chunk;
-import com.ragforge.pipeline.chunker.TextChunker;
+import com.ragforge.pipeline.chunker.ChunkParams;
+import com.ragforge.pipeline.chunker.ChunkingResult;
+import com.ragforge.pipeline.chunker.ChunkingService;
 import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.cleaner.CleanProfile;
@@ -68,7 +70,7 @@ class DocumentPipelineServiceTest {
   @Mock private DocumentChunkMapper documentChunkMapper;
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private DocumentParser documentParser;
-  @Mock private TextChunker textChunker;
+  @Mock private ChunkingService chunkingService;
   @Mock private EmbeddingService embeddingService;
   @Mock private EsIndexService esIndexService;
   @Mock private JdbcTemplate jdbcTemplate;
@@ -110,11 +112,12 @@ class DocumentPipelineServiceTest {
     when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
     when(documentParser.parse(doc.getFilePath(), doc.getFileType()))
         .thenReturn(new ParseResult("hello world", 1L, 1));
-    when(textChunker.chunk("hello world", 500, 50)).thenReturn(chunks);
+    when(chunkingService.split(eq(doc), eq(kb), eq("hello world")))
+        .thenReturn(chunkingResult(chunks));
     when(embeddingService.embedBatch(List.of("hello", "world"))).thenReturn(vectors);
     doReturn(inserted)
         .when(documentPipelineService)
-        .insertChunks(eq(1L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"));
+        .insertChunks(eq(1L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
     when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
 
     documentPipelineService.processDocument(1L);
@@ -130,25 +133,27 @@ class DocumentPipelineServiceTest {
   @Test
   void processDocument_usesCleanedTextBeforeChunking() throws Exception {
     Document doc = document(8L, 10L, "resume.md");
+    KnowledgeBase kb = knowledgeBase(10L);
     List<Chunk> chunks = List.of(new Chunk(0, "电话：138****1234", 14));
     List<float[]> vectors = List.of(new float[] {0.1f});
     List<DocumentChunk> inserted = List.of(chunkEntity(600L, 0));
 
     when(documentMapper.selectById(8L)).thenReturn(doc);
-    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
     when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("电话：13800138000", 1L, 1));
     when(cleaningPipeline.clean(any(RawText.class), any(CleanProfile.class)))
         .thenReturn(CleanResult.of("电话：138****1234"));
-    when(textChunker.chunk("电话：138****1234", 500, 50)).thenReturn(chunks);
+    when(chunkingService.split(eq(doc), eq(kb), eq("电话：138****1234")))
+        .thenReturn(chunkingResult(chunks));
     when(embeddingService.embedBatch(List.of("电话：138****1234"))).thenReturn(vectors);
     doReturn(inserted)
         .when(documentPipelineService)
-        .insertChunks(eq(8L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"));
+        .insertChunks(eq(8L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
     when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
 
     documentPipelineService.processDocument(8L);
 
-    verify(textChunker).chunk("电话：138****1234", 500, 50);
+    verify(chunkingService).split(eq(doc), eq(kb), eq("电话：138****1234"));
     verify(embeddingService).embedBatch(List.of("电话：138****1234"));
   }
 
@@ -169,7 +174,8 @@ class DocumentPipelineServiceTest {
     when(documentMapper.selectById(2L)).thenReturn(doc);
     when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
     when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("text", 1L, 1));
-    when(textChunker.chunk(anyString(), anyInt(), anyInt())).thenReturn(List.of(new Chunk(0, "text", 4)));
+    when(chunkingService.split(any(Document.class), any(KnowledgeBase.class), anyString()))
+        .thenReturn(chunkingResult(List.of(new Chunk(0, "text", 4))));
     when(embeddingService.embedBatch(anyList())).thenReturn(List.of());
 
     assertThatThrownBy(() -> documentPipelineService.processDocument(2L))
@@ -189,9 +195,12 @@ class DocumentPipelineServiceTest {
     when(documentMapper.selectById(3L)).thenReturn(doc);
     when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
     when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("text", 1L, 1));
-    when(textChunker.chunk(anyString(), anyInt(), anyInt())).thenReturn(chunks);
+    when(chunkingService.split(any(Document.class), any(KnowledgeBase.class), anyString()))
+        .thenReturn(chunkingResult(chunks));
     when(embeddingService.embedBatch(anyList())).thenReturn(vectors);
-    doReturn(inserted).when(documentPipelineService).insertChunks(anyLong(), anyLong(), anyList(), anyList(), any());
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(anyLong(), anyLong(), anyList(), anyList(), any(), anyString());
     when(esIndexService.indexChunks(inserted, doc)).thenReturn(false);
 
     assertThatThrownBy(() -> documentPipelineService.processDocument(3L))
@@ -225,9 +234,12 @@ class DocumentPipelineServiceTest {
     when(documentMapper.selectById(5L)).thenReturn(doc);
     when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
     when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("text", 1L, 1));
-    when(textChunker.chunk(anyString(), anyInt(), anyInt())).thenReturn(chunks);
+    when(chunkingService.split(any(Document.class), any(KnowledgeBase.class), anyString()))
+        .thenReturn(chunkingResult(chunks));
     when(embeddingService.embedBatch(anyList())).thenReturn(vectors);
-    doReturn(inserted).when(documentPipelineService).insertChunks(anyLong(), anyLong(), anyList(), anyList(), any());
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(anyLong(), anyLong(), anyList(), anyList(), any(), anyString());
     when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
 
     documentPipelineService.processDocument(5L);
@@ -238,6 +250,7 @@ class DocumentPipelineServiceTest {
   @Test
   void processDocument_indexedContentSkipsParserAndObjectRead() throws Exception {
     Document doc = document(6L, 10L, "page.html");
+    KnowledgeBase kb = knowledgeBase(10L);
     doc.setFileType("text/html");
     doc.setStorageBucket("bucket");
     doc.setStorageKey("tn/kb/page.html");
@@ -247,24 +260,26 @@ class DocumentPipelineServiceTest {
     List<DocumentChunk> inserted = List.of(chunkEntity(400L, 0));
 
     when(documentMapper.selectById(6L)).thenReturn(doc);
-    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
-    when(textChunker.chunk("干净文本", 500, 50)).thenReturn(chunks);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(chunkingService.split(eq(doc), eq(kb), eq("干净文本")))
+        .thenReturn(chunkingResult(chunks));
     when(embeddingService.embedBatch(List.of("干净文本"))).thenReturn(vectors);
     doReturn(inserted)
         .when(documentPipelineService)
-        .insertChunks(eq(6L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"));
+        .insertChunks(eq(6L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
     when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
 
     documentPipelineService.processDocument(6L);
 
     verify(documentParser, never()).parse(anyString(), anyString());
     verify(objectStorage, never()).get(anyString(), anyString());
-    verify(textChunker).chunk("干净文本", 500, 50);
+    verify(chunkingService).split(eq(doc), eq(kb), eq("干净文本"));
   }
 
   @Test
   void processDocument_textMimeReadsObjectAsTextWithoutParser() throws Exception {
     Document doc = document(7L, 10L, "page.html");
+    KnowledgeBase kb = knowledgeBase(10L);
     doc.setFileType("text/html; charset=utf-8");
     doc.setStorageBucket("bucket");
     doc.setStorageKey("tn/kb/page.html");
@@ -273,20 +288,21 @@ class DocumentPipelineServiceTest {
     List<DocumentChunk> inserted = List.of(chunkEntity(500L, 0));
 
     when(documentMapper.selectById(7L)).thenReturn(doc);
-    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
     when(objectStorage.get("bucket", "tn/kb/page.html"))
         .thenReturn(new ByteArrayInputStream("<h1>raw</h1>".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-    when(textChunker.chunk("<h1>raw</h1>", 500, 50)).thenReturn(chunks);
+    when(chunkingService.split(eq(doc), eq(kb), eq("<h1>raw</h1>")))
+        .thenReturn(chunkingResult(chunks));
     when(embeddingService.embedBatch(List.of("<h1>raw</h1>"))).thenReturn(vectors);
     doReturn(inserted)
         .when(documentPipelineService)
-        .insertChunks(eq(7L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"));
+        .insertChunks(eq(7L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
     when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
 
     documentPipelineService.processDocument(7L);
 
     verify(documentParser, never()).parse(anyString(), anyString());
-    verify(textChunker).chunk("<h1>raw</h1>", 500, 50);
+    verify(chunkingService).split(eq(doc), eq(kb), eq("<h1>raw</h1>"));
   }
 
   @Test
@@ -390,6 +406,10 @@ class DocumentPipelineServiceTest {
     kb.setDocCount(0);
     kb.setChunkCount(0);
     return kb;
+  }
+
+  private static ChunkingResult chunkingResult(List<Chunk> chunks) {
+    return new ChunkingResult("RECURSIVE", new ChunkParams(), chunks);
   }
 
   private static DocumentChunk chunkEntity(long id, int index) {

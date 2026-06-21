@@ -16,6 +16,13 @@
         >
           实验记录
         </button>
+        <button
+          class="tab-btn"
+          :class="{ active: activeTab === 'chunkerAb' }"
+          @click="activeTab = 'chunkerAb'"
+        >
+          分块 A/B
+        </button>
       </div>
 
       <template v-if="activeTab === 'datasets'">
@@ -204,7 +211,7 @@
         </div>
       </template>
 
-      <template v-else>
+      <template v-else-if="activeTab === 'experiments'">
         <!-- 概览卡片 -->
         <div class="summary-cards" v-if="experiments.length">
           <div class="summary-card">
@@ -273,6 +280,74 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="ab-panel">
+          <div class="ab-form">
+            <label class="field">
+              <span>评测数据集</span>
+              <select v-model="chunkerAbForm.evalDatasetId" class="select">
+                <option :value="null" disabled>请选择数据集</option>
+                <option v-for="ds in datasets" :key="ds.id" :value="ds.id">
+                  {{ ds.name }} - {{ kbNameOf(ds) }}
+                </option>
+              </select>
+            </label>
+            <div class="strategy-checks">
+              <label v-for="item in chunkerStrategyOptions" :key="item.value" class="check-item">
+                <input v-model="chunkerAbForm.strategies" type="checkbox" :value="item.value">
+                <span>{{ item.label }}</span>
+              </label>
+            </div>
+            <div class="ab-param-grid">
+              <label class="field">
+                <span>chunkSize</span>
+                <input v-model.number="chunkerAbForm.params.chunkSize" type="number" min="100" max="2000" />
+              </label>
+              <label class="field">
+                <span>overlap</span>
+                <input v-model.number="chunkerAbForm.params.overlap" type="number" min="0" max="500" />
+              </label>
+              <label class="field">
+                <span>simThreshold</span>
+                <input v-model.number="chunkerAbForm.params.simThreshold" type="number" min="0.1" max="0.95" step="0.05" />
+              </label>
+            </div>
+            <button class="btn-primary" :disabled="runningChunkerAb" @click="onRunChunkerAb">
+              {{ runningChunkerAb ? '运行中…' : '运行分块 A/B' }}
+            </button>
+          </div>
+
+          <div v-if="chunkerAbResults.length" class="table-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>分块策略</th>
+                  <th>Top1</th>
+                  <th>MRR</th>
+                  <th>平均 chunk 长度</th>
+                  <th>总 chunk 数</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in chunkerAbResults" :key="item.strategy">
+                  <td>
+                    <span class="strategy-badge">{{ chunkerStrategyLabel(item.strategy) }}</span>
+                  </td>
+                  <td class="metric-cell">{{ formatRate(item.top1) }}</td>
+                  <td class="metric-cell metric-accent">{{ formatMrr(item.mrr) }}</td>
+                  <td>{{ item.avgChunkLen }}</td>
+                  <td>{{ item.totalChunks }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="state-hint">
+            <div class="state-title">暂无分块试验结果</div>
+            <div class="state-desc">选择同一个评测集，对比不同分块策略的 Top1/MRR 和 chunk 规模</div>
+          </div>
         </div>
       </template>
 
@@ -725,6 +800,7 @@ import {
   listEvalDatasets,
   listExperiments,
   listEvalQuestions,
+  runChunkerAb,
   runExperiment,
   updateEvalQuestion,
 } from '../api/eval'
@@ -752,6 +828,14 @@ const strategyLabelMap = {
   full: '全链路',
   rewrite: 'Query改写',
 }
+
+const chunkerStrategyOptions = [
+  { value: 'RECURSIVE', label: 'Recursive' },
+  { value: 'MARKDOWN_HEADING', label: 'Markdown Heading' },
+  { value: 'SEMANTIC', label: 'Semantic' },
+  { value: 'TABLE_AWARE', label: 'Table Aware' },
+  { value: 'FIXED_WINDOW', label: 'Fixed Window' },
+]
 
 const questionsMap = reactive({})
 const questionsLoading = reactive({})
@@ -818,6 +902,19 @@ const runForm = ref({
   topK: 8,
   ablation: false,
 })
+const runningChunkerAb = ref(false)
+const chunkerAbResults = ref([])
+const chunkerAbForm = ref({
+  evalDatasetId: null,
+  strategies: ['RECURSIVE', 'MARKDOWN_HEADING', 'SEMANTIC'],
+  params: {
+    chunkSize: 500,
+    overlap: 50,
+    separators: ['\n\n', '\n', '。', ','],
+    simThreshold: 0.65,
+    tablePolicy: 'WHOLE',
+  },
+})
 
 const parsedExpectedTextSnippets = computed(() => parseExpectedTextSnippets(expectedTextSnippetsInput.value))
 
@@ -826,6 +923,9 @@ async function loadDatasets() {
   try {
     const res = await listEvalDatasets()
     datasets.value = res.data ?? []
+    if (!chunkerAbForm.value.evalDatasetId && datasets.value.length) {
+      chunkerAbForm.value.evalDatasetId = datasets.value[0].id
+    }
   } finally {
     loadingDatasets.value = false
   }
@@ -1156,6 +1256,30 @@ async function onRunExperiment() {
   } finally {
     runningExperiment.value = false
   }
+}
+
+async function onRunChunkerAb() {
+  if (!chunkerAbForm.value.evalDatasetId) {
+    alert('请选择评测数据集')
+    return
+  }
+  if (!chunkerAbForm.value.strategies.length) {
+    alert('请至少选择一种分块策略')
+    return
+  }
+  runningChunkerAb.value = true
+  try {
+    const res = await runChunkerAb(chunkerAbForm.value)
+    chunkerAbResults.value = res.data?.results ?? []
+  } catch (e) {
+    alert(e?.response?.data?.message || e?.message || '分块 A/B 运行失败')
+  } finally {
+    runningChunkerAb.value = false
+  }
+}
+
+function chunkerStrategyLabel(strategy) {
+  return (chunkerStrategyOptions.find((item) => item.value === strategy)?.label) || strategy
 }
 
 async function openExperimentDetail(id) {
@@ -1566,6 +1690,40 @@ onMounted(async () => {
 .text-match-miss {
   background: rgba(239, 68, 68, 0.08);
   color: #b91c1c;
+}
+.ab-panel {
+  display: grid;
+  gap: 16px;
+}
+.ab-form {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.strategy-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.check-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  font-size: 13px;
+  color: var(--slate);
+}
+.ab-param-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 .chunk-detail-modal {
   max-width: 780px;
@@ -2424,7 +2582,8 @@ onMounted(async () => {
 
 @media (max-width: 420px) {
   .summary-cards,
-  .eval-metrics {
+  .eval-metrics,
+  .ab-param-grid {
     grid-template-columns: 1fr;
   }
 }

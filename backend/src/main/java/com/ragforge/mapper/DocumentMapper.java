@@ -62,6 +62,7 @@ public interface DocumentMapper extends BaseMapper<Document> {
       SET parse_status = 'PROCESSING', updated_at = NOW()
       WHERE id = #{id}
         AND (parse_status = 'PENDING'
+             OR parse_status = 'REPROCESSING'
              OR (parse_status = 'PROCESSING' AND updated_at < NOW() - INTERVAL '5 minutes'))
       """)
   int markProcessingIfRunnable(@Param("id") Long id);

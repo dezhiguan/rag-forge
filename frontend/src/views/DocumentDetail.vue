@@ -22,6 +22,15 @@
             <div class="doc-header-actions">
               <button
                 type="button"
+                class="link-btn"
+                :disabled="!canRechunk || rechunking"
+                :title="canRechunk ? '重新分块' : '当前状态不能重新分块'"
+                @click="confirmRechunk"
+              >
+                {{ rechunking ? '提交中…' : '重新分块' }}
+              </button>
+              <button
+                type="button"
                 class="link-btn danger"
                 :disabled="!deleteEnabled"
                 :title="deleteEnabled ? '删除文档' : '演示环境已禁用删除'"
@@ -82,8 +91,9 @@
               <div v-for="c in chunks" :key="c.chunkIndex" class="chunk-card">
                 <div class="chunk-head">
                   <span class="chunk-title">#{{ c.chunkIndex }}</span>
-                  <span class="chunk-tokens">{{ c.tokenCount ?? 0 }} tokens</span>
+                  <span class="chunk-tokens">{{ c.chunkerStrategy || 'FIXED_WINDOW' }} · {{ c.tokenCount ?? 0 }} tokens</span>
                 </div>
+                <div v-if="c.headingPath" class="chunk-heading">{{ c.headingPath }}</div>
                 <div class="chunk-text" :title="c.content">{{ summarizeContent(c.content) }}</div>
               </div>
               <div class="chunk-load-state">
@@ -219,7 +229,7 @@ import 'element-plus/es/components/message-box/style/css'
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
-import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument } from '../api/document'
+import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rechunkDocument } from '../api/document'
 
 const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import { navigateBackFromDocument } from '../composables/useDocumentNav'
@@ -234,6 +244,7 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const retrying = ref(false)
+const rechunking = ref(false)
 const doc = ref(null)
 const chunks = ref([])
 const chunkPage = ref(1)
@@ -247,6 +258,7 @@ const hasMoreChunks = computed(() => chunks.value.length < chunkTotal.value)
 const normalizedStatus = computed(() => normalizeDocStatus(doc.value?.parseStatus))
 const isCompletedDoc = computed(() => normalizedStatus.value === 'completed')
 const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
+const canRechunk = computed(() => doc.value && !['pending', 'processing', 'reprocessing'].includes(normalizedStatus.value))
 const hasIdentityInfo = computed(() =>
   Boolean(
     doc.value?.externalId
@@ -426,6 +438,41 @@ async function onReprocess() {
   }
 }
 
+async function confirmRechunk() {
+  if (!doc.value || !canRechunk.value || rechunking.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定重新分块文档「${doc.value.filename}」？这会删除旧分块并重新生成向量索引。`,
+      '重新分块',
+      {
+        confirmButtonText: '重新分块',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch {
+    return
+  }
+  await onRechunk()
+}
+
+async function onRechunk() {
+  if (!doc.value) return
+  rechunking.value = true
+  try {
+    const res = await rechunkDocument(doc.value.id)
+    doc.value.parseStatus = res.data?.status || res.status || 'REPROCESSING'
+    doc.value.errorMsg = null
+    doc.value.chunkCount = 0
+    resetChunks()
+    setupPolling()
+  } catch (e) {
+    alert(e?.response?.data?.message || e?.message || '重新分块失败')
+  } finally {
+    rechunking.value = false
+  }
+}
+
 function formatTime(iso) {
   if (!iso) return '-'
   return iso.toString().replace('T', ' ').slice(0, 19)
@@ -504,6 +551,9 @@ function piiLabel(key) {
 }
 
 .doc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -616,6 +666,13 @@ function piiLabel(key) {
 .chunk-tokens {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.chunk-heading {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--blue);
+  word-break: break-word;
 }
 
 .chunk-text {

@@ -11,7 +11,8 @@ import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.pipeline.chunker.Chunk;
-import com.ragforge.pipeline.chunker.TextChunker;
+import com.ragforge.pipeline.chunker.ChunkingResult;
+import com.ragforge.pipeline.chunker.ChunkingService;
 import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.pipeline.parser.DocumentParser;
@@ -60,7 +61,7 @@ public class DocumentPipelineService {
   private final DocumentChunkMapper documentChunkMapper;
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentParser documentParser;
-  private final TextChunker textChunker;
+  private final ChunkingService chunkingService;
   private final EmbeddingService embeddingService;
   private final EsIndexService esIndexService;
   private final JdbcTemplate jdbcTemplate;
@@ -109,9 +110,6 @@ public class DocumentPipelineService {
       self.cleanupArtifacts(documentId);
       cleanupLatencyMs = System.currentTimeMillis() - stageStart;
 
-      int chunkSize = coalesce(kb.getChunkSize(), TextChunker.DEFAULT_CHUNK_SIZE);
-      int chunkOverlap = coalesce(kb.getChunkOverlap(), TextChunker.DEFAULT_CHUNK_OVERLAP);
-
       self.updateStatus(documentId, STATUS_PARSING);
 
       stageStart = System.currentTimeMillis();
@@ -133,7 +131,8 @@ public class DocumentPipelineService {
       self.updateStatus(documentId, STATUS_CHUNKING);
 
       stageStart = System.currentTimeMillis();
-      List<Chunk> chunks = textChunker.chunk(text, chunkSize, chunkOverlap);
+      ChunkingResult chunking = chunkingService.split(doc, kb, text);
+      List<Chunk> chunks = chunking.getChunks();
       chunkCount = chunks.size();
       chunkLatencyMs = System.currentTimeMillis() - stageStart;
 
@@ -152,7 +151,13 @@ public class DocumentPipelineService {
 
       stageStart = System.currentTimeMillis();
       List<DocumentChunk> documentChunks =
-          self.insertChunks(documentId, doc.getKbId(), chunks, vectors, doc.getChunkType());
+          self.insertChunks(
+              documentId,
+              doc.getKbId(),
+              chunks,
+              vectors,
+              doc.getChunkType(),
+              chunking.getStrategy());
       pgInsertLatencyMs = System.currentTimeMillis() - stageStart;
 
       stageStart = System.currentTimeMillis();
@@ -243,13 +248,24 @@ public class DocumentPipelineService {
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public List<DocumentChunk> insertChunks(
       Long docId, Long kbId, List<Chunk> chunks, List<float[]> vectors, String docChunkType) {
+    return insertChunks(docId, kbId, chunks, vectors, docChunkType, "FIXED_WINDOW");
+  }
+
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public List<DocumentChunk> insertChunks(
+      Long docId,
+      Long kbId,
+      List<Chunk> chunks,
+      List<float[]> vectors,
+      String docChunkType,
+      String chunkerStrategy) {
     LocalDateTime now = LocalDateTime.now();
     List<DocumentChunk> inserted = new ArrayList<>(chunks.size());
     int batchSize = 50;
     for (int offset = 0; offset < chunks.size(); offset += batchSize) {
       int end = Math.min(offset + batchSize, chunks.size());
       inserted.addAll(
-          insertChunkBatch(docId, kbId, chunks, vectors, offset, end, now, docChunkType));
+          insertChunkBatch(docId, kbId, chunks, vectors, offset, end, now, docChunkType, chunkerStrategy));
     }
     return inserted;
   }
@@ -262,18 +278,22 @@ public class DocumentPipelineService {
       int start,
       int end,
       LocalDateTime now,
-      String docChunkType) {
+      String docChunkType,
+      String chunkerStrategy) {
     StringBuilder sql =
         new StringBuilder(
             """
-            INSERT INTO document_chunks (doc_id, kb_id, chunk_index, content, content_vector, token_count, chunk_type, created_at)
+            INSERT INTO document_chunks (
+              doc_id, kb_id, chunk_index, content, content_vector, token_count, chunk_type,
+              chunker_strategy, chunker_params_json, heading_path, created_at
+            )
             VALUES
             """);
     for (int i = start; i < end; i++) {
       if (i > start) {
         sql.append(", ");
       }
-      sql.append("(?, ?, ?, ?, ?::vector, ?, ?, ?)");
+      sql.append("(?, ?, ?, ?, ?::vector, ?, ?, ?, ?::jsonb, ?, ?)");
     }
     sql.append(" RETURNING id, chunk_index");
 
@@ -291,6 +311,9 @@ public class DocumentPipelineService {
             ps.setObject(idx++, new PGvector(vectors.get(i)));
             ps.setInt(idx++, chunk.getTokenCount());
             ps.setString(idx++, docChunkType);
+            ps.setString(idx++, chunkerStrategy);
+            ps.setString(idx++, serializeChunkParams(chunk));
+            ps.setString(idx++, chunk.getHeadingPath());
             ps.setObject(idx++, now);
           }
           return ps;
@@ -316,6 +339,9 @@ public class DocumentPipelineService {
       entity.setContentVector(new PGvector(vectors.get(i)));
       entity.setTokenCount(chunk.getTokenCount());
       entity.setChunkType(docChunkType);
+      entity.setChunkerStrategy(chunkerStrategy);
+      entity.setChunkerParamsJson(serializeChunkParams(chunk));
+      entity.setHeadingPath(chunk.getHeadingPath());
       entity.setCreatedAt(now);
     }
 
@@ -373,6 +399,17 @@ public class DocumentPipelineService {
 
   private static int coalesce(Integer value, int defaultValue) {
     return value == null ? defaultValue : value;
+  }
+
+  private String serializeChunkParams(Chunk chunk) {
+    if (chunk == null || chunk.getChunkParamsJson() == null) {
+      return null;
+    }
+    try {
+      return objectMapper.writeValueAsString(chunk.getChunkParamsJson());
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   private String buildCleanReport(String originalText, CleanResult result, CleanProfile profile) {

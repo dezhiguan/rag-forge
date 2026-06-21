@@ -22,3 +22,5 @@ export const runExperiment = (data) => request.post('/eval/experiments/run', dat
 export const listExperiments = () => request.get('/eval/experiments')
 export const getExperiment = (id) => request.get(`/eval/experiments/${id}`)
 export const deleteExperiment = (id) => request.delete(`/eval/experiments/${id}`)
+
+export const runChunkerAb = (data) => request.post('/evaluation/chunker-ab', data)

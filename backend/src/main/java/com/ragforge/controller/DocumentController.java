@@ -359,6 +359,25 @@ public class DocumentController {
     return ResponseEntity.ok(Map.of("documentId", id, "status", "PENDING"));
   }
 
+  @PostMapping("/documents/{id}/rechunk")
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR') and @kbAccessGuard.canWriteDocument(#id)")
+  @Transactional
+  public ResponseEntity<Map<String, Object>> rechunk(@PathVariable Long id) {
+    Document doc = documentMapper.selectById(id);
+    if (doc == null) {
+      throw new BizException(404, "DOCUMENT_NOT_FOUND");
+    }
+
+    String status = normalizeStatus(doc.getParseStatus());
+    if ("PENDING".equals(status) || "PROCESSING".equals(status) || "REPROCESSING".equals(status)) {
+      throw new BizException(409, "ALREADY_IN_PROGRESS");
+    }
+
+    documentMapper.updateStatus(id, "REPROCESSING");
+    sendProcessAfterCommit(id);
+    return ResponseEntity.ok(Map.of("documentId", id, "status", "REPROCESSING"));
+  }
+
   private void sendProcessAfterCommit(Long documentId) {
     if (!TransactionSynchronizationManager.isSynchronizationActive()) {
       mqProducer.send(documentId);

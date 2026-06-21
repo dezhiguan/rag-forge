@@ -8,5 +8,6 @@ public class DocumentChunkVO {
   private Integer chunkIndex;
   private String content;
   private Integer tokenCount;
+  private String chunkerStrategy;
+  private String headingPath;
 }
-

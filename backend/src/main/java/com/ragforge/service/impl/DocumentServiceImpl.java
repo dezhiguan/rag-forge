@@ -455,6 +455,8 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setChunkIndex(chunk.getChunkIndex());
     vo.setContent(chunk.getContent());
     vo.setTokenCount(chunk.getTokenCount());
+    vo.setChunkerStrategy(chunk.getChunkerStrategy());
+    vo.setHeadingPath(chunk.getHeadingPath());
     return vo;
   }
 
