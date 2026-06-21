@@ -458,7 +458,6 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setChunkerStrategy(chunk.getChunkerStrategy());
     vo.setHeadingPath(chunk.getHeadingPath());
     vo.setChunkModality(chunk.getChunkModality());
-    vo.setImageKey(chunk.getImageKey());
     return vo;
   }
 

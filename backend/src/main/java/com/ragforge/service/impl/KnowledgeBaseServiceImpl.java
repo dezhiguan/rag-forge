@@ -35,7 +35,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     KnowledgeBase kb = new KnowledgeBase();
     kb.setName(dto.getName().trim());
     kb.setDescription(dto.getDescription());
-    kb.setEmbeddingModel("text-embedding-v4");
+    kb.setEmbeddingModel("qwen3-vl-embedding");
     kb.setChunkSize(dto.getChunkSize() != null ? dto.getChunkSize() : 512);
     kb.setChunkOverlap(dto.getChunkOverlap() != null ? dto.getChunkOverlap() : 64);
     kb.setDocCount(0);

@@ -59,7 +59,7 @@ class DataCalibrationJobTest {
     when(documentMapper.selectList(null)).thenReturn(List.of(doc));
     when(documentChunkMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(3L);
     when(jdbcTemplate.queryForObject(
-            eq("select count(*) from document_chunks where doc_id = ? and content_vector is null"),
+            eq("select count(*) from document_chunks where doc_id = ? and vl_vector is null"),
             eq(Long.class),
             eq(10L)))
         .thenReturn(2L);

@@ -21,7 +21,7 @@ spring:
     out-of-order: true
     # 已有库（docker initdb / 手工建表）首次接入 Flyway 时打 baseline，跳过 V1，从 V2 起增量执行
     baseline-on-migrate: true
-    baseline-version: 1
+    baseline-version: 26
     validate-on-migrate: true
   servlet:
     multipart:
@@ -83,8 +83,6 @@ ragforge:
     executor-max-size: ${RAGFORGE_RETRIEVAL_MAX_SIZE:12}
     executor-queue-capacity: ${RAGFORGE_RETRIEVAL_QUEUE_CAPACITY:100}
     stage-timeout-ms: ${RAGFORGE_RETRIEVAL_STAGE_TIMEOUT_MS:8000}
-    multimodal-text-weight: ${RAGFORGE_RETRIEVAL_MULTIMODAL_TEXT_WEIGHT:0.7}
-    multimodal-image-weight: ${RAGFORGE_RETRIEVAL_MULTIMODAL_IMAGE_WEIGHT:0.3}
     keyword:
       max-concurrent: ${RAGFORGE_RETRIEVAL_KEYWORD_CONCURRENCY:20}
       timeout-ms: ${RAGFORGE_RETRIEVAL_KEYWORD_TIMEOUT_MS:5000}
@@ -100,7 +98,18 @@ ragforge:
     rewrite:
       max-concurrent: ${RAGFORGE_RETRIEVAL_REWRITE_CONCURRENCY:3}
       timeout-ms: ${RAGFORGE_RETRIEVAL_REWRITE_TIMEOUT_MS:10000}
-  multimodal:
+embedding:
+  api-key: ${DASHSCOPE_API_KEY:}
+  vl:
+    model: qwen3-vl-embedding
+    endpoint: https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding
+    timeoutMs: 15000
+    batchSize: 10
+  ocr:
+    model: qwen-vl-ocr
+    endpoint: https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+    timeoutMs: 30000
+  image-processing:
     enabled: ${RAGFORGE_MULTIMODAL_ENABLED:true}
     timeout-ms: ${RAGFORGE_MULTIMODAL_TIMEOUT_MS:30000}
     max-concurrent: ${RAGFORGE_MULTIMODAL_MAX_CONCURRENT:1}
@@ -125,19 +134,10 @@ app:
     storage-path: ./data/files
   dashscope:
     api-key: ${DASHSCOPE_API_KEY:your-key-here}
-    model: text-embedding-v4
-    vision-model: qwen-vl-max
-    image-embedding-model: multimodal-embedding-v1
     base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    vision-endpoint: ${DASHSCOPE_VISION_ENDPOINT:}
-    image-embedding-endpoint: ${DASHSCOPE_IMAGE_EMBEDDING_ENDPOINT:}
     rewrite-model: qwen-turbo
     rerank-model: qwen3-rerank
-    batch-size: 10
-    timeout: 30000
     llm-timeout-ms: ${DASHSCOPE_LLM_TIMEOUT_MS:60000}
-    min-request-interval-ms: 0
-    max-concurrent-requests: 1
 
 reranker:
   base-url: ${RERANKER_BASE_URL:http://localhost:8001}

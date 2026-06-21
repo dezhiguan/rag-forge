@@ -108,7 +108,7 @@ public class DataCalibrationJob {
             "CHUNK_VECTOR_MISSING",
             doc.getKbId(),
             doc.getId(),
-            missingVectorCount + " chunks have null content_vector");
+            missingVectorCount + " chunks have null vl_vector");
       }
     }
   }
@@ -158,7 +158,7 @@ public class DataCalibrationJob {
   private long countMissingVectors(Long docId) {
     Long count =
         jdbcTemplate.queryForObject(
-            "select count(*) from document_chunks where doc_id = ? and content_vector is null",
+            "select count(*) from document_chunks where doc_id = ? and vl_vector is null",
             Long.class,
             docId);
     return count == null ? 0 : count;

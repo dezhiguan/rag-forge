@@ -316,7 +316,7 @@ class DocumentServiceImplTest {
     kb.setChunkCount(4);
     kb.setChunkSize(500);
     kb.setChunkOverlap(50);
-    kb.setEmbeddingModel("text-embedding-v4");
+    kb.setEmbeddingModel("qwen3-vl-embedding");
     return kb;
   }
 

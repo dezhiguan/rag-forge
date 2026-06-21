@@ -199,7 +199,7 @@ class IngestServiceIntegrationTest extends BaseIntegrationTest {
     return jdbcTemplate.queryForObject(
         """
         INSERT INTO knowledge_bases (name, description, embedding_model, chunk_size, chunk_overlap, status)
-        VALUES (?, 'it', 'text-embedding-v4', 512, 64, 'active')
+        VALUES (?, 'it', 'qwen3-vl-embedding', 512, 64, 'active')
         RETURNING id
         """,
         Long.class,

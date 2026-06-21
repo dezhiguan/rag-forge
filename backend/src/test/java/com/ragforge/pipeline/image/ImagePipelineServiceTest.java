@@ -60,12 +60,10 @@ class ImagePipelineServiceTest {
     when(documentMapper.selectById(7L)).thenReturn(doc);
     when(objectStorage.get("bucket", "tenant/kb/arch.png"))
         .thenReturn(new ByteArrayInputStream(new byte[] {1, 2, 3}));
-    DocumentChunk noOcr = new DocumentChunk();
-    noOcr.setChunkModality(ChunkModality.IMAGE_NO_OCR);
-    DocumentChunk desc = new DocumentChunk();
-    desc.setChunkModality(ChunkModality.IMAGE_DESC);
+    DocumentChunk image = new DocumentChunk();
+    image.setChunkModality(ChunkModality.IMAGE);
     when(imagePipelineSupport.processStandaloneImage(any(), any(), any(), any(Integer.class), any()))
-        .thenReturn(List.of(noOcr, desc));
+        .thenReturn(List.of(image));
     doNothing().when(jdbcTemplate).query(any(PreparedStatementCreator.class), any(RowCallbackHandler.class));
 
     service.processImageDocument(7L);
@@ -75,9 +73,9 @@ class ImagePipelineServiceTest {
     verify(esIndexService).indexChunks(chunksCaptor.capture(), any(Document.class));
     List<DocumentChunk> chunks = chunksCaptor.getValue();
     assertThat(chunks).extracting(DocumentChunk::getChunkModality)
-        .containsExactly(ChunkModality.IMAGE_NO_OCR, ChunkModality.IMAGE_DESC);
+        .containsExactly(ChunkModality.IMAGE);
     verify(jdbcTemplate).update("DELETE FROM document_chunks WHERE doc_id = ?", 7L);
-    verify(jdbcTemplate).update("UPDATE documents SET chunk_count = ?, updated_at = NOW() WHERE id = ?", 2, 7L);
+    verify(jdbcTemplate).update("UPDATE documents SET chunk_count = ?, updated_at = NOW() WHERE id = ?", 1, 7L);
     verify(documentMapper).selectById(7L);
   }
 

@@ -92,8 +92,8 @@ public class ImagePipelineService {
         new StringBuilder(
             """
             INSERT INTO document_chunks (
-              doc_id, kb_id, chunk_index, content, content_vector, image_vector,
-              token_count, chunk_type, chunk_modality, image_key, chunk_metadata_json, created_at
+              doc_id, kb_id, chunk_index, content, vl_vector,
+              token_count, chunk_type, chunk_modality, chunk_metadata_json, created_at
             )
             VALUES
             """);
@@ -101,7 +101,7 @@ public class ImagePipelineService {
       if (i > 0) {
         sql.append(", ");
       }
-      sql.append("(?, ?, ?, ?, NULL, ?::vector, ?, ?, ?, ?, ?::jsonb, ?)");
+      sql.append("(?, ?, ?, ?, ?::vector, ?, ?, ?, ?::jsonb, ?)");
     }
     sql.append(" RETURNING id, chunk_index");
 
@@ -115,11 +115,10 @@ public class ImagePipelineService {
             ps.setLong(idx++, chunk.getKbId());
             ps.setInt(idx++, chunk.getChunkIndex());
             ps.setString(idx++, chunk.getContent());
-            ps.setObject(idx++, chunk.getImageVector());
+            ps.setObject(idx++, chunk.getVlVector());
             ps.setInt(idx++, chunk.getTokenCount());
             ps.setString(idx++, chunk.getChunkType());
             ps.setString(idx++, chunk.getChunkModality());
-            ps.setString(idx++, chunk.getImageKey());
             ps.setString(idx++, chunk.getChunkMetadataJson());
             ps.setObject(idx++, now);
           }

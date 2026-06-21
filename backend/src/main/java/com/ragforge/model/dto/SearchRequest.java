@@ -19,10 +19,15 @@ public class SearchRequest {
   /** vector | keyword | rewrite | hybrid | full */
   private String strategy = "vector";
 
-  /** text | image | both */
+  /**
+   * DEPRECATED in T10-rewrite (2026-06-21). Backend now uses unified vl_vector space and ignores
+   * this field.
+   */
+  @Deprecated
   private String modality = "text";
 
-  /** data URL or pure base64 image payload, used when modality=image/both. */
+  /** DEPRECATED in T10-rewrite. Backend ignores this field until the unified image query API lands. */
+  @Deprecated
   private String queryImageBase64;
 
   /** only used by hybrid strategy */

@@ -5,7 +5,8 @@ import com.pgvector.PGvector;
 import com.ragforge.common.BizException;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
-import java.util.ArrayList;
+import com.ragforge.pipeline.embedder.EmbeddingInput;
+import com.ragforge.pipeline.embedder.VlEmbeddingClient;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,8 +19,7 @@ import org.springframework.util.StringUtils;
 public class ImagePipelineSupport {
 
   private final OcrClient ocrClient;
-  private final VisionCaptionClient visionCaptionClient;
-  private final ImageEmbeddingClient imageEmbeddingClient;
+  private final VlEmbeddingClient vlEmbeddingClient;
   private final ObjectMapper objectMapper;
 
   public List<DocumentChunk> processSingleImage(
@@ -29,8 +29,7 @@ public class ImagePipelineSupport {
       ImageChunkContext context,
       int startChunkIndex,
       String imageKey) {
-    return processSingleImage(
-        imageBytes, imageContentType, doc, context, startChunkIndex, imageKey, false);
+    return processImage(imageBytes, imageContentType, doc, context, startChunkIndex);
   }
 
   public List<DocumentChunk> processStandaloneImage(
@@ -39,68 +38,47 @@ public class ImagePipelineSupport {
       Document doc,
       int startChunkIndex,
       String imageKey) {
-    return processSingleImage(
-        imageBytes, imageContentType, doc, new ImageChunkContext(), startChunkIndex, imageKey, true);
+    return processImage(imageBytes, imageContentType, doc, new ImageChunkContext(), startChunkIndex);
   }
 
-  private List<DocumentChunk> processSingleImage(
+  private List<DocumentChunk> processImage(
       byte[] imageBytes,
       String imageContentType,
       Document doc,
       ImageChunkContext context,
-      int startChunkIndex,
-      String imageKey,
-      boolean keepNoOcrChunk) {
+      int chunkIndex) {
     if (imageBytes == null || imageBytes.length == 0) {
       return List.of();
     }
 
-    float[] imageVector = imageEmbeddingClient.embedImage(imageBytes, imageContentType);
-    List<DocumentChunk> chunks = new ArrayList<>();
-    int index = startChunkIndex;
-
+    String ocrText = "";
     try {
       OcrResult ocr = ocrClient.recognize(imageBytes, imageContentType, doc.getFilename());
-      if (ocr != null && StringUtils.hasText(ocr.getText())) {
-        chunks.add(buildChunk(doc, index++, contentWithContext(ocr.getText(), context), ChunkModality.OCR_TEXT, imageVector, imageKey, context));
-      } else if (keepNoOcrChunk) {
-        chunks.add(buildChunk(doc, index++, "OCR 未识别到文字", ChunkModality.IMAGE_NO_OCR, imageVector, imageKey, context));
+      if (ocr != null) {
+        ocrText = ocr.getText();
       }
     } catch (Exception e) {
-      if (!keepNoOcrChunk) {
-        throw e instanceof RuntimeException runtimeException ? runtimeException : new BizException(e.getMessage());
-      }
-      chunks.add(buildChunk(doc, index++, "OCR 失败：" + e.getMessage(), ChunkModality.IMAGE_NO_OCR, imageVector, imageKey, context));
+      throw e instanceof RuntimeException runtimeException ? runtimeException : new BizException(e.getMessage());
     }
 
-    String description = visionCaptionClient.describe(imageBytes, imageContentType, doc.getFilename());
-    if (!StringUtils.hasText(description)) {
-      description = "图片文件：" + doc.getFilename();
-    }
-    chunks.add(buildChunk(doc, index, contentWithContext(description, context), ChunkModality.IMAGE_DESC, imageVector, imageKey, context));
-    return chunks;
-  }
+    String content =
+        StringUtils.hasText(ocrText)
+            ? contentWithContext(ocrText, context)
+            : contentWithContext("[图片：" + doc.getFilename() + "]", context);
+    float[] vector =
+        vlEmbeddingClient.embed(List.of(EmbeddingInput.image(imageBytes, imageContentType))).get(0);
 
-  private DocumentChunk buildChunk(
-      Document doc,
-      int index,
-      String content,
-      String modality,
-      float[] imageVector,
-      String imageKey,
-      ImageChunkContext context) {
     DocumentChunk chunk = new DocumentChunk();
     chunk.setDocId(doc.getId());
     chunk.setKbId(doc.getKbId());
-    chunk.setChunkIndex(index);
+    chunk.setChunkIndex(chunkIndex);
     chunk.setContent(content);
     chunk.setTokenCount(content == null ? 0 : Math.max(1, content.length() / 2));
-    chunk.setChunkType(modality);
-    chunk.setChunkModality(modality);
-    chunk.setImageKey(imageKey);
-    chunk.setImageVector(new PGvector(imageVector));
+    chunk.setChunkType(ChunkModality.IMAGE);
+    chunk.setChunkModality(ChunkModality.IMAGE);
+    chunk.setVlVector(new PGvector(vector));
     chunk.setChunkMetadataJson(metadataJson(context));
-    return chunk;
+    return List.of(chunk);
   }
 
   private static String contentWithContext(String content, ImageChunkContext context) {

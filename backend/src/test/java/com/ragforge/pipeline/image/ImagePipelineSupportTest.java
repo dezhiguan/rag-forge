@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
+import com.ragforge.pipeline.embedder.VlEmbeddingClient;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,19 +20,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ImagePipelineSupportTest {
 
   @Mock private OcrClient ocrClient;
-  @Mock private VisionCaptionClient visionCaptionClient;
-  @Mock private ImageEmbeddingClient imageEmbeddingClient;
+  @Mock private VlEmbeddingClient vlEmbeddingClient;
 
   private ImagePipelineSupport support;
 
   @BeforeEach
   void setUp() {
-    support = new ImagePipelineSupport(ocrClient, visionCaptionClient, imageEmbeddingClient, new ObjectMapper());
+    support = new ImagePipelineSupport(ocrClient, vlEmbeddingClient, new ObjectMapper());
   }
 
   @Test
   void embeddedImageOcrFailureThrowsSoCallerCanSkipThatImage() {
-    when(imageEmbeddingClient.embedImage(any(), any())).thenReturn(new float[1024]);
     when(ocrClient.recognize(any(), any(), any())).thenThrow(new RuntimeException("ocr down"));
 
     assertThatThrownBy(
@@ -47,16 +46,17 @@ class ImagePipelineSupportTest {
   }
 
   @Test
-  void standaloneImageKeepsNoOcrChunkWhenOcrFails() {
-    when(imageEmbeddingClient.embedImage(any(), any())).thenReturn(new float[1024]);
-    when(ocrClient.recognize(any(), any(), any())).thenThrow(new RuntimeException("ocr down"));
-    when(visionCaptionClient.describe(any(), any(), any())).thenReturn("图像描述");
+  void standaloneImageProducesSingleImageChunkWithUnifiedVector() {
+    when(ocrClient.recognize(any(), any(), any())).thenReturn(new OcrResult("OCR 文本"));
+    when(vlEmbeddingClient.embed(any())).thenReturn(List.of(new float[2560]));
 
     List<DocumentChunk> chunks =
         support.processStandaloneImage(new byte[] {1, 2, 3}, "image/png", doc(), 0, "image/key.png");
 
     assertThat(chunks).extracting(DocumentChunk::getChunkModality)
-        .containsExactly(ChunkModality.IMAGE_NO_OCR, ChunkModality.IMAGE_DESC);
+        .containsExactly(ChunkModality.IMAGE);
+    assertThat(chunks.get(0).getContent()).contains("OCR 文本");
+    assertThat(chunks.get(0).getVlVector()).isNotNull();
   }
 
   private static Document doc() {

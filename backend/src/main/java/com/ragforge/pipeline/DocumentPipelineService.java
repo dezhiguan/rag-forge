@@ -307,7 +307,7 @@ public class DocumentPipelineService {
         new StringBuilder(
             """
             INSERT INTO document_chunks (
-              doc_id, kb_id, chunk_index, content, content_vector, token_count, chunk_type,
+              doc_id, kb_id, chunk_index, content, vl_vector, token_count, chunk_type,
               chunker_strategy, chunker_params_json, heading_path, created_at
             )
             VALUES
@@ -359,7 +359,7 @@ public class DocumentPipelineService {
         throw new BizException("批量插入 chunk 失败，缺少返回记录: chunkIndex=" + chunk.getIndex());
       }
       entity.setContent(chunk.getContent());
-      entity.setContentVector(new PGvector(vectors.get(i)));
+      entity.setVlVector(new PGvector(vectors.get(i)));
       entity.setTokenCount(chunk.getTokenCount());
       entity.setChunkType(docChunkType);
       entity.setChunkerStrategy(chunkerStrategy);
@@ -580,7 +580,7 @@ public class DocumentPipelineService {
           image.getContentType(),
           doc,
           ImageChunkContext.of(image),
-          nextChunkIndex.getAndAdd(2),
+          nextChunkIndex.getAndIncrement(),
           imageKey);
     } catch (Exception e) {
       log.warn(

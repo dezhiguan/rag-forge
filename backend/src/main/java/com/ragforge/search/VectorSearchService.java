@@ -1,9 +1,10 @@
 package com.ragforge.search;
 
 import com.pgvector.PGvector;
-import com.ragforge.pipeline.image.ImageEmbeddingClient;
 import java.util.Base64;
 import com.ragforge.pipeline.embedder.EmbeddingService;
+import com.ragforge.pipeline.embedder.EmbeddingInput;
+import com.ragforge.pipeline.embedder.VlEmbeddingClient;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -20,7 +21,7 @@ import org.springframework.stereotype.Service;
 public class VectorSearchService {
 
   private final EmbeddingService embedder;
-  private final ImageEmbeddingClient imageEmbeddingClient;
+  private final VlEmbeddingClient vlEmbeddingClient;
   private final JdbcTemplate jdbcTemplate;
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
@@ -44,11 +45,11 @@ public class VectorSearchService {
         new StringBuilder(
             """
             SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
-                   dc.chunk_modality, dc.image_key,
-                   1 - (dc.content_vector <=> ?::vector) AS similarity
+                   dc.chunk_modality,
+                   1 - (dc.vl_vector <=> ?::vector) AS similarity
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
-            WHERE dc.content_vector IS NOT NULL
+            WHERE dc.vl_vector IS NOT NULL
               AND d.parse_status = 'COMPLETED'
             """);
 
@@ -72,7 +73,7 @@ public class VectorSearchService {
       sql.append(" AND dc.chunk_type = ANY(?)");
     }
 
-    sql.append(" ORDER BY dc.content_vector <=> ?::vector LIMIT ?");
+    sql.append(" ORDER BY dc.vl_vector <=> ?::vector LIMIT ?");
 
     long dbStart = System.currentTimeMillis();
     List<SearchResult> results =
@@ -213,17 +214,17 @@ public class VectorSearchService {
           """
           SELECT * FROM (
             SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
-                   dc.chunk_modality, dc.image_key,
-                   1 - (dc.content_vector <=> ?::vector) AS similarity
+                   dc.chunk_modality,
+                   1 - (dc.vl_vector <=> ?::vector) AS similarity
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
-            WHERE dc.content_vector IS NOT NULL
+            WHERE dc.vl_vector IS NOT NULL
               AND d.parse_status = 'COMPLETED'
           """);
       appendFilters(sql, kbIds, docIds, filter);
       sql.append(
           """
-            ORDER BY dc.content_vector <=> ?::vector
+            ORDER BY dc.vl_vector <=> ?::vector
             LIMIT ?
           ) q
           """);
@@ -293,7 +294,6 @@ public class VectorSearchService {
     result.setVectorScore(rs.getDouble("similarity"));
     result.setChunkType(rs.getString("chunk_type"));
     result.setChunkModality(rs.getString("chunk_modality"));
-    result.setImageKey(rs.getString("image_key"));
     return result;
   }
 
@@ -307,12 +307,12 @@ public class VectorSearchService {
     requireKbScope(kbIds);
     float[] vector =
         hasText(queryImageBase64)
-            ? imageEmbeddingClient.embedImage(decodeImageBase64(queryImageBase64), "image/*")
-            : imageEmbeddingClient.embedText(query == null ? "" : query);
-    return searchImageByVector(vector, kbIds, docIds, topK, filter);
+            ? vlEmbeddingClient.embed(List.of(EmbeddingInput.image(decodeImageBase64(queryImageBase64), "image/*"))).get(0)
+            : vlEmbeddingClient.embed(List.of(EmbeddingInput.text(query == null ? "" : query))).get(0);
+    return searchByVector(vector, kbIds, docIds, topK, filter);
   }
 
-  private List<SearchResult> searchImageByVector(
+  private List<SearchResult> searchByVector(
       float[] vector,
       List<Long> kbIds,
       List<Long> docIds,
@@ -323,15 +323,15 @@ public class VectorSearchService {
         new StringBuilder(
             """
             SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
-                   dc.chunk_modality, dc.image_key,
-                   1 - (dc.image_vector <=> ?::vector) AS similarity
+                   dc.chunk_modality,
+                   1 - (dc.vl_vector <=> ?::vector) AS similarity
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
-            WHERE dc.image_vector IS NOT NULL
+            WHERE dc.vl_vector IS NOT NULL
               AND d.parse_status = 'COMPLETED'
             """);
     appendFilters(sql, kbIds, docIds, filter);
-    sql.append(" ORDER BY dc.image_vector <=> ?::vector LIMIT ?");
+    sql.append(" ORDER BY dc.vl_vector <=> ?::vector LIMIT ?");
     return jdbcTemplate.query(
         sql.toString(),
         ps -> {

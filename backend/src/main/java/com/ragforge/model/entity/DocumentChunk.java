@@ -22,11 +22,8 @@ public class DocumentChunk {
   private Integer chunkIndex;
   private String content;
 
-  @TableField(value = "content_vector", typeHandler = PGvectorTypeHandler.class)
-  private PGvector contentVector;
-
-  @TableField(value = "image_vector", typeHandler = PGvectorTypeHandler.class)
-  private PGvector imageVector;
+  @TableField(value = "vl_vector", typeHandler = PGvectorTypeHandler.class)
+  private PGvector vlVector;
 
   @TableField("chunk_type")
   private String chunkType;
@@ -41,7 +38,6 @@ public class DocumentChunk {
 
   private String headingPath;
   private String chunkModality;
-  private String imageKey;
 
   private Integer tokenCount;
   private LocalDateTime createdAt;

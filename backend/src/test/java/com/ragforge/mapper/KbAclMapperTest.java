@@ -77,7 +77,7 @@ class KbAclMapperTest {
     KnowledgeBase kb = new KnowledgeBase();
     kb.setName(prefix + "-" + System.nanoTime());
     kb.setDescription("acl mapper test");
-    kb.setEmbeddingModel("text-embedding-v4");
+    kb.setEmbeddingModel("qwen3-vl-embedding");
     kb.setChunkSize(512);
     kb.setChunkOverlap(64);
     kb.setDocCount(0);

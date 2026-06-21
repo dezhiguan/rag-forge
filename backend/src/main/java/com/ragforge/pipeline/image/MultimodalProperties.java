@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Data
-@ConfigurationProperties(prefix = "ragforge.multimodal")
+@ConfigurationProperties(prefix = "embedding.image-processing")
 public class MultimodalProperties {
 
   private boolean enabled = true;

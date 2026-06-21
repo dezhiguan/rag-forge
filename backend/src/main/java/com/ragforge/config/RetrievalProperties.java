@@ -17,8 +17,6 @@ public class RetrievalProperties {
   private int executorMaxSize = 12;
   private int executorQueueCapacity = 100;
   private int stageTimeoutMs = 8000;
-  private double multimodalTextWeight = 0.7;
-  private double multimodalImageWeight = 0.3;
 
   @Data
   public static class Strategy {
