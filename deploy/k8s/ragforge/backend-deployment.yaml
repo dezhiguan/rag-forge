@@ -7,7 +7,8 @@ metadata:
     app: ragforge-api
     role: api
 spec:
-  replicas: 2
+  # Single-node k3s: keep total backend JVM count at 2 (1 api + 1 worker).
+  replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -100,7 +101,7 @@ metadata:
     app: ragforge-worker
     role: worker
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:

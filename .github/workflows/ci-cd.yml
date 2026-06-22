@@ -162,7 +162,7 @@ jobs:
   deploy-k3s:
     name: deploy-k3s-server3
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs:
       - backend-build
@@ -295,7 +295,7 @@ jobs:
           APP_DIR="${APP_DIR:-/opt/rag-forge/k8s-src}"
           SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 
-          timeout 25m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "APP_DIR='${APP_DIR}' RAGFORGE_BACKEND_IMAGE_TAG='${GITHUB_SHA::12}' bash -s" <<'EOF'
+          timeout 35m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "APP_DIR='${APP_DIR}' RAGFORGE_BACKEND_IMAGE_TAG='${GITHUB_SHA::12}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${APP_DIR}"
           if [[ ! -f /opt/shared/env/common.env || ! -f /opt/shared/env/ragforge.env ]]; then
@@ -308,9 +308,10 @@ jobs:
       - name: Verify k3s backend health
         run: |
           SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
-          timeout 10m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "bash -s" <<'EOF'
+          timeout 15m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "bash -s" <<'EOF'
           set -euo pipefail
-          sudo k3s kubectl -n ragforge rollout status deployment/ragforge-backend --timeout=300s
+          sudo k3s kubectl -n ragforge rollout status deployment/ragforge-api --timeout=600s
+          sudo k3s kubectl -n ragforge rollout status deployment/ragforge-worker --timeout=600s
           sudo k3s kubectl -n ragforge get pods -o wide
           for i in $(seq 1 60); do
             if curl -sf "http://127.0.0.1:31090/api/v1/health" >/dev/null; then
@@ -322,7 +323,8 @@ jobs:
           done
           echo "RAGForge k3s backend health check failed" >&2
           sudo k3s kubectl -n ragforge get pods -o wide >&2 || true
-          sudo k3s kubectl -n ragforge logs deployment/ragforge-backend --tail=200 >&2 || true
+          sudo k3s kubectl -n ragforge logs deployment/ragforge-api --tail=200 >&2 || true
+          sudo k3s kubectl -n ragforge logs deployment/ragforge-worker --tail=200 >&2 || true
           exit 1
           EOF
 

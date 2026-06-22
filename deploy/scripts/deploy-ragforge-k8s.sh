@@ -101,6 +101,10 @@ bash "${SCRIPT_DIR}/create-ragforge-k8s-secret.sh"
 step_end
 
 step_start "[5/6] Apply manifests (image=${BACKEND_IMAGE})"
+if k3s kubectl -n "${NAMESPACE}" get deployment ragforge-backend >/dev/null 2>&1; then
+  echo "Retiring legacy deployment/ragforge-backend before api/worker split rollout"
+  k3s kubectl -n "${NAMESPACE}" delete deployment ragforge-backend --wait=true --timeout=180s
+fi
 render_ragforge_deployment "${K8S_DIR}/backend-deployment.yaml" "${RENDERED_DEPLOY}" "${BACKEND_IMAGE}"
 k3s kubectl apply -f "${K8S_DIR}/namespace.yaml"
 k3s kubectl apply -f "${K8S_DIR}/backend-configmap.yaml"
@@ -108,8 +112,21 @@ k3s kubectl apply -f "${K8S_DIR}/backend-service.yaml"
 k3s kubectl apply -f "${K8S_DIR}/frontend-service.yaml"
 k3s kubectl apply -f "${RENDERED_DEPLOY}"
 k3s kubectl apply -f "${K8S_DIR}/frontend-deployment.yaml"
-k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-api --timeout=300s
-k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-worker --timeout=300s
+ROLLOUT_TIMEOUT="${RAGFORGE_ROLLOUT_TIMEOUT:-600s}"
+if ! k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-api --timeout="${ROLLOUT_TIMEOUT}"; then
+  echo "ragforge-api rollout failed; collecting diagnostics" >&2
+  k3s kubectl -n "${NAMESPACE}" get pods -o wide >&2 || true
+  k3s kubectl -n "${NAMESPACE}" describe deployment/ragforge-api >&2 || true
+  k3s kubectl -n "${NAMESPACE}" logs deployment/ragforge-api --tail=200 >&2 || true
+  exit 1
+fi
+if ! k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-worker --timeout="${ROLLOUT_TIMEOUT}"; then
+  echo "ragforge-worker rollout failed; collecting diagnostics" >&2
+  k3s kubectl -n "${NAMESPACE}" get pods -o wide >&2 || true
+  k3s kubectl -n "${NAMESPACE}" describe deployment/ragforge-worker >&2 || true
+  k3s kubectl -n "${NAMESPACE}" logs deployment/ragforge-worker --tail=200 >&2 || true
+  exit 1
+fi
 k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-frontend --timeout=180s
 step_end
 
