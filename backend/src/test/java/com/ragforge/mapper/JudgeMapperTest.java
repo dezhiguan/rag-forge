@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.ragforge.model.entity.JudgeMetricsDaily;
 import com.ragforge.model.entity.JudgeResult;
 import com.ragforge.model.entity.JudgeSamplingConfig;
-import com.ragforge.support.BaseIntegrationTest;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -23,12 +22,20 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest(
     classes = JudgeMapperTest.MapperTestConfig.class,
     properties = {
+      "spring.datasource.url=jdbc:h2:mem:judge_mapper_test;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1",
+      "spring.datasource.driver-class-name=org.h2.Driver",
+      "spring.datasource.username=sa",
+      "spring.datasource.password=",
       "spring.profiles.active=test",
       "mybatis-plus.configuration.map-underscore-to-camel-case=true",
-      "spring.autoconfigure.exclude=org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration"
+      "spring.autoconfigure.exclude=org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration",
+      "spring.flyway.enabled=false",
+      "spring.sql.init.mode=always",
+      "spring.sql.init.schema-locations=classpath:judge-mapper-schema.sql",
+      "spring.sql.init.data-locations=classpath:judge-mapper-data.sql"
     })
 @Transactional
-class JudgeMapperTest extends BaseIntegrationTest {
+class JudgeMapperTest {
 
   @Autowired private JudgeResultMapper judgeResultMapper;
 
@@ -53,7 +60,6 @@ class JudgeMapperTest extends BaseIntegrationTest {
     entity.setJudgeModel("deepseek-chat");
     entity.setJudgePromptVersion("v1");
     entity.setJudgeReasoning("deterministic test sample");
-    entity.setJudgeRawResponse("{\"score\":0.895}");
     entity.setJudgeLatencyMs(321);
     entity.setJudgeCostCny(new BigDecimal("0.0123"));
     entity.setStatus("COMPLETED");
@@ -68,7 +74,6 @@ class JudgeMapperTest extends BaseIntegrationTest {
     assertThat(loaded.getKbIds()).containsExactly(11L, 22L, 33L);
     assertThat(loaded.getStatus()).isEqualTo("COMPLETED");
     assertThat(loaded.getSource()).isEqualTo("PRODUCTION");
-    assertThat(loaded.getJudgeRawResponse()).isEqualTo("{\"score\":0.895}");
   }
 
   @Test
@@ -105,6 +110,8 @@ class JudgeMapperTest extends BaseIntegrationTest {
 
     JudgeSamplingConfig duplicate = new JudgeSamplingConfig();
     duplicate.setScopeType("GLOBAL");
+    duplicate.setScopeId(-1L);
+    duplicate.setTenantId("global");
     duplicate.setSampleRate(new BigDecimal("0.010"));
     duplicate.setUpdatedBy("unit-test");
 

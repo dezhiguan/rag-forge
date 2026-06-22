@@ -28,6 +28,8 @@ const routes = [
   { path: '/answer', name: 'AnswerPlayground', component: () => import('../views/AnswerPlayground.vue'), meta: { icon: '💬', label: '应答 Playground', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:debug:run' } },
   { path: '/perf-probe', name: 'PerformanceProbe', component: () => import('../views/PerformanceProbe.vue'), meta: { icon: '⏱', label: '性能诊断', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/eval', name: 'EvaluationLab', component: () => import('../views/EvaluationLab.vue'), meta: { icon: '🧪', label: '评测实验室', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/evaluation/quality', name: 'EvaluationQuality', component: () => import('../views/EvaluationQuality.vue'), meta: { icon: '📈', label: '质量看板', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/evaluation/quality/case/:id', name: 'EvaluationQualityCase', component: () => import('../views/EvaluationQualityCase.vue'), meta: { icon: '🧪', label: '案例详情', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/api', name: 'ApiGateway', component: () => import('../views/ApiGateway.vue'), meta: { icon: '🔌', label: 'API 网关', role: 'ADMIN', scope: 'rag:apikey:admin' } },
   { path: '/api-gateway', redirect: '/api', meta: { role: 'ADMIN', scope: 'rag:apikey:admin' } },
 ]

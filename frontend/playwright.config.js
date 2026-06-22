@@ -32,8 +32,8 @@ export default defineConfig({
           name: 'chromium',
           use: {
             ...devices['Desktop Chrome'],
-            // Use locally installed Google Chrome (no `npx playwright install` needed).
-            channel: process.env.PW_E2E_CHANNEL || 'chrome',
+            // Use locally installed Google Chrome when PW_E2E_CHANNEL is set; otherwise bundled Chromium.
+            ...(process.env.PW_E2E_CHANNEL ? { channel: process.env.PW_E2E_CHANNEL } : {}),
             launchOptions: {
               args: ['--no-sandbox', '--disable-setuid-sandbox'],
             },
