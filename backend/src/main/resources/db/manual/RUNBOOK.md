@@ -66,7 +66,7 @@ WHERE table_name = 'document_chunks'
   AND column_name IN ('content_vector', 'image_vector', 'image_key');
 ```
 
-确认 HNSW 索引存在：
+确认 HNSW 索引**不存在**（2560 维向量当前超出 pgvector 索引维度上限，检索走顺序扫描）：
 
 ```sql
 SELECT indexname

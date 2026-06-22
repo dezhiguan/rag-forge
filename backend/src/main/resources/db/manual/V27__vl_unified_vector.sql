@@ -21,6 +21,6 @@ ALTER TABLE document_chunks
 DROP INDEX IF EXISTS idx_chunks_content_vector_hnsw;
 DROP INDEX IF EXISTS idx_chunks_image_vector_hnsw;
 
-CREATE INDEX idx_chunks_vl_vector_hnsw
-  ON document_chunks USING hnsw (vl_vector vector_cosine_ops)
-  WITH (m=16, ef_construction=64);
+-- pgvector 0.8.x indexes are limited to 2000 dimensions; vl_vector is 2560.
+-- Vector search falls back to sequential scan until pgvector adds higher-dim index support.
+DROP INDEX IF EXISTS idx_chunks_vl_vector_hnsw;
