@@ -15,11 +15,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.answer.AnswerModels.AnswerRequest;
 import com.ragforge.answer.AnswerModels.AnswerResponse;
 import com.ragforge.common.BizException;
+import com.ragforge.judge.sampler.AnswerJudgeProducer;
 import com.ragforge.mapper.AnswerLogMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.dto.LlmGenerateRequest;
+import com.ragforge.model.entity.AnswerLog;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.pipeline.cleaner.L3PiiMaskCleaner;
@@ -47,6 +49,7 @@ class AnswerServiceTest {
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private DocumentMapper documentMapper;
   @Mock private ObjectStorage objectStorage;
+  @Mock private AnswerJudgeProducer answerJudgeProducer;
 
   private AnswerService answerService;
 
@@ -63,7 +66,14 @@ class AnswerServiceTest {
             knowledgeBaseMapper,
             new ObjectMapper(),
             new L3PiiMaskCleaner(),
-            new RagforgeMetrics(new SimpleMeterRegistry()));
+            new RagforgeMetrics(new SimpleMeterRegistry()),
+            answerJudgeProducer);
+    when(answerLogMapper.insertAnswerLog(any())).thenAnswer(
+        invocation -> {
+          AnswerLog log = invocation.getArgument(0);
+          log.setId(100L);
+          return 1;
+        });
   }
 
   @Test
@@ -143,6 +153,22 @@ class AnswerServiceTest {
 
     assertThat(response.getGuardRailResult()).isEqualTo("PASS");
     assertThat(response.getCitations()).hasSize(1);
+  }
+
+  @Test
+  void answerBlocking_publishFailureDoesNotAffectAnswer() {
+    mockKb("ON");
+    when(retrievalService.retrieve(anyString(), anyList(), any(), eq("hybrid"), eq(0.7), eq(10), eq(10), any()))
+        .thenReturn(output(List.of(hit(1, "TEXT"))));
+    when(llmService.streamGenerate(any(LlmGenerateRequest.class), anyInt(), any()))
+        .thenReturn(new LlmService.StreamResult("广州 Java 常见 Spring Boot[1]", 100, 20, 50));
+    org.mockito.Mockito.doThrow(new RuntimeException("mq down"))
+        .when(answerJudgeProducer)
+        .publishJudgeRequest(any(), any());
+
+    AnswerResponse response = answerService.answerBlocking(request());
+
+    assertThat(response.getGuardRailResult()).isEqualTo("PASS");
   }
 
   @Test

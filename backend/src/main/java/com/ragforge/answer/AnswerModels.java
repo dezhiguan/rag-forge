@@ -17,6 +17,9 @@ public final class AnswerModels {
     private boolean stream = true;
     private int topK = 10;
     private int maxTokens = 800;
+    private String judgeSource = "PRODUCTION";
+    private Boolean forceSample = false;
+    private Long goldenQuestionId;
   }
 
   @Data

@@ -1558,3 +1558,4 @@ public class JudgeCostGuard {
 文件已保存到 `docs/v6-llm-judge-execution-prompts.md`，你按 J1 → J7 顺序复制 prompt 给 Codex 执行即可。
 J1 ✅ <commit-sha> 2026-06-23
 J2 ✅ 2026-06-23
+J3 ✅ 2026-06-23
