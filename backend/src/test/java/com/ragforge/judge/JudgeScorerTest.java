@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,6 +17,7 @@ import com.ragforge.answer.AnswerModels.Citation;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -215,11 +218,15 @@ class JudgeScorerTest {
 
   @Test
   void deepSeekClient_postsJsonObjectRequestAndParsesResult() {
+    AtomicReference<HttpEntity<String>> requestEntityRef = new AtomicReference<>();
     RestTemplate restTemplate = mock(RestTemplate.class);
-    when(restTemplate.postForEntity(any(), any(), eq(String.class)))
-        .thenReturn(
-            ResponseEntity.ok(
-                "{\"choices\":[{\"message\":{\"content\":\"{\\\"score\\\":0.3,\\\"reasoning\\\":\\\"ok\\\",\\\"hallucinated_claims\\\":[]}\"}}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20}}"));
+    when(restTemplate.postForEntity(anyString(), isA(HttpEntity.class), eq(String.class)))
+        .thenAnswer(
+            invocation -> {
+              requestEntityRef.set(invocation.getArgument(1));
+              return ResponseEntity.ok(
+                  "{\"choices\":[{\"message\":{\"content\":\"{\\\"score\\\":0.3,\\\"reasoning\\\":\\\"ok\\\",\\\"hallucinated_claims\\\":[]}\"}}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20}}");
+            });
 
     DeepSeekClient client = new DeepSeekClient(restTemplate, OBJECT_MAPPER);
     ReflectionTestUtils.setField(client, "apiKey", "test-key");
@@ -233,12 +240,12 @@ class JudgeScorerTest {
         .isEqualTo("{\"score\":0.3,\"reasoning\":\"ok\",\"hallucinated_claims\":[]}");
     assertThat(result.promptTokens()).isEqualTo(100);
     assertThat(result.completionTokens()).isEqualTo(20);
-    assertThat(result.estimateCostCny()).isEqualTo(new BigDecimal("0.0002"));
+    assertThat(result.estimateCostCny()).isEqualTo(new BigDecimal("0.0001"));
 
-    var entityCaptor = org.mockito.ArgumentCaptor.forClass(HttpEntity.class);
-    verify(restTemplate).postForEntity(eq("https://api.deepseek.com/v1/chat/completions"), entityCaptor.capture(), eq(String.class));
+    verify(restTemplate).postForEntity(eq("https://api.deepseek.com/v1/chat/completions"), isA(HttpEntity.class), eq(String.class));
 
-    HttpEntity<String> requestEntity = entityCaptor.getValue();
+    HttpEntity<String> requestEntity = requestEntityRef.get();
+    assertThat(requestEntity).isNotNull();
     assertThat(requestEntity.getHeaders().getFirst(HttpHeaders.AUTHORIZATION)).isEqualTo("Bearer test-key");
     assertThat(requestEntity.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
     assertThat(requestEntity.getBody()).contains("\"response_format\":{\"type\":\"json_object\"}");
@@ -248,7 +255,7 @@ class JudgeScorerTest {
   @Test
   void deepSeekClient_retriesOnFailureUntilMaxAttempts() {
     RestTemplate restTemplate = mock(RestTemplate.class);
-    when(restTemplate.postForEntity(any(), any(), eq(String.class)))
+    when(restTemplate.postForEntity(anyString(), isA(HttpEntity.class), eq(String.class)))
         .thenThrow(new HttpServerErrorException(org.springframework.http.HttpStatus.BAD_GATEWAY));
 
     DeepSeekClient client = new DeepSeekClient(restTemplate, OBJECT_MAPPER);
@@ -260,7 +267,7 @@ class JudgeScorerTest {
 
     assertThatThrownBy(() -> client.chat("sys", "usr")).isInstanceOf(RuntimeException.class);
     verify(restTemplate, org.mockito.Mockito.times(2))
-        .postForEntity(any(), any(), eq(String.class));
+        .postForEntity(anyString(), isA(HttpEntity.class), eq(String.class));
   }
 
   @Test

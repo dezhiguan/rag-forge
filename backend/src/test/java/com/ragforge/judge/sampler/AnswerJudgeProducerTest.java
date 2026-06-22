@@ -2,6 +2,7 @@ package com.ragforge.judge.sampler;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,7 +44,8 @@ class AnswerJudgeProducerTest {
 
     AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment);
     ReflectionTestUtils.setField(producer, "dispatchMode", "inline");
-    when(sampler.decide(sampleRequest(123L))).thenReturn(new SampleDecision(true, 1L, null, "KEEP_BY_RATE"));
+    when(sampler.decide(argThat(req -> req.answerLogId() == 123L && req.forceSample() == false)))
+        .thenReturn(new SampleDecision(true, 1L, null, "KEEP_BY_RATE"));
 
     producer.publishJudgeRequest(sampleMessage(123L), sampleRequest(123L));
 
@@ -56,11 +58,11 @@ class AnswerJudgeProducerTest {
     RocketMQTemplate rocketMQTemplate = org.mockito.Mockito.mock(RocketMQTemplate.class);
     JudgeSampler sampler = org.mockito.Mockito.mock(JudgeSampler.class);
     Environment environment = org.mockito.Mockito.mock(Environment.class);
-    when(environment.getActiveProfiles()).thenReturn(new String[] {});
     org.mockito.Mockito.doThrow(new RuntimeException("mq down"))
         .when(rocketMQTemplate)
         .convertAndSend(eq(AnswerJudgeProducer.TOPIC), any(AnswerJudgeMessage.class));
-    when(sampler.decide(sampleRequest(123L))).thenReturn(new SampleDecision(true, 1L, null, "KEEP_BY_RATE"));
+    when(sampler.decide(argThat(req -> req.answerLogId() == 123L && req.forceSample() == false)))
+        .thenReturn(new SampleDecision(true, 1L, null, "KEEP_BY_RATE"));
 
     AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment);
     ReflectionTestUtils.setField(producer, "dispatchMode", "mq");
