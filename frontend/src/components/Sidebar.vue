@@ -76,6 +76,7 @@ const ALL_NAV_ITEMS = [
   { path: '/answer', icon: '💬', label: '应答 Playground', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER'], scope: 'rag:debug:run' } },
   { path: '/perf-probe', icon: '⏱', label: '性能诊断', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/eval', icon: '🧪', label: '评测实验室', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/evaluation/quality', icon: '📈', label: '质量看板', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/api', icon: '🔌', label: 'API 网关', meta: { role: 'ADMIN', scope: 'rag:apikey:admin' } },
 ]
 
