@@ -157,3 +157,61 @@ spec:
           hostPath:
             path: /data/files
             type: DirectoryOrCreate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragforge-judge
+  namespace: ragforge
+  labels:
+    app: ragforge-judge
+    role: judge
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: ragforge-judge
+  template:
+    metadata:
+      labels:
+        app: ragforge-judge
+        role: judge
+    spec:
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: docker.io/ragforge/backend:0.0.2
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop:
+                - ALL
+          envFrom:
+            - configMapRef: { name: ragforge-backend-config }
+            - secretRef: { name: ragforge-backend-env }
+          env:
+            - name: RAGFORGE_ROLE
+              value: judge
+            - name: SPRING_MAIN_WEB_APPLICATION_TYPE
+              value: none
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms256m -Xmx512m"  # judge worker 内存可以小
+          volumeMounts:
+            - name: ragforge-files
+              mountPath: /data/files
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 1, memory: 768Mi }
+      volumes:
+        - name: ragforge-files
+          hostPath:
+            path: /data/files
+            type: DirectoryOrCreate

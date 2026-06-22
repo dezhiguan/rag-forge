@@ -39,21 +39,31 @@ public class DefaultJudgeScorer implements JudgeScorer {
   }
 
   private JudgeScore scoreComposite(JudgeContext context) {
-    JudgeScore faithfulness = score(context, ScoreDimension.FAITHFULNESS);
-    JudgeScore contextPrecision = score(context, ScoreDimension.CONTEXT_PRECISION);
-    JudgeScore answerRelevance = score(context, ScoreDimension.ANSWER_RELEVANCE);
+    BigDecimal faithfulness = context.getFaithfulnessScore();
+    BigDecimal contextPrecision = context.getContextPrecisionScore();
+    BigDecimal answerRelevance = context.getAnswerRelevanceScore();
 
-    if (!faithfulness.isSuccess() || !contextPrecision.isSuccess() || !answerRelevance.isSuccess()) {
-      return JudgeScore.failed(ScoreDimension.COMPOSITE, "composite 维度依赖子维度失败");
+    if (faithfulness == null || contextPrecision == null || answerRelevance == null) {
+      JudgeScore faithScore = score(context, ScoreDimension.FAITHFULNESS);
+      JudgeScore precisionScore = score(context, ScoreDimension.CONTEXT_PRECISION);
+      JudgeScore answerScore = score(context, ScoreDimension.ANSWER_RELEVANCE);
+
+      if (!faithScore.isSuccess() || !precisionScore.isSuccess() || !answerScore.isSuccess()) {
+        return JudgeScore.failed(ScoreDimension.COMPOSITE, "composite 维度依赖子维度失败");
+      }
+
+      faithfulness = faithScore.getScore();
+      contextPrecision = precisionScore.getScore();
+      answerRelevance = answerScore.getScore();
     }
 
     String systemPrompt = prompts.systemFor(ScoreDimension.COMPOSITE);
     String userPrompt =
         prompts.userForComposite(
             context,
-            faithfulness.getScore(),
-            contextPrecision.getScore(),
-            answerRelevance.getScore());
+            faithfulness,
+            contextPrecision,
+            answerRelevance);
 
     try {
       DeepSeekClient.ChatResult chat = client.chat(systemPrompt, userPrompt);
@@ -77,6 +87,8 @@ public class DefaultJudgeScorer implements JudgeScorer {
         json.toString(),
         chat.latencyMs(),
         chat.estimateCostCny(),
+        chat.promptTokens(),
+        chat.completionTokens(),
         true);
   }
 
@@ -96,6 +108,8 @@ public class DefaultJudgeScorer implements JudgeScorer {
         json.toString(),
         chat.latencyMs(),
         chat.estimateCostCny(),
+        chat.promptTokens(),
+        chat.completionTokens(),
         true);
   }
 

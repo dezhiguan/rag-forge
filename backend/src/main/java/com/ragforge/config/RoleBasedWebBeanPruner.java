@@ -29,7 +29,7 @@ public class RoleBasedWebBeanPruner
   @Override
   public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {
     String role = environment == null ? "all" : environment.getProperty("ragforge.role", "all");
-    if (!"worker".equalsIgnoreCase(role)) {
+    if (!"worker".equalsIgnoreCase(role) && !"judge".equalsIgnoreCase(role)) {
       return;
     }
     for (String beanName : registry.getBeanDefinitionNames()) {

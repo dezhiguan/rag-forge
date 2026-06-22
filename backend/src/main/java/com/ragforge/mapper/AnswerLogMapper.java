@@ -5,6 +5,7 @@ import com.ragforge.model.entity.AnswerLog;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Options;
+import org.apache.ibatis.annotations.Select;
 
 @Mapper
 public interface AnswerLogMapper extends BaseMapper<AnswerLog> {
@@ -27,4 +28,7 @@ public interface AnswerLogMapper extends BaseMapper<AnswerLog> {
       """)
   @Options(useGeneratedKeys = true, keyProperty = "id")
   int insertAnswerLog(AnswerLog log);
+
+  @Select("SELECT *, array_to_string(kb_ids, ',') AS kb_ids_csv FROM answer_logs WHERE id = #{id}")
+  AnswerLog selectByIdWithKbIdsCsv(Long id);
 }
