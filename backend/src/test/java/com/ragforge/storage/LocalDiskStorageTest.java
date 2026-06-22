@@ -82,11 +82,11 @@ class LocalDiskStorageTest {
   }
 
   @Test
-  void putHeadGetStreamOneHundredMbAndPreserveMd5() throws Exception {
+  void putHeadGetStreamOneHundredMbAndPreserveContentHash() throws Exception {
     LocalDiskStorage storage = new LocalDiskStorage(tempDir.toString());
     Path source = tempDir.resolve("source-100mb.pdf");
     writePdfLikeFile(source, 100L * 1024 * 1024);
-    String expectedMd5 = md5(source);
+    String expectedHash = sha256(source);
 
     try (InputStream in = Files.newInputStream(source)) {
       PutResult result =
@@ -102,7 +102,7 @@ class LocalDiskStorageTest {
     assertThat(head).isNotNull();
     assertThat(head.getSizeBytes()).isEqualTo(Files.size(source));
     try (InputStream downloaded = storage.get("local", "large.pdf")) {
-      assertThat(md5(downloaded)).isEqualTo(expectedMd5);
+      assertThat(sha256(downloaded)).isEqualTo(expectedHash);
     }
   }
 
@@ -120,14 +120,14 @@ class LocalDiskStorageTest {
     }
   }
 
-  private static String md5(Path path) throws Exception {
+  private static String sha256(Path path) throws Exception {
     try (InputStream in = Files.newInputStream(path)) {
-      return md5(in);
+      return sha256(in);
     }
   }
 
-  private static String md5(InputStream source) throws Exception {
-    MessageDigest digest = MessageDigest.getInstance("MD5");
+  private static String sha256(InputStream source) throws Exception {
+    MessageDigest digest = MessageDigest.getInstance("SHA-256");
     try (InputStream in = new DigestInputStream(source, digest)) {
       byte[] buffer = new byte[1024 * 1024];
       while (in.read(buffer) != -1) {

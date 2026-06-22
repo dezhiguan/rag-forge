@@ -31,10 +31,10 @@ public class LocalDiskStorage implements ObjectStorage {
     Path target = resolveKey(key);
     try {
       Files.createDirectories(target.getParent());
-      MessageDigest md5 = MessageDigest.getInstance("MD5");
-      CountingInputStream counting = new CountingInputStream(new DigestInputStream(in, md5));
+      MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+      CountingInputStream counting = new CountingInputStream(new DigestInputStream(in, sha256));
       Files.copy(counting, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-      String etag = HexFormat.of().formatHex(md5.digest());
+      String etag = HexFormat.of().formatHex(sha256.digest());
       return new PutResult(resolveBucket(bucket), key, etag, counting.getBytesRead());
     } catch (IOException | NoSuchAlgorithmException e) {
       throw new StorageException("Failed to put local object: " + key, e);

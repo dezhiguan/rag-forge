@@ -94,7 +94,7 @@ SERVICE_ACCOUNT 有两种进入方式：
   "iss": "https://auth.careermate.cn",
   "aud": "ragforge-search-api",
   "sub": "service-account:careermate-agent",
-  "principal_type": "service_account",
+  "principal_type": "SERVICE_ACCOUNT",
   "tenant_id": "careermate",
   "rag_role": "SERVICE_ACCOUNT",
   "rag_readable_kb_ids": [16],

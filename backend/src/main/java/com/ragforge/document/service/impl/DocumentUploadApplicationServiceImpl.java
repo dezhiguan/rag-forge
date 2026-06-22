@@ -169,7 +169,7 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     String key = null;
     try {
       tempFile = Files.createTempFile("ragforge-upload-", ".bin");
-      MessageDigest digest = MessageDigest.getInstance("MD5");
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
       try (InputStream raw = file.getInputStream();
           DigestInputStream in = new DigestInputStream(raw, digest);
           var out = Files.newOutputStream(tempFile)) {
