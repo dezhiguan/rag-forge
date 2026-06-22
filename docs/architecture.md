@@ -176,7 +176,8 @@ Prometheus 暴露路径：
 | `ragforge.ocr.qwen_vl_ocr.calls` | counter | - | OCR 调用次数 |
 | `ragforge.ocr.qwen_vl_ocr.tokens` | counter | `type` | OCR image/output token |
 | `ragforge.answer.tokens` | counter | `type` | Answer prompt/completion token |
-| `ragforge.answer.citation_rate` | gauge | - | 最近一次 Answer 引用率 |
+| `ragforge.answer.citations_total` | counter | `kb`（可选） | 累计引用数 |
+| `ragforge.answer.retrieval_results_total` | counter | `kb`（可选） | 累计检索结果数 |
 | `ragforge.answer.guard_rail.blocked` | counter | `reason` | Answer GuardRails 拦截 |
 | `ragforge.kb_access_denied` | counter | `operation` | KB 访问被过滤/拒绝 |
 | `ragforge.search.latency` | timer | `strategy` | 检索总耗时 |

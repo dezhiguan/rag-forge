@@ -216,7 +216,7 @@
       "id": 6,
       "targets": [
         {
-          "expr": "ragforge_answer_citation_rate",
+          "expr": "sum(rate(ragforge_answer_citations_total[5m])) / sum(rate(ragforge_answer_retrieval_results_total[5m]))",
           "legendFormat": "citation rate",
           "refId": "A"
         },

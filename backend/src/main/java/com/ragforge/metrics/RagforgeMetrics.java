@@ -2,18 +2,15 @@ package com.ragforge.metrics;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
 
 @Component
 public class RagforgeMetrics {
 
   private final MeterRegistry meterRegistry;
-  private final AtomicReference<Double> answerCitationRate = new AtomicReference<>(0.0);
 
   public RagforgeMetrics(MeterRegistry meterRegistry) {
     this.meterRegistry = meterRegistry;
-    meterRegistry.gauge("ragforge.answer.citation_rate", answerCitationRate, AtomicReference::get);
   }
 
   public void recordIngestCreated() {
@@ -71,11 +68,14 @@ public class RagforgeMetrics {
   }
 
   public void updateAnswerCitationRate(int citationCount, int resultCount) {
-    if (resultCount <= 0) {
-      answerCitationRate.set(citationCount > 0 ? 1.0 : 0.0);
-      return;
+    meterRegistry
+        .counter("ragforge.answer.citations_total", "kb", "default")
+        .increment(Math.max(0, citationCount));
+    if (resultCount > 0) {
+      meterRegistry
+          .counter("ragforge.answer.retrieval_results_total", "kb", "default")
+          .increment(resultCount);
     }
-    answerCitationRate.set(Math.min(1.0, Math.max(0.0, citationCount / (double) resultCount)));
   }
 
   public void recordAnswerGuardRailBlocked(String reason) {

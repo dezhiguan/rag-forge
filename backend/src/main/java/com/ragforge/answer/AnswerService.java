@@ -127,10 +127,10 @@ public class AnswerService {
       response.setRetrieval(retrievalResponse);
       response.setTokens(new TokenUsage(0, 0));
       response.setLatency(new Latency(retrieval.getLatencyMs(), 0, System.currentTimeMillis() - start));
-    response.setGuardRailResult(GuardRailResult.PASS.name());
-    response.setLlmModel(llmModel);
-    metrics.updateAnswerCitationRate(0, 0);
-    writeLog(request, kbIds, response, effectiveMode, llmModel, retrieval.getStrategy(), start);
+      response.setGuardRailResult(GuardRailResult.PASS.name());
+      response.setLlmModel(llmModel);
+      metrics.updateAnswerCitationRate(0, 0);
+      writeLog(request, kbIds, response, effectiveMode, llmModel, retrieval.getStrategy(), start);
       if (emitter != null) {
         send(emitter, "token", Map.of("delta", NOT_FOUND_ANSWER));
         send(emitter, "complete", response);

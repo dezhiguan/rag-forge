@@ -1,11 +1,13 @@
 package com.ragforge.mq;
 
-import java.util.concurrent.CompletableFuture;
+import java.util.Arrays;
+import java.util.concurrent.ThreadPoolTaskExecutor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -17,14 +19,19 @@ public class DocumentProcessProducer {
 
   private final RocketMQTemplate rocketMQTemplate;
   private final ObjectProvider<DocumentProcessConsumer> documentProcessConsumer;
+  private final Environment environment;
+  private final ThreadPoolTaskExecutor documentProcessExecutor;
 
   @Value("${ragforge.document-processing.dispatch-mode:mq}")
   private String dispatchMode;
 
   public void send(Long documentId) {
     if ("inline".equalsIgnoreCase(dispatchMode)) {
-      log.info("Dispatching document process inline without RocketMQ: docId={}", documentId);
-      CompletableFuture.runAsync(() -> processInline(documentId));
+      if (Arrays.asList(environment.getActiveProfiles()).contains("prod")) {
+        throw new IllegalStateException("INLINE_DISPATCH_FORBIDDEN_IN_PROD");
+      }
+      log.warn("INLINE_DISPATCH_ACTIVE: bypassing RocketMQ, docId={}", documentId);
+      documentProcessExecutor.execute(() -> processInline(documentId));
       return;
     }
     rocketMQTemplate.convertAndSend(TOPIC, documentId);

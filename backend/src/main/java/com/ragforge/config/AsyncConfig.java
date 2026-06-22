@@ -35,4 +35,17 @@ public class AsyncConfig {
     executor.initialize();
     return executor;
   }
+
+  @Bean
+  public ThreadPoolTaskExecutor documentProcessExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(2);
+    executor.setMaxPoolSize(4);
+    executor.setQueueCapacity(50);
+    executor.setThreadNamePrefix("document-process-");
+    executor.setTaskDecorator(MdcContext.taskDecorator());
+    executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+    executor.initialize();
+    return executor;
+  }
 }
