@@ -28,7 +28,7 @@ export type SearchResult = {
 }
 
 const ASSET_ROOT = path.resolve(import.meta.dirname, 'assets')
-const API_BASE_URL = (process.env.RAGFORGE_E2E_API_BASE_URL || '').replace(/\/$/, '')
+const API_BASE_URL = (process.env.RAGFORGE_E2E_API_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '').replace(/\/$/, '')
 
 export function apiUrl(pathname: string) {
   return API_BASE_URL ? `${API_BASE_URL}${pathname}` : pathname

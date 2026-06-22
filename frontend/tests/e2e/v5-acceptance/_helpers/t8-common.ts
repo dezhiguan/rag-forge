@@ -57,7 +57,7 @@ export type CleanProfilePayload = {
 }
 
 const ASSET_ROOT = path.resolve(import.meta.dirname, 'fixtures')
-const API_BASE_URL = (process.env.RAGFORGE_E2E_API_BASE_URL || '').replace(/\/$/, '')
+const API_BASE_URL = (process.env.RAGFORGE_E2E_API_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '').replace(/\/$/, '')
 
 const PG_HOST = process.env.RAGFORGE_PG_HOST || process.env.POSTGRES_HOST || '127.0.0.1'
 const PG_PORT = process.env.RAGFORGE_PG_PORT || process.env.POSTGRES_PORT || '5432'
