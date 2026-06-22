@@ -20,4 +20,7 @@ public class EvalQuestion {
 
   @TableField(value = "expected_text_snippets", typeHandler = JsonbStringTypeHandler.class)
   private String expectedTextSnippets;
+
+  private Boolean judgeEnabled;
+  private String[] judgeTags;
 }
