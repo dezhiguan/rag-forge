@@ -1,13 +1,13 @@
 package com.ragforge.mq;
 
 import java.util.Arrays;
-import java.util.concurrent.ThreadPoolTaskExecutor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.env.Environment;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
 @Slf4j
