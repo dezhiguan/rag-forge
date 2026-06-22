@@ -1,13 +1,19 @@
 package com.ragforge.metrics;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import java.math.BigDecimal;
+import io.micrometer.core.instrument.Tags;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
 
 @Component
 public class RagforgeMetrics {
 
   private final MeterRegistry meterRegistry;
+  private final ConcurrentHashMap<String, AtomicReference<Double>> judgeScoreGauges =
+      new ConcurrentHashMap<>();
 
   public RagforgeMetrics(MeterRegistry meterRegistry) {
     this.meterRegistry = meterRegistry;
@@ -91,6 +97,62 @@ public class RagforgeMetrics {
     meterRegistry
         .timer("ragforge.search.latency", "strategy", label(strategy))
         .record(Math.max(0, millis), TimeUnit.MILLISECONDS);
+  }
+
+  public void recordJudgeRequests(String source) {
+    meterRegistry.counter("ragforge.judge.requests", "source", label(source)).increment();
+  }
+
+  public void recordJudgeDuration(String source, long nanos) {
+    meterRegistry
+        .timer("ragforge.judge.duration", "source", label(source))
+        .record(Math.max(0L, nanos), TimeUnit.NANOSECONDS);
+  }
+
+  public void recordJudgeFailed(String source, String reason) {
+    meterRegistry
+        .counter("ragforge.judge.failed", "source", label(source), "reason", label(reason))
+        .increment();
+  }
+
+  public void recordJudgeScore(String dimension, Long kbId, BigDecimal score) {
+    if (dimension == null || score == null) {
+      return;
+    }
+    String dimensionTag = label(dimension);
+    String kbTag = kbId == null ? "-1" : String.valueOf(kbId);
+    String gaugeName = "ragforge.judge.score";
+    String key = dimensionTag + ":" + kbTag;
+    AtomicReference<Double> holder = judgeScoreGauges.get(key);
+    if (holder == null) {
+      holder = new AtomicReference<>(0.0);
+      AtomicReference<Double> finalHolder = holder;
+      meterRegistry.gauge(
+          gaugeName,
+          Tags.of("dimension", dimensionTag, "kb_id", kbTag),
+          finalHolder,
+          state -> state.get() == null ? 0.0 : state.get());
+      judgeScoreGauges.put(key, holder);
+    }
+    holder.set(score.doubleValue());
+  }
+
+  public void recordJudgeCost(String source, BigDecimal cost) {
+    if (cost == null) {
+      return;
+    }
+    meterRegistry
+        .counter("ragforge.judge.cost", "source", label(source))
+        .increment(cost.max(BigDecimal.ZERO).doubleValue());
+  }
+
+  public void recordDeepSeekTokens(int promptTokens, int completionTokens) {
+    meterRegistry
+        .counter("ragforge.deepseek.tokens", "type", "prompt")
+        .increment(Math.max(0, promptTokens));
+    meterRegistry
+        .counter("ragforge.deepseek.tokens", "type", "completion")
+        .increment(Math.max(0, completionTokens));
   }
 
   private static String label(String value) {

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.ragforge.mybatis.handler.JsonbStringTypeHandler;
+import com.ragforge.mybatis.handler.LongArrayTypeHandler;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.Data;
@@ -17,6 +18,8 @@ public class JudgeResult {
   private Long id;
 
   private Long answerLogId;
+
+  @TableField(value = "kb_ids", typeHandler = LongArrayTypeHandler.class)
   private Long[] kbIds;
   private String query;
   private BigDecimal faithfulness;

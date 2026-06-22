@@ -18,9 +18,10 @@ public class WebApplicationTypeGuard implements ApplicationRunner {
   public void run(ApplicationArguments args) {
     String role = environment.getProperty("ragforge.role", "all");
     String webType = environment.getProperty("spring.main.web-application-type", "servlet");
-    if ("worker".equalsIgnoreCase(role) && !"none".equalsIgnoreCase(webType)) {
+    if (("worker".equalsIgnoreCase(role) || "judge".equalsIgnoreCase(role))
+        && !"none".equalsIgnoreCase(webType)) {
       throw new IllegalStateException(
-          "ragforge.role=worker requires spring.main.web-application-type=none");
+          "ragforge.role=" + role + " requires spring.main.web-application-type=none");
     }
   }
 }

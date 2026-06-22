@@ -1559,3 +1559,4 @@ public class JudgeCostGuard {
 J1 ✅ <commit-sha> 2026-06-23
 J2 ✅ 2026-06-23
 J3 ✅ 2026-06-23
+J4 ✅ <commit-sha> 2026-06-23

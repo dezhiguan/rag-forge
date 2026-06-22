@@ -46,6 +46,7 @@ CREATE INDEX idx_judge_results_source ON judge_results(source, created_at DESC);
 CREATE INDEX idx_judge_results_answer_log ON judge_results(answer_log_id);
 
 CREATE TABLE judge_metrics_daily (
+  id                         BIGSERIAL PRIMARY KEY,
   date                       DATE NOT NULL,
   kb_id                      BIGINT,
   tenant_id                  VARCHAR(64) NOT NULL DEFAULT 'default',
@@ -65,11 +66,11 @@ CREATE TABLE judge_metrics_daily (
   overall_std                NUMERIC(4,3),
 
   total_cost_cny             NUMERIC(10,4) NOT NULL DEFAULT 0,
-  updated_at                 TIMESTAMP NOT NULL DEFAULT NOW(),
-
-  PRIMARY KEY(date, COALESCE(kb_id, -1), tenant_id)
+  updated_at                 TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX uk_judge_metrics_daily_scope
+  ON judge_metrics_daily(date, COALESCE(kb_id, -1), tenant_id);
 CREATE INDEX idx_judge_metrics_daily_kb ON judge_metrics_daily(kb_id, date DESC);
 
 CREATE TABLE judge_sampling_config (

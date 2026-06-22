@@ -39,6 +39,8 @@ public interface JudgeScorer {
           item.getRawResponse(),
           item.getLatencyMs(),
           item.getCostCny(),
+          item.getPromptTokens(),
+          item.getCompletionTokens(),
           true);
     }
 
@@ -60,10 +62,18 @@ public interface JudgeScorer {
 
     BigDecimal costSum = BigDecimal.ZERO;
     int costCount = 0;
+    int promptTokens = 0;
+    int completionTokens = 0;
     for (JudgeScore score : success) {
       if (score.getCostCny() != null) {
         costSum = costSum.add(score.getCostCny());
         costCount++;
+      }
+      if (score.getPromptTokens() != null) {
+        promptTokens += score.getPromptTokens();
+      }
+      if (score.getCompletionTokens() != null) {
+        completionTokens += score.getCompletionTokens();
       }
     }
 
@@ -76,6 +86,8 @@ public interface JudgeScorer {
         joinRawResponses(success),
         sample.getLatencyMs(),
         costCount == 0 ? null : costSum.divide(BigDecimal.valueOf(costCount), 4, RoundingMode.HALF_UP),
+        promptTokens,
+        completionTokens,
         stable);
   }
 

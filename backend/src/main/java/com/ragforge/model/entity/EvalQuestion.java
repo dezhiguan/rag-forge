@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.ragforge.mybatis.handler.JsonbStringTypeHandler;
+import com.ragforge.mybatis.handler.StringArrayTypeHandler;
 import lombok.Data;
 
 @Data
@@ -22,5 +23,7 @@ public class EvalQuestion {
   private String expectedTextSnippets;
 
   private Boolean judgeEnabled;
+
+  @TableField(value = "judge_tags", typeHandler = StringArrayTypeHandler.class)
   private String[] judgeTags;
 }

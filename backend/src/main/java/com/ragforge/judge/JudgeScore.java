@@ -14,6 +14,8 @@ public class JudgeScore {
   private final String rawResponse;
   private final Integer latencyMs;
   private final BigDecimal costCny;
+  private final Integer promptTokens;
+  private final Integer completionTokens;
   private final boolean success;
   private final String failureReason;
   private final boolean stable;
@@ -26,6 +28,8 @@ public class JudgeScore {
       String rawResponse,
       Integer latencyMs,
       BigDecimal costCny,
+      Integer promptTokens,
+      Integer completionTokens,
       boolean stable) {
     return new JudgeScore(
         dimension,
@@ -35,6 +39,8 @@ public class JudgeScore {
         rawResponse,
         latencyMs,
         costCny,
+        promptTokens,
+        completionTokens,
         true,
         null,
         stable);
@@ -42,6 +48,17 @@ public class JudgeScore {
 
   public static JudgeScore failed(ScoreDimension dimension, String reason) {
     return new JudgeScore(
-        dimension, null, null, List.of(), null, null, null, false, reason, false);
+        dimension,
+        null,
+        null,
+        List.of(),
+        null,
+        null,
+        null,
+        null,
+        null,
+        false,
+        reason,
+        false);
   }
 }

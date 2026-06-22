@@ -83,6 +83,8 @@ ragforge:
   judge:
     dispatch-mode: ${RAGFORGE_JUDGE_DISPATCH_MODE:mq}
     sampling-fallback-rate: 0.0
+    stability-check:
+      enabled: false
   eval:
     max-concurrent-questions: 4
     question-timeout-ms: 30000
