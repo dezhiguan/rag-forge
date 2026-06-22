@@ -1306,3 +1306,4 @@ docs/security-and-multitenancy.md 必须包含（必须按此章节结构）：
 - T5 ✅ ca60505 2026-06-20
 - T6 ✅ cb1f5bc 2026-06-21
 - T8 ✅ 79565b2 2026-06-22（10/10 PASS）
+- T9 验收 ✅ 3ecf10b 2026-06-22（10/10 PASS）
