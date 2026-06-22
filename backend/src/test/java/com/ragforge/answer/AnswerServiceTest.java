@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,7 +69,7 @@ class AnswerServiceTest {
             new L3PiiMaskCleaner(),
             new RagforgeMetrics(new SimpleMeterRegistry()),
             answerJudgeProducer);
-    when(answerLogMapper.insertAnswerLog(any())).thenAnswer(
+    lenient().when(answerLogMapper.insertAnswerLog(any())).thenAnswer(
         invocation -> {
           AnswerLog log = invocation.getArgument(0);
           log.setId(100L);

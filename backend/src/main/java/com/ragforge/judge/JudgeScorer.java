@@ -42,19 +42,20 @@ public interface JudgeScorer {
           true);
     }
 
-    success.sort(
+    List<JudgeScore> sorted = new java.util.ArrayList<>(success);
+    sorted.sort(
         Comparator.comparing(score -> score.getScore() == null ? BigDecimal.ZERO : score.getScore()));
     BigDecimal median;
-    int midIndex = success.size() / 2;
+    int midIndex = sorted.size() / 2;
     if (success.size() % 2 == 1) {
-      median = success.get(midIndex).getScore();
+      median = sorted.get(midIndex).getScore();
     } else {
-      BigDecimal left = success.get(midIndex - 1).getScore();
-      BigDecimal right = success.get(midIndex).getScore();
+      BigDecimal left = sorted.get(midIndex - 1).getScore();
+      BigDecimal right = sorted.get(midIndex).getScore();
       median = left.add(right).divide(BigDecimal.valueOf(2), 4, RoundingMode.HALF_UP);
     }
-    BigDecimal firstScore = success.get(0).getScore();
-    BigDecimal lastScore = success.get(success.size() - 1).getScore();
+    BigDecimal firstScore = sorted.get(0).getScore();
+    BigDecimal lastScore = sorted.get(sorted.size() - 1).getScore();
     boolean stable = firstScore.subtract(lastScore).abs().compareTo(new BigDecimal("0.2")) <= 0;
 
     BigDecimal costSum = BigDecimal.ZERO;
@@ -66,7 +67,7 @@ public interface JudgeScorer {
       }
     }
 
-    JudgeScore sample = success.get(success.size() - 1);
+    JudgeScore sample = sorted.get(sorted.size() - 1);
     return JudgeScore.success(
         dimension,
         median,
