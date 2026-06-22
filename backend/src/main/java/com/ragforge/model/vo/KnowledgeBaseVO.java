@@ -16,6 +16,8 @@ public class KnowledgeBaseVO {
   private Integer docCount;
   private Integer chunkCount;
   private String status;
+  private String answerMode;
+  private String answerModel;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 
@@ -30,6 +32,8 @@ public class KnowledgeBaseVO {
     vo.setDocCount(entity.getDocCount());
     vo.setChunkCount(entity.getChunkCount());
     vo.setStatus(entity.getStatus());
+    vo.setAnswerMode(entity.getAnswerMode());
+    vo.setAnswerModel(entity.getAnswerModel());
     vo.setCreatedAt(entity.getCreatedAt());
     vo.setUpdatedAt(entity.getUpdatedAt());
     return vo;

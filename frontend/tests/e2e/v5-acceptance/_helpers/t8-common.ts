@@ -56,14 +56,14 @@ export type CleanProfilePayload = {
   skipClean?: boolean
 }
 
-const ASSET_ROOT = path.resolve(import.meta.dirname, 'fixtures')
+const ASSET_ROOT = path.resolve(import.meta.dirname, '../t8/fixtures')
 const API_BASE_URL = (process.env.RAGFORGE_E2E_API_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '').replace(/\/$/, '')
 
 const PG_HOST = process.env.RAGFORGE_PG_HOST || process.env.POSTGRES_HOST || '127.0.0.1'
 const PG_PORT = process.env.RAGFORGE_PG_PORT || process.env.POSTGRES_PORT || '5432'
 const PG_DATABASE = process.env.RAGFORGE_PG_DATABASE || process.env.POSTGRES_DB || 'ragforge'
-const PG_USER = process.env.RAGFORGE_PG_USER || process.env.POSTGRES_USER || 'ragforge'
-const PG_PASSWORD = process.env.RAGFORGE_PG_PASSWORD || process.env.POSTGRES_PASSWORD || 'ragforge'
+const PG_USER = process.env.RAGFORGE_PG_USER || process.env.POSTGRES_USER || 'amy'
+const PG_PASSWORD = process.env.RAGFORGE_PG_PASSWORD || process.env.POSTGRES_PASSWORD || 'amy'
 const PSQL_BIN = process.env.PSQL_BIN || '/Applications/Postgres.app/Contents/Versions/latest/bin/psql'
 
 export function apiUrl(pathname: string) {
@@ -104,14 +104,27 @@ export async function login(request: APIRequestContext): Promise<Record<string, 
   }
   const account = process.env.RAGFORGE_E2E_USER || 'admin'
   const password = process.env.RAGFORGE_E2E_PASSWORD || 'admin'
-  const res = await request.post(apiUrl('/api/auth/login'), {
-    data: { account, password, remember: false },
-  })
-  expect(res.ok(), await res.text()).toBeTruthy()
-  const body = await res.json()
-  const token = body?.data?.access_token || body?.data?.accessToken || body?.access_token || body?.accessToken
-  expect(token, 'login response must contain access token').toBeTruthy()
-  return { Authorization: `Bearer ${token}` }
+  // The backend proxies auth to the local auth-gateway, which can transiently time out
+  // ("认证代理不可用"). Retry a few times with backoff so a single hiccup does not fail the case.
+  let lastText = ''
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const res = await request.post(apiUrl('/api/auth/login'), {
+      data: { account, password, remember: false },
+      timeout: 30_000,
+    })
+    if (res.ok()) {
+      const body = await res.json()
+      const token = body?.data?.access_token || body?.data?.accessToken || body?.access_token || body?.accessToken
+      expect(token, 'login response must contain access token').toBeTruthy()
+      return { Authorization: `Bearer ${token}` }
+    }
+    lastText = await res.text()
+    if (attempt < 5) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 2_000))
+    }
+  }
+  expect(false, `login failed after retries: ${lastText}`).toBeTruthy()
+  throw new Error('unreachable')
 }
 
 export async function createKb(request: APIRequestContext, headers: Record<string, string>, name: string, imageMode: 'OFF' | 'ON' = 'OFF') {
@@ -151,10 +164,12 @@ export async function uploadFile(
   identity: Record<string, string> = {},
 ): Promise<number> {
   const name = path.basename(filePath)
+  // Keep a stable externalId across retries so onConflict=REPLACE de-dupes instead of stacking docs.
+  const externalId = identity.externalId || `t8-${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`
   const meta = {
     kbId,
     identity: {
-      externalId: identity.externalId || `t8-${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      externalId,
       sourceUrl: identity.sourceUrl,
       contentMd5: identity.contentMd5,
     },
@@ -162,22 +177,32 @@ export async function uploadFile(
     ingestSource: 't8-e2e',
     metadata: { fixture: name },
   }
-  const res = await request.post(apiUrl('/api/v1/documents'), {
-    headers,
-    multipart: {
-      file: {
-        name,
-        mimeType: mimeType(name),
-        buffer: fs.readFileSync(filePath),
+  const buffer = fs.readFileSync(filePath)
+  // The relay upload writes to object storage (Aliyun OSS) and the DB; both can transiently fail
+  // ("DOCUMENT_UPLOAD_FAILED" 500). Retry a few times so a single network/connection hiccup does not
+  // fail the case. REPLACE + stable externalId makes the retry idempotent.
+  let lastText = ''
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const res = await request.post(apiUrl('/api/v1/documents'), {
+      headers,
+      multipart: {
+        file: { name, mimeType: mimeType(name), buffer },
+        meta: JSON.stringify(meta),
       },
-      meta: JSON.stringify(meta),
-    },
-    timeout: 180_000,
-  })
-  expect(res.ok(), await res.text()).toBeTruthy()
-  const body = await res.json()
-  expect(body.documentId, 'upload response should contain documentId').toBeTruthy()
-  return body.documentId
+      timeout: 180_000,
+    })
+    if (res.ok()) {
+      const body = await res.json()
+      expect(body.documentId, 'upload response should contain documentId').toBeTruthy()
+      return body.documentId
+    }
+    lastText = await res.text()
+    if (attempt < 4) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 2_000))
+    }
+  }
+  expect(false, `upload failed after retries: ${lastText}`).toBeTruthy()
+  throw new Error('unreachable')
 }
 
 export async function waitForStatus(
@@ -265,7 +290,11 @@ export async function createCleanProfile(kbId: number, profile: CleanProfilePayl
 }
 
 export function deleteCleanProfile(kbId: number) {
-  runPsql(`DELETE FROM clean_profiles WHERE scope='KB' AND scope_id=${kbId}`)
+  try {
+    runPsql(`DELETE FROM clean_profiles WHERE scope='KB' AND scope_id=${kbId}`)
+  } catch {
+    // best effort cleanup
+  }
 }
 
 export async function openUploadDonePage(page: Page, kbId: number, filename: string) {
@@ -302,11 +331,25 @@ export async function loginPage(page: Page) {
 
   const user = process.env.RAGFORGE_E2E_USER || 'admin'
   const password = process.env.RAGFORGE_E2E_PASSWORD || 'admin'
-  await page.goto('/login', { waitUntil: 'domcontentloaded' })
-  await page.getByLabel('账号 / 手机号 / 邮箱').fill(user)
-  await page.getByLabel('密码').fill(password)
-  await page.getByRole('button', { name: '登 录' }).click()
-  await expect(page).toHaveURL(/\/$/)
+  // The backend auth proxy (auth-gateway) can transiently time out ("认证代理不可用"). The UI form
+  // login persists the session correctly across reloads, so we keep it but retry on a transient miss.
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      await page.goto('/login', { waitUntil: 'domcontentloaded' })
+      await page.getByLabel('账号 / 手机号 / 邮箱').fill(user)
+      await page.getByLabel('密码').fill(password)
+      await page.getByRole('button', { name: '登 录' }).click()
+      await expect(page).toHaveURL(/\/$/, { timeout: 15_000 })
+      return
+    } catch (err) {
+      lastErr = err
+      if (attempt < 4) {
+        await page.waitForTimeout(attempt * 2_000)
+      }
+    }
+  }
+  throw lastErr
 }
 
 export async function screenshotPair(page: Page, testInfo: TestInfo, docId: number, kbId: number, suffix = 'case') {
@@ -332,6 +375,8 @@ export function unwrap(body: any) {
 function mimeType(name: string) {
   const ext = path.extname(name).toLowerCase()
   if (ext === '.pdf') return 'application/pdf'
+  if (ext === '.txt') return 'text/plain'
+  if (ext === '.md') return 'text/markdown'
   if (ext === '.png') return 'image/png'
   if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
   return 'application/octet-stream'

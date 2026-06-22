@@ -154,4 +154,44 @@ class KnowledgeBaseServiceImplTest {
     assertThat(updated.getChunkOverlap()).isEqualTo(32);
     verify(knowledgeBaseMapper).updateById(kb);
   }
+
+  @Test
+  void createAppliesAnswerConfigWhenProvided() {
+    CreateKbDTO dto = new CreateKbDTO();
+    dto.setName("kb");
+    dto.setAnswerMode("OFF");
+    dto.setAnswerModel("qwen-max");
+
+    KnowledgeBase created = knowledgeBaseService.create(dto);
+
+    assertThat(created.getAnswerMode()).isEqualTo("OFF");
+    assertThat(created.getAnswerModel()).isEqualTo("qwen-max");
+  }
+
+  @Test
+  void createRejectsBlankAnswerModel() {
+    CreateKbDTO dto = new CreateKbDTO();
+    dto.setName("kb");
+    dto.setAnswerModel("   ");
+
+    assertThatThrownBy(() -> knowledgeBaseService.create(dto))
+        .isInstanceOf(com.ragforge.common.BizException.class)
+        .hasMessage("answerModel 不能为空");
+  }
+
+  @Test
+  void updateRejectsInvalidAnswerMode() {
+    KnowledgeBase kb = new KnowledgeBase();
+    kb.setId(40L);
+    kb.setName("old");
+    kb.setStatus("active");
+    when(knowledgeBaseMapper.selectById(40L)).thenReturn(kb);
+
+    UpdateKbDTO dto = new UpdateKbDTO();
+    dto.setAnswerMode("invalid");
+
+    assertThatThrownBy(() -> knowledgeBaseService.update(40L, dto))
+        .isInstanceOf(com.ragforge.common.BizException.class)
+        .hasMessage("answerMode 只能是 OFF / PREVIEW / ON");
+  }
 }

@@ -45,7 +45,8 @@ test('T8 ACC-02 L2 denoise header footer', async ({ page, request }, testInfo) =
     }
 
     const report = parseCleanReport(detail)
-    const pageCount = fixture.split('\f').length
+    // Pages are delimited by standalone "第 N 页" separator lines (see fixture generator note).
+    const pageCount = (fixture.match(/第\s*\d+\s*页/g) || []).length
     const repeated = reasonCount(report, 'REPEATED_HEADER_FOOTER')
     expect(repeated).toBeGreaterThanOrEqual(pageCount * 3)
 

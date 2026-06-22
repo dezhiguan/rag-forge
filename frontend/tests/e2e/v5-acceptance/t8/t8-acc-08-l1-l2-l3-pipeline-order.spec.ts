@@ -77,7 +77,7 @@ test('T8 ACC-08 L1 L2 L3 pipeline order', async ({ page, request }, testInfo) =>
     ).toBeTruthy()
     noRawPii(fullText, {
       phone: '13812345678',
-      idCard: '440103199001011234',
+      idCard: '440103199001011236',
       email: 'alice@example.com',
       bank: '6222 0202 0001 2345',
     })

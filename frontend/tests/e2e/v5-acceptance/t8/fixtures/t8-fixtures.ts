@@ -16,8 +16,9 @@ export const T8_FIXTURES = {
 export const PII = {
   phone: '13812345678',
   altPhone: '13987654321',
-  idCard: '440103199001011234',
-  altIdCard: '520102198812123456',
+  // Valid GB 11643 checksum digits — L3PiiMaskCleaner only masks IDs with a valid check digit.
+  idCard: '440103199001011236',
+  altIdCard: '52010219881212345X',
   email: 'alice@example.com',
   altEmail: 'bob.brown@ragforge.example.net',
   bank: '6222 0202 0001 2345',

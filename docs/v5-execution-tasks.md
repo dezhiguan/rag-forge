@@ -6,6 +6,30 @@
 - T1-T5 hotfix ✅ ecd6aea 2026-06-21
 - T5 hotfix-2 (B 通道 SKIP OSS 孤儿 + BizException.data 透传) ✅ 2026-06-21
 
+## V6 已知 gap（V5 验收阶段挪到 V6 收口的项）
+
+> 架构师 @guandezhi 在 V5 收口评审中做出的取舍。不阻塞 V5 commit/部署，V6 阶段必须补完。
+
+1. **Fault Injection S1-S4 实际执行**（参见 `frontend/tests/e2e/t10-rewrite/fault-injection-checklist.md`）
+   - 现状：5 条只跑了 S5（最关键的 deprecated 字段兼容已 PASS），S1-S4 Codex 两轮均未执行。
+   - 取舍：S1-S4 是测试质量保证（防伪绿），单元层维度校验和 vlVector 写入已有单测覆盖。
+   - V6 必须：sandbox DB 跑完 S1-S4，trace.zip 归档到 `frontend/test-results/t10-rewrite/fault-injection/`。
+
+2. **LLM-as-Judge 评测旁路**
+   - 现状：只在架构讨论里提过，未落代码。
+   - V6 必须：DeepSeek-V3 当裁判，对 `/api/v1/answer` 返回质量跨厂商评分，挂在 `eval_experiments` 体系下。
+
+3. **DashScope 累计成本生产账单对账**
+   - 现状：Grafana cost monitor dashboard 已提供，但目标 K3s 集群未部署 Grafana。
+   - V6 必须：K3s 部署 Prometheus + Grafana 栈，导入 `docs/grafana-v5.json`，30 天账单对账记录。
+
+4. **answer_mode 默认值与 KB 编辑 UI（V30 hotfix）**
+   - 现状：V28 把 `knowledge_bases.answer_mode` 默认设 `OFF`，AnswerService 在 `OFF` 时直接 403 ANSWER_DISABLED；KB 创建/编辑 API 和 UI 都没暴露 `answerMode` 开关，用户只能 SQL 改才能用应答功能。
+   - V6 必须：
+     - 写 `V30__default_answer_mode_on.sql` 把默认改 `ON`，UPDATE 存量 `OFF` 为 `ON`。
+     - KB 编辑 DTO/Mapper/Controller/UI 暴露 answer_mode + answer_model 字段。
+   - 完成：`V30__default_answer_mode_on.sql` + KB API/UI 透传 `answer_mode/answer_model` ✅ 2026-06-22
+
 > 编制：2026-06-20 · 架构师：@guandezhi
 > 用法：找到要执行的任务 → **复制 `=== COPY START ===` 与 `=== COPY END ===` 之间的全部内容** → 粘贴到 Codex
 > 配套设计：[RAGForge-优化设计文档-V5.html](./RAGForge-优化设计文档-V5.html)

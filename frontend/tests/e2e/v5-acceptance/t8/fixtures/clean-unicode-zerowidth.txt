@@ -1,6 +1,6 @@
 ASCII baseline  NBSP​ZWSP　IDEO  and fullwidth chars
 数字转换：１２３
 兼容字符测试：㈠
-全角英文：ｆｕｌｌｗｉｌｄｔｈ
+全角英文：ｆｕｌｌｗｉｄｔｈ
 中文标点：， 。 ！
 零宽测试：before​after

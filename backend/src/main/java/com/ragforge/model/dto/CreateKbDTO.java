@@ -1,6 +1,7 @@
 package com.ragforge.model.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 @Data
@@ -14,4 +15,9 @@ public class CreateKbDTO {
   private Integer chunkSize = 512;
 
   private Integer chunkOverlap = 64;
+
+  @Pattern(regexp = "OFF|PREVIEW|ON|", message = "answerMode 只能是 OFF / PREVIEW / ON")
+  private String answerMode;
+
+  private String answerModel;
 }

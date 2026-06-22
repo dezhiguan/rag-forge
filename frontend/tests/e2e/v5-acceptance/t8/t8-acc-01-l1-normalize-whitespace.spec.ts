@@ -4,7 +4,7 @@ import {
   asset,
   createCleanProfile,
   createKb,
-  getChunkRaw,
+  getChunks,
   getDocument,
   login,
   loginPage,
@@ -36,19 +36,12 @@ test('T8 ACC-01 L1 normalize whitespace', async ({ page, request }, testInfo) =>
 
     await waitForStatus(request, headers, docId, 'COMPLETED', 240_000)
     const detail = await getDocument(request, headers, docId)
-    const raw = await getChunkRaw(request, headers, docId)
-
-    const chunksText = raw
-      .filter((chunk) => (chunk.modality || 'TEXT').toUpperCase() === 'TEXT')
-      .map((chunk) => {
-        if (!chunk.chunkMetadataJson) return ''
-        try {
-          const parsed = JSON.parse(chunk.chunkMetadataJson)
-          return String(parsed.content || '')
-        } catch {
-          return ''
-        }
-      })
+    // chunk_metadata_json is null for TEXT chunks; the real content lives in the `content` column,
+    // which is what /documents/{id}/chunks exposes.
+    const chunks = await getChunks(request, headers, docId)
+    const chunksText = chunks
+      .filter((chunk) => String(chunk.chunkModality || chunk.modality || 'TEXT').toUpperCase() === 'TEXT')
+      .map((chunk) => String(chunk.content || ''))
       .join('\n')
       .replace(/\n{3,}/g, '\n\n')
       .trim()

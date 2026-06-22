@@ -47,8 +47,8 @@ test('T8 ACC-04 L3 pii mask zh', async ({ page, request }, testInfo) => {
 
     expect(chunkText).toMatch(/138\*{4}5678/)
     expect(chunkText).toMatch(/139\*{4}4321/)
-    expect(chunkText).toMatch(/440103\*{8}1234/)
-    expect(chunkText).toMatch(/\d{6}\*{8}\d{4}/)
+    expect(chunkText).toMatch(/440103\*{8}1236/)
+    expect(chunkText).toMatch(/\d{6}\*{8}\d{3}[\dX]/)
     expect(chunkText).toMatch(/a\*+@/)
 
     const report = parseCleanReport(detail)

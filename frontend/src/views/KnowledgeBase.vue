@@ -221,6 +221,15 @@
             <span>描述</span>
             <textarea v-model="kbForm.description" rows="3" placeholder="可选" />
           </label>
+          <label class="field">
+            <span>应答模型（可选）</span>
+            <select v-model="kbForm.answerModel">
+              <option value="">使用默认模型</option>
+              <option v-for="model in answerModels" :key="model" :value="model">
+                {{ model }}
+              </option>
+            </select>
+          </label>
           <div class="modal-actions">
             <button class="btn-ghost" @click="showCreate = false">取消</button>
             <button class="btn-primary" :disabled="submittingKb" @click="onCreateKb">
@@ -249,6 +258,21 @@
             <label class="field">
               <span>分块重叠（字符）</span>
               <input v-model.number="editForm.chunkOverlap" type="number" min="0" step="10" />
+            </label>
+          </div>
+          <div class="edit-grid">
+            <label class="field">
+              <span>应答模式</span>
+              <select v-model="editForm.answerMode">
+                <option v-for="mode in answerModes" :key="mode" :value="mode">{{ mode }}</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>应答模型</span>
+              <select v-model="editForm.answerModel">
+                <option value="">使用 KB 默认</option>
+                <option v-for="model in answerModels" :key="model" :value="model">{{ model }}</option>
+              </select>
             </label>
           </div>
           <div class="modal-actions">
@@ -309,8 +333,18 @@ const STATUS_ORDER = ['pending', 'parsing', 'chunking', 'embedding', 'indexing',
 const showCreate = ref(false)
 const showEdit = ref(false)
 const submittingKb = ref(false)
-const kbForm = ref({ name: '', description: '' })
-const editForm = ref({ id: null, name: '', description: '', chunkSize: null, chunkOverlap: null })
+const kbForm = ref({ name: '', description: '', answerModel: '' })
+const editForm = ref({
+  id: null,
+  name: '',
+  description: '',
+  chunkSize: null,
+  chunkOverlap: null,
+  answerMode: 'ON',
+  answerModel: '',
+})
+const answerModes = ['OFF', 'PREVIEW', 'ON']
+const answerModels = ['qwen-plus', 'qwen-max']
 
 async function loadKbs() {
   loadingKb.value = true
@@ -448,7 +482,11 @@ async function toggleKb(kbId) {
 }
 
 function openCreate() {
-  kbForm.value = { name: '', description: '' }
+  kbForm.value = {
+    name: '',
+    description: '',
+    answerModel: '',
+  }
   showCreate.value = true
 }
 
@@ -462,6 +500,7 @@ async function onCreateKb() {
     await createKb({
       name: kbForm.value.name.trim(),
       description: kbForm.value.description || undefined,
+      answerModel: kbForm.value.answerModel || undefined,
     })
     showCreate.value = false
     await loadKbs()
@@ -477,6 +516,8 @@ function openEdit(kb) {
     description: kb.description || '',
     chunkSize: kb.chunkSize ?? null,
     chunkOverlap: kb.chunkOverlap ?? null,
+    answerMode: kb.answerMode || 'ON',
+    answerModel: kb.answerModel || '',
   }
   showEdit.value = true
 }
@@ -493,6 +534,8 @@ async function onUpdateKb() {
       description: editForm.value.description || undefined,
       chunkSize: editForm.value.chunkSize || undefined,
       chunkOverlap: editForm.value.chunkOverlap ?? undefined,
+      answerMode: editForm.value.answerMode || undefined,
+      answerModel: editForm.value.answerModel || undefined,
     })
     showEdit.value = false
     await loadKbs()

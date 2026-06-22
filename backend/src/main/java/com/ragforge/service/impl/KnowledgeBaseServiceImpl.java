@@ -14,6 +14,7 @@ import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.KnowledgeBaseService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   private static final String STATUS_DELETED = "deleted";
   private static final String STATUS_ACTIVE = "active";
   private static final long LIST_CACHE_TTL_MS = 10_000L;
+  private static final Set<String> VALID_ANSWER_MODES = Set.of("OFF", "PREVIEW", "ON");
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
@@ -49,6 +51,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     kb.setVisibility("PRIVATE");
     kb.setKbType("GENERAL");
     kb.setImageProcessingMode("OFF");
+    applyAnswerConfig(kb, dto.getAnswerMode(), dto.getAnswerModel());
     LocalDateTime now = LocalDateTime.now();
     kb.setCreatedAt(now);
     kb.setUpdatedAt(now);
@@ -107,6 +110,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     if (dto.getChunkOverlap() != null) {
       kb.setChunkOverlap(dto.getChunkOverlap());
     }
+    if (dto.getAnswerMode() != null || dto.getAnswerModel() != null) {
+      applyAnswerConfig(kb, dto.getAnswerMode(), dto.getAnswerModel());
+    }
     if (StringUtils.hasText(dto.getStatus())) {
       kb.setStatus(dto.getStatus());
     }
@@ -142,6 +148,27 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
   private void invalidateListCache() {
     listCache = null;
+  }
+
+  private void applyAnswerConfig(KnowledgeBase kb, String answerMode, String answerModel) {
+    if (answerMode != null) {
+      String normalizedMode = normalizeAnswerMode(answerMode);
+      kb.setAnswerMode(normalizedMode);
+    }
+    if (answerModel != null) {
+      if (!StringUtils.hasText(answerModel)) {
+        throw new BizException(400, "answerModel 不能为空");
+      }
+      kb.setAnswerModel(answerModel.trim());
+    }
+  }
+
+  private String normalizeAnswerMode(String answerMode) {
+    String normalized = answerMode == null ? null : answerMode.trim().toUpperCase();
+    if (!StringUtils.hasText(normalized) || !VALID_ANSWER_MODES.contains(normalized)) {
+      throw new BizException(400, "answerMode 只能是 OFF / PREVIEW / ON");
+    }
+    return normalized;
   }
 
   private record ListCache(List<KnowledgeBaseVO> value, long expiresAtMs) {}

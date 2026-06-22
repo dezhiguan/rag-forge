@@ -2,8 +2,10 @@ package com.ragforge.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.http.MediaType.TEXT_EVENT_STREAM;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,17 +14,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
+import com.ragforge.answer.AnswerService;
 import com.ragforge.common.GlobalExceptionHandler;
+import com.ragforge.common.BizException;
 import com.ragforge.model.dto.CreateKbDTO;
 import com.ragforge.model.dto.UpdateKbDTO;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.vo.KnowledgeBaseVO;
 import com.ragforge.service.KnowledgeBaseService;
+import com.ragforge.security.KbAccessGuard;
+import org.assertj.core.api.Assertions;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
@@ -34,6 +42,8 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 class KnowledgeBaseControllerTest {
 
   @Mock private KnowledgeBaseService knowledgeBaseService;
+  @Mock private AnswerService answerService;
+  @Mock private KbAccessGuard kbAccessGuard;
 
   private MockMvc mockMvc;
 
@@ -43,7 +53,8 @@ class KnowledgeBaseControllerTest {
     validator.afterPropertiesSet();
 
     mockMvc =
-        standaloneSetup(new KnowledgeBaseController(knowledgeBaseService))
+        standaloneSetup(
+                new KnowledgeBaseController(knowledgeBaseService), new AnswerController(answerService, kbAccessGuard))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .setValidator(validator)
@@ -104,6 +115,56 @@ class KnowledgeBaseControllerTest {
                 .content("{\"name\":\"updated\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.name").value("updated"));
+  }
+
+  @Test
+  void create_withoutAnswerMode_usesDatabaseDefaultOn() throws Exception {
+    ArgumentCaptor<CreateKbDTO> requestCaptor = ArgumentCaptor.forClass(CreateKbDTO.class);
+    KnowledgeBase kb = sampleKb(6L);
+    kb.setAnswerMode("ON");
+    when(knowledgeBaseService.create(any(CreateKbDTO.class))).thenReturn(kb);
+
+    mockMvc
+        .perform(
+            post("/api/v1/kb")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"demo-kb\",\"description\":\"test\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(200))
+        .andExpect(jsonPath("$.data.answerMode").value("ON"));
+
+    verify(knowledgeBaseService).create(requestCaptor.capture());
+    CreateKbDTO captured = requestCaptor.getValue();
+    Assertions.assertThat(captured.getAnswerMode()).isNull();
+    Assertions.assertThat(captured.getAnswerModel()).isNull();
+  }
+
+  @Test
+  void updateAnswerModeOff_thenAnswerCallReturns403() throws Exception {
+    KnowledgeBase kb = sampleKb(7L);
+    kb.setAnswerMode("OFF");
+    when(knowledgeBaseService.update(eq(7L), any(UpdateKbDTO.class))).thenReturn(kb);
+
+    mockMvc
+        .perform(
+            put("/api/v1/kb/7")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"demo-kb\",\"answerMode\":\"OFF\",\"answerModel\":\"qwen-plus\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.answerMode").value("OFF"));
+
+    when(kbAccessGuard.filterReadable(any())).thenReturn(Set.of(7L));
+    doThrow(new BizException(403, "ANSWER_DISABLED")).when(answerService).validateAnswerMode(any());
+
+    mockMvc
+        .perform(
+            post("/api/v1/answer")
+                .accept(TEXT_EVENT_STREAM)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"kbIds\":[7],\"query\":\"x\"}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value(403))
+        .andExpect(jsonPath("$.msg").value("ANSWER_DISABLED"));
   }
 
   @Test
