@@ -21,6 +21,9 @@ import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.pipeline.cleaner.L3PiiMaskCleaner;
 import com.ragforge.model.vo.SearchResponse;
+import com.ragforge.judge.sampler.AnswerJudgeMessage;
+import com.ragforge.judge.sampler.AnswerJudgeProducer;
+import com.ragforge.judge.sampler.SampleRequest;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
@@ -63,6 +66,7 @@ public class AnswerService {
   private final ObjectMapper objectMapper;
   private final L3PiiMaskCleaner piiMaskCleaner;
   private final RagforgeMetrics metrics;
+  private final AnswerJudgeProducer answerJudgeProducer;
 
   public SseEmitter answer(AnswerRequest request) {
     validateRequest(request);
@@ -247,9 +251,36 @@ public class AnswerService {
       log.setGuardRailResult(response.getGuardRailResult());
       log.setCreatedAt(LocalDateTime.now());
       answerLogMapper.insertAnswerLog(log);
+      publishJudgeAsync(request, kbIds, log.getId());
     } catch (Exception e) {
       log.warn("answer log write failed: {}", e.getMessage());
     }
+  }
+
+  private void publishJudgeAsync(AnswerRequest request, List<Long> kbIds, Long answerLogId) {
+    try {
+      SampleRequest req =
+          new SampleRequest(
+              answerLogId,
+              kbIds.toArray(new Long[0]),
+              tenantIdOrDefault(),
+              request.getJudgeSource() != null ? request.getJudgeSource() : "PRODUCTION",
+              Boolean.TRUE.equals(request.getForceSample()));
+      AnswerJudgeMessage msg = new AnswerJudgeMessage();
+      msg.setAnswerLogId(answerLogId);
+      msg.setSource(req.source());
+      msg.setGoldenQuestionId(request.getGoldenQuestionId());
+      msg.setForceSample(req.forceSample() ? "FORCE" : "AUTO");
+      msg.setRequestedAt(LocalDateTime.now());
+      answerJudgeProducer.publishJudgeRequest(msg, req);
+    } catch (Exception e) {
+      log.warn("Judge async publish failed (non-fatal): {}", e.getMessage());
+    }
+  }
+
+  private String tenantIdOrDefault() {
+    RagAuthContext auth = RagAuthContextHolder.get();
+    return auth == null || auth.tenantId() == null ? "default" : auth.tenantId();
   }
 
   private String toJson(Object value) throws JsonProcessingException {

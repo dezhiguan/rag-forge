@@ -80,6 +80,9 @@ ragforge:
   document-processing:
     # mq: publish to RocketMQ worker; inline: dispatch asynchronously in-process for local/E2E without MQ
     dispatch-mode: ${RAGFORGE_DOCUMENT_PROCESS_DISPATCH_MODE:mq}
+  judge:
+    dispatch-mode: ${RAGFORGE_JUDGE_DISPATCH_MODE:mq}
+    sampling-fallback-rate: 0.0
   eval:
     max-concurrent-questions: 4
     question-timeout-ms: 30000

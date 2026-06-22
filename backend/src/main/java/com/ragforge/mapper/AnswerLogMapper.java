@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.ragforge.model.entity.AnswerLog;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 
 @Mapper
 public interface AnswerLogMapper extends BaseMapper<AnswerLog> {
@@ -24,5 +25,6 @@ public interface AnswerLogMapper extends BaseMapper<AnswerLog> {
         #{guardRailResult}, #{createdAt}
       )
       """)
+  @Options(useGeneratedKeys = true, keyProperty = "id")
   int insertAnswerLog(AnswerLog log);
 }
