@@ -1,0 +1,23 @@
+中文段落 1 说明多语言知识库中的检索、清洗、分块和索引链路，要求策略在中英文交替时保持稳定。
+
+English paragraph 2 describes multilingual retrieval, chunking, indexing, and evaluation stability in RAGForge.
+
+中文段落 3 说明多语言知识库中的检索、清洗、分块和索引链路，要求策略在中英文交替时保持稳定。
+
+English paragraph 4 describes multilingual retrieval, chunking, indexing, and evaluation stability in RAGForge.
+
+中文段落 5 说明多语言知识库中的检索、清洗、分块和索引链路，要求策略在中英文交替时保持稳定。
+
+English paragraph 6 describes multilingual retrieval, chunking, indexing, and evaluation stability in RAGForge.
+
+中文段落 7 说明多语言知识库中的检索、清洗、分块和索引链路，要求策略在中英文交替时保持稳定。
+
+English paragraph 8 describes multilingual retrieval, chunking, indexing, and evaluation stability in RAGForge.
+
+中文段落 9 说明多语言知识库中的检索、清洗、分块和索引链路，要求策略在中英文交替时保持稳定。
+
+English paragraph 10 describes multilingual retrieval, chunking, indexing, and evaluation stability in RAGForge.
+
+中文段落 11 说明多语言知识库中的检索、清洗、分块和索引链路，要求策略在中英文交替时保持稳定。
+
+English paragraph 12 describes multilingual retrieval, chunking, indexing, and evaluation stability in RAGForge.
