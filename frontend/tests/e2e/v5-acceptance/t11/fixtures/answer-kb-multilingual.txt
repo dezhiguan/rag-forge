@@ -1,0 +1,62 @@
+技术 FAQ - Technical FAQ (Chinese & English Mixed)
+=================================================
+
+Q: 什么是微服务架构？What is microservices architecture?
+A: 微服务架构是一种将单个应用程序开发为一套小型服务的方法。Microservices architecture is an approach to developing a single application as a suite of small services.
+
+Q: Docker 容器化部署的优势是什么？What are the advantages of Docker containerization?
+A: Docker 提供环境一致性、快速部署和资源隔离。Docker provides environment consistency, rapid deployment, and resource isolation.
+
+Q: Kubernetes 的主要功能有哪些？What are the main features of Kubernetes?
+A: Kubernetes 提供容器编排、服务发现、自动扩缩容和负载均衡。Kubernetes provides container orchestration, service discovery, auto-scaling, and load balancing.
+
+Q: CI/CD 流水线是什么？What is a CI/CD pipeline?
+A: 持续集成/持续部署是一种自动化软件交付实践。Continuous Integration/Continuous Deployment is an automated software delivery practice.
+
+Q: 如何实现高可用架构？How to implement high availability architecture?
+A: 通过冗余设计、故障转移和负载均衡实现。Achieved through redundancy design, failover, and load balancing.
+
+Q: 什么是 RESTful API 设计原则？What are RESTful API design principles?
+A: 使用 HTTP 方法、资源导向和无状态通信。Use HTTP methods, resource orientation, and stateless communication.
+
+Q: 数据库索引优化的 best practices 有哪些？What are the best practices for database index optimization?
+A: 选择合适的列、避免过度索引、定期维护。Choose appropriate columns, avoid over-indexing, perform regular maintenance.
+
+Q: 如何进行代码审查 code review？How to conduct code review?
+A: 关注代码质量、安全性和可维护性。Focus on code quality, security, and maintainability.
+
+Q: 什么是敏捷开发 Agile Development？
+A: 迭代式开发方法，强调快速交付和客户反馈。Iterative development method emphasizing rapid delivery and customer feedback.
+
+Q: 如何保障 API 安全？How to ensure API security?
+A: 使用 authentication、authorization、rate limiting 和 encryption。Use authentication, authorization, rate limiting, and encryption.
+
+Q: 什么是 serverless 架构？
+A: 无需管理服务器的计算模型，按需付费。A computing model without server management, pay-per-use.
+
+Q: 消息队列 message queue 的作用是什么？
+A: 解耦系统组件、异步处理和削峰填谷。Decouple system components, async processing, and peak shaving.
+
+Q: 如何实现 distributed tracing 分布式追踪？
+A: 使用 OpenTelemetry、Zipkin 或 Jaeger 等工具。Use tools like OpenTelemetry, Zipkin, or Jaeger.
+
+Q: 什么是 eventual consistency 最终一致性？
+A: 分布式系统中数据最终达到一致状态的模型。A model where data eventually reaches a consistent state in distributed systems.
+
+Q: 如何进行 capacity planning 容量规划？
+A: 分析流量模式、设置监控告警、预留扩容 buffer。Analyze traffic patterns, set up monitoring alerts, reserve expansion buffer.
+
+Q: 什么是 chaos engineering 混沌工程？
+A: 在生产环境中故意引入故障来测试系统 resilience。Intentionally introducing failures in production to test system resilience.
+
+Q: 如何实现 zero-downtime deployment 零停机部署？
+A: 使用 blue-green 部署、canary 发布或 rolling update。Use blue-green deployment, canary release, or rolling update.
+
+Q: 什么是 data lake 数据湖？
+A: 以原始格式存储大量数据的存储库。A repository storing vast amounts of data in its raw format.
+
+Q: 如何进行 performance tuning 性能调优？
+A: 分析瓶颈、优化算法、调整配置参数。Analyze bottlenecks, optimize algorithms, tune configuration parameters.
+
+Q: 什么是 event-driven architecture 事件驱动架构？
+A: 以事件为核心，组件通过事件进行通信的架构模式。An architectural pattern where components communicate through events.

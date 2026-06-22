@@ -1,0 +1,251 @@
+Q: Spring Boot 3.5 默认端口是多少？
+A: Spring Boot 3.5 默认端口是 8080，可以通过 application.properties 中的 server.port 配置修改。
+
+Q: Spring Boot 如何启用热部署？
+A: 在 pom.xml 中添加 spring-boot-devtools 依赖即可启用热部署功能。
+
+Q: Spring Boot 自动配置原理是什么？
+A: Spring Boot 通过 @EnableAutoConfiguration 注解和 META-INF/spring.factories 文件实现自动配置。
+
+Q: Spring Boot 配置文件优先级是怎样的？
+A: 优先级从高到低：命令行参数 > 外部配置文件 > application-{profile}.properties > application.properties
+
+Q: Spring Boot 如何集成 MyBatis？
+A: 添加 mybatis-spring-boot-starter 依赖，配置数据源和 mapper 扫描路径即可。
+
+Q: Spring Boot 启动时如何执行初始化代码？
+A: 可以实现 CommandLineRunner 或 ApplicationRunner 接口，Spring Boot 会在启动完成后自动执行。
+
+Q: Spring Boot 如何实现异步处理？
+A: 在配置类上添加 @EnableAsync 注解，在方法上添加 @Async 注解即可实现异步执行。
+
+Q: Spring Boot 如何配置 CORS？
+A: 可以通过实现 WebMvcConfigurer 接口重写 addCorsMappings 方法，或使用 @CrossOrigin 注解。
+
+Q: Spring Boot 如何读取 YAML 配置？
+A: Spring Boot 原生支持 YAML，只需将配置文件命名为 application.yml 即可自动加载。
+
+Q: Spring Boot 默认使用什么内嵌服务器？
+A: Spring Boot 默认使用 Tomcat 作为内嵌服务器，也可以切换到 Jetty 或 Undertow。
+
+Q: Spring Boot 如何实现定时任务？
+A: 在配置类上添加 @EnableScheduling 注解，在方法上添加 @Scheduled 注解配置执行规则。
+
+Q: Spring Boot 如何自定义错误页面？
+A: 可以在 src/main/resources/static/error 目录下创建 4xx.html、5xx.html 等错误页面。
+
+Q: Spring Boot 如何启用 Actuator 监控？
+A: 添加 spring-boot-starter-actuator 依赖，配置 management.endpoints.web.exposure.include 参数。
+
+Q: Spring Boot 如何实现条件化配置？
+A: 使用 @ConditionalOnClass、@ConditionalOnProperty 等条件注解实现条件化配置。
+
+Q: Spring Boot 如何配置多数据源？
+A: 配置多个 DataSource Bean，使用 @Primary 注解标记主数据源，配置不同数据源的事务管理器。
+
+Q: Spring Boot 如何集成 Redis？
+A: 添加 spring-boot-starter-data-redis 依赖，配置 spring.redis.host 和 spring.redis.port。
+
+Q: Spring Boot 如何实现安全控制？
+A: 添加 spring-boot-starter-security 依赖，配置 SecurityFilterChain 或使用 WebSecurityConfigurerAdapter。
+
+Q: Spring Boot 如何进行日志配置？
+A: 默认使用 SLF4J + Logback，可以在 application.properties 或 logback-spring.xml 中配置。
+
+Q: Spring Boot 如何实现事件监听？
+A: 使用 ApplicationEvent 和 ApplicationListener，或使用 @EventListener 注解。
+
+Q: Spring Boot 如何处理请求参数验证？
+A: 添加 spring-boot-starter-validation 依赖，在实体类字段上使用 JSR-303 注解如 @NotNull、@Size。
+
+Q: Spring Boot 如何自定义 Banner？
+A: 在 src/main/resources 目录下创建 banner.txt 文件，Spring Boot 启动时会自动显示。
+
+Q: Spring Boot 如何配置拦截器？
+A: 实现 HandlerInterceptor 接口，注册到 InterceptorRegistry 中，重写 addInterceptors 方法。
+
+Q: Spring Boot 如何集成 Kafka？
+A: 添加 spring-kafka 依赖，配置 spring.kafka.bootstrap-servers 和生产者/消费者属性。
+
+Q: Spring Boot 如何实现文件上传下载？
+A: 使用 MultipartFile 接收上传文件，使用 ResponseEntity 配合 InputStreamResource 实现下载。
+
+Q: Spring Boot 如何配置缓存？
+A: 添加 @EnableCaching 注解，使用 @Cacheable、@CacheEvict 等注解实现方法级缓存。
+
+Q: Spring Boot 如何实现 WebSocket？
+A: 添加 spring-boot-starter-websocket 依赖，配置 ServerEndpointExporter 或 WebSocketHandler。
+
+Q: Spring Boot 如何集成 Elasticsearch？
+A: 添加 spring-boot-starter-data-elasticsearch 依赖，配置 spring.elasticsearch.uris。
+
+Q: Spring Boot 如何实现分页查询？
+A: 使用 Spring Data JPA 的 Pageable 参数，或 MyBatis PageHelper 插件实现分页。
+
+Q: Spring Boot 如何配置事务传播？
+A: 使用 @Transactional 注解的 propagation 属性，如 Propagation.REQUIRED、Propagation.REQUIRES_NEW。
+
+Q: Spring Boot 如何实现国际化？
+A: 配置 MessageSource，创建不同语言的 properties 文件，使用 LocaleResolver 解析区域设置。
+
+Q: Spring Boot 如何集成 RabbitMQ？
+A: 添加 spring-boot-starter-amqp 依赖，配置 spring.rabbitmq.host 和交换机/队列绑定。
+
+Q: Spring Boot 如何实现邮件发送？
+A: 添加 spring-boot-starter-mail 依赖，配置 spring.mail.host，使用 JavaMailSender 发送。
+
+Q: Spring Boot 如何进行单元测试？
+A: 使用 @SpringBootTest 和 @AutoConfigureMockMvc 注解，配合 JUnit5 和 Mockito。
+
+Q: Spring Boot 如何实现过滤器？
+A: 实现 Filter 接口，使用 @WebFilter 注解或配置 FilterRegistrationBean 注册过滤器。
+
+Q: Spring Boot 如何配置 AOP？
+A: 添加 @EnableAspectJAutoProxy 注解，创建 @Aspect 切面类，使用 @Around、@Before 等通知。
+
+Q: Spring Boot 如何实现数据库版本管理？
+A: 集成 Flyway 或 Liquibase，在 src/main/resources/db/migration 目录存放 SQL 脚本。
+
+Q: Spring Boot 如何集成 Prometheus 监控？
+A: 添加 micrometer-registry-prometheus 依赖，配置 Actuator 暴露 /actuator/prometheus 端点。
+
+Q: Spring Boot 如何实现 OAuth2 认证？
+A: 添加 spring-boot-starter-oauth2-resource-server 依赖，配置 JWT 验证和安全规则。
+
+Q: Spring Boot 如何配置 SSL/TLS？
+A: 配置 server.ssl.enabled、server.ssl.key-store 和 server.ssl.key-store-password 属性。
+
+Q: Spring Boot 如何实现数据脱敏？
+A: 使用 Jackson 的 @JsonSerialize 注解配合自定义 Serializer，或在序列化时处理敏感字段。
+
+Q: Spring Boot 如何实现分布式事务？
+A: 使用 Seata 框架或 Saga 模式，配置 XA 数据源或 TCC 事务补偿机制。
+
+Q: Spring Boot 如何配置 GraalVM 原生镜像？
+A: 使用 Spring Boot 3.x 的 GraalVM Native Support，执行 mvn spring-boot:build-image -Pnative。
+
+Q: Spring Boot 如何集成 GraphQL？
+A: 添加 spring-boot-starter-graphql 依赖，定义 schema 文件，实现 DataFetcher 查询接口。
+
+Q: Spring Boot 如何实现响应式编程？
+A: 添加 spring-boot-starter-webflux 依赖，使用 Mono 和 Flux 进行异步非阻塞编程。
+
+Q: Spring Boot 如何配置多环境打包？
+A: 使用 Maven Profile 或 Gradle 的 build variant，配合 spring.profiles.active 参数切换配置。
+
+Q: Spring Boot 如何实现 API 版本控制？
+A: 通过 URL 路径、请求头或媒体类型区分版本，使用 RequestMapping 的 headers 或 produces 属性。
+
+Q: Spring Boot 如何集成 AWS S3？
+A: 添加 aws-java-sdk-s3 依赖，配置 AWS 凭证，使用 AmazonS3Client 进行文件操作。
+
+Q: Spring Boot 如何实现限流？
+A: 使用 Bucket4j 或 Guava RateLimiter，实现基于令牌桶的接口限流控制。
+
+Q: Spring Boot 如何实现服务注册发现？
+A: 集成 Consul、Eureka 或 Nacos，配置 spring.cloud.discovery 相关参数。
+
+Q: Spring Boot 如何配置链路追踪？
+A: 集成 Micrometer Tracing 和 Brave，或使用 OpenTelemetry 实现分布式链路追踪。
+
+Q: Spring Boot 如何实现灰度发布？
+A: 通过 Nginx 或 Spring Cloud Gateway 配置权重路由，使用 Feature Flag 控制功能开关。
+
+Q: Spring Boot 如何实现多租户？
+A: 使用 Hibernate 多租户支持或数据库隔离方案，根据租户标识动态切换数据源或 Schema。
+
+Q: Spring Boot 如何配置连接池？
+A: 默认使用 HikariCP，配置 spring.datasource.hikari 相关参数优化连接池性能。
+
+Q: Spring Boot 如何实现导出导入 Excel？
+A: 使用 EasyExcel 或 Apache POI 库，实现大批量数据的流式读写操作。
+
+Q: Spring Boot 如何集成钉钉/企业微信？
+A: 使用官方 SDK，配置机器人 Webhook 地址，实现消息推送和审批流程集成。
+
+Q: Spring Boot 如何实现敏感词过滤？
+A: 使用 DFA 算法或第三方服务，在请求处理前进行敏感词检测和替换处理。
+
+Q: Spring Boot 如何配置预热机制？
+A: 实现 ApplicationRunner 或 SmartLifecycle，在应用启动后预热缓存和数据库连接。
+
+Q: Spring Boot 如何实现接口防抖？
+A: 使用 AOP 和 Redis 分布式锁，限制用户短时间内重复提交相同请求。
+
+Q: Spring Boot 如何实现动态配置？
+A: 集成 Nacos Config 或 Apollo，使用 @RefreshScope 实现配置热更新。
+
+Q: Spring Boot 如何实现分库分表？
+A: 使用 ShardingSphere 或 MyCat，配置分片策略和分布式主键生成器。
+
+Q: Spring Boot 如何集成阿里云 OSS？
+A: 添加 aliyun-sdk-oss 依赖，配置 AccessKey 和 Bucket，使用 OSSClient 操作对象存储。
+
+Q: Spring Boot 如何实现长连接推送？
+A: 使用 SSE (Server-Sent Events) 或 WebSocket 实现服务器向客户端的实时推送。
+
+Q: Spring Boot 如何实现链路加密？
+A: 使用 HTTPS 和 mTLS，配置客户端证书验证确保双向身份认证。
+
+Q: Spring Boot 如何实现数据库读写分离？
+A: 使用 ShardingSphere 或自定义 AbstractRoutingDataSource，根据 SQL 类型动态路由。
+
+Q: Spring Boot 如何实现请求审计？
+A: 使用 HandlerInterceptor 拦截请求，记录操作日志到数据库或消息队列。
+
+Q: Spring Boot 如何实现接口熔断？
+A: 集成 Resilience4j 或 Sentinel，配置熔断规则和降级策略。
+
+Q: Spring Boot 如何实现定时任务集群？
+A: 使用 Quartz 的 JDBC JobStore 或 Elastic-Job，实现分布式锁保证单节点执行。
+
+Q: Spring Boot 如何实现数据字典？
+A: 设计字典表结构，使用枚举类或 Redis 缓存，在应用启动时加载到内存。
+
+Q: Spring Boot 如何实现操作日志？
+A: 使用 AOP 拦截 Controller 方法，记录请求参数、响应结果和操作人信息。
+
+Q: Spring Boot 如何实现代码生成？
+A: 使用 FreeMarker 或 Velocity 模板引擎，根据数据库表结构生成实体类和 CRUD 代码。
+
+Q: Spring Boot 如何实现数据权限？
+A: 使用 MyBatis 拦截器或 JPA QueryDSL，动态拼接 SQL 过滤条件实现行级权限控制。
+
+Q: Spring Boot 如何实现接口文档？
+A: 集成 SpringDoc OpenAPI 或 Swagger，通过注解自动生成 REST API 文档。
+
+Q: Spring Boot 如何实现任务编排？
+A: 使用 Camunda 或 Activiti 工作流引擎，实现复杂业务流程的可视化编排。
+
+Q: Spring Boot 如何实现灰度数据库？
+A: 配置动态数据源，根据用户特征或请求头路由到不同版本的数据库实例。
+
+Q: Spring Boot 如何实现全链路压测？
+A: 使用压测标记透传，影子库表隔离，Mock 外部依赖确保压测不影响生产数据。
+
+Q: Spring Boot 如何实现零停机发布？
+A: 使用 Kubernetes RollingUpdate 或蓝绿部署，配合健康检查实现平滑切换。
+
+Q: Spring Boot 如何实现智能路由？
+A: 集成 Spring Cloud Gateway 或 Nginx Lua，根据用户画像和请求特征动态路由。
+
+Q: Spring Boot 如何实现数据血缘？
+A: 使用 Apache Atlas 或自定义元数据管理，追踪数据从产生到消费的完整链路。
+
+Q: Spring Boot 如何实现隐私计算？
+A: 使用同态加密或联邦学习框架，在不暴露原始数据的前提下进行联合计算。
+
+Q: Spring Boot 如何实现智能运维？
+A: 集成 Prometheus + Grafana + Alertmanager，实现自动监控、告警和故障自愈。
+
+Q: Spring Boot 如何实现 API 网关？
+A: 使用 Spring Cloud Gateway 或 Kong，统一处理认证、限流、路由和协议转换。
+
+Q: Spring Boot 如何实现事件溯源？
+A: 使用 Axon 框架，记录系统状态变更的完整事件流，支持任意时间点回放。
+
+Q: Spring Boot 如何实现 CQRS 模式？
+A: 分离命令和查询模型，命令端写入事件存储，查询端使用物化视图优化读取。
+
+Q: Spring Boot 如何实现领域驱动设计？
+A: 划分限界上下文，定义聚合根和实体，使用仓储模式和领域事件实现业务逻辑。
