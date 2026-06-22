@@ -83,6 +83,7 @@ ragforge:
   judge:
     dispatch-mode: ${RAGFORGE_JUDGE_DISPATCH_MODE:mq}
     sampling-fallback-rate: 0.0
+    aggregator-enabled: ${RAGFORGE_JUDGE_AGGREGATOR_ENABLED:true}
     stability-check:
       enabled: false
   eval:
