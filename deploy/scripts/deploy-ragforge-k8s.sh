@@ -103,11 +103,13 @@ step_end
 step_start "[5/6] Apply manifests (image=${BACKEND_IMAGE})"
 render_ragforge_deployment "${K8S_DIR}/backend-deployment.yaml" "${RENDERED_DEPLOY}" "${BACKEND_IMAGE}"
 k3s kubectl apply -f "${K8S_DIR}/namespace.yaml"
+k3s kubectl apply -f "${K8S_DIR}/backend-configmap.yaml"
 k3s kubectl apply -f "${K8S_DIR}/backend-service.yaml"
 k3s kubectl apply -f "${K8S_DIR}/frontend-service.yaml"
 k3s kubectl apply -f "${RENDERED_DEPLOY}"
 k3s kubectl apply -f "${K8S_DIR}/frontend-deployment.yaml"
-k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-backend --timeout=300s
+k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-api --timeout=300s
+k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-worker --timeout=300s
 k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-frontend --timeout=180s
 step_end
 

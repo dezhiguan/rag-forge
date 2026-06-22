@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
 import com.ragforge.config.EmbeddingProperties;
+import com.ragforge.metrics.RagforgeMetrics;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -20,11 +21,13 @@ public class RemoteOcrClient implements OcrClient {
 
   private final EmbeddingProperties properties;
   private final ObjectMapper objectMapper;
+  private final RagforgeMetrics metrics;
   private final HttpClient httpClient;
 
-  public RemoteOcrClient(EmbeddingProperties properties, ObjectMapper objectMapper) {
+  public RemoteOcrClient(EmbeddingProperties properties, ObjectMapper objectMapper, RagforgeMetrics metrics) {
     this.properties = properties;
     this.objectMapper = objectMapper;
+    this.metrics = metrics;
     this.httpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(properties.getOcr().getTimeoutMs()))
@@ -51,7 +54,9 @@ public class RemoteOcrClient implements OcrClient {
       if (response.statusCode() / 100 != 2) {
         throw new BizException("OCR_HTTP_" + response.statusCode());
       }
-      return new OcrResult(extractOcrText(objectMapper.readTree(response.body())));
+      String text = extractOcrText(objectMapper.readTree(response.body()));
+      metrics.recordOcrCall(1, estimateTokens(text));
+      return new OcrResult(text);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new BizException("OCR 调用被中断");
@@ -108,5 +113,9 @@ public class RemoteOcrClient implements OcrClient {
   private static String dataUri(byte[] imageBytes, String contentType) {
     String type = StringUtils.hasText(contentType) ? contentType : "image/png";
     return "data:" + type + ";base64," + Base64.getEncoder().encodeToString(imageBytes);
+  }
+
+  private static int estimateTokens(String text) {
+    return text == null || text.isBlank() ? 0 : Math.max(1, text.length() / 4);
   }
 }

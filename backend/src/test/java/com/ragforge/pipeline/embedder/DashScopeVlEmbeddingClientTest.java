@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.config.EmbeddingProperties;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.sun.net.httpserver.HttpServer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -19,7 +21,7 @@ class DashScopeVlEmbeddingClientTest {
   @Test
   void embed_textBatchSendsContentsAndReturnsVectors() throws Exception {
     try (MockEmbeddingServer server = MockEmbeddingServer.start(3)) {
-      DashScopeVlEmbeddingClient client = new DashScopeVlEmbeddingClient(properties(server.url()), objectMapper);
+      DashScopeVlEmbeddingClient client = client(server.url());
 
       List<float[]> vectors =
           client.embed(
@@ -39,7 +41,7 @@ class DashScopeVlEmbeddingClientTest {
   @Test
   void embed_imageSendsDataUriAndReturnsVector() throws Exception {
     try (MockEmbeddingServer server = MockEmbeddingServer.start(1)) {
-      DashScopeVlEmbeddingClient client = new DashScopeVlEmbeddingClient(properties(server.url()), objectMapper);
+      DashScopeVlEmbeddingClient client = client(server.url());
 
       List<float[]> vectors =
           client.embed(List.of(EmbeddingInput.image(new byte[] {1, 2, 3}, "image/png")));
@@ -53,7 +55,7 @@ class DashScopeVlEmbeddingClientTest {
   @Test
   void embed_mixedImageAndTextReturnsAlignedVectors() throws Exception {
     try (MockEmbeddingServer server = MockEmbeddingServer.start(2)) {
-      DashScopeVlEmbeddingClient client = new DashScopeVlEmbeddingClient(properties(server.url()), objectMapper);
+      DashScopeVlEmbeddingClient client = client(server.url());
 
       List<float[]> vectors =
           client.embed(
@@ -67,6 +69,11 @@ class DashScopeVlEmbeddingClientTest {
       assertThat(server.lastRequest()).contains("\"image\":\"data:image/jpeg;base64,BAU=\"");
       assertThat(server.lastRequest()).contains("\"text\":\"query\"");
     }
+  }
+
+  private DashScopeVlEmbeddingClient client(String url) {
+    return new DashScopeVlEmbeddingClient(
+        properties(url), objectMapper, new RagforgeMetrics(new SimpleMeterRegistry()));
   }
 
   @Test

@@ -1,261 +1,195 @@
-# RAGForge 架构设计文档
+# RAGForge V5 架构文档
 
-> 当前真实版本 | 2026-06-20
->
-> 说明：本文描述的是当前代码与部署的真实口径，不再沿用早期“架构设想版”的表述。  
-> 更细的重构路线见 [current-architecture-and-refactor-roadmap.md](./current-architecture-and-refactor-roadmap.md)。
+> 当前真实版本：2026-06-22
+> 口径：本文只描述当前代码和 K3s 部署事实，不沿用早期 V5 设计稿里已经废弃的外置 OCR、图片描述、多 topic 或按模态拆 Worker 方案。
 
-## 0. 结论先行
+## 1. 系统定位
 
-RAGForge 是一个 **RAG 检索基础设施服务**，不是聊天应用。
+RAGForge V5 是面向多租户知识库的 RAG 基础设施。T11 后它同时提供两类能力：
 
-它的核心输出是：
+- 检索：`/api/v1/search` 返回 chunks、scores、citations snapshot 和分段 latency。
+- 应答：`/api/v1/answer` 基于检索结果生成带引用答案，并写入 `answer_logs`。
 
-```text
-query -> chunks + scores + metadata + latency
+RAGForge 不保存对话历史，不提供 ChatMemory。Answer-as-LLM 是一次性 RAG answer，不是聊天产品。
+
+## 2. 技术栈
+
+| 层级 | 当前实现 | 代码/配置依据 |
+|---|---|---|
+| 后端 | Spring Boot 3.5.x + Java 21 | `backend/pom.xml` |
+| 认证 | Spring Security + JWT/JWKS + Auth Gateway 代理 + API Key | `security/*`, `auth/*` |
+| 数据库/向量库 | PostgreSQL + pgvector | `document_chunks.vl_vector` |
+| 关键词检索 | Elasticsearch 8.x | `EsSearchService` |
+| MQ | RocketMQ，单一 topic `ragforge-document-process` | `DocumentProcessProducer.TOPIC` |
+| 文档解析 | Apache Tika / PDFBox | `DocumentParser` |
+| OCR | DashScope `qwen-vl-ocr` | `EmbeddingProperties.Ocr` |
+| Embedding | DashScope `qwen3-vl-embedding` | `DashScopeVlEmbeddingClient` |
+| Answer LLM | 默认 `qwen-plus`，KB 可显式配置 `qwen-max` | `AnswerService.selectModel`, V29 |
+| 监控 | Spring Actuator + Micrometer Prometheus | `/actuator/prometheus` |
+| 部署 | K3s 单节点，namespace=`ragforge` | `deploy/k8s/ragforge/*` |
+
+## 3. V5 多模态统一空间
+
+T10-rewrite 后，多模态不再使用文本/图片双向量空间融合，也不再生成独立图片描述 chunk。文本 chunk、图片 OCR chunk、PDF/Office/HTML 内嵌图片 chunk 都进入同一个 `vl_vector` 2560 维空间。
+
+```mermaid
+flowchart LR
+  Upload[上传/Presigned 完成] --> Doc[documents: PENDING]
+  Doc --> MQ[RocketMQ topic: ragforge-document-process]
+  MQ --> Consumer[DocumentProcessConsumer]
+  Consumer -->|contentType=image/*| Image[ImagePipelineService]
+  Consumer -->|其他文档| Text[DocumentPipelineService]
+  Text --> Parser[Tika/PDFBox Parser]
+  Text --> Embedded[EmbeddedImageExtractor]
+  Parser --> Cleaner[CleaningPipeline L1-L3]
+  Cleaner --> Chunker[Chunker family]
+  Image --> OCR[qwen-vl-ocr]
+  Embedded --> OCR
+  Chunker --> VL[qwen3-vl-embedding]
+  OCR --> VL
+  VL --> PG[(document_chunks.vl_vector 2560)]
+  PG --> ES[(Elasticsearch BM25)]
 ```
 
-而不是：
+关键事实：
+
+- `DocumentProcessProducer.TOPIC` 是单一 topic，当前值为 `ragforge-document-process`。
+- `DocumentProcessConsumer` 内部按 `contentType` 判断是否走 `ImagePipelineService`。
+- `DashScopeVlEmbeddingClient.VL_DIMENSION = 2560`，所有召回统一走 `vl_vector`。
+- `SearchRequest.modality` 和 `queryImageBase64` 已是兼容字段，`RetrievalService` 会记录 deprecated metric 但召回阶段不再按 modality 分支。
+
+## 4. 导入与处理链路
 
 ```text
-query -> final answer
+POST /api/v1/documents 或 presigned B 通道确认
+-> IngestService.register
+-> documents 写入/替换，parse_status=PENDING
+-> afterCommit 发送 ragforge-document-process
+-> DocumentProcessConsumer CAS claim
+-> 文本或图片 pipeline
+-> cleaning / chunking / OCR / embedding
+-> document_chunks 写 PG + ES index
+-> documents COMPLETED / FAILED
 ```
 
-当前系统的职责边界是：
+幂等和并发控制点：
 
-- RAGForge 负责文档导入、解析、切分、索引、检索、调试、评测和 API 输出。
-- RAGForge 的 LLM 能力只用于 Query 改写、调试辅助和评测辅助。
-- 最终对话生成应由上层 Agent 或业务系统完成。
+- `IngestServiceImpl` 按 `externalId -> sourceUrl -> contentMd5` 解析身份。
+- REPLACE 路径保持 `docId` 不变，事务内删 chunks 和更新 doc，ES/OSS/MQ 放在 afterCommit。
+- `DocumentProcessConsumer` 调 `DocumentMapper.markProcessingIfRunnable` 做 CAS，防止多 worker 重复处理同一文档。
 
-## 1. 当前真实技术栈
+## 5. 检索链路
 
-| 层级 | 当前实现 | 说明 |
-| --- | --- | --- |
-| 后端框架 | Spring Boot 3.5.x + Java 21 | 当前主实现 |
-| 安全认证 | Spring Security + JWT + JWKS + Auth Gateway 代理 | 后台接口走 Bearer JWT，搜索/MCP 可走 JWT 或 API Key |
-| ORM | MyBatis-Plus | 业务 CRUD 和检索数据访问 |
-| 业务库 / 向量库 | PostgreSQL + pgvector | 业务表与向量统一存储 |
-| 关键词检索 | Elasticsearch 8.x | BM25 关键词召回 |
-| 消息队列 | RocketMQ 5.x | 文档异步处理 |
-| 缓存 / 限流 / 撤销状态 | Redis + Caffeine | API Key 限流、JWT 撤销、ShedLock、短 TTL 本地缓存 |
-| 文档解析 | Apache Tika / PDFBox | PDF、Markdown、TXT、Word 等 |
-| Embedding | DashScope `text-embedding-v4` | 当前文档向量化主模型 |
-| Query Rewrite | DashScope / Qwen 配置 | 当前实际代码口径，不是 DeepSeek |
-| Reranker | DashScope rerank API | 当前主链路口径，不是 Python bge |
-| 前端 | Vue 3 + Vite | 管理后台与调试台 |
-| 部署 | Docker Compose + Nginx + SkyWalking Agent | 三层部署，Server 3 当前为同机 3 副本 |
+| strategy | 真实语义 |
+|---|---|
+| `keyword` | Elasticsearch BM25 |
+| `vector` | query 经 `qwen3-vl-embedding` 编码后查 `vl_vector` |
+| `hybrid` | vector + keyword + RRF |
+| `rewrite` | query rewrite 后多路 vector |
+| `full` | rewrite + hybrid + rerank |
 
-### 1.1 需要特别说明的口径
+`RetrievalService` 是统一入口，搜索、评测、Answer 都复用它。它已内置策略级限流、超时和 Prometheus latency 指标。
 
-原始架构文档里提到的 `DeepSeek-V3` 和 `bge-reranker-v2-m3 Python 微服务`，不应再作为当前版本主口径。
+## 6. Answer-as-LLM
 
-当前应统一为：
+T11 新增 `AnswerService`、`PromptBuilder`、`CitationLinker`、`GuardRails` 和 `/api/v1/answer` SSE 接口。
 
-- Query 改写：DashScope / Qwen 配置
-- Rerank：DashScope rerank API
-- Python `bge-reranker` 目录保留为后续私有化扩展项
-
-## 2. 当前核心链路
-
-### 2.1 文档导入链路
+流程：
 
 ```text
-上传文件
--> 本地落盘
--> documents 表 pending
--> RocketMQ 发送处理消息
--> Tika 解析
--> 固定窗口切分
--> DashScope embedding
--> document_chunks 写入 PG/pgvector
--> ES bulk index
--> documents completed / failed
+KB answer_mode 校验
+-> RetrievalService.retrieve
+-> PromptBuilder 组装 [n] chunks，IMAGE chunk 标记“来自图片 OCR + 上下文”
+-> LlmService.streamGenerate
+-> CitationLinker 解析 [n] 并给 IMAGE 引用生成 presigned imageUrl
+-> GuardRails 拦截 NO_CITATIONS / PII_LEAK / OUT_OF_SCOPE
+-> answer_logs 持久化
+-> SSE complete
 ```
 
-当前实现的要点：
+默认模型是 `qwen-plus`。`knowledge_bases.answer_model` 允许用户显式配置更贵的 `qwen-max`。
 
-- 文档切分是固定窗口切分，不是语义分块。
-- 文档处理是异步链路，避免用户同步等待完整解析和索引。
-- PG 与 ES 双写已存在，但仍需继续增强失败补偿和一致性校准。
-- 导入链路已经补了分段耗时日志，便于定位瓶颈。
+## 7. 安全与多租户
 
-### 2.2 检索链路
+安全模型详见 [security-and-multitenancy.md](./security-and-multitenancy.md)。架构上要点如下：
 
-当前系统支持的检索策略定义如下：
+- JWT user、SERVICE_ACCOUNT、admin 三类 principal 统一落到 `RagAuthContext`。
+- 后台接口走 JWT，搜索/Answer/MCP 可走 JWT 或 API Key。
+- `KbAccessGuard` 做 KB 级读写管理权限判断；文档级权限通过 doc -> kb 解析。
+- `retrieval_logs`、`answer_logs` 记录 tenant/principal/trace/citations snapshot。
 
-| strategy | 实际语义 |
-| --- | --- |
-| `keyword` | Elasticsearch BM25 关键词检索 |
-| `vector` | query embedding + pgvector 向量检索 |
-| `hybrid` | vector + keyword + RRF 融合 |
-| `rewrite` | query rewrite + 多路向量召回 |
-| `full` | query rewrite + hybrid + rerank |
+## 8. K3s 部署拓扑
 
-需要明确两点：
-
-- `rewrite` 不是 `hybrid`，它目前是改写后多路向量召回。
-- `full` 是当前最完整链路，包含 Query 改写、混合召回和 rerank。
-- 检索入口已统一到 `RetrievalService`，搜索接口、评测和性能诊断页共享同一套策略实现。
-- `vector`、`hybrid`、`full` 已加入策略级限流和服务端超时保护，`full` 默认限制并发 1。
-- `hybrid` 的 keyword/vector 召回已使用受控检索线程池并行执行。
-- Query embedding、Dashboard 和知识库列表已加入短 TTL 本地缓存。
-
-### 2.3 当前检索响应字段
-
-搜索接口当前会返回：
-
-- `results`
-- `strategy`
-- `rewrittenQueries`
-- `rewriteLatencyMs`
-- `vectorLatencyMs`
-- `keywordLatencyMs`
-- `rerankLatencyMs`
-- `latencyMs`
-
-这使得调试台和性能诊断页可以展示分段耗时，而不只是总耗时。
-
-## 3. 页面与产品边界
-
-当前前端页面有登录页、密码重置页和 7 个核心业务页面：
+真实部署目标是单节点 K3s：
 
 ```text
-Login
-ResetPassword
-Dashboard
-KnowledgeBase
-DocumentDetail
-DebugConsole
-EvaluationLab
-ApiGateway
-PerformanceProbe
+node: 8.138.191.228
+namespace: ragforge
 ```
 
-### 3.1 页面定位
+T12 后 backend 拆为两类 Deployment：
 
-- `Dashboard`：整体概览。
-- `KnowledgeBase`：知识库和文档管理。
-- `DocumentDetail`：单文档解析、切分和索引状态。
-- `DebugConsole`：检索策略调试与参数对比。
-- `EvaluationLab`：评测集、实验和失败样本分析。
-- `ApiGateway`：API Key 管理。
-- `PerformanceProbe`：检索链路耗时诊断。
-- `Login` / `ResetPassword`：通过 RAGForge `/api/auth/*` 代理 Auth Gateway。
+```mermaid
+flowchart TB
+  Internet[Client / Nginx] --> Svc[Service ragforge-backend NodePort 31090]
+  Svc --> API1[Deployment ragforge-api replica 2, RAGFORGE_ROLE=api]
+  API1 --> PG[(PostgreSQL)]
+  API1 --> ES[(Elasticsearch)]
+  API1 --> Redis[(Redis)]
+  API1 --> MQ[(RocketMQ)]
+  MQ --> W1[Deployment ragforge-worker replica 2, RAGFORGE_ROLE=worker]
+  W1 --> PG
+  W1 --> ES
+  W1 --> OSS[(Aliyun OSS / local fallback)]
+  W1 --> DashScope[DashScope OCR / VL Embedding]
+```
 
-### 3.2 认证与权限边界
+角色语义：
 
-当前系统已经接入统一认证和知识库级权限控制：
+| role | 行为 |
+|---|---|
+| `api` | 接 HTTP，不注册 RocketMQ Consumer |
+| `worker` | 消费 MQ，`spring.main.web-application-type=none`，不暴露 HTTP |
+| `all` | 默认值，单机开发/兼容部署时 HTTP + MQ 都启用 |
 
-- 后台管理接口使用 Auth Gateway 颁发的 Bearer JWT。
-- JWT 校验 issuer、audience、JWKS、时钟偏移，并查询 Redis 判断 token 是否已撤销。
-- 前端路由按 `ragRole` 和 `scopes` 控制菜单与页面访问。
-- 后端方法级权限使用 `@PreAuthorize`，资源级权限使用 `KbAccessGuard`。
-- `ADMIN` 可访问非 `SYSTEM` 类型知识库；`KB_EDITOR` / `KB_VIEWER` 通过 JWT claims 或 `kb_acl` 获取知识库读写范围。
-- 外部检索、MCP 和内部检索入口可以使用 API Key，API Key 会转换成 `SERVICE_ACCOUNT` 上下文，并按 `allowed_kb_ids` 过滤知识库。
-- Auth Gateway 的 `session.revoked` 和 `user.password.changed` 事件通过 HMAC webhook 同步到 RAGForge，Redis 保存事件幂等、JTI 撤销和用户级 revoked-after 状态。
+不拆多个文档处理 topic，也不按文本/图片拆 Worker，因为 T10-rewrite 后 text 和 image 都调用 DashScope API，资源画像趋同。
 
-详细说明见 [auth-and-permissions.md](./auth-and-permissions.md)。
+## 9. 可观测性
 
-### 3.3 产品边界
-
-RAGForge 不是聊天产品。
-
-所以页面和 API 的表达也要遵守这个边界：
-
-- 对外默认返回检索结果，不默认生成答案。
-- LLM 只作为调试、改写和评测辅助。
-- 不要把系统包装成通用 Chat UI。
-
-## 4. 部署现实
-
-当前采用三层部署思路。
-
-| 服务器 | 角色 | 组件 |
-| --- | --- | --- |
-| Server 1 | 数据与检索层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ |
-| Server 2 | 入口层 | Nginx、RAGForge 前端、CareerMate 前端 |
-| Server 3 | 应用层 | RAGForge backend `:8080/:8081/:8082`、CareerMate backend `:18080/:18081/:18082` |
-
-### 4.1 容量口径
-
-当前比较务实的阶段性目标是：
+Prometheus 暴露路径：
 
 ```text
-10,000 份文档 / 50,000 到 80,000 个 chunk
+/actuator/prometheus
 ```
 
-这个目标适合作为中小型知识库的第一阶段验收。
+核心业务指标见 `docs/grafana-v5.json`：
 
-截至 2026-06-01，线上已完成约：
+| 指标 | 类型 | 标签 | 含义 |
+|---|---|---|---|
+| `ragforge.ingest.created` | counter | - | 新文档注册数 |
+| `ragforge.ingest.skipped` | counter | - | 身份命中且跳过数 |
+| `ragforge.ingest.replaced` | counter | - | 硬覆盖注册数 |
+| `ragforge.worker.processing_duration` | timer | `modality` | worker 文档处理耗时 |
+| `ragforge.worker.failed` | counter | `reason` | worker 处理失败 |
+| `ragforge.embedding.vl.calls` | counter | - | VL embedding 调用次数 |
+| `ragforge.embedding.vl.tokens` | counter | `type` | VL 输入估算 token |
+| `ragforge.ocr.qwen_vl_ocr.calls` | counter | - | OCR 调用次数 |
+| `ragforge.ocr.qwen_vl_ocr.tokens` | counter | `type` | OCR image/output token |
+| `ragforge.answer.tokens` | counter | `type` | Answer prompt/completion token |
+| `ragforge.answer.citation_rate` | gauge | - | 最近一次 Answer 引用率 |
+| `ragforge.answer.guard_rail.blocked` | counter | `reason` | Answer GuardRails 拦截 |
+| `ragforge.kb_access_denied` | counter | `operation` | KB 访问被过滤/拒绝 |
+| `ragforge.search.latency` | timer | `strategy` | 检索总耗时 |
 
-```text
-8 个知识库 / 9,800 份文档 / 约 96,000 个 chunk
-```
+建议告警阈值：
 
-压测结论显示：普通读接口可用，`vector` 和 `hybrid` 在优化后有明显提升；`full` 仍是重链路，应保持限流、超时和必要的异步化设计。
+| 告警 | PromQL 口径 | 阈值 |
+|---|---|---|
+| DashScope 单日成本 | `docs/grafana-v5.json` 中 Daily DashScope Cost Estimate | `> ¥50` warning，`> ¥200` critical |
+| LLM 单日 token | `sum(increase(ragforge_answer_tokens_total[1d]))` | `> 1000000` warning |
+| Worker failed rate | `sum(rate(ragforge_worker_failed_total[5m])) / sum(rate(ragforge_worker_processing_duration_seconds_count[5m]))` | `> 5%` warning |
+| KB access denied 突增 | `sum(rate(ragforge_kb_access_denied_total[5m]))` | 基线突增 warning |
 
-在当前资源条件下，不建议直接宣称“百万级 chunk 已验证”。
+## 10. 当前口径约束
 
-### 4.2 运行口径
-
-当前部署环境里，ES、PG、RocketMQ 的资源都不算宽裕，所以需要承认资源边界：
-
-- ES 占内存最高，检索峰值要控制。
-- pgvector 当前适合中小规模检索，不适合无约束膨胀。
-- RocketMQ 用于异步化处理，价值主要在解耦和重试。
-
-## 5. 评测实验室状态
-
-评测实验室已经不是纯演示页面，但还没有达到最终可信度标准。
-
-当前已改进的方向包括：
-
-- 评测 `full` 与调试台 `full` 的链路已经统一。
-- 失败原因和建议不再完全依赖前端硬编码。
-- 失败样本已经增加 rank 上下文字段。
-
-仍然建议继续完善的点：
-
-- 快速体验数据集应明确标注为“自动弱标注”。
-- 失败样本应展示 expected / recalled chunk 内容。
-- 支持人工修正标准答案标注。
-- 结果保存应包含更完整的 score detail。
-
-推荐评测模型：
-
-```text
-人工标注 expected_chunk_ids
--> 运行策略
--> 保存 recalled_chunk_ids + rank + score
--> 计算 Top1 / Top3 / MRR
--> 按 expected rank 分类失败
-```
-
-## 6. 当前最大不一致点
-
-当前系统的主要问题已经从“口径不统一”转向“生产工程化继续增强”。
-
-已收敛的点：
-
-1. Query Rewrite 和 Reranker 模型口径已统一为 DashScope / Qwen / DashScope rerank。
-2. 调试台、评测实验室、搜索 API 的检索策略已统一到 `RetrievalService`。
-3. 检索链路已具备分段耗时、限流、超时和本地缓存。
-
-仍需继续增强的点：
-
-1. 文档导入补偿、批量写入和一致性校准仍可继续工程化。
-2. 监控和指标体系还不完整，需要生产告警闭环。
-3. 多实例部署前应处理共享文件存储、Worker/API 角色隔离和定时任务单实例执行。
-4. `full` 策略仍然较重，适合异步化或队列化。
-5. API Key 页面已经展示扩展字段，但编辑 `allowedKbIds`、`scopes`、`principal`、`rateLimit` 仍需补齐。
-
-## 7. 推荐的后续工作方向
-
-详细重构路线请看 [current-architecture-and-refactor-roadmap.md](./current-architecture-and-refactor-roadmap.md)。
-
-这里保留一句最重要的结论：
-
-- 先统一口径。
-- 再修评测可信度。
-- 然后收敛检索链路。
-- 最后做工程化增强。
+V5 当前架构只保留统一 `vl_vector`、单一 MQ topic、两类运行角色和 K3s 生产部署口径。旧版外置 OCR、图片描述、多向量空间融合、按模态拆 Worker、旧生产编排等方案不再作为当前架构描述。

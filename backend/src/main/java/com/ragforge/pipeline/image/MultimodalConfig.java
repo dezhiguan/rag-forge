@@ -2,6 +2,7 @@ package com.ragforge.pipeline.image;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.config.EmbeddingProperties;
+import com.ragforge.metrics.RagforgeMetrics;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,7 +12,8 @@ import org.springframework.context.annotation.Configuration;
 public class MultimodalConfig {
 
   @Bean
-  public OcrClient ocrClient(EmbeddingProperties properties, ObjectMapper objectMapper) {
-    return new RemoteOcrClient(properties, objectMapper);
+  public OcrClient ocrClient(
+      EmbeddingProperties properties, ObjectMapper objectMapper, RagforgeMetrics metrics) {
+    return new RemoteOcrClient(properties, objectMapper, metrics);
   }
 }

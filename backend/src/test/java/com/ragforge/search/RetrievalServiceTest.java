@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.ragforge.common.BizException;
 import com.ragforge.config.RetrievalProperties;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.search.HybridSearchService.HybridSearchOutput;
 import com.ragforge.search.RerankerClient.RerankOutput;
 import com.ragforge.search.RerankerClient.RerankResult;
@@ -60,6 +61,7 @@ class RetrievalServiceTest {
             queryRewriter,
             rerankerClient,
             meterRegistry,
+            new RagforgeMetrics(meterRegistry),
             retrievalProperties,
             retrievalExecutor);
   }

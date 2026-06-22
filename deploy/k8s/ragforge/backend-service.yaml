@@ -4,14 +4,13 @@ metadata:
   name: ragforge-backend
   namespace: ragforge
   labels:
-    app: ragforge-backend
+    app: ragforge-api
 spec:
   type: NodePort
   selector:
-    app: ragforge-backend
+    app: ragforge-api
   ports:
     - name: http
       port: 8080
       targetPort: http
       nodePort: 31090
-

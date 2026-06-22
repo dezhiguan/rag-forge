@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
 import com.ragforge.config.EmbeddingProperties;
+import com.ragforge.metrics.RagforgeMetrics;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -28,11 +29,14 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
 
   private final EmbeddingProperties properties;
   private final ObjectMapper objectMapper;
+  private final RagforgeMetrics metrics;
   private final HttpClient httpClient;
 
-  public DashScopeVlEmbeddingClient(EmbeddingProperties properties, ObjectMapper objectMapper) {
+  public DashScopeVlEmbeddingClient(
+      EmbeddingProperties properties, ObjectMapper objectMapper, RagforgeMetrics metrics) {
     this.properties = properties;
     this.objectMapper = objectMapper;
+    this.metrics = metrics;
     this.httpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(properties.getVl().getTimeoutMs()))
@@ -70,6 +74,9 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
       if (response.statusCode() / 100 != 2) {
         throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
       }
+      metrics.recordVlEmbeddingCall(inputs.size());
+      metrics.recordVlEmbeddingImageTokens(
+          (int) inputs.stream().filter(input -> input != null && input.isImage()).count());
       return parseEmbeddings(objectMapper.readTree(response.body()), inputs.size());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();

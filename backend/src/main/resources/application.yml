@@ -48,6 +48,7 @@ management:
       application: rag-forge
 
 ragforge:
+  role: ${RAGFORGE_ROLE:all}
   auth:
     issuer: ${RAGFORGE_AUTH_ISSUER:https://auth.careermate.cn}
     audiences:
@@ -76,6 +77,9 @@ ragforge:
       cookie-secure: ${RAGFORGE_AUTH_PROXY_COOKIE_SECURE:true}
   files:
     upload-path: /data/files/
+  document-processing:
+    # mq: publish to RocketMQ worker; inline: dispatch asynchronously in-process for local/E2E without MQ
+    dispatch-mode: ${RAGFORGE_DOCUMENT_PROCESS_DISPATCH_MODE:mq}
   eval:
     max-concurrent-questions: 4
     question-timeout-ms: 30000
@@ -145,8 +149,8 @@ reranker:
 
 storage:
   aliyun:
-    endpoint: ${ALIYUN_OSS_ENDPOINT:oss-cn-shenzhen.aliyuncs.com}
-    bucket: ${ALIYUN_OSS_BUCKET:ragforge-dev}
+    endpoint: ${ALIYUN_OSS_ENDPOINT:oss-cn-guangzhou.aliyuncs.com}
+    bucket: ${ALIYUN_OSS_BUCKET:rag-raw-docs}
     accessKeyId: ${ALIYUN_OSS_AK:}
     accessKeySecret: ${ALIYUN_OSS_SK:}
   local:

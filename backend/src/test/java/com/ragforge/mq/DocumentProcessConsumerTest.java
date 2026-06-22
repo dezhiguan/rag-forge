@@ -5,9 +5,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.entity.Document;
 import com.ragforge.pipeline.DocumentPipelineService;
 import com.ragforge.pipeline.image.ImagePipelineService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,7 +27,12 @@ class DocumentProcessConsumerTest {
 
   @BeforeEach
   void setUp() {
-    consumer = new DocumentProcessConsumer(documentMapper, pipelineService, imagePipelineService);
+    consumer =
+        new DocumentProcessConsumer(
+            documentMapper,
+            pipelineService,
+            imagePipelineService,
+            new RagforgeMetrics(new SimpleMeterRegistry()));
   }
 
   @Test

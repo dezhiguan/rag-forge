@@ -1,20 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ragforge-backend
+  name: ragforge-api
   namespace: ragforge
   labels:
-    app: ragforge-backend
+    app: ragforge-api
+    role: api
 spec:
   replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app: ragforge-backend
+      app: ragforge-api
   template:
     metadata:
       labels:
-        app: ragforge-backend
+        app: ragforge-api
+        role: api
     spec:
       securityContext:
         fsGroup: 10001
@@ -36,28 +38,17 @@ spec:
             - name: http
               containerPort: 8080
           envFrom:
+            - configMapRef:
+                name: ragforge-backend-config
             - secretRef:
                 name: ragforge-backend-env
           env:
-            - name: SPRING_PROFILES_ACTIVE
-              # [SkyWalking-OFF 2026-06-19] 原值: prod,skywalking-log
-              value: prod
-            - name: JAVA_OPTS
-              value: -Xms512m -Xmx1g
-            - name: RAGFORGE_UPLOAD_PATH
-              value: /data/files/
+            - name: RAGFORGE_ROLE
+              value: api
+            - name: SPRING_MAIN_WEB_APPLICATION_TYPE
+              value: servlet
             - name: JAVA_TOOL_OPTIONS
-              # [SkyWalking-OFF 2026-06-19] 已剥离 -javaagent 参数。
-              # 恢复时使用下方注释的完整值：
-              # value: >-
-              #   -Xms512m -Xmx1g
-              #   -javaagent:/opt/skywalking-agent/skywalking-agent.jar
-              #   -Dskywalking.agent.service_name=ragforge-backend
-              #   -Dskywalking.collector.backend_service=172.25.90.184:11800
               value: "-Xms512m -Xmx1g"
-            # [SkyWalking-OFF 2026-06-19] 临时停用，恢复时取消下方注释
-            # - name: SW_LOGGING_OUTPUT
-            #   value: CONSOLE
           startupProbe:
             httpGet:
               path: /api/v1/health
@@ -94,19 +85,74 @@ spec:
           volumeMounts:
             - name: ragforge-files
               mountPath: /data/files
-            # [SkyWalking-OFF 2026-06-19] 临时停用，恢复时取消下方注释
-            # - name: skywalking-agent
-            #   mountPath: /opt/skywalking-agent
-            #   readOnly: true
       volumes:
         - name: ragforge-files
-          # nosemgrep: yaml.kubernetes.security.hostpath-mount.hostpath-mount
-          # Temporary local file storage until RAGForge supports OSS.
           hostPath:
             path: /data/files
             type: DirectoryOrCreate
-        # [SkyWalking-OFF 2026-06-19] 临时停用，恢复时取消下方注释
-        # - name: skywalking-agent
-        #   hostPath:
-        #     path: /opt/skywalking-agent
-        #     type: Directory
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragforge-worker
+  namespace: ragforge
+  labels:
+    app: ragforge-worker
+    role: worker
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: ragforge-worker
+  template:
+    metadata:
+      labels:
+        app: ragforge-worker
+        role: worker
+    spec:
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: docker.io/ragforge/backend:0.0.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop:
+                - ALL
+          envFrom:
+            - configMapRef:
+                name: ragforge-backend-config
+            - secretRef:
+                name: ragforge-backend-env
+          env:
+            - name: RAGFORGE_ROLE
+              value: worker
+            - name: SPRING_MAIN_WEB_APPLICATION_TYPE
+              value: none
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms512m -Xmx1g"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+              ephemeral-storage: 1Gi
+          volumeMounts:
+            - name: ragforge-files
+              mountPath: /data/files
+      volumes:
+        - name: ragforge-files
+          hostPath:
+            path: /data/files
+            type: DirectoryOrCreate

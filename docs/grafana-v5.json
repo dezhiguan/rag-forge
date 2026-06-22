@@ -1,0 +1,326 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "sum(rate(ragforge_ingest_created_total[5m]))",
+          "legendFormat": "created",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(ragforge_ingest_skipped_total[5m]))",
+          "legendFormat": "skipped",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(ragforge_ingest_replaced_total[5m]))",
+          "legendFormat": "replaced",
+          "refId": "C"
+        }
+      ],
+      "title": "Ingest Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(ragforge_worker_processing_duration_seconds_bucket[5m])) by (le, modality))",
+          "legendFormat": "p95 {{modality}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(ragforge_worker_failed_total[5m])) by (reason)",
+          "legendFormat": "failed {{reason}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Worker Duration / Failures",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "sum(rate(ragforge_embedding_vl_calls_total[5m]))",
+          "legendFormat": "vl calls",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(ragforge_ocr_qwen_vl_ocr_calls_total[5m]))",
+          "legendFormat": "ocr calls",
+          "refId": "B"
+        }
+      ],
+      "title": "DashScope Calls",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "sum(increase(ragforge_embedding_vl_tokens_total[1d])) by (type)",
+          "legendFormat": "embedding {{type}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(ragforge_ocr_qwen_vl_ocr_tokens_total[1d])) by (type)",
+          "legendFormat": "ocr {{type}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(increase(ragforge_answer_tokens_total[1d])) by (type)",
+          "legendFormat": "answer {{type}}",
+          "refId": "C"
+        }
+      ],
+      "title": "Daily Token Estimate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyCNY"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "(sum(increase(ragforge_answer_tokens_total{type=\"prompt\"}[1d])) * 0.8 / 1000000) + (sum(increase(ragforge_answer_tokens_total{type=\"completion\"}[1d])) * 2 / 1000000)",
+          "legendFormat": "answer qwen-plus estimate",
+          "refId": "A"
+        },
+        {
+          "expr": "((sum(increase(ragforge_answer_tokens_total{type=\"prompt\"}[1d])) * 0.8 / 1000000) + (sum(increase(ragforge_answer_tokens_total{type=\"completion\"}[1d])) * 2 / 1000000)) * 3.6",
+          "legendFormat": "answer qwen-max comparable",
+          "refId": "B"
+        }
+      ],
+      "title": "Daily DashScope Cost Estimate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 8
+      },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "ragforge_answer_citation_rate",
+          "legendFormat": "citation rate",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(ragforge_answer_guard_rail_blocked_total[5m])) by (reason)",
+          "legendFormat": "blocked {{reason}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Answer Quality GuardRails",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(ragforge_search_latency_seconds_bucket[5m])) by (le, strategy))",
+          "legendFormat": "p95 {{strategy}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Search Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "sum(rate(ragforge_kb_access_denied_total[5m])) by (operation)",
+          "legendFormat": "{{operation}}",
+          "refId": "A"
+        }
+      ],
+      "title": "KB Access Denied",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "ragforge",
+    "v5"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "RAGForge V5",
+  "uid": "ragforge-v5",
+  "version": 1,
+  "weekStart": ""
+}

@@ -4,9 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KbAclMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.KnowledgeBase;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,7 +26,7 @@ public class KbAccessGuard {
   private final KbAclMapper kbAclMapper;
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
-  private final MeterRegistry meterRegistry;
+  private final RagforgeMetrics metrics;
 
   public boolean canRead(Long kbId) {
     if (kbId == null) {
@@ -93,7 +93,7 @@ public class KbAccessGuard {
     Set<Long> filtered = new LinkedHashSet<>(requested);
     filtered.retainAll(allowed);
     if (filtered.size() != requested.size()) {
-      meterRegistry.counter("ragforge.authz.kb_access_denied", "operation", "filter_readable").increment();
+      metrics.recordKbAccessDenied("filter_readable");
       log.warn("KB_ACCESS_DENIED requestedKbIds={} readableKbIds={} filteredKbIds={}", requested, allowed, filtered);
     }
     return filtered;

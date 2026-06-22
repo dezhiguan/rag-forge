@@ -18,6 +18,7 @@ import com.ragforge.common.BizException;
 import com.ragforge.mapper.AnswerLogMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.dto.LlmGenerateRequest;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.KnowledgeBase;
@@ -27,6 +28,7 @@ import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
 import com.ragforge.service.LlmService;
 import com.ragforge.storage.ObjectStorage;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.function.Consumer;
@@ -60,7 +62,8 @@ class AnswerServiceTest {
             answerLogMapper,
             knowledgeBaseMapper,
             new ObjectMapper(),
-            new L3PiiMaskCleaner());
+            new L3PiiMaskCleaner(),
+            new RagforgeMetrics(new SimpleMeterRegistry()));
   }
 
   @Test

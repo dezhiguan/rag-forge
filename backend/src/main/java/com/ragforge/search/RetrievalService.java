@@ -3,6 +3,7 @@ package com.ragforge.search;
 import com.ragforge.search.HybridSearchService.HybridSearchOutput;
 import com.ragforge.common.BizException;
 import com.ragforge.config.RetrievalProperties;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.search.RerankerClient.RerankOutput;
 import com.ragforge.search.RerankerClient.RerankResult;
 import java.util.ArrayList;
@@ -36,6 +37,7 @@ public class RetrievalService {
   private final QueryRewriter queryRewriter;
   private final RerankerClient rerankerClient;
   private final MeterRegistry meterRegistry;
+  private final RagforgeMetrics ragforgeMetrics;
   private final RetrievalProperties retrievalProperties;
   private final Executor retrievalExecutor;
   private final Semaphore keywordSemaphore;
@@ -51,6 +53,7 @@ public class RetrievalService {
       QueryRewriter queryRewriter,
       RerankerClient rerankerClient,
       MeterRegistry meterRegistry,
+      RagforgeMetrics ragforgeMetrics,
       RetrievalProperties retrievalProperties,
       @Qualifier("retrievalExecutor") Executor retrievalExecutor) {
     this.vectorSearchService = vectorSearchService;
@@ -59,6 +62,7 @@ public class RetrievalService {
     this.queryRewriter = queryRewriter;
     this.rerankerClient = rerankerClient;
     this.meterRegistry = meterRegistry;
+    this.ragforgeMetrics = ragforgeMetrics;
     this.retrievalProperties = retrievalProperties;
     this.retrievalExecutor = retrievalExecutor;
     this.keywordSemaphore = new Semaphore(Math.max(1, retrievalProperties.getKeyword().getMaxConcurrent()));
@@ -328,6 +332,7 @@ public class RetrievalService {
     recordStageMetric(strategy, "keyword", keywordLatencyMs);
     recordStageMetric(strategy, "rerank", rerankLatencyMs);
     meterRegistry.counter("ragforge.retrieval.requests", "strategy", strategy).increment();
+    ragforgeMetrics.recordSearchLatency(strategy, totalLatencyMs);
     meterRegistry
         .summary("ragforge.retrieval.result.count", "strategy", strategy)
         .record(resultCount);

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.dto.Identity;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
@@ -19,6 +20,7 @@ import com.ragforge.model.entity.Document;
 import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.storage.ObjectStorage;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,7 +44,13 @@ class IngestServiceImplTest {
   @BeforeEach
   void setUp() {
     ingestService =
-        new IngestServiceImpl(documentMapper, chunkMapper, mqProducer, esIndexService, objectStorage);
+        new IngestServiceImpl(
+            documentMapper,
+            chunkMapper,
+            mqProducer,
+            esIndexService,
+            objectStorage,
+            new RagforgeMetrics(new SimpleMeterRegistry()));
     TransactionSynchronizationManager.initSynchronization();
   }
 

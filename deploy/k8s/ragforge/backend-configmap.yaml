@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ragforge-backend-config
+  namespace: ragforge
+  labels:
+    app: ragforge-backend
+data:
+  SPRING_PROFILES_ACTIVE: prod
+  RAGFORGE_UPLOAD_PATH: /data/files/
+  RAGFORGE_DOCUMENT_PROCESS_DISPATCH_MODE: mq

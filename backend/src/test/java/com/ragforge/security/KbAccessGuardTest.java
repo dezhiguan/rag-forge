@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KbAclMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.entity.KnowledgeBase;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
@@ -30,7 +31,7 @@ class KbAccessGuardTest {
   @BeforeEach
   void setUp() {
     meterRegistry = new SimpleMeterRegistry();
-    guard = new KbAccessGuard(kbAclMapper, knowledgeBaseMapper, documentMapper, meterRegistry);
+    guard = new KbAccessGuard(kbAclMapper, knowledgeBaseMapper, documentMapper, new RagforgeMetrics(meterRegistry));
   }
 
   @AfterEach
@@ -68,6 +69,8 @@ class KbAccessGuardTest {
 
     assertThat(guard.filterReadable(List.of(1L, 2L))).containsExactly(1L);
     assertThat(meterRegistry.counter("ragforge.authz.kb_access_denied", "operation", "filter_readable").count())
+        .isEqualTo(1.0);
+    assertThat(meterRegistry.counter("ragforge.kb_access_denied", "operation", "filter_readable").count())
         .isEqualTo(1.0);
   }
 

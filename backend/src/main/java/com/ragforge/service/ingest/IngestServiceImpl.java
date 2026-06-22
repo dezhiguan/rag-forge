@@ -3,6 +3,7 @@ package com.ragforge.service.ingest;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.dto.Identity;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
@@ -33,6 +34,7 @@ public class IngestServiceImpl implements IngestService {
   private final DocumentProcessProducer mqProducer;
   private final EsIndexService esIndexService;
   private final ObjectStorage objectStorage;
+  private final RagforgeMetrics metrics;
 
   @Override
   @Transactional
@@ -59,9 +61,16 @@ public class IngestServiceImpl implements IngestService {
               "DOC_CONTENT_CHANGED_USE_REPLACE",
               Map.of("existingDocId", existing.getId()));
         }
+        metrics.recordIngestSkipped();
         yield IngestResult.skipped(existing.getId());
       }
-      case REPLACE -> md5Same ? IngestResult.skipped(existing.getId()) : doReplace(existing, cmd);
+      case REPLACE -> {
+        if (md5Same) {
+          metrics.recordIngestSkipped();
+          yield IngestResult.skipped(existing.getId());
+        }
+        yield doReplace(existing, cmd);
+      }
     };
   }
 
@@ -108,6 +117,7 @@ public class IngestServiceImpl implements IngestService {
     documentMapper.insert(doc);
 
     afterCommit(() -> mqProducer.send(doc.getId()));
+    metrics.recordIngestCreated();
     return IngestResult.created(doc.getId());
   }
 
@@ -130,6 +140,7 @@ public class IngestServiceImpl implements IngestService {
           mqProducer.send(oldDocId);
         });
 
+    metrics.recordIngestReplaced();
     return IngestResult.replaced(oldDocId);
   }
 

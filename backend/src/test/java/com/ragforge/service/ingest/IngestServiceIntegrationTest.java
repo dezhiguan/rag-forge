@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.dto.Identity;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
@@ -21,6 +22,7 @@ import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.storage.ObjectStorage;
 import com.ragforge.support.BaseIntegrationTest;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.sql.SQLException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,7 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -286,5 +289,10 @@ class IngestServiceIntegrationTest extends BaseIntegrationTest {
   @EnableAutoConfiguration
   @MapperScan("com.ragforge.mapper")
   @Import(IngestServiceImpl.class)
-  static class TestConfig {}
+  static class TestConfig {
+    @Bean
+    RagforgeMetrics ragforgeMetrics() {
+      return new RagforgeMetrics(new SimpleMeterRegistry());
+    }
+  }
 }

@@ -14,6 +14,7 @@ import com.ragforge.common.BizException;
 import com.ragforge.mapper.AnswerLogMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.dto.LlmGenerateRequest;
 import com.ragforge.model.entity.AnswerLog;
 import com.ragforge.model.entity.Document;
@@ -61,6 +62,7 @@ public class AnswerService {
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final ObjectMapper objectMapper;
   private final L3PiiMaskCleaner piiMaskCleaner;
+  private final RagforgeMetrics metrics;
 
   public SseEmitter answer(AnswerRequest request) {
     validateRequest(request);
@@ -125,9 +127,10 @@ public class AnswerService {
       response.setRetrieval(retrievalResponse);
       response.setTokens(new TokenUsage(0, 0));
       response.setLatency(new Latency(retrieval.getLatencyMs(), 0, System.currentTimeMillis() - start));
-      response.setGuardRailResult(GuardRailResult.PASS.name());
-      response.setLlmModel(llmModel);
-      writeLog(request, kbIds, response, effectiveMode, llmModel, retrieval.getStrategy(), start);
+    response.setGuardRailResult(GuardRailResult.PASS.name());
+    response.setLlmModel(llmModel);
+    metrics.updateAnswerCitationRate(0, 0);
+    writeLog(request, kbIds, response, effectiveMode, llmModel, retrieval.getStrategy(), start);
       if (emitter != null) {
         send(emitter, "token", Map.of("delta", NOT_FOUND_ANSWER));
         send(emitter, "complete", response);
@@ -163,6 +166,11 @@ public class AnswerService {
     response.setLatency(new Latency(retrieval.getLatencyMs(), llmLatency, System.currentTimeMillis() - start));
     response.setGuardRailResult(guard.name());
     response.setLlmModel(llmModel);
+    metrics.recordAnswerTokens(llmResult.promptTokens(), llmResult.completionTokens());
+    metrics.updateAnswerCitationRate(citations.size(), retrieval.getResults().size());
+    if (guard != GuardRailResult.PASS) {
+      metrics.recordAnswerGuardRailBlocked(guard.name());
+    }
     writeLog(request, kbIds, response, effectiveMode, llmModel, retrieval.getStrategy(), start);
 
     if (guard != GuardRailResult.PASS) {
