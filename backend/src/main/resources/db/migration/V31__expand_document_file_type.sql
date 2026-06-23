@@ -1,0 +1,2 @@
+ALTER TABLE documents
+  ALTER COLUMN file_type TYPE VARCHAR(128);
