@@ -253,6 +253,32 @@ class JudgeScorerTest {
   }
 
   @Test
+  void deepSeekClient_usesConfiguredTemperatureInRequestBody() {
+    AtomicReference<HttpEntity<String>> requestEntityRef = new AtomicReference<>();
+    RestTemplate restTemplate = mock(RestTemplate.class);
+    when(restTemplate.postForEntity(anyString(), isA(HttpEntity.class), eq(String.class)))
+        .thenAnswer(
+            invocation -> {
+              requestEntityRef.set(invocation.getArgument(1));
+              return ResponseEntity.ok(
+                  "{\"choices\":[{\"message\":{\"content\":\"{\\\"score\\\":0.5,\\\"reasoning\\\":\\\"ok\\\"}\"}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}");
+            });
+
+    DeepSeekClient client = new DeepSeekClient(restTemplate, OBJECT_MAPPER);
+    ReflectionTestUtils.setField(client, "apiKey", "test-key");
+    ReflectionTestUtils.setField(client, "baseUrl", "https://api.deepseek.com/v1");
+    ReflectionTestUtils.setField(client, "model", "deepseek-chat");
+    ReflectionTestUtils.setField(client, "temperature", 0.5d);
+    ReflectionTestUtils.setField(client, "maxRetries", 1);
+    ReflectionTestUtils.setField(client, "retryBackoffMs", 1);
+
+    client.chat("sys", "usr");
+
+    assertThat(requestEntityRef.get()).isNotNull();
+    assertThat(requestEntityRef.get().getBody()).contains("\"temperature\":0.5");
+  }
+
+  @Test
   void deepSeekClient_retriesOnFailureUntilMaxAttempts() {
     RestTemplate restTemplate = mock(RestTemplate.class);
     when(restTemplate.postForEntity(anyString(), isA(HttpEntity.class), eq(String.class)))

@@ -84,6 +84,15 @@ ragforge:
     dispatch-mode: ${RAGFORGE_JUDGE_DISPATCH_MODE:mq}
     sampling-fallback-rate: 0.0
     aggregator-enabled: ${RAGFORGE_JUDGE_AGGREGATOR_ENABLED:true}
+    golden-replay:
+      enabled: ${RAGFORGE_JUDGE_GOLDEN_REPLAY_ENABLED:true}
+      cron: ${RAGFORGE_JUDGE_GOLDEN_REPLAY_CRON:0 0 3 * * *}
+    cost-guard:
+      # Set false in local/debug environments to disable scheduled judge cost budget alerts.
+      enabled: ${RAGFORGE_JUDGE_COST_GUARD_ENABLED:true}
+      monthly-budget-cny: ${RAGFORGE_JUDGE_MONTHLY_BUDGET:200}
+      warn-threshold: 0.8
+      critical-threshold: 1.0
     stability-check:
       enabled: false
   eval:

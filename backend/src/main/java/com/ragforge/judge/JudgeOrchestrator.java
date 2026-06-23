@@ -71,43 +71,52 @@ public class JudgeOrchestrator {
     BigDecimal cost = BigDecimal.ZERO;
     long latency = 0L;
 
-    JudgeScore faithfulness = scoreDimension(ctx, ScoreDimension.FAITHFULNESS);
-    JudgeScore contextPrecision = scoreDimension(ctx, ScoreDimension.CONTEXT_PRECISION);
-    JudgeScore answerRelevance = scoreDimension(ctx, ScoreDimension.ANSWER_RELEVANCE);
-    JudgeContext compositeCtx =
-        ctx.withPriorScores(
-            faithfulness.getScore(), contextPrecision.getScore(), answerRelevance.getScore());
-    JudgeScore overall = scoreDimension(compositeCtx, ScoreDimension.COMPOSITE);
-
-    applyDimensionResult(result, faithfulness);
-    applyDimensionResult(result, contextPrecision);
-    applyDimensionResult(result, answerRelevance);
-    applyDimensionResult(result, overall);
-
-    for (JudgeScore score : List.of(faithfulness, contextPrecision, answerRelevance, overall)) {
-      if (score != null && score.isSuccess()) {
-        metrics.recordDeepSeekTokens(
-            score.getPromptTokens() == null ? 0 : score.getPromptTokens(),
-            score.getCompletionTokens() == null ? 0 : score.getCompletionTokens());
-        recordScore(result.getSource(), score, kbIds);
-        cost = cost.add(safeCost(score));
-        latency += safeLatency(score);
-      }
-    }
-
-    result.setJudgeCostCny(cost);
-    result.setJudgeLatencyMs(Math.toIntExact(Math.max(0L, latency)));
-    result.setJudgeRawResponse(
-        buildRawResponse(List.of(faithfulness, contextPrecision, answerRelevance, overall)));
-
-    if (faithfulness.isSuccess() && contextPrecision.isSuccess() && answerRelevance.isSuccess() && overall.isSuccess()) {
-      result.setStatus("COMPLETED");
-    } else {
-      result.setStatus("FAILED");
-      result.setFailureReason(firstFailure(faithfulness, contextPrecision, answerRelevance, overall));
-    }
-
     judgeResultMapper.insert(result);
+
+    try {
+      JudgeScore faithfulness = scoreDimension(ctx, ScoreDimension.FAITHFULNESS);
+      JudgeScore contextPrecision = scoreDimension(ctx, ScoreDimension.CONTEXT_PRECISION);
+      JudgeScore answerRelevance = scoreDimension(ctx, ScoreDimension.ANSWER_RELEVANCE);
+      JudgeContext compositeCtx =
+          ctx.withPriorScores(
+              faithfulness.getScore(), contextPrecision.getScore(), answerRelevance.getScore());
+      JudgeScore overall = scoreDimension(compositeCtx, ScoreDimension.COMPOSITE);
+
+      List<JudgeScore> scores = List.of(faithfulness, contextPrecision, answerRelevance, overall);
+      applyDimensionResult(result, faithfulness);
+      applyDimensionResult(result, contextPrecision);
+      applyDimensionResult(result, answerRelevance);
+      applyDimensionResult(result, overall);
+
+      for (JudgeScore score : scores) {
+        if (score != null && score.isSuccess()) {
+          metrics.recordDeepSeekTokens(
+              score.getPromptTokens() == null ? 0 : score.getPromptTokens(),
+              score.getCompletionTokens() == null ? 0 : score.getCompletionTokens());
+          recordScore(result.getSource(), score, kbIds);
+          cost = cost.add(safeCost(score));
+          latency += safeLatency(score);
+        }
+      }
+
+      result.setJudgeRawResponse(buildRawResponse(scores));
+
+      if (scores.stream().allMatch(score -> score != null && score.isSuccess())) {
+        result.setStatus("COMPLETED");
+      } else {
+        result.setStatus("FAILED");
+        result.setFailureReason(firstFailure(faithfulness, contextPrecision, answerRelevance, overall));
+      }
+    } catch (Exception e) {
+      log.error("Judge orchestration failed: answerLogId={}", answerLog.getId(), e);
+      result.setStatus("FAILED");
+      result.setFailureReason(e.getMessage() == null ? "judge failed" : e.getMessage());
+    } finally {
+      result.setJudgeCostCny(cost);
+      result.setJudgeLatencyMs(Math.toIntExact(Math.max(0L, latency)));
+      judgeResultMapper.updateById(result);
+    }
+
     metrics.recordJudgeCost(result.getSource(), cost);
   }
 

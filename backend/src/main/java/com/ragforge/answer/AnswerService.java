@@ -94,6 +94,11 @@ public class AnswerService {
     enforceAnswerMode(loadKnowledgeBases(distinct(request.getKbIds())), request.getAnswerMode());
   }
 
+  public AnswerResponse answerSync(AnswerRequest request) {
+    validateRequest(request);
+    return answerInternal(request, null, null).response();
+  }
+
   public AnswerResponse answerBlocking(AnswerRequest request) {
     validateRequest(request);
     return answerInternal(request, null, null).response();

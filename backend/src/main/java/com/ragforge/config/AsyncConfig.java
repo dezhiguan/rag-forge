@@ -48,4 +48,16 @@ public class AsyncConfig {
     executor.initialize();
     return executor;
   }
+
+  @Bean
+  public ThreadPoolTaskExecutor goldenReplayExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(1);
+    executor.setMaxPoolSize(1);
+    executor.setQueueCapacity(20);
+    executor.setThreadNamePrefix("golden-replay-");
+    executor.setTaskDecorator(MdcContext.taskDecorator());
+    executor.initialize();
+    return executor;
+  }
 }

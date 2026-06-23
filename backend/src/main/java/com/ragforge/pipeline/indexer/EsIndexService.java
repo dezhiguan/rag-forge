@@ -4,9 +4,11 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.mapping.Property;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
+import co.elastic.clients.elasticsearch.core.CountRequest;
 import co.elastic.clients.elasticsearch.core.CountResponse;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
 import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
+import co.elastic.clients.elasticsearch.indices.ExistsRequest;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import jakarta.annotation.PostConstruct;
@@ -42,7 +44,8 @@ public class EsIndexService {
 
   public void createIndexIfNotExists() {
     try {
-      boolean exists = client.indices().exists(b -> b.index(INDEX_NAME)).value();
+      ExistsRequest existsRequest = new ExistsRequest.Builder().index(INDEX_NAME).build();
+      boolean exists = client.indices().exists(existsRequest).value();
       if (exists) {
         return;
       }
@@ -174,9 +177,10 @@ public class EsIndexService {
     try {
       CountResponse response =
           client.count(
-              r ->
-                  r.index(INDEX_NAME)
-                      .query(q -> q.term(t -> t.field("doc_id").value(v -> v.longValue(docId)))));
+              new CountRequest.Builder()
+                  .index(INDEX_NAME)
+                  .query(q -> q.term(t -> t.field("doc_id").value(v -> v.longValue(docId))))
+                  .build());
       return response.count();
     } catch (Exception e) {
       log.warn("ES countByDocId failed: docId={}, err={}", docId, e.getMessage());

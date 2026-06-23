@@ -88,6 +88,9 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     kpi.setCostLastPeriodCny(current.totalCost());
     kpi.setRetrievalLatencyP95Ms(0);
     kpi.setOverallChange(percentChange(previous.overall(), current.overall()));
+    kpi.setFaithfulnessChange(percentChange(previous.faithfulness(), current.faithfulness()));
+    kpi.setContextPrecisionChange(percentChange(previous.contextPrecision(), current.contextPrecision()));
+    kpi.setAnswerRelevanceChange(percentChange(previous.answerRelevance(), current.answerRelevance()));
 
     SampleStatsVo sampleStats = new SampleStatsVo();
     sampleStats.setTotalSamples(current.sampleCount());
@@ -226,6 +229,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     vo.setQuery(chooseFirstNonBlank(result.getQuery(), log == null ? null : log.getQuery()));
     vo.setAnswer(log == null ? null : log.getAnswer());
     vo.setCreatedAt(log == null ? null : log.getCreatedAt());
+    vo.setKbIds(result.getKbIds() == null ? List.of() : List.of(result.getKbIds()));
     vo.setChunks(resolveChunks(citations));
     vo.setScores(buildScoreMap(result));
     vo.setJudgeReasoning(truncate(chooseFirstNonBlank(result.getJudgeReasoning(), extractReasoning(raw)), 320));
@@ -286,6 +290,25 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     vo.setFailedCalls(failedSamples);
     vo.setCostBySource(bySource);
     return vo;
+  }
+
+  @Override
+  public BigDecimal costThisMonth() {
+    LocalDate monthStart = LocalDate.now().withDayOfMonth(1);
+    String sql =
+        """
+        SELECT COALESCE(SUM(judge_cost_cny), 0)
+        FROM judge_results
+        WHERE created_at >= ?
+        """;
+    return toBigDecimal(jdbcTemplate.queryForObject(sql, Object.class, monthStart.atStartOfDay()));
+  }
+
+  @Override
+  public int goldenSetEnabledQuestionCount() {
+    String sql = "SELECT COUNT(1) FROM eval_questions WHERE judge_enabled = TRUE";
+    Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+    return count == null ? 0 : count;
   }
 
   private List<Map<String, Object>> queryGlobalMetricsRows(LocalDate start) {

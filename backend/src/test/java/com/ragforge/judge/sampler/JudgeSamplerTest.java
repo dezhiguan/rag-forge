@@ -33,9 +33,9 @@ class JudgeSamplerTest {
   void decide_respectsScopePriorityKbOverTenantOverGlobal() {
     when(configMapper.selectList(any()))
         .thenReturn(
-            List.of(globalConfig(3L, null, null, new BigDecimal("0.1"), true),
+            List.of(kbConfig(1L, 10L, new BigDecimal("1.0"), true),
                 tenantConfig(2L, "tenant-a", new BigDecimal("0.4"), true),
-                kbConfig(1L, 10L, new BigDecimal("1.0"), true)));
+                globalConfig(3L, null, null, new BigDecimal("0.1"), true)));
 
     SampleDecision decision =
         sampler.decide(

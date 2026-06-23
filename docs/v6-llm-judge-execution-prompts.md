@@ -1562,3 +1562,5 @@ J1 ✅ <commit-sha> 2026-06-23
 J2 ✅ 2026-06-23
 J3 ✅ 2026-06-23
 J4 ✅ <commit-sha> 2026-06-23
+J7 ✅ 2026-06-23 → V6 LLM-as-Judge MVP 完成
+- V6 P1 hotfix ✅ 67a0b1b 2026-06-23 (B1+B2+B6+M1-M5)

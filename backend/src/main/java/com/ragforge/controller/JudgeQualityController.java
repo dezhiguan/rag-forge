@@ -1,6 +1,7 @@
 package com.ragforge.controller;
 
 import com.ragforge.common.Result;
+import com.ragforge.common.BizException;
 import com.ragforge.model.vo.CaseDetailVo;
 import com.ragforge.model.vo.CostSummaryVo;
 import com.ragforge.model.vo.KbSliceVo;
@@ -57,7 +58,13 @@ public class JudgeQualityController {
 
   @GetMapping("/case/{judgeResultId}")
   public Result<CaseDetailVo> caseDetail(@PathVariable Long judgeResultId) {
-    return Result.ok(queryService.caseDetail(judgeResultId));
+    CaseDetailVo detail = queryService.caseDetail(judgeResultId);
+    if (detail.getKbIds() == null
+        || detail.getKbIds().isEmpty()
+        || detail.getKbIds().stream().anyMatch(kbId -> !kbAccessGuard.canRead(kbId))) {
+      throw new BizException(403, "KB_ACCESS_DENIED");
+    }
+    return Result.ok(detail);
   }
 
   @GetMapping("/cost")

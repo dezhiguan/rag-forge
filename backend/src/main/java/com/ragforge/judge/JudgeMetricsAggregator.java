@@ -39,7 +39,7 @@ public class JudgeMetricsAggregator {
             updated_at
           )
           SELECT
-            d,
+            src.date,
             kb_id,
             tenant_id,
             sample_count,
@@ -117,8 +117,7 @@ public class JudgeMetricsAggregator {
             overall_p95,
             overall_mean,
             overall_std,
-            total_cost_cny,
-            updated_at
+            total_cost_cny
           )
           ON CONFLICT (date, COALESCE(kb_id, -1), tenant_id)
           DO UPDATE SET
@@ -143,7 +142,7 @@ public class JudgeMetricsAggregator {
   public void aggregate() {
     jdbcTemplate.execute(UPSERT_SQL);
     Timestamp now = Timestamp.valueOf(LocalDateTime.now());
-    LocalDate start = now.toLocalDateTime().toLocalDate().minusDays(6);
+    LocalDate start = now.toLocalDateTime().toLocalDate().minusDays(7);
     log.info("Judge metrics aggregated: updated_at={}, window_start={}", now, start);
   }
 }

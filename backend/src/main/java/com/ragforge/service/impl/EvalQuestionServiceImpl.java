@@ -19,6 +19,7 @@ import com.ragforge.service.EvalDatasetService;
 import com.ragforge.service.EvalQuestionService;
 import java.util.Collections;
 import java.util.List;
+import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +60,7 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     evalDatasetService.requireDataset(datasetId);
     EvalQuestion question =
         buildQuestion(datasetId, dto.getQuestion(), dto.getExpectedChunkIds(), dto.getExpectedTextSnippets());
+    applyJudgeFields(question, dto);
     evalQuestionMapper.insert(question);
     incrementQuestionCount(datasetId, 1);
     return toVO(question);
@@ -82,6 +84,7 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
                           dto.getQuestion(),
                           dto.getExpectedChunkIds(),
                           dto.getExpectedTextSnippets());
+                  applyJudgeFields(question, dto);
                   evalQuestionMapper.insert(question);
                   return toVO(question);
                 })
@@ -111,6 +114,7 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     question.setQuestion(dto.getQuestion().trim());
     question.setExpectedDocIds(serializeChunkIds(dto.getExpectedChunkIds()));
     question.setExpectedTextSnippets(serializeTextSnippets(dto.getExpectedTextSnippets()));
+    applyJudgeFields(question, dto);
     evalQuestionMapper.updateById(question);
     return toVO(question);
   }
@@ -136,7 +140,22 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     question.setQuestion(questionText.trim());
     question.setExpectedDocIds(serializeChunkIds(chunkIds));
     question.setExpectedTextSnippets(serializeTextSnippets(textSnippets));
+    question.setJudgeEnabled(Boolean.FALSE);
+    question.setJudgeTags(null);
     return question;
+  }
+
+  private EvalQuestion applyJudgeFields(EvalQuestion question, CreateEvalQuestionDTO dto) {
+    question.setJudgeEnabled(Boolean.TRUE.equals(dto.getJudgeEnabled()));
+    question.setJudgeTags(dedupTags(dto.getJudgeTags()));
+    return question;
+  }
+
+  private String[] dedupTags(List<String> tags) {
+    if (CollectionUtils.isEmpty(tags)) {
+      return null;
+    }
+    return tags.stream().filter(StringUtils::hasText).map(String::trim).distinct().toArray(String[]::new);
   }
 
   private void incrementQuestionCount(Long datasetId, int delta) {
@@ -156,7 +175,20 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     vo.setQuestion(entity.getQuestion());
     vo.setExpectedChunkIds(parseChunkIds(entity.getExpectedDocIds()));
     vo.setExpectedTextSnippets(parseTextSnippets(entity.getExpectedTextSnippets()));
+    vo.setJudgeEnabled(entity.getJudgeEnabled() != null ? entity.getJudgeEnabled() : Boolean.FALSE);
+    vo.setJudgeTags(parseTagArray(entity.getJudgeTags()));
     return vo;
+  }
+
+  private List<String> parseTagArray(String[] tags) {
+    if (tags == null || tags.length == 0) {
+      return Collections.emptyList();
+    }
+    return Arrays.stream(tags)
+        .filter(StringUtils::hasText)
+        .map(String::trim)
+        .distinct()
+        .toList();
   }
 
   private String serializeChunkIds(List<Long> chunkIds) {

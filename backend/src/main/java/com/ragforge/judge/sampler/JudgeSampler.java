@@ -5,7 +5,7 @@ import com.ragforge.mapper.JudgeSamplingConfigMapper;
 import com.ragforge.model.entity.JudgeSamplingConfig;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Comparator;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
@@ -58,7 +58,7 @@ public class JudgeSampler {
     query.and(
             qw -> {
               if (hasKbIds) {
-                qw.eq("scope_type", "KB").in("scope_id", request.kbIds());
+                qw.eq("scope_type", "KB").in("scope_id", Arrays.asList(request.kbIds()));
                 firstCondition[0] = false;
               }
               if (hasTenant) {
@@ -80,16 +80,7 @@ public class JudgeSampler {
     if (matches == null) {
       return null;
     }
-    return matches.stream().min(Comparator.comparingInt(this::scopePriority)).orElse(null);
-  }
-
-  private int scopePriority(JudgeSamplingConfig config) {
-    return switch (config.getScopeType() == null ? "" : config.getScopeType()) {
-      case "KB" -> 0;
-      case "TENANT" -> 1;
-      case "GLOBAL" -> 2;
-      default -> 9;
-    };
+    return matches.isEmpty() ? null : matches.get(0);
   }
 
   private boolean shouldKeepByRate(BigDecimal sampleRate) {

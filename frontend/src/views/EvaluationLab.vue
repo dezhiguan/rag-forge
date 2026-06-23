@@ -142,14 +142,16 @@
                       <table class="questions-table">
                         <thead>
                           <tr>
-                            <th style="width: 44%;">问题</th>
+                            <th style="width: 34%;">问题</th>
                             <th>期望标注</th>
+                            <th style="width: 110px;">Golden Set</th>
+                            <th style="width: 150px;">Tags</th>
                             <th style="width: 80px;">操作</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr v-if="!(questionsMap[ds.id]?.list || []).length">
-                            <td colspan="3">
+                            <td colspan="5">
                               <div class="state-hint" style="padding:24px 0">
                                 <div class="state-icon">📝</div>
                                 <div class="state-desc">点击「添加题目」或「批量导入」</div>
@@ -163,6 +165,27 @@
                               <div v-if="(q.expectedTextSnippets || []).length" class="text-snippet-line">
                                 文本: {{ formatTextSnippets(q.expectedTextSnippets) }}
                               </div>
+                            </td>
+                            <td>
+                              <label class="golden-toggle" @click.stop>
+                                <input
+                                  type="checkbox"
+                                  :checked="q.judgeEnabled"
+                                  @change="onToggleJudgeEnabled(ds.id, q, $event.target.checked)"
+                                >
+                                <span>{{ q.judgeEnabled ? '启用' : '关闭' }}</span>
+                              </label>
+                            </td>
+                            <td>
+                              <select
+                                class="tag-select"
+                                multiple
+                                :value="q.judgeTags || []"
+                                @click.stop
+                                @change="onJudgeTagsChange(ds.id, q, $event)"
+                              >
+                                <option v-for="tag in judgeTagOptions" :key="tag" :value="tag">{{ tag }}</option>
+                              </select>
                             </td>
                             <td>
                               <span class="link-action" @click.stop="openEditQuestion(ds.id, q)">
@@ -837,6 +860,8 @@ const chunkerStrategyOptions = [
   { value: 'FIXED_WINDOW', label: 'Fixed Window' },
 ]
 
+const judgeTagOptions = ['core', 'regression', 'business', 'retrieval', 'answer', 'pii']
+
 const questionsMap = reactive({})
 const questionsLoading = reactive({})
 const questionPage = reactive({})
@@ -1005,7 +1030,7 @@ function openAddQuestion(datasetId) {
   addQuestionDatasetId.value = datasetId
   editingQuestionId.value = null
   addQuestionStep.value = 1
-  questionForm.value = { question: '' }
+  questionForm.value = { question: '', judgeEnabled: false, judgeTags: [] }
   expectedTextSnippetsInput.value = ''
   candidateChunks.value = []
   selectedChunkIds.value = []
@@ -1016,7 +1041,11 @@ function openEditQuestion(datasetId, question) {
   addQuestionDatasetId.value = datasetId
   editingQuestionId.value = question.id
   addQuestionStep.value = 1
-  questionForm.value = { question: question.question || '' }
+  questionForm.value = {
+    question: question.question || '',
+    judgeEnabled: Boolean(question.judgeEnabled),
+    judgeTags: [...(question.judgeTags || [])],
+  }
   expectedTextSnippetsInput.value = (question.expectedTextSnippets || []).join('\n')
   candidateChunks.value = []
   selectedChunkIds.value = [...(question.expectedChunkIds || [])]
@@ -1071,6 +1100,8 @@ async function onAddQuestion() {
       question: questionForm.value.question.trim(),
       expectedChunkIds: selectedChunkIds.value,
       expectedTextSnippets: parsedExpectedTextSnippets.value,
+      judgeEnabled: Boolean(questionForm.value.judgeEnabled),
+      judgeTags: questionForm.value.judgeTags || [],
     }
     if (editingQuestionId.value) {
       await updateEvalQuestion(addQuestionDatasetId.value, editingQuestionId.value, payload)
@@ -1082,6 +1113,43 @@ async function onAddQuestion() {
     await loadQuestions(addQuestionDatasetId.value, questionPage[addQuestionDatasetId.value] || 1)
   } finally {
     submittingQuestion.value = false
+  }
+}
+
+async function onToggleJudgeEnabled(datasetId, question, enabled) {
+  await updateQuestionJudgeFields(datasetId, question, {
+    judgeEnabled: enabled,
+    judgeTags: question.judgeTags || [],
+  })
+}
+
+async function onJudgeTagsChange(datasetId, question, event) {
+  const tags = Array.from(event.target.selectedOptions || []).map((option) => option.value)
+  await updateQuestionJudgeFields(datasetId, question, {
+    judgeEnabled: Boolean(question.judgeEnabled),
+    judgeTags: tags,
+  })
+}
+
+async function updateQuestionJudgeFields(datasetId, question, judgeFields) {
+  const previous = {
+    judgeEnabled: Boolean(question.judgeEnabled),
+    judgeTags: [...(question.judgeTags || [])],
+  }
+  question.judgeEnabled = Boolean(judgeFields.judgeEnabled)
+  question.judgeTags = [...(judgeFields.judgeTags || [])]
+  try {
+    await updateEvalQuestion(datasetId, question.id, {
+      question: question.question,
+      expectedChunkIds: question.expectedChunkIds || [],
+      expectedTextSnippets: question.expectedTextSnippets || [],
+      judgeEnabled: question.judgeEnabled,
+      judgeTags: question.judgeTags,
+    })
+  } catch (e) {
+    question.judgeEnabled = previous.judgeEnabled
+    question.judgeTags = previous.judgeTags
+    alert(e?.response?.data?.message || e?.message || 'Golden Set 更新失败')
   }
 }
 
@@ -1623,6 +1691,22 @@ onMounted(async () => {
   font-size: 11px;
   line-height: 1.4;
   word-break: break-word;
+}
+.golden-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+.tag-select {
+  width: 132px;
+  min-height: 58px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  font-size: 12px;
+  background: #fff;
 }
 .chunk-preview-list {
   display: flex;
@@ -2451,7 +2535,9 @@ onMounted(async () => {
 
   .questions-table td:nth-child(1)::before { content: '问题'; }
   .questions-table td:nth-child(2)::before { content: 'Chunk'; }
-  .questions-table td:nth-child(3)::before { content: '操作'; }
+  .questions-table td:nth-child(3)::before { content: 'Golden Set'; }
+  .questions-table td:nth-child(4)::before { content: 'Tags'; }
+  .questions-table td:nth-child(5)::before { content: '操作'; }
 
   .questions-table td[colspan] {
     display: block;

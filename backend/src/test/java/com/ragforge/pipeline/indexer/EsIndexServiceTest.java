@@ -19,8 +19,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import co.elastic.clients.elasticsearch.core.CountRequest;
 import co.elastic.clients.elasticsearch.indices.ExistsRequest;
-import co.elastic.clients.util.ObjectBuilder;
-import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,8 +46,7 @@ class EsIndexServiceTest {
   void init_createsIndexWhenMissing() throws Exception {
     BooleanResponse exists = mock(BooleanResponse.class);
     when(exists.value()).thenReturn(false);
-    when(indicesClient.exists(
-            org.mockito.ArgumentMatchers.<Function<ExistsRequest.Builder, ObjectBuilder<ExistsRequest>>>any()))
+    when(indicesClient.exists(any(ExistsRequest.class)))
         .thenReturn(exists);
     when(indicesClient.create(any(co.elastic.clients.elasticsearch.indices.CreateIndexRequest.class)))
         .thenReturn(mock(CreateIndexResponse.class));
@@ -63,8 +60,7 @@ class EsIndexServiceTest {
   void init_skipsWhenIndexExists() throws Exception {
     BooleanResponse exists = mock(BooleanResponse.class);
     when(exists.value()).thenReturn(true);
-    when(indicesClient.exists(
-            org.mockito.ArgumentMatchers.<Function<ExistsRequest.Builder, ObjectBuilder<ExistsRequest>>>any()))
+    when(indicesClient.exists(any(ExistsRequest.class)))
         .thenReturn(exists);
 
     esIndexService.init();
@@ -80,8 +76,7 @@ class EsIndexServiceTest {
 
   @Test
   void indexChunks_bulkSuccess_returnsTrue() throws Exception {
-    BulkResponse response = mock(BulkResponse.class);
-    when(response.errors()).thenReturn(false);
+    BulkResponse response = BulkResponse.of(b -> b.errors(false).items(List.of()).took(1L));
     when(client.bulk(any(co.elastic.clients.elasticsearch.core.BulkRequest.class))).thenReturn(response);
 
     DocumentChunk chunk = chunk(10L, 1L, 100L, "hello");
@@ -90,8 +85,7 @@ class EsIndexServiceTest {
 
   @Test
   void indexChunks_bulkErrors_returnsFalse() throws Exception {
-    BulkResponse response = mock(BulkResponse.class);
-    when(response.errors()).thenReturn(true);
+    BulkResponse response = BulkResponse.of(b -> b.errors(true).items(List.of()).took(1L));
     when(client.bulk(any(co.elastic.clients.elasticsearch.core.BulkRequest.class))).thenReturn(response);
 
     DocumentChunk chunk = chunk(11L, 2L, 100L, "world");
@@ -107,10 +101,9 @@ class EsIndexServiceTest {
 
   @Test
   void countByDocId_returnsCountOrFallback() throws Exception {
-    CountResponse response = mock(CountResponse.class);
-    when(response.count()).thenReturn(7L);
-    when(client.count(
-            org.mockito.ArgumentMatchers.<Function<CountRequest.Builder, ObjectBuilder<CountRequest>>>any()))
+    CountResponse response =
+        CountResponse.of(c -> c.count(7L).shards(s -> s.failed(0).successful(1).total(1)));
+    when(client.count(any(CountRequest.class)))
         .thenReturn(response);
 
     assertThat(esIndexService.countByDocId(5L)).isEqualTo(7L);
@@ -119,8 +112,7 @@ class EsIndexServiceTest {
 
   @Test
   void countByDocId_whenClientFails_returnsNegativeOne() throws Exception {
-    when(client.count(
-            org.mockito.ArgumentMatchers.<Function<CountRequest.Builder, ObjectBuilder<CountRequest>>>any()))
+    when(client.count(any(CountRequest.class)))
         .thenThrow(new RuntimeException("es down"));
 
     assertThat(esIndexService.countByDocId(9L)).isEqualTo(-1L);

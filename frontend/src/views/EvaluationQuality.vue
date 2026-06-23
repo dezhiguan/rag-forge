@@ -1,8 +1,11 @@
 <template>
   <div class="page-body quality-page">
     <div class="quality-header">
-      <h1 class="quality-title">质量看板</h1>
-      <p class="quality-subtitle">LLM-as-Judge 评测质量趋势与成本监控</p>
+      <div>
+        <h1 class="quality-title">质量看板</h1>
+        <p class="quality-subtitle">LLM-as-Judge 评测质量趋势与成本监控</p>
+      </div>
+      <button class="btn-primary" @click="openSamplingDrawer">设置</button>
     </div>
 
     <div v-if="globalError" class="quality-error-banner">
@@ -288,13 +291,93 @@
         </div>
       </div>
     </section>
+
+    <div v-if="showSamplingDrawer" class="drawer-mask" @click.self="closeSamplingDrawer">
+      <aside class="settings-drawer">
+        <div class="drawer-head">
+          <div>
+            <h2>抽样与 Golden Set</h2>
+            <p>控制线上 LLM-as-Judge 抽样率；超过 10% 保存时需要二次确认。</p>
+          </div>
+          <button class="drawer-close" @click="closeSamplingDrawer">关闭</button>
+        </div>
+
+        <div v-if="settingsError" class="quality-error-banner">{{ settingsError }}</div>
+
+        <section class="drawer-section">
+          <h3>全局抽样率</h3>
+          <div class="rate-row">
+            <input v-model.number="globalRatePercent" type="range" min="0" max="10" step="0.5" />
+            <strong>{{ globalRatePercent.toFixed(1) }}%</strong>
+          </div>
+          <label class="inline-check">
+            <input v-model="globalSamplingEnabled" type="checkbox" />
+            启用全局抽样
+          </label>
+          <div v-if="globalRatePercent > 5" class="cost-warning">
+            当前抽样率超过 5%，请结合调用量评估月度成本。
+          </div>
+          <button class="btn-primary" :disabled="savingSampling" @click="saveGlobalSampling">
+            {{ savingSampling ? '保存中...' : '保存全局配置' }}
+          </button>
+        </section>
+
+        <section class="drawer-section">
+          <h3>KB 覆盖</h3>
+          <div class="kb-override-form">
+            <select v-model="kbOverrideForm.scopeId">
+              <option :value="null" disabled>选择知识库</option>
+              <option v-for="kb in kbOptions" :key="kb.id" :value="kb.id">{{ kb.name || `KB ${kb.id}` }}</option>
+            </select>
+            <input v-model.number="kbOverrideForm.ratePercent" type="number" min="0" max="10" step="0.5" />
+            <label><input v-model="kbOverrideForm.enabled" type="checkbox" /> 启用</label>
+            <button class="btn-ghost-small" :disabled="savingSampling" @click="saveKbOverride">保存覆盖</button>
+          </div>
+          <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无 KB 单独覆盖</div>
+          <div v-else class="override-list">
+            <div v-for="item in kbSamplingConfigs" :key="item.id" class="override-item">
+              <span>{{ kbName(item.scopeId) }}</span>
+              <span>{{ ratePercent(item.sampleRate).toFixed(1) }}%</span>
+              <span>{{ item.enabled ? '启用' : '停用' }}</span>
+              <button class="link-button danger" @click="removeSampling(item.id)">删除</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="drawer-section">
+          <h3>Golden Set 回放</h3>
+          <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
+          <button class="btn-primary" :disabled="replayingGolden" @click="replayGoldenNow">
+            {{ replayingGolden ? '已提交...' : '立即回放' }}
+          </button>
+          <p class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
+        </section>
+
+        <section class="drawer-section">
+          <h3>月度预算</h3>
+          <p>当前预算：<strong>¥{{ monthlyBudgetCny }}</strong></p>
+          <p class="muted">预算配置只读，如需调整请找架构师修改部署环境变量。</p>
+        </section>
+      </aside>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchOverview, fetchByKb, fetchWorstCases, fetchCost } from '../api/quality'
+import {
+  deleteSamplingConfig,
+  fetchByKb,
+  fetchCost,
+  fetchGoldenSetEnabledCount,
+  fetchOverview,
+  fetchWorstCases,
+  listSamplingConfigs,
+  replayGoldenSetNow,
+  upsertSamplingConfig,
+} from '../api/quality'
+import { listKb } from '../api/kb'
 import { useAuth } from '../composables/useAuth'
 
 const { clearSession } = useAuth()
@@ -347,6 +430,21 @@ const cost = ref({
 const anomaly = ref(null)
 const globalError = ref('')
 const sampleCount = ref(0)
+const showSamplingDrawer = ref(false)
+const samplingConfigs = ref([])
+const kbOptions = ref([])
+const globalRatePercent = ref(1)
+const globalSamplingEnabled = ref(true)
+const goldenEnabledCount = ref(0)
+const savingSampling = ref(false)
+const replayingGolden = ref(false)
+const settingsError = ref('')
+const monthlyBudgetCny = ref(200)
+const kbOverrideForm = reactive({
+  scopeId: null,
+  ratePercent: 1,
+  enabled: true,
+})
 
 const chartWidth = 980
 const chartHeight = 280
@@ -411,12 +509,127 @@ const visibleSeries = computed(() => {
     })
 })
 
+const kbSamplingConfigs = computed(() =>
+  samplingConfigs.value
+    .filter((item) => item.scopeType === 'KB')
+    .sort((a, b) => Number(a.scopeId || 0) - Number(b.scopeId || 0))
+)
+
 function unwrapResponse(resp) {
   const body = resp?.data != null ? resp.data : resp
   if (body && typeof body === 'object' && body.code === 200 && 'data' in body) {
     return body.data
   }
   return body || {}
+}
+
+async function openSamplingDrawer() {
+  showSamplingDrawer.value = true
+  await loadSamplingSettings()
+}
+
+function closeSamplingDrawer() {
+  showSamplingDrawer.value = false
+  settingsError.value = ''
+}
+
+async function loadSamplingSettings() {
+  settingsError.value = ''
+  try {
+    const [configsResp, kbResp, goldenResp] = await Promise.all([
+      listSamplingConfigs(),
+      listKb(),
+      fetchGoldenSetEnabledCount(),
+    ])
+    samplingConfigs.value = unwrapResponse(configsResp) || []
+    kbOptions.value = unwrapResponse(kbResp) || []
+    goldenEnabledCount.value = Number(unwrapResponse(goldenResp) || 0)
+    const globalConfig = samplingConfigs.value.find((item) => item.scopeType === 'GLOBAL')
+    if (globalConfig) {
+      globalRatePercent.value = ratePercent(globalConfig.sampleRate)
+      globalSamplingEnabled.value = globalConfig.enabled !== false
+    }
+  } catch (error) {
+    settingsError.value = parseHttpError(error)
+  }
+}
+
+async function saveGlobalSampling() {
+  await saveSampling({
+    scopeType: 'GLOBAL',
+    sampleRate: percentToRate(globalRatePercent.value),
+    enabled: globalSamplingEnabled.value,
+  })
+}
+
+async function saveKbOverride() {
+  if (!kbOverrideForm.scopeId) {
+    settingsError.value = '请选择知识库'
+    return
+  }
+  await saveSampling({
+    scopeType: 'KB',
+    scopeId: kbOverrideForm.scopeId,
+    sampleRate: percentToRate(kbOverrideForm.ratePercent),
+    enabled: kbOverrideForm.enabled,
+  })
+}
+
+async function saveSampling(payload) {
+  const rate = Number(payload.sampleRate)
+  if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+    settingsError.value = '抽样率必须在 0% 到 100% 之间'
+    return
+  }
+  const confirmed = rate > 0.1 ? confirm('抽样率超过 10%，确认保存？') : false
+  if (rate > 0.1 && !confirmed) return
+  savingSampling.value = true
+  settingsError.value = ''
+  try {
+    await upsertSamplingConfig(Object.assign({}, payload, { confirmed }))
+    await loadSamplingSettings()
+  } catch (error) {
+    settingsError.value = error?.response?.data?.message || parseHttpError(error)
+  } finally {
+    savingSampling.value = false
+  }
+}
+
+async function removeSampling(id) {
+  if (!confirm('确定删除该抽样覆盖？')) return
+  await deleteSamplingConfig(id)
+  await loadSamplingSettings()
+}
+
+async function replayGoldenNow() {
+  replayingGolden.value = true
+  settingsError.value = ''
+  try {
+    await replayGoldenSetNow({ limit: 100 })
+    await loadSamplingSettings()
+  } catch (error) {
+    settingsError.value = parseHttpError(error)
+  } finally {
+    setTimeout(() => {
+      replayingGolden.value = false
+    }, 1000)
+  }
+}
+
+function ratePercent(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num * 100 : 0
+}
+
+function percentToRate(value) {
+  const pct = Number(value)
+  if (!Number.isFinite(pct)) return 0
+  return Math.max(0, Math.min(100, pct)) / 100
+}
+
+function kbName(id) {
+  const kb = kbOptions.value.find((item) => item.id === id)
+  return kb?.name || `KB ${id}`
 }
 
 function parseHttpError(error) {
@@ -737,6 +950,10 @@ watch(
 
 .quality-header {
   margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .quality-title {
@@ -979,6 +1196,122 @@ watch(
   height: 10px;
   border-radius: 50%;
   display: inline-block;
+}
+
+.drawer-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(15, 23, 42, 0.36);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-drawer {
+  width: min(520px, 100vw);
+  height: 100%;
+  overflow: auto;
+  background: #fff;
+  border-left: 1px solid var(--border);
+  box-shadow: -16px 0 40px rgba(15, 23, 42, 0.16);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.drawer-head h2 {
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.drawer-head p,
+.muted {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.drawer-close,
+.link-button {
+  border: none;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.link-button.danger {
+  color: #dc2626;
+}
+
+.drawer-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drawer-section h3 {
+  font-size: 14px;
+  color: #334155;
+}
+
+.rate-row,
+.kb-override-form,
+.override-item,
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rate-row input[type="range"] {
+  flex: 1;
+}
+
+.kb-override-form {
+  flex-wrap: wrap;
+}
+
+.kb-override-form select,
+.kb-override-form input[type="number"] {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.override-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.override-item {
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.cost-warning {
+  border: 1px solid #fed7aa;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
 }
 
 .quality-error-banner,

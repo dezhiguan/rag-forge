@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ragforge.common.BizException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,12 +18,17 @@ import org.springframework.web.client.RestTemplate;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class DeepSeekClient {
 
-  @Qualifier("llmRestTemplate")
-  private final RestTemplate llmRestTemplate;
+  private final RestTemplate deepseekRestTemplate;
   private final ObjectMapper objectMapper;
+
+  public DeepSeekClient(
+      @Qualifier("deepseekRestTemplate") RestTemplate deepseekRestTemplate,
+      ObjectMapper objectMapper) {
+    this.deepseekRestTemplate = deepseekRestTemplate;
+    this.objectMapper = objectMapper;
+  }
 
   @Value("${app.deepseek.api-key:}")
   private String apiKey;
@@ -70,12 +74,12 @@ public class DeepSeekClient {
         ObjectNode requestBody = objectMapper.createObjectNode();
         requestBody.put("model", model);
         requestBody.set("messages", messages);
-        requestBody.put("temperature", 0.0d);
+        requestBody.put("temperature", temperature);
         requestBody.putObject("response_format").put("type", "json_object");
 
         String body = requestBody.toString();
         ResponseEntity<String> response =
-            llmRestTemplate.postForEntity(
+            deepseekRestTemplate.postForEntity(
                 baseUrl + "/chat/completions", new HttpEntity<>(body, headers), String.class);
 
         String responseBody = response.getBody();

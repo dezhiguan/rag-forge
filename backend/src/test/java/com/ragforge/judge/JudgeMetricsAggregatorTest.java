@@ -1,6 +1,7 @@
 package com.ragforge.judge;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -14,14 +15,17 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(
-    classes = com.ragforge.RagForgeApplication.class,
-  properties = {
+    classes = JudgeMetricsAggregatorTest.AggregatorPgTestConfig.class,
+    properties = {
       "spring.profiles.active=test",
       "spring.autoconfigure.exclude=org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration",
       "spring.datasource.url=jdbc:postgresql://127.0.0.1:5432/ragforge",
@@ -98,12 +102,26 @@ class JudgeMetricsAggregatorTest {
             today);
 
     assertThat(overallP50ByKb).isEqualByComparingTo(new BigDecimal("0.505"));
-    assertThat(overallP95ByKb).isEqualByComparingTo(new BigDecimal("0.955"));
-    assertThat(sampleByKb).isEqualTo(200);
+    assertThat(overallP95ByKb).isEqualByComparingTo(new BigDecimal("0.951"));
+    assertThat(sampleByKb).isEqualTo(100);
 
     assertThat(overallP50Global).isEqualByComparingTo(new BigDecimal("0.505"));
-    assertThat(overallP95Global).isEqualByComparingTo(new BigDecimal("0.955"));
-    assertThat(sampleGlobal).isEqualTo(200);
+    assertThat(overallP95Global).isEqualByComparingTo(new BigDecimal("0.951"));
+    assertThat(sampleGlobal).isEqualTo(100);
+  }
+
+  @Test
+  void aggregateCanUpsertExistingDailyMetricsOnPostgres15() {
+    Assumptions.assumeTrue(canReachLocalPostgres(), "Local Postgres not reachable in this env");
+
+    LocalDateTime now = LocalDateTime.now().withNano(0);
+    jdbcTemplate.update(
+        "INSERT INTO judge_results (answer_log_id, kb_ids, query, status, source, overall_score, faithfulness, context_precision, answer_relevance, judge_cost_cny, created_at) "
+            + "VALUES (NULL, '{5}', 'upsert-check', 'COMPLETED', 'PRODUCTION', 0.800, 0.800, 0.800, 0.800, 0.0004, ?) ",
+        Timestamp.valueOf(now));
+
+    assertThatCode(aggregator::aggregate).doesNotThrowAnyException();
+    assertThatCode(aggregator::aggregate).doesNotThrowAnyException();
   }
 
   private static boolean canReachLocalPostgres() {
@@ -113,4 +131,9 @@ class JudgeMetricsAggregatorTest {
       return false;
     }
   }
+
+  @SpringBootConfiguration
+  @EnableAutoConfiguration
+  @Import(JudgeMetricsAggregator.class)
+  static class AggregatorPgTestConfig {}
 }

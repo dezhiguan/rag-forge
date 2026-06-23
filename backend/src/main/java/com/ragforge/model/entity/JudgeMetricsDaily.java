@@ -1,5 +1,7 @@
 package com.ragforge.model.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -10,6 +12,8 @@ import lombok.Data;
 @TableName("judge_metrics_daily")
 public class JudgeMetricsDaily {
 
+  @TableId(type = IdType.AUTO)
+  private Long id;
   private LocalDate date;
   private Long kbId;
   private String tenantId;

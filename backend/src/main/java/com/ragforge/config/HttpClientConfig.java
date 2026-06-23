@@ -1,5 +1,6 @@
 package com.ragforge.config;
 
+import java.time.Duration;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -29,15 +30,32 @@ public class HttpClientConfig {
     return buildRestTemplate(connectSec, responseSec);
   }
 
+  /** LLM-as-Judge DeepSeek 调用：严格跟随 app.deepseek.timeout-ms，避免复用 DashScope 超时。 */
+  @Bean("deepseekRestTemplate")
+  public RestTemplate deepseekRestTemplate(
+      @Value("${app.deepseek.timeout-ms:30000}") int timeoutMs) {
+    Duration timeout = Duration.ofMillis(Math.max(1, timeoutMs));
+    HttpComponentsClientHttpRequestFactory factory = requestFactory(timeout, timeout);
+    return new RestTemplate(factory);
+  }
+
   private static RestTemplate buildRestTemplate(int connectTimeoutSec, int responseTimeoutSec) {
+    return new RestTemplate(
+        requestFactory(
+            Duration.ofSeconds(connectTimeoutSec),
+            Duration.ofSeconds(responseTimeoutSec)));
+  }
+
+  static HttpComponentsClientHttpRequestFactory requestFactory(
+      Duration connectTimeout, Duration responseTimeout) {
     PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
     connectionManager.setMaxTotal(50);
     connectionManager.setDefaultMaxPerRoute(20);
 
     RequestConfig requestConfig =
         RequestConfig.custom()
-            .setConnectTimeout(Timeout.ofSeconds(connectTimeoutSec))
-            .setResponseTimeout(Timeout.ofSeconds(responseTimeoutSec))
+            .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout.toMillis()))
+            .setResponseTimeout(Timeout.ofMilliseconds(responseTimeout.toMillis()))
             .build();
 
     CloseableHttpClient httpClient =
@@ -48,6 +66,8 @@ public class HttpClientConfig {
 
     HttpComponentsClientHttpRequestFactory factory =
         new HttpComponentsClientHttpRequestFactory(httpClient);
-    return new RestTemplate(factory);
+    factory.setConnectTimeout(connectTimeout);
+    factory.setReadTimeout(responseTimeout);
+    return factory;
   }
 }

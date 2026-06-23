@@ -11,4 +11,6 @@ public class EvalQuestionVO {
   private String question;
   private List<Long> expectedChunkIds;
   private List<String> expectedTextSnippets;
+  private Boolean judgeEnabled;
+  private List<String> judgeTags;
 }

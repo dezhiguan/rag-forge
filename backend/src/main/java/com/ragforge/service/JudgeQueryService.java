@@ -5,6 +5,7 @@ import com.ragforge.model.vo.CostSummaryVo;
 import com.ragforge.model.vo.KbSliceVo;
 import com.ragforge.model.vo.OverviewVo;
 import com.ragforge.model.vo.WorstCaseVo;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 
@@ -19,4 +20,8 @@ public interface JudgeQueryService {
   CaseDetailVo caseDetail(Long judgeResultId);
 
   CostSummaryVo cost(int days);
+
+  BigDecimal costThisMonth();
+
+  int goldenSetEnabledQuestionCount();
 }

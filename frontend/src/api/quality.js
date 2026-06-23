@@ -22,3 +22,14 @@ export const fetchWorstCases = (limit, days, kbId) =>
 export const fetchCaseDetail = (id) => request.get(`/evaluation/quality/case/${id}`)
 
 export const fetchCost = (days) => request.get('/evaluation/quality/cost', { params: { days } })
+
+export const listSamplingConfigs = () => request.get('/evaluation/quality/sampling')
+
+export const upsertSamplingConfig = (data) => request.post('/evaluation/quality/sampling', data)
+
+export const deleteSamplingConfig = (id) => request.delete(`/evaluation/quality/sampling/${id}`)
+
+export const fetchGoldenSetEnabledCount = () => request.get('/evaluation/golden-set/enabled-count')
+
+export const replayGoldenSetNow = (params = {}) =>
+  request.post('/evaluation/golden-set/replay', null, { params })

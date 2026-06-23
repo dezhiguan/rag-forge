@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,6 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Slf4j
 @Component
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 

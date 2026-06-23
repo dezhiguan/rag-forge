@@ -47,6 +47,19 @@ app:
 ragforge:
   files:
     upload-path: /data/files/
+  judge:
+    aggregator-enabled: ${RAGFORGE_JUDGE_AGGREGATOR_ENABLED:true}
+    golden-replay:
+      enabled: ${RAGFORGE_JUDGE_GOLDEN_REPLAY_ENABLED:true}
+      cron: ${RAGFORGE_JUDGE_GOLDEN_REPLAY_CRON:0 0 3 * * *}
+    cost-guard:
+      enabled: ${RAGFORGE_JUDGE_COST_GUARD_ENABLED:true}
+      monthly-budget-cny: ${RAGFORGE_JUDGE_MONTHLY_BUDGET:200}
+      warn-threshold: ${RAGFORGE_JUDGE_COST_WARN_THRESHOLD:0.8}
+      critical-threshold: ${RAGFORGE_JUDGE_COST_CRITICAL_THRESHOLD:1.0}
+  auth:
+    # In-cluster Auth Gateway is reachable; auth.careermate.cn is not resolvable from pods.
+    jwks-url: ${RAGFORGE_AUTH_JWKS_URL:http://auth-gateway.auth-gateway.svc.cluster.local:8090/.well-known/jwks.json}
 
 storage:
   backend: aliyun

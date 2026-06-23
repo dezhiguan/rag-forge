@@ -8,6 +8,7 @@ import java.util.Map;
 public class CaseDetailVo {
 
   private Long judgeResultId;
+  private List<Long> kbIds;
   private String query;
   private String answer;
   private List<ChunkSnapshotVo> chunks;
@@ -23,6 +24,14 @@ public class CaseDetailVo {
 
   public void setJudgeResultId(Long judgeResultId) {
     this.judgeResultId = judgeResultId;
+  }
+
+  public List<Long> getKbIds() {
+    return kbIds;
+  }
+
+  public void setKbIds(List<Long> kbIds) {
+    this.kbIds = kbIds;
   }
 
   public String getQuery() {

@@ -86,6 +86,16 @@ class AnswerJudgeProducerTest {
         IllegalStateException.class, () -> producer.publishJudgeRequest(sampleMessage(123L), sampleRequest(123L)));
   }
 
+  @Test
+  void guard_inlineModeInProdFailsFastAtStartup() {
+    Environment environment = org.mockito.Mockito.mock(Environment.class);
+    when(environment.getActiveProfiles()).thenReturn(new String[] {"prod"});
+    JudgeDispatchModeGuard guard = new JudgeDispatchModeGuard(environment);
+    ReflectionTestUtils.setField(guard, "dispatchMode", "inline");
+
+    assertThrows(IllegalStateException.class, () -> guard.run(null));
+  }
+
   private static AnswerJudgeMessage sampleMessage(long id) {
     AnswerJudgeMessage msg = new AnswerJudgeMessage();
     msg.setAnswerLogId(id);

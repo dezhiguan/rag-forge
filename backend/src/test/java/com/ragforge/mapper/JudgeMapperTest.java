@@ -102,6 +102,31 @@ class JudgeMapperTest {
   }
 
   @Test
+  void metricsDailyInsertReturnsId() {
+    JudgeMetricsDaily row = metricsDaily(LocalDate.of(2026, 6, 24), 9L, "tenant-a");
+
+    assertThat(judgeMetricsDailyMapper.insert(row)).isEqualTo(1);
+
+    assertThat(row.getId()).isNotNull();
+  }
+
+  @Test
+  void metricsDailySelectByIdRoundTrip() {
+    JudgeMetricsDaily row = metricsDaily(LocalDate.of(2026, 6, 25), null, "tenant-b");
+    row.setOverallMean(new BigDecimal("0.875"));
+    assertThat(judgeMetricsDailyMapper.insert(row)).isEqualTo(1);
+
+    JudgeMetricsDaily loaded = judgeMetricsDailyMapper.selectById(row.getId());
+
+    assertThat(loaded).isNotNull();
+    assertThat(loaded.getId()).isEqualTo(row.getId());
+    assertThat(loaded.getDate()).isEqualTo(row.getDate());
+    assertThat(loaded.getKbId()).isNull();
+    assertThat(loaded.getTenantId()).isEqualTo("tenant-b");
+    assertThat(loaded.getOverallMean()).isEqualByComparingTo(new BigDecimal("0.875"));
+  }
+
+  @Test
   void judgeSamplingConfigGlobalUniqueIndexFromMigrationAndInsert() {
     Long seedCount =
         jdbcTemplate.queryForObject(
@@ -123,4 +148,16 @@ class JudgeMapperTest {
   @EnableAutoConfiguration
   @MapperScan("com.ragforge.mapper")
   static class MapperTestConfig {}
+
+  private static JudgeMetricsDaily metricsDaily(LocalDate date, Long kbId, String tenantId) {
+    JudgeMetricsDaily row = new JudgeMetricsDaily();
+    row.setDate(date);
+    row.setKbId(kbId);
+    row.setTenantId(tenantId);
+    row.setSampleCount(3);
+    row.setFailedCount(1);
+    row.setTotalCostCny(new BigDecimal("1.2300"));
+    row.setUpdatedAt(LocalDateTime.now());
+    return row;
+  }
 }

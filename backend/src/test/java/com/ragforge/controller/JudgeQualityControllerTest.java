@@ -66,6 +66,19 @@ class JudgeQualityControllerTest {
   }
 
   @Test
+  void overview_返回4个change字段() throws Exception {
+    when(queryService.overview(7, null)).thenReturn(buildOverview());
+
+    mockMvc
+        .perform(get("/api/v1/evaluation/quality/overview?days=7"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.kpis.overallChange").value(0.0))
+        .andExpect(jsonPath("$.data.kpis.faithfulnessChange").value(0.01))
+        .andExpect(jsonPath("$.data.kpis.contextPrecisionChange").value(-0.02))
+        .andExpect(jsonPath("$.data.kpis.answerRelevanceChange").value(0.0));
+  }
+
+  @Test
   void overview_deniesWhenKbForbidden() throws Exception {
     when(kbAccessGuard.canRead(11L)).thenReturn(false);
 
@@ -131,12 +144,36 @@ class JudgeQualityControllerTest {
   @Test
   void caseDetail_typicalReturns() throws Exception {
     when(queryService.caseDetail(100L)).thenReturn(buildCaseDetail());
+    when(kbAccessGuard.canRead(9L)).thenReturn(true);
 
     mockMvc
         .perform(get("/api/v1/evaluation/quality/case/100"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(200))
         .andExpect(jsonPath("$.data.judgeReasoning").value("summary"));
+  }
+
+  @Test
+  void caseDetail_无权KB_返回403() throws Exception {
+    when(queryService.caseDetail(100L)).thenReturn(buildCaseDetail());
+    when(kbAccessGuard.canRead(9L)).thenReturn(false);
+
+    mockMvc
+        .perform(get("/api/v1/evaluation/quality/case/100"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value(403));
+  }
+
+  @Test
+  void caseDetail_有权KB_返回200() throws Exception {
+    when(queryService.caseDetail(100L)).thenReturn(buildCaseDetail());
+    when(kbAccessGuard.canRead(9L)).thenReturn(true);
+
+    mockMvc
+        .perform(get("/api/v1/evaluation/quality/case/100"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(200))
+        .andExpect(jsonPath("$.data.kbIds[0]").value(9));
   }
 
   @Test
@@ -178,8 +215,11 @@ class JudgeQualityControllerTest {
     kpi.setOverallScore(new BigDecimal("0.7200"));
     kpi.setOverallChange(BigDecimal.ZERO);
     kpi.setFaithfulness(new BigDecimal("0.7300"));
+    kpi.setFaithfulnessChange(new BigDecimal("0.0100"));
     kpi.setContextPrecision(new BigDecimal("0.7100"));
+    kpi.setContextPrecisionChange(new BigDecimal("-0.0200"));
     kpi.setAnswerRelevance(new BigDecimal("0.7000"));
+    kpi.setAnswerRelevanceChange(BigDecimal.ZERO);
     kpi.setCostLastPeriodCny(new BigDecimal("1.20"));
     kpi.setRetrievalLatencyP95Ms(250);
     vo.setKpis(kpi);
@@ -201,6 +241,7 @@ class JudgeQualityControllerTest {
   private CaseDetailVo buildCaseDetail() {
     CaseDetailVo vo = new CaseDetailVo();
     vo.setJudgeResultId(100L);
+    vo.setKbIds(List.of(9L));
     vo.setQuery("how to sample");
     vo.setAnswer("yes");
     vo.setCreatedAt(LocalDateTime.now());

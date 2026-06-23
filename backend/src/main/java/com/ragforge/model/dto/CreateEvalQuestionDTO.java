@@ -12,4 +12,6 @@ public class CreateEvalQuestionDTO {
 
   private List<Long> expectedChunkIds;
   private List<String> expectedTextSnippets;
+  private Boolean judgeEnabled = Boolean.FALSE;
+  private List<String> judgeTags;
 }

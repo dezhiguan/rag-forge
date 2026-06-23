@@ -26,6 +26,7 @@ import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.Assumptions;
 import org.mybatis.spring.annotation.MapperScan;
@@ -65,6 +66,15 @@ class JudgeOrchestratorUnitTest {
     when(scorer.score(any(), eq(ScoreDimension.CONTEXT_PRECISION))).thenReturn(success(ScoreDimension.CONTEXT_PRECISION, "0.8"));
     when(scorer.score(any(), eq(ScoreDimension.ANSWER_RELEVANCE))).thenReturn(success(ScoreDimension.ANSWER_RELEVANCE, "0.85"));
     when(scorer.score(any(), eq(ScoreDimension.COMPOSITE))).thenReturn(success(ScoreDimension.COMPOSITE, "0.88"));
+    org.mockito.Mockito.doAnswer(
+            invocation -> {
+              JudgeResult inserted = invocation.getArgument(0);
+              assertThat(inserted.getStatus()).isEqualTo("RUNNING");
+              inserted.setId(1001L);
+              return 1;
+            })
+        .when(judgeResultMapper)
+        .insert(any(JudgeResult.class));
 
     JudgeOrchestrator orchestrator =
         new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
@@ -74,7 +84,11 @@ class JudgeOrchestratorUnitTest {
 
     orchestrator.judge(msg);
 
-    verify(judgeResultMapper).insert(any(JudgeResult.class));
+    org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(judgeResultMapper, scorer);
+    inOrder.verify(judgeResultMapper).insert(any(JudgeResult.class));
+    inOrder.verify(scorer).score(any(), eq(ScoreDimension.FAITHFULNESS));
+    verify(judgeResultMapper)
+        .updateById(argThat((JudgeResult r) -> "COMPLETED".equals(r.getStatus()) && r.getId().equals(1001L)));
     verify(metrics).recordJudgeCost(eq("PRODUCTION"), any(BigDecimal.class));
   }
 
@@ -100,6 +114,15 @@ class JudgeOrchestratorUnitTest {
     when(scorer.score(any(), eq(ScoreDimension.CONTEXT_PRECISION))).thenReturn(fail(ScoreDimension.CONTEXT_PRECISION, "llm error"));
     when(scorer.score(any(), eq(ScoreDimension.ANSWER_RELEVANCE))).thenReturn(success(ScoreDimension.ANSWER_RELEVANCE, "0.85"));
     when(scorer.score(any(), eq(ScoreDimension.COMPOSITE))).thenReturn(success(ScoreDimension.COMPOSITE, "0.88"));
+    org.mockito.Mockito.doAnswer(
+            invocation -> {
+              JudgeResult inserted = invocation.getArgument(0);
+              assertThat(inserted.getStatus()).isEqualTo("RUNNING");
+              inserted.setId(1002L);
+              return 1;
+            })
+        .when(judgeResultMapper)
+        .insert(any(JudgeResult.class));
 
     JudgeOrchestrator orchestrator =
         new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
@@ -110,7 +133,53 @@ class JudgeOrchestratorUnitTest {
     orchestrator.judge(msg);
 
     verify(judgeResultMapper)
-        .insert(argThat((JudgeResult r) -> "FAILED".equals(r.getStatus()) && "llm error".equals(r.getFailureReason())));
+        .updateById(argThat((JudgeResult r) -> "FAILED".equals(r.getStatus()) && "llm error".equals(r.getFailureReason())));
+  }
+
+  @Test
+  void judgeScorerExceptionUpdatesFailedStatus() {
+    AnswerLogMapper answerLogMapper = org.mockito.Mockito.mock(AnswerLogMapper.class);
+    DocumentChunkMapper documentChunkMapper = org.mockito.Mockito.mock(DocumentChunkMapper.class);
+    JudgeResultMapper judgeResultMapper = org.mockito.Mockito.mock(JudgeResultMapper.class);
+    JudgeScorer scorer = org.mockito.Mockito.mock(JudgeScorer.class);
+    RagforgeMetrics metrics = org.mockito.Mockito.mock(RagforgeMetrics.class);
+    ObjectMapper objectMapper = new ObjectMapper();
+
+    AnswerLog answerLog = new AnswerLog();
+    answerLog.setId(104L);
+    answerLog.setTenantId("default");
+    answerLog.setQuery("how to timeout?");
+    answerLog.setAnswer("answer");
+    answerLog.setKbIdsCsv("11");
+    answerLog.setCitationsSnapshot("[]");
+    when(answerLogMapper.selectByIdWithKbIdsCsv(104L)).thenReturn(answerLog);
+    when(scorer.score(any(), eq(ScoreDimension.FAITHFULNESS)))
+        .thenThrow(new RuntimeException("scorer timeout"));
+    org.mockito.Mockito.doAnswer(
+            invocation -> {
+              JudgeResult inserted = invocation.getArgument(0);
+              assertThat(inserted.getStatus()).isEqualTo("RUNNING");
+              inserted.setId(1004L);
+              return 1;
+            })
+        .when(judgeResultMapper)
+        .insert(any(JudgeResult.class));
+
+    JudgeOrchestrator orchestrator =
+        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
+    AnswerJudgeMessage msg = new AnswerJudgeMessage();
+    msg.setAnswerLogId(104L);
+    msg.setSource("PRODUCTION");
+
+    orchestrator.judge(msg);
+
+    verify(judgeResultMapper)
+        .updateById(
+            argThat(
+                (JudgeResult r) ->
+                    "FAILED".equals(r.getStatus())
+                        && r.getId().equals(1004L)
+                        && "scorer timeout".equals(r.getFailureReason())));
   }
 
   @Test
@@ -179,6 +248,7 @@ class JudgeOrchestratorUnitTest {
     })
 @Transactional
 @Tag("integration")
+@EnabledIfEnvironmentVariable(named = "RAGFORGE_RUN_REAL_JUDGE_IT", matches = "true")
 class JudgeOrchestratorIntegrationTest extends BaseIntegrationTest {
 
   @Autowired
