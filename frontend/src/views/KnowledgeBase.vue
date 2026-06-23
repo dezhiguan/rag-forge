@@ -169,11 +169,11 @@
                               <div class="doc-name">{{ doc.filename }}</div>
                               <div
                                 class="doc-status-cell"
-                                :title="doc.parseStatus === 'failed' ? doc.errorMsg || '处理失败' : undefined"
+                                :title="normalizeDocStatus(doc.parseStatus) === 'failed' ? doc.errorMsg || '处理失败' : undefined"
                               >
                                 <span v-if="isProcessing(doc.parseStatus)" class="status-icon spin">⟳</span>
-                                <span v-else-if="doc.parseStatus === 'completed'" class="status-icon ok">✓</span>
-                                <span v-else-if="doc.parseStatus === 'failed'" class="status-icon fail">✗</span>
+                                <span v-else-if="normalizeDocStatus(doc.parseStatus) === 'completed'" class="status-icon ok">✓</span>
+                                <span v-else-if="normalizeDocStatus(doc.parseStatus) === 'failed'" class="status-icon fail">✗</span>
                                 <span class="badge" :class="docStatusClass(doc.parseStatus)">
                                   {{ docStatusLabel(doc.parseStatus) }}
                                 </span>
@@ -182,13 +182,13 @@
                             <div class="doc-meta">
                               {{ formatBytes(doc.fileSize) }} · v{{ doc.version ?? 1 }} · {{ doc.chunkCount ?? 0 }} chunks · {{ formatTime(doc.createdAt) }}
                             </div>
-                            <div v-if="doc.parseStatus === 'failed' && doc.errorMsg" class="doc-error">
+                            <div v-if="normalizeDocStatus(doc.parseStatus) === 'failed' && doc.errorMsg" class="doc-error">
                               {{ doc.errorMsg }}
                             </div>
                             <div class="doc-links">
                               <span class="link-action" @click.stop="goDoc(doc.id, doc.kbId)">详情</span>
                               <span class="link-action" @click.stop="onDownloadDoc(doc)">下载</span>
-                              <span v-if="doc.parseStatus === 'failed'" class="link-action" @click.stop="onReprocessDoc(doc)">重试</span>
+                              <span v-if="normalizeDocStatus(doc.parseStatus) === 'failed'" class="link-action" @click.stop="onReprocessDoc(doc)">重试</span>
                               <span
                                 class="link-action danger"
                                 :class="{ 'is-disabled': !deleteEnabled }"
@@ -308,6 +308,8 @@ import {
   docStatusClass,
   docStatusLabel,
   isProcessing,
+  isTerminal,
+  normalizeDocStatus,
 } from '../composables/useDocumentStatus'
 
 const router = useRouter()
@@ -371,14 +373,15 @@ function applyStatusToDoc(kbId, docId, status) {
 
 function stepClass(stepName) {
   if (!activeDocId.value) return ''
-  if (activeStatus.value === 'failed') return 'failed'
+  const status = normalizeDocStatus(activeStatus.value)
+  if (status === 'failed') return 'failed'
 
-  const currentIdx = STATUS_ORDER.indexOf(activeStatus.value)
+  const currentIdx = STATUS_ORDER.indexOf(status)
   const stepIdx = STATUS_ORDER.indexOf(stepName)
 
   if (stepIdx < currentIdx) return 'done'
   if (stepIdx === currentIdx) {
-    return activeStatus.value === 'completed' ? 'done' : 'active'
+    return status === 'completed' ? 'done' : 'active'
   }
   if (stepIdx === currentIdx + 1) return 'next'
   return ''
@@ -393,20 +396,21 @@ function enqueueTracking(docId, kbId) {
 
 function ensureActiveTracking(docId, kbId, status = 'pending') {
   if (!docId || !kbId) return
+  const normalized = normalizeDocStatus(status)
   if (!activeDocId.value) {
     activeDocId.value = docId
-    activeStatus.value = status
+    activeStatus.value = normalized
     return
   }
   if (activeDocId.value === docId) {
-    activeStatus.value = status
+    activeStatus.value = normalized
     return
   }
   enqueueTracking(docId, kbId)
 }
 
 function advanceTrackingQueue() {
-  if (activeDocId.value && activeStatus.value && !['completed', 'failed'].includes(activeStatus.value)) {
+  if (activeDocId.value && activeStatus.value && !isTerminal(activeStatus.value)) {
     return
   }
   const next = pendingTrackQueue.value.shift()
@@ -425,8 +429,8 @@ function watchProcessingDocs(kbId) {
       (status) => {
         applyStatusToDoc(kbId, doc.id, status)
         if (activeDocId.value === doc.id) {
-          activeStatus.value = status.parseStatus
-          if (['completed', 'failed'].includes(status.parseStatus)) {
+          activeStatus.value = normalizeDocStatus(status.parseStatus)
+          if (isTerminal(status.parseStatus)) {
             advanceTrackingQueue()
           }
         }
@@ -460,8 +464,8 @@ function beginPollingDoc(docId, kbId) {
     (status) => {
       applyStatusToDoc(kbId, docId, status)
       if (activeDocId.value === docId) {
-        activeStatus.value = status.parseStatus
-        if (['completed', 'failed'].includes(status.parseStatus)) {
+        activeStatus.value = normalizeDocStatus(status.parseStatus)
+        if (isTerminal(status.parseStatus)) {
           advanceTrackingQueue()
         }
       }

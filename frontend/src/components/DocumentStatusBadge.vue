@@ -1,11 +1,11 @@
 <template>
   <div
     class="doc-status-cell"
-    :title="parseStatus === 'failed' ? errorMsg || '处理失败' : undefined"
+    :title="normalizedStatus === 'failed' ? errorMsg || '处理失败' : undefined"
   >
     <span v-if="isProcessing(parseStatus)" class="status-icon spin">⟳</span>
-    <span v-else-if="parseStatus === 'completed'" class="status-icon ok">✓</span>
-    <span v-else-if="parseStatus === 'failed'" class="status-icon fail">✗</span>
+    <span v-else-if="normalizedStatus === 'completed'" class="status-icon ok">✓</span>
+    <span v-else-if="normalizedStatus === 'failed'" class="status-icon fail">✗</span>
     <span class="badge" :class="docStatusClass(parseStatus)">
       {{ docStatusLabel(parseStatus) }}
     </span>
@@ -13,12 +13,15 @@
 </template>
 
 <script setup>
-import { docStatusClass, docStatusLabel, isProcessing } from '../composables/useDocumentStatus'
+import { computed } from 'vue'
+import { docStatusClass, docStatusLabel, isProcessing, normalizeDocStatus } from '../composables/useDocumentStatus'
 
-defineProps({
+const props = defineProps({
   parseStatus: { type: String, default: '' },
   errorMsg: { type: String, default: '' },
 })
+
+const normalizedStatus = computed(() => normalizeDocStatus(props.parseStatus))
 </script>
 
 <style scoped>

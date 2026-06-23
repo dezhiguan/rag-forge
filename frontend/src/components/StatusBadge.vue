@@ -26,6 +26,10 @@ const label = computed(() => {
     PENDING: '排队中',
     PROCESSING: '处理中',
     REPROCESSING: '重新处理中',
+    PARSING: '解析中',
+    CHUNKING: '分块中',
+    EMBEDDING: '向量化',
+    INDEXING: '索引中',
     COMPLETED: '已完成',
     FAILED: '失败',
   }
@@ -37,13 +41,25 @@ const badgeClass = computed(() => {
     PENDING: 'is-pending',
     PROCESSING: 'is-processing',
     REPROCESSING: 'is-reprocessing',
+    PARSING: 'is-processing',
+    CHUNKING: 'is-processing',
+    EMBEDDING: 'is-processing',
+    INDEXING: 'is-processing',
     COMPLETED: 'is-completed',
     FAILED: 'is-failed',
   }
   return map[normalized.value] || 'is-pending'
 })
 
-const pulsing = computed(() => normalized.value === 'PROCESSING' || normalized.value === 'REPROCESSING')
+const pulsing = computed(() => {
+  const status = normalized.value
+  return status === 'PROCESSING'
+    || status === 'REPROCESSING'
+    || status === 'PARSING'
+    || status === 'CHUNKING'
+    || status === 'EMBEDDING'
+    || status === 'INDEXING'
+})
 const title = computed(() => (normalized.value === 'FAILED' ? props.error || '处理失败' : undefined))
 </script>
 
