@@ -477,8 +477,10 @@ function truncateText(text, maxLength) {
 }
 
 function scoreClass(value) {
+  if (value === null || value === undefined || value === '') return 'score-muted'
   const num = Number(value)
-  if (!Number.isFinite(num)) return ''
+  if (!Number.isFinite(num)) return 'score-muted'
+  if (num <= 0 && (sampleCount.value || 0) <= 0) return 'score-muted'
   if (num >= 0.8) return 'score-green'
   if (num >= 0.6) return 'score-amber'
   return 'score-red'
@@ -803,8 +805,16 @@ watch(
 .toolbar-block input {
   width: 180px;
   border: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: 6px 12px;
   border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  transition: border-color 0.15s ease;
+}
+.toolbar-block input:focus {
+  outline: none;
+  border-color: var(--blue);
 }
 
 .quality-kpi-grid {
@@ -839,6 +849,7 @@ watch(
 .score-green { color: #16a34a; }
 .score-amber { color: #d97706; }
 .score-red { color: #dc2626; }
+.score-muted { color: #cbd5e1; }
 
 .trend-up { color: #16a34a; }
 .trend-down { color: #dc2626; }
@@ -995,10 +1006,28 @@ watch(
   background: #fee2e2;
 }
 
+.btn-ghost-small {
+  appearance: none;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.4;
+}
+.btn-ghost-small:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: #f0f7ff;
+}
 .btn-ghost-small.active {
   border-color: var(--blue);
   color: var(--blue);
   background: #dbeafe;
+  font-weight: 600;
 }
 
 @media (max-width: 1280px) {

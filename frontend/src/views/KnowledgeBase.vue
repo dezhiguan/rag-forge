@@ -50,7 +50,7 @@
             />
             <div class="upload-icon">📤</div>
             <div class="upload-text">
-              拖拽文件上传 · 支持 PDF / Markdown / Word / HTML
+              拖拽文件上传 · 文档（PDF / Word / Markdown / HTML）+ 图片（PNG / JPG / GIF / WEBP，自动 OCR）
             </div>
             <div class="upload-hint">单文件最大 50MB · 支持批量上传</div>
           </div>
@@ -1117,6 +1117,32 @@ onMounted(async () => {
   padding: 8px 10px;
   font-size: 13px;
   font-family: inherit;
+  background: #fff;
+  color: var(--text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.field input:focus, .field textarea:focus, .field select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+.field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 32px 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+  color: var(--text);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.field select:hover {
+  border-color: #94a3b8;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
 .edit-grid {
