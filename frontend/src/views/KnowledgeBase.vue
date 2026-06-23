@@ -124,8 +124,8 @@
                     <span class="link-action" @click.stop="openEdit(kb)">编辑</span>
                     <span
                       class="link-action danger"
-                      :class="{ 'is-disabled': !deleteEnabled }"
-                      :title="deleteEnabled ? '删除知识库' : '演示环境已禁用删除'"
+                      :class="{ 'is-disabled': !kbDeleteEnabled }"
+                      :title="kbDeleteEnabled ? '删除知识库' : '演示环境已禁用删除'"
                       @click.stop="onDeleteKb(kb)"
                     >
                       删除
@@ -290,7 +290,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
+import { KB_DOCUMENT_DELETE_ENABLED, KNOWLEDGE_BASE_DELETE_ENABLED } from '../config/uiPolicy'
 import { createKb, deleteKb, listKb, updateKb } from '../api/kb'
 import {
   deleteDocument,
@@ -303,6 +303,7 @@ import {
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import { documentDetailRoute } from '../composables/useDocumentNav'
 
+const kbDeleteEnabled = KNOWLEDGE_BASE_DELETE_ENABLED
 const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import {
   docStatusClass,
@@ -549,7 +550,7 @@ async function onUpdateKb() {
 }
 
 async function onDeleteKb(kb) {
-  if (!deleteEnabled) return
+  if (!kbDeleteEnabled) return
   if (!confirm(`确定删除知识库「${kb.name}」？`)) return
   await deleteKb(kb.id)
   await loadKbs()
