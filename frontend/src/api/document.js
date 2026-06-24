@@ -35,7 +35,7 @@ export function inferContentType(file) {
   return EXTENSION_CONTENT_TYPES[ext] || DEFAULT_CONTENT_TYPE
 }
 
-function isImageFile(file) {
+export function isImageFile(file) {
   return inferContentType(file).startsWith('image/')
 }
 
