@@ -23,7 +23,12 @@
               下方策略仅作用于文本部分。
             </div>
 
-            <div class="section-label">分块策略</div>
+            <div class="section-label">
+              分块策略
+              <span class="section-label-compare">
+                （当前策略：<strong>{{ currentStrategyLabel }}</strong>，新策略：<strong>{{ newStrategyLabel }}</strong>）
+              </span>
+            </div>
             <div class="strategy-list">
               <label
                 v-for="item in strategyOptions"
@@ -58,10 +63,6 @@
                 块重叠（字符）：
                 <input v-model.number="chunkOverlap" type="number" min="0" max="512">
               </label>
-            </div>
-
-            <div class="strategy-compare">
-              当前策略：<strong>{{ currentStrategyLabel }}</strong>，新策略：<strong>{{ newStrategyLabel }}</strong>
             </div>
 
             <div class="warning-banner">
@@ -149,12 +150,27 @@ const currentDominantStrategy = computed(() => {
   const counts = new Map()
   for (const chunk of list) {
     if ((chunk.chunkModality || '').toUpperCase().startsWith('IMAGE')) continue
-    const key = chunk.chunkerStrategy || 'MARKDOWN_HEADING'
+    const key = chunk.chunkerStrategy
+      || ((chunk.chunkModality || '').toUpperCase().startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW')
     counts.set(key, (counts.get(key) || 0) + 1)
   }
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
   return sorted[0]?.[0] || 'MARKDOWN_HEADING'
 })
+
+function resolveInitialStrategy() {
+  const current = currentDominantStrategy.value
+  if (current === 'IMAGE_PIPELINE') return 'MARKDOWN_HEADING'
+  const selectable = strategyOptions.value.map((item) => item.value)
+  if (selectable.includes(current)) return current
+  return 'MARKDOWN_HEADING'
+}
+
+function resetFormState() {
+  selectedStrategy.value = resolveInitialStrategy()
+  chunkSize.value = props.doc?.chunkSize ?? 512
+  chunkOverlap.value = props.doc?.chunkOverlap ?? 64
+}
 
 const strategyOptions = computed(() => [
   {
@@ -217,11 +233,7 @@ watch(
   (open) => {
     if (!open) return
     if (documentType.value === 'image') return
-    selectedStrategy.value = currentDominantStrategy.value === 'IMAGE_PIPELINE'
-      ? 'MARKDOWN_HEADING'
-      : currentDominantStrategy.value
-    chunkSize.value = 512
-    chunkOverlap.value = 64
+    resetFormState()
   },
 )
 
@@ -364,6 +376,16 @@ function submit() {
   margin-bottom: 10px;
 }
 
+.section-label-compare {
+  font-weight: 500;
+  color: #64748b;
+}
+
+.section-label-compare strong {
+  font-weight: 600;
+  color: #334155;
+}
+
 .strategy-list {
   display: flex;
   flex-direction: column;
@@ -432,12 +454,6 @@ function submit() {
   padding: 8px 10px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-}
-
-.strategy-compare {
-  margin-top: 16px;
-  font-size: 13px;
-  color: #475569;
 }
 
 .rechunk-footer {
