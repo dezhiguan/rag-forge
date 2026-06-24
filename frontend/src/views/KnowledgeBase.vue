@@ -45,12 +45,12 @@
               class="hidden-file"
               type="file"
               multiple
-              accept=".pdf,.doc,.docx,.md,.markdown,.html,.htm,application/pdf"
+              accept=".pdf,.doc,.docx,.md,.markdown,.html,.htm,.txt,.png,.jpg,.jpeg,.gif,.webp,application/pdf,text/plain,image/*"
               @change="onFileChange"
             />
             <div class="upload-icon">📤</div>
             <div class="upload-text">
-              拖拽文件上传 · 文档（PDF / Word / Markdown / HTML）+ 图片（PNG / JPG / GIF / WEBP，自动 OCR）
+              拖拽文件上传 · 文档（PDF / Word / Markdown / HTML / TXT）+ 图片（PNG / JPG / GIF / WEBP，自动 OCR）
             </div>
             <div class="upload-hint">单文件最大 50MB · 支持批量上传</div>
           </div>

@@ -10,7 +10,7 @@
           <input type="file" @change="onFileChange">
           <span class="drop-icon">⬆</span>
           <span class="drop-title">{{ fileName || '选择一个文档或图片' }}</span>
-          <span class="drop-sub">{{ fileMeta || '文档：PDF / Word / Markdown / HTML，图片：PNG / JPG / GIF / WEBP（自动 OCR）' }}</span>
+          <span class="drop-sub">{{ fileMeta || '文档：PDF / Word / Markdown / HTML / TXT，图片：PNG / JPG / GIF / WEBP（自动 OCR）' }}</span>
         </label>
 
         <div class="upload-controls">
