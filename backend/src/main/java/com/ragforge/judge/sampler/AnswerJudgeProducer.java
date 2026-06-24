@@ -29,7 +29,7 @@ public class AnswerJudgeProducer {
     if ("inline".equalsIgnoreCase(dispatchMode)
         && Arrays.asList(environment.getActiveProfiles()).contains("prod")) {
       log.error("INLINE_JUDGE_DISPATCH_FORBIDDEN_IN_PROD");
-      throw new IllegalStateException("INLINE_DISPATCH_FORBIDDEN_IN_PROD");
+      return;
     }
     SampleDecision decision = sampler.decide(req);
     if (!decision.keep()) {

@@ -10,10 +10,15 @@ import com.ragforge.security.KbAccessGuard;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.JudgeQueryService;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.core.LockConfiguration;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.core.SimpleLock;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,26 +33,26 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR')")
 public class GoldenSetController {
 
-  public static final String MANUAL_REPLAY_LOCK_NAME = GoldenSetReplayJob.SCHEDULER_LOCK_NAME;
-
   private final GoldenSetReplayJob replayJob;
   private final JudgeQueryService judgeQueryService;
   private final EvalDatasetMapper evalDatasetMapper;
   private final KbAccessGuard kbAccessGuard;
   private final Executor goldenReplayExecutor;
-  private final AtomicBoolean manualReplayRunning = new AtomicBoolean(false);
+  private final LockProvider lockProvider;
 
   public GoldenSetController(
       GoldenSetReplayJob replayJob,
       JudgeQueryService judgeQueryService,
       EvalDatasetMapper evalDatasetMapper,
       KbAccessGuard kbAccessGuard,
-      @Qualifier("goldenReplayExecutor") Executor goldenReplayExecutor) {
+      @Qualifier("goldenReplayExecutor") Executor goldenReplayExecutor,
+      LockProvider lockProvider) {
     this.replayJob = replayJob;
     this.judgeQueryService = judgeQueryService;
     this.evalDatasetMapper = evalDatasetMapper;
     this.kbAccessGuard = kbAccessGuard;
     this.goldenReplayExecutor = goldenReplayExecutor;
+    this.lockProvider = lockProvider;
   }
 
   @PostMapping("/replay")
@@ -55,9 +60,14 @@ public class GoldenSetController {
       @RequestParam(required = false) Long datasetId,
       @RequestParam(defaultValue = "100") int limit) {
     requireReplayPermission(datasetId);
-    if (!manualReplayRunning.compareAndSet(false, true)) {
-      throw new BizException(409, "GOLDEN_SET_REPLAY_RUNNING");
+    Optional<SimpleLock> lock =
+        lockProvider.lock(
+            new LockConfiguration(
+                Instant.now(), GoldenSetReplayJob.SCHEDULER_LOCK_NAME, Duration.ofHours(2), Duration.ZERO));
+    if (lock.isEmpty()) {
+      throw new BizException(409, "REPLAY_ALREADY_RUNNING");
     }
+    SimpleLock replayLock = lock.get();
 
     ReplayResultVo accepted = new ReplayResultVo();
     accepted.setRequested(Math.max(limit, 0));
@@ -67,17 +77,22 @@ public class GoldenSetController {
     accepted.setFailed(0);
     accepted.setStartedAt(System.currentTimeMillis());
 
-    CompletableFuture.runAsync(
-        () -> {
-          try {
-            replayJob.replay(datasetId, limit);
-          } catch (Exception e) {
-            log.error("Manual golden set replay failed: datasetId={}, limit={}", datasetId, limit, e);
-          } finally {
-            manualReplayRunning.set(false);
-          }
-        },
-        goldenReplayExecutor);
+    try {
+      CompletableFuture.runAsync(
+          () -> {
+            try {
+              replayJob.replay(datasetId, limit);
+            } catch (Exception e) {
+              log.error("Manual golden set replay failed: datasetId={}, limit={}", datasetId, limit, e);
+            } finally {
+              replayLock.unlock();
+            }
+          },
+          goldenReplayExecutor);
+    } catch (RuntimeException e) {
+      replayLock.unlock();
+      throw e;
+    }
 
     return Result.ok(accepted);
   }
