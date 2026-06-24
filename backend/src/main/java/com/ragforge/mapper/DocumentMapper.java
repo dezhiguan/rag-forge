@@ -82,6 +82,21 @@ public interface DocumentMapper extends BaseMapper<Document> {
   @Update(
       """
       UPDATE documents
+      SET rechunk_strategy = #{strategy},
+          rechunk_params_json = #{paramsJson,typeHandler=com.ragforge.mybatis.handler.JsonbStringTypeHandler},
+          parse_status = #{status},
+          updated_at = NOW()
+      WHERE id = #{id}
+      """)
+  int updateRechunkRequest(
+      @Param("id") Long id,
+      @Param("strategy") String strategy,
+      @Param("paramsJson") String paramsJson,
+      @Param("status") String status);
+
+  @Update(
+      """
+      UPDATE documents
       SET parse_status = 'PROCESSING', updated_at = NOW()
       WHERE id = #{id}
         AND (parse_status = 'PENDING'

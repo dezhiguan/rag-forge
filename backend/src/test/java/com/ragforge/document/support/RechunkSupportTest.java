@@ -50,6 +50,18 @@ class RechunkSupportTest {
   }
 
   @Test
+  void validateRejectsChunkSizeBelowMinimum() {
+    RechunkRequest req = new RechunkRequest();
+    req.setStrategy("FIXED_WINDOW");
+    req.setChunkSize(64);
+
+    assertThatThrownBy(() -> RechunkSupport.validateRequest(req, 5000))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).getMessage())
+        .isEqualTo("CHUNK_SIZE_OUT_OF_RANGE");
+  }
+
+  @Test
   void validateRejectsChunkOverlapOutOfRange() {
     RechunkRequest req = new RechunkRequest();
     req.setStrategy("FIXED_WINDOW");

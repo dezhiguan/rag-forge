@@ -794,6 +794,7 @@ async function uploadOneItem(item, onConflict = 'REJECT') {
     item.phase = 'failed'  // 避免 UI 卡在最后一次成功阶段的文案（如"计算指纹"）
     item.errorCode = uploadErrorCode(e)
     item.errorMessage = uploadErrorMessage(e)
+    toast.error(item.errorMessage)
   }
 }
 
