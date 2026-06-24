@@ -30,6 +30,7 @@ import { useRouter } from 'vue-router'
 import { logout, logoutAll } from '../api/auth'
 import { useAuth } from '../composables/useAuth'
 import LogoutAllDialog from './LogoutAllDialog.vue'
+import { confirm as confirmDialog } from '../composables/useConfirm'
 
 const router = useRouter()
 const { state, clearSession } = useAuth()
@@ -48,7 +49,13 @@ function noop() {
 
 async function handleLogout() {
   open.value = false
-  if (!window.confirm('确认退出当前 RAGForge 登录？')) return
+  const ok = await confirmDialog({
+    title: '退出登录',
+    message: '确认退出当前 RAGForge 登录？',
+    confirmText: '退出',
+    cancelText: '取消',
+  })
+  if (!ok) return
   try {
     await logout()
   } finally {

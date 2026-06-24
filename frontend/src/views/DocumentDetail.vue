@@ -30,6 +30,15 @@
                 {{ rechunking ? '提交中…' : '重新分块' }}
               </button>
               <button
+                v-if="cleanReport"
+                type="button"
+                class="link-btn"
+                :title="showCleanPanel ? '收起清洗对比' : '查看清洗对比'"
+                @click="showCleanPanel = !showCleanPanel"
+              >
+                {{ showCleanPanel ? '收起清洗对比' : '清洗对比' }}
+              </button>
+              <button
                 type="button"
                 class="link-btn danger"
                 :disabled="!deleteEnabled"
@@ -38,11 +47,6 @@
               >
                 删除
               </button>
-            </div>
-            <div class="doc-sub">
-              <span>{{ formatBytes(doc.fileSize) }}</span>
-              <span class="dot">·</span>
-              <span>v{{ doc.version ?? 1 }}</span>
             </div>
           </div>
         </header>
@@ -141,11 +145,18 @@
                 <span class="meta-val">{{ doc.embeddingModel || '-' }}</span>
               </div>
               <div class="meta-row">
-                <span class="meta-key">块大小</span>
+                <span class="meta-key">分块策略</span>
+                <span class="meta-val">
+                  <span v-if="chunkerSummary">{{ chunkerSummary.text }}</span>
+                  <span v-else class="meta-muted">—</span>
+                </span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">KB 默认块大小</span>
                 <span class="meta-val">{{ doc.chunkSize != null ? doc.chunkSize + ' 字符' : '-' }}</span>
               </div>
               <div class="meta-row">
-                <span class="meta-key">块重叠</span>
+                <span class="meta-key">KB 默认块重叠</span>
                 <span class="meta-val">{{ doc.chunkOverlap != null ? doc.chunkOverlap + ' 字符' : '-' }}</span>
               </div>
               <div class="meta-row">
@@ -163,7 +174,7 @@
                 </span>
               </div>
             </div>
-            <section v-if="cleanReport" class="clean-panel">
+            <section v-if="cleanReport && showCleanPanel" class="clean-panel">
               <div class="section-title">清洗对比</div>
               <div class="clean-metrics">
                 <span>原文 {{ cleanReport.originalLength ?? 0 }} 字</span>
@@ -231,8 +242,10 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
-import 'element-plus/es/components/message-box/style/css'
+import { confirm as confirmDialog } from '../composables/useConfirm'
+import { useToast } from '../composables/useToast'
+
+const toast = useToast()
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
@@ -252,6 +265,7 @@ const router = useRouter()
 const loading = ref(false)
 const retrying = ref(false)
 const rechunking = ref(false)
+const showCleanPanel = ref(false)
 const doc = ref(null)
 const chunks = ref([])
 const chunkPage = ref(1)
@@ -276,6 +290,36 @@ const hasIdentityInfo = computed(() =>
       || doc.value?.ingestSource,
   ),
 )
+const CHUNKER_STRATEGY_LABELS = {
+  MARKDOWN_HEADING: '按标题分块',
+  FIXED_WINDOW: '固定窗口',
+  RECURSIVE: '递归切分',
+  SEMANTIC: '语义分块',
+  TABLE_AWARE: '表格感知',
+  IMAGE_PIPELINE: '图像管道',
+}
+
+const chunkerSummary = computed(() => {
+  const list = chunks.value || []
+  if (list.length === 0) return null
+  const counts = new Map()
+  for (const c of list) {
+    const key =
+      c.chunkerStrategy ||
+      (c.chunkModality?.startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW')
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
+  const total = list.length
+  const dominant = sorted[0][0]
+  const label = CHUNKER_STRATEGY_LABELS[dominant] || dominant
+  if (sorted.length === 1) {
+    return { text: label, isMixed: false }
+  }
+  const others = sorted.slice(1).map(([k]) => CHUNKER_STRATEGY_LABELS[k] || k)
+  return { text: `${label} · 混合 ${sorted.length} 种（含 ${others.join('、')}）`, isMixed: true }
+})
+
 const cleanReport = computed(() => parseCleanReport(doc.value?.cleanReportJson))
 const cleanDiffLines = computed(() => {
   const original = (cleanReport.value?.originalSample || '').split('\n')
@@ -407,26 +451,35 @@ onUnmounted(() => {
 
 async function onDeleteDoc() {
   if (!deleteEnabled || !doc.value?.id) return
-  if (!confirm(`确定删除文档「${doc.value.filename}」？`)) return
-  await deleteDocument(doc.value.id)
-  onBack()
+  const ok = await confirmDialog({
+    title: '删除文档',
+    message: `确定删除文档「${doc.value.filename}」？`,
+    detail: '该文档及其所有分块、检索索引将被永久删除，此操作不可恢复。',
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
+  try {
+    await deleteDocument(doc.value.id)
+    toast.success('文档已删除')
+    onBack()
+  } catch {
+    // 全局拦截器已 toast
+  }
 }
 
 async function confirmReprocess() {
   if (!doc.value || retrying.value) return
-  try {
-    await ElMessageBox.confirm(
-      `确定重新处理文档「${doc.value.filename}」？这会重新解析、分块并触发向量化。`,
-      '重新处理文档',
-      {
-        confirmButtonText: '重新处理',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
-    )
-  } catch {
-    return
-  }
+  const ok = await confirmDialog({
+    title: '重新处理文档',
+    message: `确定重新处理文档「${doc.value.filename}」？`,
+    detail: '系统会重新解析、分块并触发向量化，期间该文档不可检索。',
+    confirmText: '重新处理',
+    cancelText: '取消',
+    variant: 'warning',
+  })
+  if (!ok) return
   await onReprocess()
 }
 
@@ -440,8 +493,9 @@ async function onReprocess() {
     doc.value.chunkCount = 0
     resetChunks()
     setupPolling()
-  } catch (e) {
-    alert(e?.response?.data?.message || e?.message || '重试失败')
+    toast.success('已提交重新处理')
+  } catch {
+    // 全局拦截器已 toast
   } finally {
     retrying.value = false
   }
@@ -449,19 +503,15 @@ async function onReprocess() {
 
 async function confirmRechunk() {
   if (!doc.value || !canRechunk.value || rechunking.value) return
-  try {
-    await ElMessageBox.confirm(
-      `确定重新分块文档「${doc.value.filename}」？这会删除旧分块并重新生成向量索引。`,
-      '重新分块',
-      {
-        confirmButtonText: '重新分块',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
-    )
-  } catch {
-    return
-  }
+  const ok = await confirmDialog({
+    title: '重新分块',
+    message: `确定重新分块文档「${doc.value.filename}」？`,
+    detail: '系统会删除旧分块并重新生成向量索引，期间该文档不可检索。',
+    confirmText: '重新分块',
+    cancelText: '取消',
+    variant: 'warning',
+  })
+  if (!ok) return
   await onRechunk()
 }
 
@@ -475,8 +525,9 @@ async function onRechunk() {
     doc.value.chunkCount = 0
     resetChunks()
     setupPolling()
-  } catch (e) {
-    alert(e?.response?.data?.message || e?.message || '重新分块失败')
+    toast.success('已提交重新分块')
+  } catch {
+    // 全局拦截器已 toast
   } finally {
     rechunking.value = false
   }
@@ -619,18 +670,6 @@ function piiLabel(key) {
   word-break: break-all;
 }
 
-.doc-sub {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.dot {
-  opacity: 0.5;
-}
 
 .doc-layout {
   display: grid;
@@ -764,6 +803,11 @@ function piiLabel(key) {
   min-width: 0;
   font-weight: 500;
   word-break: break-word;
+}
+
+.meta-muted {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .meta-val a {
@@ -1075,18 +1119,6 @@ function piiLabel(key) {
     line-height: 1.45;
   }
 
-  .doc-sub {
-    gap: 6px;
-    font-size: 12px;
-  }
-
-  .dot {
-    display: none;
-  }
-
-  .doc-sub > span {
-    max-width: 100%;
-  }
 
   .chunk-card {
     padding: 10px;

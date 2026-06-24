@@ -25,6 +25,8 @@
       </router-view>
     </main>
   </div>
+  <ToastContainer />
+  <ConfirmDialog />
 </template>
 
 <script setup>
@@ -32,6 +34,8 @@ import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/Sidebar.vue'
 import UserMenu from './components/UserMenu.vue'
+import ToastContainer from './components/ToastContainer.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 import { useAuth } from './composables/useAuth'
 
 const sidebarCollapsed = ref(false)

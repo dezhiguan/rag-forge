@@ -344,6 +344,10 @@ import {
 import { uploadErrorCode, uploadErrorMessage } from '../api/upload'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import { documentDetailRoute } from '../composables/useDocumentNav'
+import { confirm as confirmDialog } from '../composables/useConfirm'
+import { useToast } from '../composables/useToast'
+
+const toast = useToast()
 
 const kbDeleteEnabled = KNOWLEDGE_BASE_DELETE_ENABLED
 const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
@@ -542,7 +546,7 @@ function openCreate() {
 
 async function onCreateKb() {
   if (!kbForm.value.name?.trim()) {
-    alert('请填写知识库名称')
+    toast.warning('请填写知识库名称')
     return
   }
   submittingKb.value = true
@@ -574,7 +578,7 @@ function openEdit(kb) {
 
 async function onUpdateKb() {
   if (!editForm.value.name?.trim()) {
-    alert('请填写知识库名称')
+    toast.warning('请填写知识库名称')
     return
   }
   submittingKb.value = true
@@ -596,10 +600,23 @@ async function onUpdateKb() {
 
 async function onDeleteKb(kb) {
   if (!kbDeleteEnabled) return
-  if (!confirm(`确定删除知识库「${kb.name}」？`)) return
-  await deleteKb(kb.id)
-  await loadKbs()
-  if (expandedKbId.value === kb.id) expandedKbId.value = null
+  const ok = await confirmDialog({
+    title: '删除知识库',
+    message: `确定删除知识库「${kb.name}」？`,
+    detail: '该知识库内所有文档、分块和检索索引都会被永久清除，此操作不可恢复。',
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
+  try {
+    await deleteKb(kb.id)
+    await loadKbs()
+    if (expandedKbId.value === kb.id) expandedKbId.value = null
+    toast.success('知识库已删除')
+  } catch {
+    // 全局拦截器已 toast
+  }
 }
 
 function onPickFile() {
@@ -608,7 +625,7 @@ function onPickFile() {
 
 async function handleFiles(files) {
   if (!uploadKbId.value) {
-    alert('请先选择上传到哪个知识库')
+    toast.warning('请先选择上传到哪个知识库')
     return
   }
   if (!files || files.length === 0) return
@@ -769,14 +786,23 @@ async function onReprocessDoc(doc) {
     })
     ensureActiveTracking(doc.id, doc.kbId, 'pending')
     beginPollingDoc(doc.id, doc.kbId)
-  } catch (e) {
-    alert(e?.response?.data?.message || e?.message || '重试失败')
+    toast.success('已提交重新处理')
+  } catch {
+    // 全局拦截器已 toast
   }
 }
 
 async function onDeleteDoc(doc) {
   if (!deleteEnabled) return
-  if (!confirm(`确定删除文档「${doc.filename}」？`)) return
+  const ok = await confirmDialog({
+    title: '删除文档',
+    message: `确定删除文档「${doc.filename}」？`,
+    detail: '该文档及其分块、向量索引将被永久删除，此操作不可恢复。',
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
   stopDocPolling(doc.id)
   if (activeDocId.value === doc.id) {
     activeDocId.value = null
