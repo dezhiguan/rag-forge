@@ -1,4 +1,10 @@
 spring:
+  security:
+    user:
+      name: metrics-reader
+      password: ${METRICS_READER_PASSWORD:}
+      roles: METRICS_READER
+
   data:
     redis:
       host: ${REDIS_HOST:172.25.90.183}

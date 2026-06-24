@@ -31,7 +31,6 @@ public class SecurityConfig {
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
     return http
         .csrf(AbstractHttpConfigurer::disable)
-        .httpBasic(AbstractHttpConfigurer::disable)
         .formLogin(AbstractHttpConfigurer::disable)
         .logout(AbstractHttpConfigurer::disable)
         .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -41,9 +40,12 @@ public class SecurityConfig {
                     (request, response, ex) -> writeJson(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
                     .accessDeniedHandler(
                         (request, response, ex) -> writeJson(response, HttpServletResponse.SC_FORBIDDEN, "Forbidden")))
+        .httpBasic(httpBasic -> httpBasic.realmName("ragforge-metrics"))
         .authorizeHttpRequests(
             auth ->
-                auth.requestMatchers("/api/v1/health", "/actuator/health", "/actuator/prometheus", "/api/auth/**").permitAll()
+                auth.requestMatchers("/api/v1/health", "/actuator/health", "/api/auth/**").permitAll()
+                    .requestMatchers("/actuator/prometheus", "/actuator/metrics", "/actuator/info")
+                    .hasRole("METRICS_READER")
                     .requestMatchers("/api/v1/.well-known/ragforge-admin-backend-jwks.json").permitAll()
                     .requestMatchers("/api/v1/events/**").permitAll()
                     .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/internal/**", "/mcp/**", "/sse", "/sse/**")

@@ -14,7 +14,9 @@ import java.util.regex.Pattern;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Component
 public class HtmlMarkdownImageExtractor implements EmbeddedImageExtractor {
 
@@ -38,9 +40,11 @@ public class HtmlMarkdownImageExtractor implements EmbeddedImageExtractor {
   public List<ExtractedImage> extract(Path filePath, String contentType) {
     try {
       String source = Files.readString(filePath, StandardCharsets.UTF_8);
+      log.info("HtmlMarkdownImageExtractor.extract called: filePath={} contentType={}", filePath.getFileName(), contentType);
       List<ExtractedImage> images = new ArrayList<>();
       collect(source, HTML_IMG, images);
       collect(source, MD_IMG, images);
+      log.info("HtmlMarkdownImageExtractor.extract completed: filePath={} images={}", filePath.getFileName(), images.size());
       return images;
     } catch (Exception e) {
       throw new BizException("HTML/Markdown 嵌入图提取失败: " + e.getMessage());
