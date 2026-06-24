@@ -12,7 +12,7 @@ public class StorageConfiguration {
 
   @Bean
   @ConditionalOnProperty(prefix = "storage", name = "backend", havingValue = "aliyun")
-  ObjectStorage aliyunObjectStorage(StorageProperties properties) {
+  AliyunOssStorage aliyunObjectStorage(StorageProperties properties) {
     return new AliyunOssStorage(properties);
   }
 

@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class UploadTokenService {
 
-  public static final Duration TOKEN_TTL = Duration.ofMinutes(15);
+  public static final Duration TOKEN_TTL = Duration.ofMinutes(30);
 
   private static final String TOKEN_PREFIX = "uplt_";
   private static final String REDIS_PREFIX = "ragforge:upload:token:";
@@ -31,21 +31,29 @@ public class UploadTokenService {
   @Value("${ragforge.auth.events.hmac-secret:dev-secret-must-match-authgw}")
   private String hmacSecret;
 
+  @Value("${ragforge.oss.upload.token-ttl-seconds:${ragforge.upload.token-ttl-seconds:1800}}")
+  private long tokenTtlSeconds;
+
   public String issue(TokenPayload payload) {
     try {
       long now = Instant.now().getEpochSecond();
+      Duration ttl = tokenTtl();
       payload.setIssuedAt(now);
-      payload.setExpiresAt(now + TOKEN_TTL.toSeconds());
+      payload.setExpiresAt(now + ttl.toSeconds());
       String header = base64Url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
       String body = base64Url(objectMapper.writeValueAsBytes(payload));
       String signature = sign(header + "." + body);
       String token = TOKEN_PREFIX + header + "." + body + "." + signature;
       payload.setUploadToken(token);
-      redisTemplate.opsForValue().set(redisKey(token), objectMapper.writeValueAsString(payload), TOKEN_TTL);
+      redisTemplate.opsForValue().set(redisKey(token), objectMapper.writeValueAsString(payload), ttl);
       return token;
     } catch (Exception e) {
       throw new BizException(500, "UPLOAD_TOKEN_ISSUE_FAILED");
     }
+  }
+
+  public Duration tokenTtl() {
+    return tokenTtlSeconds > 0 ? Duration.ofSeconds(tokenTtlSeconds) : TOKEN_TTL;
   }
 
   public TokenPayload consume(String token) {

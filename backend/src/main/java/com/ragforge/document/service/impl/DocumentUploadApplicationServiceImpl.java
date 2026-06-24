@@ -92,7 +92,7 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     meta.setSizeBytes(request.getDeclaredSize());
     meta.setUserMeta(Map.of("kb-id", String.valueOf(request.getKbId()), "tenant-id", tokenTenantId));
     String presignedPutUrl =
-        objectStorage.presignedPut(bucket, key, UploadTokenService.TOKEN_TTL, meta);
+        objectStorage.presignedPut(bucket, key, uploadTokenService.tokenTtl(), meta);
 
     return Map.of(
         "uploadToken",

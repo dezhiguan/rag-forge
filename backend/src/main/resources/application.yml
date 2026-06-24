@@ -77,6 +77,12 @@ ragforge:
       cookie-secure: ${RAGFORGE_AUTH_PROXY_COOKIE_SECURE:true}
   files:
     upload-path: /data/files/
+  oss:
+    orphan-cleanup:
+      enabled: ${RAGFORGE_OSS_ORPHAN_CLEANUP_ENABLED:true}
+      cron: "0 0 4 * * *"
+    upload:
+      token-ttl-seconds: ${RAGFORGE_UPLOAD_TOKEN_TTL:1800}
   document-processing:
     # mq: publish to RocketMQ worker; inline: dispatch asynchronously in-process for local/E2E without MQ
     dispatch-mode: ${RAGFORGE_DOCUMENT_PROCESS_DISPATCH_MODE:mq}
@@ -173,6 +179,7 @@ reranker:
 
 storage:
   aliyun:
+    # PUT 直传时，前端 Content-Type 必须与 /uploads/presign 请求里的 contentType 完全一致。
     endpoint: ${ALIYUN_OSS_ENDPOINT:oss-cn-guangzhou.aliyuncs.com}
     bucket: ${ALIYUN_OSS_BUCKET:rag-raw-docs}
     accessKeyId: ${ALIYUN_OSS_AK:}
