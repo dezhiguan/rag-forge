@@ -294,11 +294,47 @@
           </label>
           <div class="edit-grid">
             <label class="field">
-              <span>分块大小（字符）</span>
+              <span class="field-label-with-hint">
+                分块大小（字符）
+                <span
+                  class="hint-icon"
+                  tabindex="0"
+                  role="button"
+                  aria-label="分块大小说明"
+                  @click.prevent="toggleHint('chunkSize')"
+                  @blur="closeHint('chunkSize')"
+                >
+                  ⓘ
+                  <span v-if="openHint === 'chunkSize'" class="hint-popover">
+                    <strong>仅对部分策略生效</strong>
+                    <p>该值只在「固定窗口」「递归切分」策略下被读取。</p>
+                    <p>当前文档大多走「按标题分块」「语义分块」「表格感知」等结构化策略，会忽略此值。</p>
+                    <p class="hint-tip">想真正生效？在文档详情页点「重新分块」时选择对应策略。</p>
+                  </span>
+                </span>
+              </span>
               <input v-model.number="editForm.chunkSize" type="number" min="100" step="100" />
             </label>
             <label class="field">
-              <span>分块重叠（字符）</span>
+              <span class="field-label-with-hint">
+                分块重叠（字符）
+                <span
+                  class="hint-icon"
+                  tabindex="0"
+                  role="button"
+                  aria-label="分块重叠说明"
+                  @click.prevent="toggleHint('chunkOverlap')"
+                  @blur="closeHint('chunkOverlap')"
+                >
+                  ⓘ
+                  <span v-if="openHint === 'chunkOverlap'" class="hint-popover">
+                    <strong>仅对部分策略生效</strong>
+                    <p>该值只在「固定窗口」「递归切分」策略下被读取，控制相邻 chunk 间重叠字符数。</p>
+                    <p>「按标题」「语义」「表格感知」等策略会忽略此值。</p>
+                    <p class="hint-tip">想真正生效？在文档详情页点「重新分块」时选择「固定窗口」或「递归切分」。</p>
+                  </span>
+                </span>
+              </span>
               <input v-model.number="editForm.chunkOverlap" type="number" min="0" step="10" />
             </label>
           </div>
@@ -385,6 +421,17 @@ const UPLOAD_CONCURRENCY = 3
 const showCreate = ref(false)
 const showEdit = ref(false)
 const submittingKb = ref(false)
+const openHint = ref(null)
+
+function toggleHint(key) {
+  openHint.value = openHint.value === key ? null : key
+}
+
+function closeHint(key) {
+  setTimeout(() => {
+    if (openHint.value === key) openHint.value = null
+  }, 150)
+}
 const kbForm = ref({ name: '', description: '', answerModel: '' })
 const editForm = ref({
   id: null,
@@ -1346,6 +1393,78 @@ onMounted(async () => {
 .modal-title { font-size: 16px; margin-bottom: 16px; }
 .field { display: block; margin-bottom: 14px; }
 .field span { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+
+.field-label-with-hint {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+}
+
+.hint-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  margin-bottom: 0 !important;
+}
+.hint-icon:hover,
+.hint-icon:focus { color: var(--blue); }
+
+.hint-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  width: 260px;
+  padding: 10px 12px;
+  background: #1e293b;
+  color: #f1f5f9;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  margin-bottom: 0 !important;
+}
+.hint-popover::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: #1e293b;
+}
+.hint-popover strong {
+  display: block;
+  color: #fff;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.hint-popover p {
+  margin: 4px 0;
+  color: #cbd5e1;
+}
+.hint-popover .hint-tip {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: #60a5fa;
+  font-size: 11.5px;
+}
 .field input, .field textarea {
   width: 100%;
   border: 1px solid var(--border);

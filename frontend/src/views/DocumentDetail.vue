@@ -151,14 +151,16 @@
                   <span v-else class="meta-muted">—</span>
                 </span>
               </div>
-              <div class="meta-row">
-                <span class="meta-key">KB 默认块大小</span>
-                <span class="meta-val">{{ doc.chunkSize != null ? doc.chunkSize + ' 字符' : '-' }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">KB 默认块重叠</span>
-                <span class="meta-val">{{ doc.chunkOverlap != null ? doc.chunkOverlap + ' 字符' : '-' }}</span>
-              </div>
+              <template v-if="showFixedSizeParams">
+                <div class="meta-row">
+                  <span class="meta-key">块大小</span>
+                  <span class="meta-val">{{ doc.chunkSize != null ? doc.chunkSize + ' 字符' : '-' }}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-key">块重叠</span>
+                  <span class="meta-val">{{ doc.chunkOverlap != null ? doc.chunkOverlap + ' 字符' : '-' }}</span>
+                </div>
+              </template>
               <div class="meta-row">
                 <span class="meta-key">上传时间</span>
                 <span class="meta-val">{{ formatTime(doc.createdAt) }}</span>
@@ -174,36 +176,6 @@
                 </span>
               </div>
             </div>
-            <section v-if="cleanReport && showCleanPanel" class="clean-panel">
-              <div class="section-title">清洗对比</div>
-              <div class="clean-metrics">
-                <span>原文 {{ cleanReport.originalLength ?? 0 }} 字</span>
-                <span>清洗后 {{ cleanReport.cleanedLength ?? 0 }} 字</span>
-                <span>移除 {{ (cleanReport.removedRegions || []).length }} 处</span>
-              </div>
-              <div v-if="Object.keys(cleanReport.piiHits || {}).length" class="pii-hits">
-                <span v-for="[key, count] in Object.entries(cleanReport.piiHits || {})" :key="key">
-                  {{ piiLabel(key) }} {{ count }}
-                </span>
-              </div>
-              <div class="clean-compare">
-                <div class="clean-col">
-                  <div class="clean-col-title">原文样本</div>
-                  <pre class="clean-text">{{ cleanReport.originalSample || '—' }}</pre>
-                </div>
-                <div class="clean-col">
-                  <div class="clean-col-title">清洗后样本</div>
-                  <pre class="clean-text"><template v-for="line in cleanDiffLines" :key="line.index"><span :class="{ 'diff-line': line.changed }">{{ line.text }}</span>
-</template></pre>
-                </div>
-              </div>
-              <div v-if="(cleanReport.removedRegions || []).length" class="removed-list">
-                <div v-for="(r, idx) in (cleanReport.removedRegions || []).slice(0, 8)" :key="idx" class="removed-item">
-                  <span class="removed-tag">{{ removedReasonLabel(r.reason) }}</span>
-                  <code>{{ summarizeContent(r.text || '') }}</code>
-                </div>
-              </div>
-            </section>
             <div class="search-action" @click="$router.push({ path: '/debug', query: { kbId: doc.kbId, docId: doc.id, docFilename: doc.filename } })">🔍 在此文档中检索 →</div>
           </div>
         </div>
@@ -237,6 +209,55 @@
       </div>
     </div>
   </div>
+
+  <Teleport to="body">
+    <transition name="clean-modal-fade">
+      <div v-if="cleanReport && showCleanPanel" class="clean-modal-mask" @click.self="showCleanPanel = false">
+        <div class="clean-modal" role="dialog" aria-modal="true">
+          <header class="clean-modal-head">
+            <div class="clean-modal-title">
+              <span>📊 清洗对比</span>
+              <span class="clean-modal-filename">{{ doc?.filename }}</span>
+            </div>
+            <button class="clean-modal-close" aria-label="关闭" @click="showCleanPanel = false">✕</button>
+          </header>
+
+          <div class="clean-modal-body">
+            <div class="clean-metrics">
+              <span>原文 <strong>{{ cleanReport.originalLength ?? 0 }}</strong> 字</span>
+              <span>清洗后 <strong>{{ cleanReport.cleanedLength ?? 0 }}</strong> 字</span>
+              <span>移除 <strong>{{ (cleanReport.removedRegions || []).length }}</strong> 处</span>
+            </div>
+            <div v-if="Object.keys(cleanReport.piiHits || {}).length" class="pii-hits">
+              <span v-for="[key, count] in Object.entries(cleanReport.piiHits || {})" :key="key">
+                {{ piiLabel(key) }} {{ count }}
+              </span>
+            </div>
+
+            <div class="clean-compare">
+              <div class="clean-col">
+                <div class="clean-col-title">原文样本</div>
+                <pre class="clean-text">{{ cleanReport.originalSample || '—' }}</pre>
+              </div>
+              <div class="clean-col">
+                <div class="clean-col-title">清洗后样本</div>
+                <pre class="clean-text"><template v-for="line in cleanDiffLines" :key="line.index"><span :class="{ 'diff-line': line.changed }">{{ line.text }}</span>
+</template></pre>
+              </div>
+            </div>
+
+            <div v-if="(cleanReport.removedRegions || []).length" class="removed-list">
+              <div class="removed-list-title">被清洗管道剔除的段落（前 8 条）</div>
+              <div v-for="(r, idx) in (cleanReport.removedRegions || []).slice(0, 8)" :key="idx" class="removed-item">
+                <span class="removed-tag">{{ removedReasonLabel(r.reason) }}</span>
+                <code>{{ summarizeContent(r.text || '') }}</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup>
@@ -299,6 +320,8 @@ const CHUNKER_STRATEGY_LABELS = {
   IMAGE_PIPELINE: '图像管道',
 }
 
+const STRATEGIES_USING_FIXED_PARAMS = new Set(['FIXED_WINDOW', 'RECURSIVE'])
+
 const chunkerSummary = computed(() => {
   const list = chunks.value || []
   if (list.length === 0) return null
@@ -310,14 +333,23 @@ const chunkerSummary = computed(() => {
     counts.set(key, (counts.get(key) || 0) + 1)
   }
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
-  const total = list.length
   const dominant = sorted[0][0]
   const label = CHUNKER_STRATEGY_LABELS[dominant] || dominant
   if (sorted.length === 1) {
-    return { text: label, isMixed: false }
+    return { text: label, isMixed: false, dominant }
   }
   const others = sorted.slice(1).map(([k]) => CHUNKER_STRATEGY_LABELS[k] || k)
-  return { text: `${label} · 混合 ${sorted.length} 种（含 ${others.join('、')}）`, isMixed: true }
+  return {
+    text: `${label} · 混合 ${sorted.length} 种（含 ${others.join('、')}）`,
+    isMixed: true,
+    dominant,
+  }
+})
+
+const showFixedSizeParams = computed(() => {
+  const s = chunkerSummary.value
+  if (!s) return false
+  return STRATEGIES_USING_FIXED_PARAMS.has(s.dominant)
 })
 
 const cleanReport = computed(() => parseCleanReport(doc.value?.cleanReportJson))
@@ -439,14 +471,22 @@ watch(
   },
 )
 
+function onKeydown(e) {
+  if (e.key === 'Escape' && showCleanPanel.value) {
+    showCleanPanel.value = false
+  }
+}
+
 onMounted(async () => {
   await loadDetail()
   setupPolling()
+  window.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
   const id = Number(route.params.id)
   if (id) stopPolling(id)
+  window.removeEventListener('keydown', onKeydown)
 })
 
 async function onDeleteDoc() {
@@ -788,6 +828,7 @@ function piiLabel(key) {
 
 .meta-row {
   display: flex;
+  gap: 12px;
   padding: 6px 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.04);
   font-size: 12px;
@@ -795,7 +836,7 @@ function piiLabel(key) {
 
 .meta-key {
   color: var(--text-muted);
-  width: 80px;
+  width: 110px;
   flex-shrink: 0;
 }
 
@@ -894,10 +935,108 @@ function piiLabel(key) {
   background: #eff6ff;
 }
 
-.clean-panel {
-  margin: 18px 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+.clean-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 24px;
+}
+
+.clean-modal {
+  width: min(1100px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+
+.clean-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+
+.clean-modal-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.clean-modal-title > span:first-child {
+  font-weight: 600;
+  font-size: 15px;
+  color: #0f172a;
+}
+.clean-modal-filename {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.clean-modal-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+}
+.clean-modal-close:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: #1e293b;
+}
+
+.clean-modal-body {
+  padding: 18px 20px 22px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.clean-modal-fade-enter-active,
+.clean-modal-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.clean-modal-fade-enter-from,
+.clean-modal-fade-leave-to {
+  opacity: 0;
+}
+.clean-modal-fade-enter-active .clean-modal,
+.clean-modal-fade-leave-active .clean-modal {
+  transition: transform 0.2s ease;
+}
+.clean-modal-fade-enter-from .clean-modal,
+.clean-modal-fade-leave-to .clean-modal {
+  transform: scale(0.96);
+}
+
+.clean-metrics strong {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.removed-list-title {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .clean-metrics,
@@ -957,17 +1096,15 @@ function piiLabel(key) {
 
 .clean-text {
   margin: 0;
-  max-height: 260px;
+  max-height: 380px;
   overflow: auto;
-  padding: 9px;
+  padding: 10px 12px;
   white-space: pre-wrap;
   word-break: break-word;
   color: #334155;
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.6;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  line-height: 1.55;
-  line-height: 1.55;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .diff-line {
