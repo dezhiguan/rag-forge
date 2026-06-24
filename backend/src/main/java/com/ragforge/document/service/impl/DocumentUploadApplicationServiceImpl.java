@@ -77,18 +77,23 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
             + "/"
             + filename;
 
+    String safeContentType = request.getContentType();
+    if (safeContentType == null || safeContentType.isBlank()) {
+      safeContentType = "application/octet-stream";
+    }
+
     TokenPayload payload = new TokenPayload();
     payload.setTenantId(tokenTenantId);
     payload.setKbId(request.getKbId());
     payload.setStorageBucket(bucket);
     payload.setStorageKey(key);
     payload.setFilename(filename);
-    payload.setContentType(request.getContentType());
+    payload.setContentType(safeContentType);
     payload.setDeclaredSize(request.getDeclaredSize());
     String token = uploadTokenService.issue(payload);
 
     ObjectMeta meta = new ObjectMeta();
-    meta.setContentType(request.getContentType());
+    meta.setContentType(safeContentType);
     meta.setSizeBytes(request.getDeclaredSize());
     meta.setUserMeta(Map.of("kb-id", String.valueOf(request.getKbId()), "tenant-id", tokenTenantId));
     String presignedPutUrl =
