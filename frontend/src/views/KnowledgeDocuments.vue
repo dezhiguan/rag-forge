@@ -72,7 +72,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
 import DocumentStatusBadge from '../components/DocumentStatusBadge.vue'
@@ -119,7 +119,11 @@ async function loadDocs(nextPage = 1) {
 }
 
 function goDoc(id) {
-  router.push(documentDetailRoute(id, { from: 'documents', kbId: kbId.value }))
+  router.push(documentDetailRoute(id, {
+    from: 'documents',
+    kbId: kbId.value,
+    returnTo: route.fullPath,
+  }))
 }
 
 async function onReprocessDoc(doc) {
@@ -176,9 +180,16 @@ function fileTypeLabel(filename) {
   return ext.slice(0, 4)
 }
 
-onMounted(async () => {
+async function refreshPage() {
   await loadKb()
   await loadDocs(1)
+}
+
+onMounted(refreshPage)
+
+watch(kbId, (nextKbId, prevKbId) => {
+  if (prevKbId == null || nextKbId === prevKbId) return
+  refreshPage()
 })
 </script>
 
