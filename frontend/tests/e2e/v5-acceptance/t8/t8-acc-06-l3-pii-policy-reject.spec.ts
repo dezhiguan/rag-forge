@@ -23,7 +23,7 @@ test('T8 ACC-06 L3 pii policy reject', async ({ page, request }, testInfo) => {
   const headers = await login(request)
   const kbId = await createKb(request, headers, 't8-acc-06-reject')
   try {
-    await createCleanProfile(kbId, {
+    await createCleanProfile(request, headers, kbId, {
       l1Enabled: true,
       l2Enabled: true,
       l3Enabled: true,
@@ -46,6 +46,6 @@ test('T8 ACC-06 L3 pii policy reject', async ({ page, request }, testInfo) => {
     await screenshotPair(page, testInfo, docId, kbId, '06')
   } finally {
     await cleanupKb(request, headers, kbId)
-    await deleteCleanProfile(kbId)
+    await deleteCleanProfile(request, headers, kbId)
   }
 })

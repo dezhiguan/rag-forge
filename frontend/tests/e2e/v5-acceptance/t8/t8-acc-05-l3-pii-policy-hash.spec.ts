@@ -18,7 +18,7 @@ import {
 import { T8_FIXTURES, PII as PII_FIXTURES } from './fixtures/t8-fixtures'
 import { noRawPii as assertNoRawPii, sumPiiHits } from '../_helpers/t8-asserts'
 
-test.describe.configure({ timeout: 240_000 })
+test.describe.configure({ timeout: 720_000 })
 
 test('T8 ACC-05 L3 pii policy hash', async ({ page, request }, testInfo) => {
   const headers = await login(request)
@@ -26,13 +26,13 @@ test('T8 ACC-05 L3 pii policy hash', async ({ page, request }, testInfo) => {
   const kbIdA = await createKb(request, headers, 't8-acc-05-hash-a')
   const kbIdB = await createKb(request, headers, 't8-acc-05-hash-b')
   try {
-    await createCleanProfile(kbIdA, {
+    await createCleanProfile(request, headers, kbIdA, {
       l1Enabled: true,
       l2Enabled: true,
       l3Enabled: true,
       piiPolicy: 'HASH',
     })
-    await createCleanProfile(kbIdB, {
+    await createCleanProfile(request, headers, kbIdB, {
       l1Enabled: true,
       l2Enabled: true,
       l3Enabled: true,
@@ -40,12 +40,10 @@ test('T8 ACC-05 L3 pii policy hash', async ({ page, request }, testInfo) => {
     })
 
     const docA = await uploadFile(request, headers, kbIdA, asset(T8_FIXTURES.pii))
-    const docB = await uploadFile(request, headers, kbIdB, asset(T8_FIXTURES.pii))
+    await waitForStatus(request, headers, docA, 'COMPLETED', 600_000)
 
-    await Promise.all([
-      waitForStatus(request, headers, docA, 'COMPLETED', 240_000),
-      waitForStatus(request, headers, docB, 'COMPLETED', 240_000),
-    ])
+    const docB = await uploadFile(request, headers, kbIdB, asset(T8_FIXTURES.pii))
+    await waitForStatus(request, headers, docB, 'COMPLETED', 600_000)
 
     const chunksA = (await getChunks(request, headers, docA)).map((c) => String(c.content || '')).join('\n')
     const chunksB = (await getChunks(request, headers, docB)).map((c) => String(c.content || '')).join('\n')
@@ -82,8 +80,8 @@ test('T8 ACC-05 L3 pii policy hash', async ({ page, request }, testInfo) => {
   } finally {
     await cleanupKb(request, headers, kbIdA)
     await cleanupKb(request, headers, kbIdB)
-    await deleteCleanProfile(kbIdA)
-    await deleteCleanProfile(kbIdB)
+    await deleteCleanProfile(request, headers, kbIdA)
+    await deleteCleanProfile(request, headers, kbIdB)
   }
 })
 

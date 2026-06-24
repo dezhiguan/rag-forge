@@ -1,8 +1,8 @@
-# RAGForge V5 验收测试用例（Playwright 有头模式）
+# RAGForge V5/V6 验收测试用例（Playwright 有头模式，在云服务器上面测试，不是在本地测试）
 
-> 编制：2026-06-22 · 测试架构师：@guandezhi
+> 编制：2026-06-22 · 修订：2026-06-24 · 测试架构师：@guandezhi
 >
-> 目标：为 T8 数据清洗、T9 多策略分块、T10 多模态一期、T11 Answer-as-LLM 各设计 10 条 Playwright e2e 用例，覆盖黄金路径 + 边界值 + 异常注入 + 性能基线 + 跨场景组合，**全部用 headed 模式（`--headed`）肉眼可见验证**。
+> 目标：为 T8 数据清洗、T9 多策略分块、T10 多模态一期、T11 Answer-as-LLM、**Q 质量看板**、**A 应答 Playground** 各设计 10 条 Playwright e2e 用例，覆盖黄金路径 + 边界值 + 异常注入 + 性能基线 + 跨场景组合，**全部用 headed 模式（`--headed`）肉眼可见验证**。
 >
 > 用法：找到对应任务章节 → **复制 `=== COPY START ===` 到 `=== COPY END ===` 之间所有内容** → 粘贴给 Codex 单独执行一个任务。每个任务交付一个独立 PR，PR 之间不能并行。
 >
@@ -14,6 +14,43 @@
 > - 每个用例必须独立创建 KB（命名 `acc-<task>-<NN>-<timestamp>`）+ 清理（afterAll 删除 KB）
 > - 必须存档 trace.zip 到 `frontend/test-results/v5-acceptance/<task>/`
 > - 验收门槛：每个任务 10 条全绿才算 PASS，任何一条 FAIL 都不允许合并
+
+---
+
+## V6 之后的回归注意事项（写新用例 / 重跑旧用例前必读）
+
+V6 之后基础设施有以下变化，影响测试 helper 写法和断言口径：
+
+1. **文件上传通道改了**：默认走前端直传 OSS（presign + register），原来 `POST /api/v1/documents` relay 通道仍保留但实际不会被前端调用。**Test helper 可以继续打 `POST /api/v1/documents` 后端 relay** —— 那条路径 backend 仍然完整支持，跑得稳。如果要走 UI 上传路径（hit drop-zone），需要等到 OSS CORS 在测试环境配好。
+2. **文件 hash 算法**：前端用 Web Crypto API 算 SHA-256（不是 MD5）。后端 identity 三层匹配仍然支持 contentMd5 字段（字段名没改，但内容是 SHA-256）。
+3. **支持纯文本 `.txt`**：之前 prompt 里写"保守不写文本"是误判，后端 DocumentPipelineService 的 `text/*` 分支直接 readRawText，**任何 text/* MIME 都能解析**。t8/t9 fixture 可以放心用 `.txt`。
+4. **KB.answer_mode 默认 OFF**（V30 已经把 KB 编辑 UI 暴露了，但 SQL 默认值还是 OFF，V31 待办）：**所有 t11/A 系列用例必须在创建 KB 后立刻 SQL/Admin API 把 answer_mode 改成 ON**，否则 /answer 直接 403 ANSWER_DISABLED。
+5. **answer_model 默认 qwen-plus**（V29），不再是 qwen-max。t11-acc-07 验收口径正确。
+6. **AnswerService PII 处理**：SSE retrieval event 的 chunk content 通过 piiMaskCleaner.mask() 脱敏推送，前端拿到的 chunks 已经是脱敏后的；GuardRails 已移除 OUT_OF_SCOPE，只剩 NO_CITATIONS / PII_LEAK。
+7. **质量看板和应答 Playground 都需要 LLM-as-Judge**（DeepSeek-V4-Flash 接入完成）：质量看板的 seed 数据可以**绕过真实 DeepSeek**直接 SQL 写 judge_results 表，应答 Playground 必须真调 DashScope（qwen-plus）。
+8. **测试账号**（auth-gateway 必须含）：
+   - `admin` / `admin` → ragRole=ADMIN
+   - `qa_kbeditor` / `qa_kbeditor` → ragRole=KB_EDITOR（用例内自己授权特定 KB）
+   - `qa_viewer` / `qa_viewer` → ragRole=VIEWER（无任何 KB 权限）
+   prod profile 必须**不存在**这 3 个账号（启动时 fail-fast 检查）。
+
+## 用户能看懂的错误提示原则（贯穿所有用例）
+
+每条用例只要包含"失败路径"，**断言一定要校验 UI 文案，不能仅校验 HTTP 状态码**。这是验收测试和单元测试最大区别。
+
+错误文案必须遵守：
+
+| 不能出现 | 应该出现 |
+|---|---|
+| `traceId` / `xxxxxxxx-xxxx-xxxx` | 不出现任何技术 id |
+| Java stack trace 关键词（`at com.ragforge.`）| 不出现 |
+| 后端 error code（`KB_WRITE_FORBIDDEN`、`SAMPLE_RATE_TOO_HIGH_REQUIRES_CONFIRM`）| 直接显示翻译后的中文 |
+| `500 Internal Server Error` 裸字 | "服务暂时异常，请稍后重试" |
+| `BizException` | 不出现 |
+| 英文异常 message（`unexpected end-of-input`） | 中文化 |
+| 字段为 null / undefined 显示 `NaN` 或空白 | "暂无数据" / "—" / 灰色占位 |
+
+每条用例**至少 1 处**这种 UI 文案断言，证明用户体验真正可用。
 
 ---
 
@@ -737,6 +774,615 @@ trace 归档：frontend/test-results/v5-acceptance/t11/
 
 ---
 
+## 任务 Q：质量看板验收（10 个用例）
+
+`=== COPY START ===`
+
+```
+角色：你是 RAGForge 项目的 Cursor 执行者。本任务为质量看板（LLM-as-Judge 看板）写
+10 个 Playwright headed-mode e2e 用例。**必须 --headed --workers=1 跑给架构师肉眼看**。
+
+任务：Q 质量看板 Playwright e2e 验收（10 个用例）
+依赖：J1-J7 + V6 P0/P1 hotfix 全部合并；DeepSeek-V4-Flash 已接入；
+   本地 backend / frontend / PG / DeepSeek 可用
+工期：1.5-2 天
+
+== 必读上下文 ==
+1. backend/src/main/java/com/ragforge/controller/JudgeQualityController.java
+   5 个端点：/overview /by-kb /worst-cases /case/{id} /cost
+2. backend/src/main/java/com/ragforge/controller/JudgeSamplingController.java
+   抽样配置 CRUD（ADMIN-only，超过 10% 必须 confirmed=true）
+3. backend/src/main/java/com/ragforge/controller/GoldenSetController.java
+   回放（含真分布式锁 409 互斥）
+4. frontend/src/views/EvaluationQuality.vue
+   看板主页（KPI / 趋势图 / KB 切片 / 最差 case / 成本 / 抽样设置抽屉）
+5. frontend/src/views/EvaluationQualityCase.vue
+   case 详情页（query / answer / chunks / 评分 / reasoning）
+6. frontend/src/router/index.js
+   /evaluation/quality 和 /evaluation/quality/case/:id 路由
+7. backend V30 migration + judge_results / judge_metrics_daily / judge_sampling_config 三张表
+
+== 测试目录 + 命名 ==
+
+frontend/tests/e2e/v5-acceptance/quality/
+  q-acc-01-route-permission.spec.ts
+  q-acc-02-empty-state.spec.ts
+  q-acc-03-kpi-and-trend.spec.ts
+  q-acc-04-time-range-switch.spec.ts
+  q-acc-05-kb-filter.spec.ts
+  q-acc-06-kb-slice-table.spec.ts
+  q-acc-07-worst-case-detail.spec.ts
+  q-acc-08-cross-kb-access-deny.spec.ts
+  q-acc-09-sampling-drawer.spec.ts
+  q-acc-10-golden-replay.spec.ts
+
+运行命令：npx playwright test tests/e2e/v5-acceptance/quality --headed --workers=1
+trace 归档：frontend/test-results/v5-acceptance/quality/
+
+== 共享 helper ==
+
+frontend/tests/e2e/v5-acceptance/_helpers/judge-data-seeder.ts 提供：
+  - seedJudgeResult({ kbIds, source, status, faithfulness, contextPrecision,
+      answerRelevance, overallScore, createdAt, judgeRawResponse, ... })
+    通过新增的 admin endpoint POST /api/v1/admin/e2e/judge-result 写库
+    （endpoint 仅 dev/test profile 启用，prod 不存在）
+  - clearJudgeResults({ tenantId })  afterEach 清理
+  - triggerAggregator()  调 admin endpoint 触发 JudgeMetricsAggregator.aggregate()
+  - ensureGoldenQuestion({ kbId, judgeEnabled: true })
+
+frontend/tests/e2e/v5-acceptance/_helpers/kb-acl-seeder.ts 提供：
+  - grantKbAccess(account, kbId, 'read'|'write')
+  - revokeKbAccess(account, kbId)
+  - 用 admin API 直接操作 kb_acl 表
+
+frontend/tests/e2e/v5-acceptance/_helpers/global-setup.ts：
+  - 校验 GET /actuator/health = 200
+  - 校验 GET /api/v1/admin/e2e/judge-result/_ping = {status:"ok"}
+    （证明 AdminE2eJudgeController 已加载，没加载就 throw "请重启 backend"）
+  - 不自动 spawn 后端进程
+  playwright.config.js 的 globalSetup 指向此文件
+
+== 10 个用例设计 ==
+
+【q-acc-01-route-permission】
+目标：路由角色闸门
+准备：
+  - admin / qa_kbeditor / qa_viewer 三个账号
+步骤：
+  1. 不登录直接访问 /evaluation/quality → 重定向到 /login
+  2. qa_viewer 登录 → 访问 → 跳 /forbidden 或路由守卫拦截
+  3. qa_kbeditor 登录 → 能进入页面
+  4. admin 登录 → 能进入页面 + 看到右上角"设置"按钮
+  5. qa_kbeditor 点击"设置"按钮调 POST /sampling
+断言：
+  - 不登录跳 /login，**UI 不能短暂闪现"质量看板"标题**（防止权限旁路）
+  - qa_viewer 访问 → 页面显示"您没有访问此页面的权限"或类似中文友好文案
+    （**不能显示 "Forbidden 403" 英文**）
+  - qa_kbeditor 调 sampling → 后端 403 → toast 显示"只有管理员可以修改抽样配置"
+    （**不能显示 SAMPLE_RATE_TOO_HIGH_REQUIRES_CONFIRM 或 traceId**）
+
+【q-acc-02-empty-state】
+目标：空数据态友好降级（颜色规范的核心证明）
+准备：
+  - admin 登录，clearJudgeResults 清空 + triggerAggregator 让 judge_metrics_daily 也空
+步骤：
+  1. 进入 /evaluation/quality
+  2. 截屏给架构师看
+断言：
+  - 4 个 KPI value 显示 "0.00"，CSS class 含 score-muted（灰色 #cbd5e1）
+  - **不能出现红色 0.00**（这是用户痛点）
+  - 4 个 KPI trend 区显示 "→ 0.00"（不显示 ↑↓ 也不显示 NaN）
+  - 趋势图区显示"暂无评测数据，请检查 Golden Set 是否启用"中文文案
+    （**不能空白或显示英文 "No data"**）
+  - 不显示异常告警 banner（没数据时 anomaly 不应触发）
+  - 成本卡显示 "¥0.00" 或 "暂无成本数据"（不能显示 ¥NaN）
+  - 截屏存 frontend/test-results/v5-acceptance/quality/q-acc-02-empty-state.png
+
+【q-acc-03-kpi-and-trend】
+目标：有数据时 KPI 颜色 + 趋势图渲染 + hover 交互
+准备：
+  - admin 登录
+  - seed 14 天每天 5 条 judge_results：
+    * 前 7 天 overallScore = 0.5（黄色基线）
+    * 后 7 天 overallScore = 0.85（绿色提升）
+    * 4 dimension 各自不同分数（faithfulness 0.8 / contextPrecision 0.7 / answerRelevance 0.85）
+  - triggerAggregator()
+步骤：
+  1. 进入页面
+  2. hover 趋势图中间数据点
+  3. 取消勾选"答案忠实度" metric
+断言：
+  - 综合质量 KPI = 0.85，class=score-green
+  - overall trend = ↑ +0.35（绿色 ↑）
+  - 答案相关性 KPI = 0.85 绿色，上下文精度 = 0.7 黄色
+  - 趋势图 SVG 含 4 条 path
+  - hover 数据点 → trend-hover-card 出现，显示当日 sample count + 4 个 score
+    （hover-card 文案不能显示原始时间戳格式 "1782xxxx"，必须 "2026-06-22"）
+  - 取消勾选忠实度 → SVG path 减少到 3 条
+  - 成本卡显示真实金额（如 "¥0.42"），不显示 ¥NaN
+  - 截屏存档
+
+【q-acc-04-time-range-switch】
+目标：7/30/90 天切换 + 视觉反馈
+准备：
+  - admin 登录
+  - seed 60 天每天数据
+步骤：
+  1. 默认 7 天进入页面
+  2. 点 30 天按钮 → 等 GET /overview?days=30 响应
+  3. 点 90 天按钮
+  4. 切回 7 天
+断言：
+  - 每次切换 Network 抓到 GET /overview 请求带正确 days 参数
+  - active 按钮蓝边 + 蓝字 + font-weight:600（视觉验证）
+  - 非 active 按钮白底灰边（视觉验证）
+  - 趋势图 X 轴标签数量随天数变化（7 天 ≤7 个 label，90 天 ≤30 个 label）
+  - 切换不导致整页 reload（loading.overview 短暂闪现但不全屏空白）
+  - 切换后若数据加载失败（mock 后端 500）→ toast "数据加载失败，请刷新重试"
+    （**不能显示 "request failed with status 500"**）
+
+【q-acc-05-kb-filter】
+目标：KB 筛选输入 + 错误友好
+准备：
+  - admin 登录，准备 3 个 KB 各 seed 不同分数
+步骤：
+  1. KB 筛选输入 kbId=<KB-1> → 应用
+  2. 输入 kbId=9999999（不存在）→ 应用
+  3. 输入 "abc" 非数字 → 应用
+  4. 输入 -1 负数 → 应用
+  5. 点击清除
+断言：
+  - 应用 KB-1 → GET /overview?kbId=<id>，数据只反映该 KB
+  - 不存在 kbId → 后端 403 → toast 显示"无权访问该知识库或知识库不存在"
+    （**不能显示 KB_ACCESS_DENIED 或 traceId**）
+  - 非数字输入 → 前端校验拦截，**不发请求**，提示"请输入有效的知识库 ID（数字）"
+  - 负数 → 同上前端拦截
+  - 清除 → kbId 参数从 URL/请求里移除，恢复全量
+
+【q-acc-06-kb-slice-table】
+目标：KB 切片表升序 + 颜色 + 行点击下钻
+准备：
+  - admin 登录，3 个 KB seed 不同分数：0.4 / 0.7 / 0.9
+步骤：
+  1. 进入页面
+  2. 观察 KB 切片表
+  3. 点击分数 0.4 那行
+断言：
+  - 表格按 overall_score 升序（最差在上）
+  - 每行显示：KB 名 / 分数（带颜色）/ 趋势箭头 / 样本数
+  - 0.4 那行分数 span class=score-red，0.7=score-amber，0.9=score-green
+  - **KB 名为空时显示 "KB 1"（fallback），不能显示空白单元格或 "undefined"**
+  - 点击行触发路由 push /evaluation/quality?kbId=<id>
+  - 跳转后 KB 筛选输入框自动填充该 kbId
+  - 趋势图 + KPI 反映该 KB 数据
+  - 表格无数据时显示"暂无可见评测数据"（不能空白）
+
+【q-acc-07-worst-case-detail】
+目标：最差 case 列表 + 跳详情页 + 详情内容完整
+准备：
+  - admin 登录，seed 30 条 judge_results
+  - judge_raw_response JSONB 字段含真实结构：{ faithfulness: {score, reasoning, issues}, ... }
+步骤：
+  1. 进入看板，观察最差 10 个 case 列表
+  2. 点击分数最低的 case
+  3. 详情页：点击"返回"按钮
+断言：
+  - 列表按 overall_score 升序，最多 10 条
+  - 每条显示 query（≤50 字 + "..." 截断）+ 分数 + 创建时间（"2026-06-22 18:32" 格式，不能 ISO8601 原始）
+  - 点击跳 /evaluation/quality/case/{id}
+  - 详情页显示：
+    * Query 原文完整（含换行）
+    * Generated Answer 含 [n] 引用
+    * 4 个 dimension 评分（每个 0.00-1.00 格式）
+    * bottleneck 标签（中文化：RETRIEVAL → "检索瓶颈"，GENERATION → "生成瓶颈"，BOTH → "两者皆有"）
+    * 检索 chunks 列表，每个 chunk 显示 score + content snippet（≤200 字）
+    * relevant=false 的 chunk 灰色 + 标记 "⚠ 不相关"
+    * DeepSeek reasoning 折叠面板（默认收起）
+    * 改进建议列表（bullet point）
+  - 点击"返回"回到看板，时间范围保持不变
+  - 详情页加载失败（mock 404）→ "案例不存在或已被删除"（不能 404 NOT_FOUND 英文）
+
+【q-acc-08-cross-kb-access-deny】（V6 P0 hotfix B3 验收）
+目标：跨 KB 信息泄露防御
+准备：
+  - admin 登录，创建 KB-A 和 KB-B
+  - grantKbAccess(qa_kbeditor, KB-A, 'read')，**KB-B 不授权**
+  - seed 一条 case 关联 KB-B（query/answer 含敏感内容）→ 拿到 judgeResultId
+步骤：
+  1. qa_kbeditor 登录
+  2. 直接拼路径访问 /evaluation/quality/case/{judgeResultId}
+  3. qa_kbeditor 访问不存在的 judgeResultId=99999999
+断言：
+  - 后端 GET /case/{id} 返回 403 KB_ACCESS_DENIED
+  - 前端 UI 显示"无权访问该案例"或"该案例属于您没有权限的知识库"
+    **不能渲染 query / answer / chunks 任何字段（哪怕 1 个字符）**
+  - DevTools Network 抓包确认响应 status=403，response body 不含敏感字段
+  - 控制台无 console.error 暴露后端 stack
+  - 不存在的 judgeResultId → 404 → UI "案例不存在"（不能 JUDGE_RESULT_NOT_FOUND）
+  - admin 同样路径 → 200，正常渲染（对照组）
+
+【q-acc-09-sampling-drawer】
+目标：抽样设置抽屉（ADMIN-only + 超 10% 二次确认）
+准备：
+  - admin 登录
+步骤：
+  1. 点击右上角"设置"按钮
+  2. slider 拖到 3% → 保存
+  3. slider 拖到 8% → 保存（< 10%，无需确认）
+  4. slider 拖到 15%，不勾"我已确认成本风险" → 保存
+  5. 勾选确认 → 保存
+  6. KB 覆盖区添加一个 KB（rate=5%）→ 保存
+  7. 删除刚加的 KB 覆盖
+  8. 关闭抽屉
+断言：
+  - 抽屉打开后 slider 显示当前全局抽样率（GET /sampling 返回的值）
+  - 3% / 8% 保存 → 200 + toast "抽样配置已更新"
+  - 15% + 未勾确认 → 后端 400 → toast 显示
+    "当前抽样率超过 10%，月度成本会显著增加，请确认后再保存"
+    **不能显示 SAMPLE_RATE_TOO_HIGH_REQUIRES_CONFIRM**
+  - 15% + 勾确认 → 200，sample_rate=0.15 落库
+  - KB 覆盖 add → 200，列表新增一行
+  - KB 覆盖 delete → 列表减少一行
+  - 关闭抽屉 → 状态清理（重开后 slider 值是最新落库值）
+  - qa_kbeditor 登录访问同样动作 → 403 → toast "只有管理员可以修改抽样配置"
+
+【q-acc-10-golden-replay】（拆 3 个子断言，因 DeepSeek 真链路慢）
+目标：Golden Set 回放 + 真分布式锁 + 跨 KB 权限
+准备：
+  - admin 登录
+  - 创建 eval_dataset（kbId=<KB-A>）+ 3 个 eval_question，judge_enabled=true
+  - grantKbAccess(qa_kbeditor, KB-A, 'read')
+
+子断言 A（分布式锁，30 秒内）：
+  1. 进入设置抽屉，看到"当前启用题数: 3"
+  2. 点击"立即回放"按钮 → 200 + toast "回放已开始"
+  3. 立刻再点一次"立即回放" → 后端 409
+断言：
+  - 第二次点击 → toast 显示"已有回放任务正在进行，请稍后再试"
+    **不能显示 REPLAY_ALREADY_RUNNING**
+  - 按钮在第一次点击后立即 disabled，hover 显示"任务进行中"
+
+子断言 B（数据可见性，10 秒内，绕过真 DeepSeek）：
+  1. 用 seedJudgeResult 直接造 3 条 source=GOLDEN_SET 的 judge_results
+  2. triggerAggregator()
+  3. 进入看板
+断言：
+  - 趋势图正确显示
+  - 成本卡 "按来源" 维度看到 GOLDEN_SET 占比 > 0
+  - KPI 综合质量反映这 3 条
+
+子断言 C（@local-only，可选，120 秒长 timeout）：
+  1. admin 触发 /replay，等待 judge_results 出现 source=GOLDEN_SET + status=COMPLETED 行
+断言：
+  - 1 题 datasetId 至多等 120 秒
+  - 失败重试 1 次仍失败 → test.skip()，不阻塞 PASS
+  - DeepSeek 真接口冒烟（这条是质量验收，不是功能验收）
+
+子断言 D（跨 KB 权限）：
+  1. qa_kbeditor 登录，调 POST /replay datasetId=<KB-B's dataset>（无权 KB）
+断言：
+  - 403 → toast "您没有访问该数据集对应知识库的权限"
+  - 不调 /replay datasetId=null + qa_kbeditor → toast "请选择具体的数据集（管理员才能跑全量回放）"
+
+== 禁止项 ==
+
+- 不能用 mock 后端（必须真后端，但 DeepSeek 部分用 seed 数据绕过：
+  seedJudgeResult 直接写表带预设分数）
+- 不能 skip q-acc-02 "暂无数据" 用例（这是颜色规范的核心证据：红色 0.00 痛点的回归）
+- 不能跨 case 共享 seed 数据（每个 case afterEach 清自己的）
+- 不能 hardcode kbId / judgeResultId（用 seed 函数返回的 id）
+- 不能跳过 q-acc-08（跨 KB 权限是 P0 安全验收）
+- 不能用 page.evaluate 注入 mock fetch 跳过后端
+- 不能用 sleep 等数据 —— 必须 expect.poll 轮询
+- **不能在任何一处错误断言里检查英文 error code 或 traceId**
+
+== 错误友好文案对照表（必须实现） ==
+
+| 后端 code | 前端 UI 文案 |
+|---|---|
+| 403 KB_ACCESS_DENIED | "无权访问该知识库或案例" |
+| 403 KB_WRITE_FORBIDDEN | "您没有该知识库的写权限" |
+| 403 SAMPLING_ADMIN_ONLY | "只有管理员可以修改抽样配置" |
+| 400 SAMPLE_RATE_TOO_HIGH_REQUIRES_CONFIRM | "当前抽样率超过 10%，月度成本会显著增加，请勾选确认后再保存" |
+| 404 JUDGE_RESULT_NOT_FOUND | "案例不存在或已被删除" |
+| 404 EVAL_DATASET_NOT_FOUND | "数据集不存在" |
+| 409 REPLAY_ALREADY_RUNNING | "已有回放任务正在进行，请稍后再试" |
+| 403 DATASET_ID_REQUIRED | "请选择具体的数据集（管理员才能跑全量回放）" |
+| 500 任何 | "服务暂时异常，请稍后重试" |
+| 网络错误 | "网络连接失败，请检查网络后重试" |
+
+如果前端代码当前没有这些映射，**新增 frontend/src/api/error-messages.js** 集中维护，
+然后在 EvaluationQuality.vue / 抽屉 / 详情页的 catch 里调用 errorMessage(e)。
+
+== 验收门槛 ==
+
+1. 10 条全绿（含 q-acc-10 的 4 个子断言），trace.zip + screenshot 全部归档到
+   frontend/test-results/v5-acceptance/quality/
+2. q-acc-02 / q-acc-03 必须有截屏证据（颜色规范）
+3. q-acc-08 / q-acc-09 / q-acc-10 必须有 DevTools Network 截图（状态码证据）
+4. 跑完后 /actuator/prometheus 看到 ragforge.judge.requests / ragforge.judge.cost 增长
+5. **错误文案断言至少 12 处通过**（从对照表里挑）
+6. PR 标题：test(quality): playwright headed acceptance suite (10 cases)
+7. PR 描述附 10 条用例 PASS/FAIL 表 + 失败重试次数
+
+== 执行流程 ==
+
+1. 输出"我将创建的关键文件清单"（≤15 个文件，含 helper + spec + error-messages.js）
+2. 提交计划等架构师确认（特别是 admin endpoint 是否允许新增）
+3. 写 helper → 写 spec → 跑 --headed 看一遍录屏
+4. 全绿后 PR，附录屏 mp4 到 docs/v6-quality-dashboard-acceptance/
+```
+
+`=== COPY END ===`
+
+---
+
+## 任务 A：应答 Playground 验收（10 个用例）
+
+`=== COPY START ===`
+
+```
+角色：你是 RAGForge 项目的 Cursor 执行者。本任务为应答 Playground（AnswerPlayground.vue）
+写 10 个 Playwright headed-mode e2e 用例。**真用户体验验收**，重点是流式动效 +
+引用渲染 + 错误友好。
+
+任务：A 应答 Playground Playwright e2e 验收（10 个用例）
+依赖：T11 + V6 P0/P1 hotfix；DashScope qwen-plus 可用；KB.answer_mode 必须能改 ON
+工期：1.5 天
+
+== 必读上下文 ==
+1. backend/src/main/java/com/ragforge/answer/AnswerService.java
+   SSE 流式：retrieval / token / complete / error 事件序列
+2. backend/src/main/java/com/ragforge/controller/AnswerController.java
+   POST /api/v1/answer
+3. frontend/src/views/AnswerPlayground.vue
+   UI 主体：KB 选择、answerMode select、query 输入、答案区、引用区
+4. backend/src/main/java/com/ragforge/answer/AnswerService.java
+   GuardRails：NO_CITATIONS / PII_LEAK（OUT_OF_SCOPE 已删）
+5. T11 现有 t11-acc-NN 用例（API 层验收），A 系列是 UI 层验收（不重复）
+
+== 测试目录 + 命名 ==
+
+frontend/tests/e2e/v5-acceptance/answer-playground/
+  a-acc-01-kb-select-and-form.spec.ts
+  a-acc-02-streaming-visible-token.spec.ts
+  a-acc-03-citation-cards-render.spec.ts
+  a-acc-04-citation-click-to-document.spec.ts
+  a-acc-05-answer-mode-off-disable.spec.ts
+  a-acc-06-pii-leak-friendly-message.spec.ts
+  a-acc-07-no-citations-friendly-state.spec.ts
+  a-acc-08-multi-kb-citation-merge.spec.ts
+  a-acc-09-cancel-streaming.spec.ts
+  a-acc-10-cost-and-performance-baseline.spec.ts
+
+运行命令：npx playwright test tests/e2e/v5-acceptance/answer-playground --headed --workers=1
+trace 归档：frontend/test-results/v5-acceptance/answer-playground/
+
+== 共享 helper（复用已有 + 新增）==
+
+frontend/tests/e2e/v5-acceptance/_helpers/answer-kb-seeder.ts 新增：
+  - createKbWithAnswerOn({ name, model, answerMode='ON' })
+    创建 KB 后立即调 admin API 或 SQL 把 answer_mode='ON'
+    （V31 前 DB 默认 OFF，必须每次显式开）
+  - uploadDocAndWaitComplete({ kbId, filename, content })
+    上传 + 轮询 parse_status='COMPLETED'，超时 60s
+  - cleanupKb(kbId)  afterEach 清理（CASCADE 删除 chunks + answer_logs）
+
+frontend/tests/e2e/v5-acceptance/_helpers/sse-listener.ts 新增：
+  - subscribeAnswerSse(query, kbIds, opts)
+    用 EventSource 监听 /api/v1/answer SSE
+    返回 { retrievalEvent, tokenEvents, completeEvent, errorEvent, totalLatencyMs }
+  - 用于不走 UI 的纯 API 流验证
+
+== 10 个用例设计 ==
+
+【a-acc-01-kb-select-and-form】
+目标：表单基本元素 + KB 默认选中 + answerMode 切换
+准备：
+  - admin 登录
+  - createKbWithAnswerOn({ name: 'a-acc-01-faq', model: 'qwen-plus' })
+  - 上传 1 条 .txt FAQ（"RAGForge 是企业级 RAG 知识引擎"）
+  - 等 parse_status=COMPLETED
+步骤：
+  1. 进入 /answer
+  2. 观察 KB 下拉默认值
+  3. 切换 answerMode：ON → PREVIEW → OFF
+  4. 不输入 query，点击"提交"
+断言：
+  - KB 下拉至少含 a-acc-01-faq KB
+  - answerMode 默认显示 "ON"（form.answerMode='ON'）
+  - 切换到 OFF → 提交按钮 disabled 或显示提示"该 KB 已停用应答模式"
+  - 不输入 query 直接提交 → 前端校验"请输入问题"（**不能 400 BAD_REQUEST 英文**）
+  - 输入框 placeholder 中文化：如"请输入您的问题..."
+
+【a-acc-02-streaming-visible-token】
+目标：SSE 真流式 token-by-token（视觉验证）
+准备：同 a-acc-01
+步骤：
+  1. 输入"RAGForge 是什么"
+  2. 提交
+  3. 每 200ms 拍一次答案区 .answer-text 文本快照（拍 10 次）
+断言：
+  - 至少 5 个时间点观察到不同的文本长度（不是一次性全推）
+  - 中途某个快照的文本是"前缀完整 + 末尾不完整"（如 "RAGForge 是一个企业级"）
+  - 最终答案非空，且包含 "RAGForge" 关键词
+  - SSE 收到 ≥ 5 个 token event（NetworkPanel 抓 EventStream）
+  - 答案区有"光标闪烁"或类似 streaming 视觉提示（实现时如有）
+  - 中途 token 卡住 > 10 秒 → UI 显示"正在思考..."而不是空白
+
+【a-acc-03-citation-cards-render】
+目标：引用卡片正确渲染（含图片缩略图）
+准备：
+  - createKbWithAnswerOn
+  - 上传 1 个 .txt（FAQ 文本）+ 1 张 PNG（含文字"营收 100w"）
+  - 等都 COMPLETED
+步骤：
+  1. 提交"营收数据是多少"
+  2. 等 complete event
+断言：
+  - 答案含 [1] [2] 形式引用
+  - 引用区显示 N 张 citation card
+  - 每张 card：[n] 标号 + modality 标签（TEXT/IMAGE）+ chunkId
+  - IMAGE 类型 card 含 <img> 缩略图（imageUrl 非空）
+  - TEXT 类型 card 显示 textSnippet（≤120 字）
+  - card 数量 = answer 里 [n] 的数量（不能错位）
+  - 图片加载失败 fallback 显示"图片加载失败"占位（不能裸 broken image icon）
+
+【a-acc-04-citation-click-to-document】
+目标：引用点击跳转 + chunk 高亮
+准备：同 a-acc-03
+步骤：
+  1. 完整答案出现后
+  2. 点击答案中的 "[1]"
+  3. 点击引用卡片中的 chunkId 链接
+断言：
+  - 点击 [1] 滚动到对应 citation card（视觉验证）
+  - 点击 chunk 链接跳到 /document/{docId}?chunkId={chunkId}
+  - 详情页对应 chunk 高亮显示（边框或背景色）
+  - 跳转失败（docId 不存在）→ "源文档已被删除"（不能 404 NOT_FOUND）
+
+【a-acc-05-answer-mode-off-disable】（V6 痛点回归）
+目标：KB.answer_mode='OFF' 时 UI 友好降级
+准备：
+  - 创建 KB 但**不开 answer_mode**（默认 OFF）
+  - 上传 1 条 FAQ
+步骤：
+  1. 进入 /answer 选择该 KB
+  2. 试图提交查询
+断言：
+  - KB 旁显示徽章 "OFF"
+  - 提交按钮 disabled + 鼠标 hover 显示 "该知识库的应答模式已关闭，请联系管理员开启"
+  - **不能允许用户提交后才报 403 ANSWER_DISABLED**（这是产品体验破坏，前端拦截更友好）
+  - 切换到 answer_mode=ON 的 KB → 按钮 enabled
+  - 用真 admin 在另一个 tab 打开该 KB 改 answer_mode='ON'，再刷新 → 按钮 enabled
+    （证明缓存 invalidate 正确）
+
+【a-acc-06-pii-leak-friendly-message】
+目标：PII_LEAK 拦截的用户体验
+准备：
+  - createKbWithAnswerOn
+  - 上传 1 条 .txt 含手机号 13812345678 + 邮箱 alice@example.com
+步骤：
+  1. 提交"联系方式是什么"（引导 LLM 答出 PII）
+  2. 监听 SSE complete event 或 error event
+断言：
+  - 必须满足下面任一：
+    a) GuardRailResult=PASS，答案中 PII 已脱敏（"138****5678"）
+    b) GuardRailResult=PII_LEAK，UI 显示
+       "答案中检测到敏感信息，已停止显示。请联系管理员调整内容审核策略"
+       **不能显示 PII_LEAK 字面值或 BizException**
+  - **绝对禁止**：答案完整显示原始手机号（这是安全 bug）
+  - 错误 banner 颜色温和（橙/黄），不能用刺眼红色
+  - 提示下方有"重新提问"按钮
+
+【a-acc-07-no-citations-friendly-state】
+目标：检索空时的用户体验
+准备：
+  - createKbWithAnswerOn，**不上传任何文档**（或上传一份无关内容）
+步骤：
+  1. 提交"今天天气怎么样"（KB 内必然无相关）
+断言：
+  - 答案区显示预设友好答案：
+    "在当前知识库中没有找到与您问题相关的内容。建议尝试：1. 换个说法；2. 选择其他知识库；3. 联系管理员补充资料"
+    **不能空白 + 不能 NaN + 不能显示 NOT_FOUND**
+  - 引用区显示 "暂无引用"（不能 0 个卡片导致区域塌陷）
+  - 不显示 [1] 等引用占位
+  - latency 字段照常落库（用 SQL 抽查 answer_logs 最新行）
+
+【a-acc-08-multi-kb-citation-merge】
+目标：跨多 KB 选择 + 引用来源标识
+准备：
+  - 创建 KB-A 含 "Spring Boot 默认端口 8080"
+  - 创建 KB-B 含 "Vue 3 默认端口 5173"
+  - 都 answer_mode=ON
+步骤：
+  1. 进入 /answer，**多选** KB-A + KB-B（如果当前 UI 只支持单选，本用例改为打 API 验证）
+  2. 提交"开发时常用的端口有哪些"
+断言：
+  - 答案含 Spring Boot 8080 + Vue 5173
+  - 引用区显示 2+ citations，每张 card 标注来源 KB 名（如 "来自：KB-A"）
+  - 不同 KB 来源 card 边框颜色或标签区分（视觉验证）
+  - answer_logs.kb_ids_csv = "<idA>,<idB>"
+
+【a-acc-09-cancel-streaming】
+目标：用户中途取消 + 后端真停止
+准备：同 a-acc-01
+步骤：
+  1. 提交一个会产生长答案的问题（"详细介绍 RAGForge 所有功能"）
+  2. 收到 ≥ 5 个 token event 后，**点击 UI 的"停止"按钮**
+  3. 等 3 秒后查 answer_logs
+断言：
+  - "停止"按钮在流式过程中可见 + 可点
+  - 点击后 EventSource 关闭，答案区固定在已收到的内容
+  - 按钮变成"重新提问"或"继续"
+  - answer_logs 最新行存在（部分答案）
+  - completion_tokens < 完整答案的 token 数（证明真停了）
+  - 后端日志含 "SSE_CLIENT_DISCONNECTED" 或类似
+  - 不会因为客户端断开而服务端 500
+
+【a-acc-10-cost-and-performance-baseline】
+目标：端到端延迟 + token 用量 + 引用率基线
+准备：
+  - createKbWithAnswerOn + 10 条 FAQ
+步骤：
+  1. 顺序提交 10 个不同 query
+  2. 每次记录端到端 latency（从提交到 complete event）
+  3. 抓 prometheus 指标
+断言：
+  - 平均 total_latency_ms < 5000
+  - 平均 prompt_tokens < 2000（提示词压缩合理）
+  - 平均 citations 数 ∈ [1, 5]
+  - ragforge.answer.citations_total / ragforge.answer.retrieval_results_total ≥ 0.4
+  - 10 次累计 DashScope 估算成本 ≤ ¥1
+  - P95 latency 显示在 UI 角落（如有）—— 没有就提 V7 加
+
+== 禁止项 ==
+
+- 不能 mock 后端 SSE（必须真 streaming）
+- 不能跳过 a-acc-05（answer_mode=OFF 是 V6 痛点，必须前端拦截）
+- 不能跳过 a-acc-06（PII 安全 P0）
+- 不能允许任何一处直接显示 BizException / 后端 code 字面值给用户
+- 不能因为 LLM 不稳定而 retry > 3 次
+
+== 错误友好文案对照表（必须实现） ==
+
+| 后端事件 | 前端 UI 文案 |
+|---|---|
+| 403 ANSWER_DISABLED | "该知识库的应答模式已关闭，请联系管理员开启"（前端先拦截，不让用户提交）|
+| 403 KB_ACCESS_DENIED | "您没有访问该知识库的权限" |
+| 400 QUERY_REQUIRED | "请输入您的问题" |
+| 400 KB_IDS_REQUIRED | "请至少选择一个知识库" |
+| 422 PII_LEAK | "答案中检测到敏感信息，已停止显示。请联系管理员调整内容审核策略" |
+| SSE error event NO_CITATIONS | 显示预设兜底答案"在当前知识库中没有找到与您问题相关的内容..." |
+| 500 LLM 失败 | "智能应答服务暂时不可用，请稍后重试" |
+| 网络中断 | "网络连接失败，请检查网络后重试" |
+| EventSource 超时 | "应答超时，请重新提问" |
+
+== 验收门槛 ==
+
+1. 10 条全绿
+2. a-acc-02 SSE 流式动效有录屏（架构师肉眼看 token 逐字出现）
+3. a-acc-06 PII 拦截有截屏（友好提示证据）
+4. a-acc-10 成本与性能数据贴 PR 描述
+5. **错误文案断言至少 10 处通过**
+6. PR 标题：test(answer-playground): playwright headed acceptance suite (10 cases)
+7. PR 描述附 10 条用例 PASS/FAIL 表 + 错误文案截图
+
+== 执行流程 ==
+
+1. 输出"我将创建的关键文件清单"（≤12 个文件）
+2. 跟架构师确认：
+   - createKbWithAnswerOn 用 admin API 还是 SQL（默认 admin API）
+   - a-acc-08 多 KB 选择 UI 是否已支持（不支持就 API 验证）
+   - a-acc-09 "停止"按钮 UI 是否已实现（没实现就提需求）
+3. 写 helper → 写 spec → 跑 --headed 看录屏
+4. 全绿后 PR，附录屏 mp4 到 docs/answer-playground-acceptance/
+```
+
+`=== COPY END ===`
+
+---
+
 ## 一次性总览
 
 | 任务 | 用例数 | 关键验证点 |
@@ -745,12 +1391,15 @@ trace 归档：frontend/test-results/v5-acceptance/t11/
 | T9 多策略分块 | 10 | 5 种 strategy 各自行为 / fallback / rechunk / AB lab UI / 表格保留 / 代码块完整性 / 性能 |
 | T10 多模态 | 10 | 纯图 / 图文混合 PDF（核心）/ 跨模态检索 / 图搜图 / Word/HTML 内嵌图 / 损坏图 graceful / 成本 |
 | T11 Answer-as-LLM | 10 | SSE 真流式 / 引用准确 / GuardRails / SSE PII MASK / answer_mode / 默认 qwen-plus / 跨 KB / 取消 / 成本 |
+| **Q 质量看板** | **10** | **路由权限 / 空数据态颜色 / KPI 渲染 / 时间切换 / KB 筛选 / KB 切片 / 详情下钻 / 跨 KB 防泄漏 / 抽样设置 / Golden 回放** |
+| **A 应答 Playground** | **10** | **表单 / SSE 真流式 / 引用卡片 / 跳转 / answer_mode=OFF 拦截 / PII 友好 / 空检索友好 / 跨 KB / 取消 / 成本** |
 
 ## 给你的执行建议
 
-1. **不要并行**：T9 依赖 T8 PASS（chunker 上游是 cleaner），T11 依赖 T10 PASS（VL 向量空间）。一个一个走。
+1. **不要并行**：T9 依赖 T8 PASS（chunker 上游是 cleaner），T11 依赖 T10 PASS（VL 向量空间）。Q 和 A 系列要等 T11 PASS。
 2. **每个任务必须独立 PR**：失败时可以单独回滚，不污染其他任务进度。
-3. **Codex 跑完每个任务先你肉眼看 headed 录屏**再 merge，特别是 T10-acc-02 图文混合 PDF + T11-acc-04 PII 拦截这两个核心点。
+3. **Codex 跑完每个任务先你肉眼看 headed 录屏**再 merge，特别是 T10-acc-02 图文混合 PDF + T11-acc-04 PII 拦截 + **q-acc-02 空数据态颜色 + a-acc-02 SSE 流式动效 + a-acc-06 PII 友好提示**。
 4. **任何一条 FAIL**：让 Codex 区分是真 bug 还是 LLM 不稳定（重试 3 次还挂才算 bug）还是测试设计错。
+5. **错误友好文案对照表**：Q 和 A 章节末尾各有一份对照表，**必须落地到 `frontend/src/api/error-messages.js` 集中维护**，不能散落在各组件里。这个 file 写完就 commit 一次（独立 PR）。
 
 文件已写到：`docs/v5-acceptance-playwright-cases.md`，照章节复制即可。

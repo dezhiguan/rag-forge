@@ -24,7 +24,7 @@ test('T8 ACC-03 L2 denoise watermark and toc', async ({ page, request }, testInf
   const headers = await login(request)
   const kbId = await createKb(request, headers, 't8-acc-03-l2')
   try {
-    await createCleanProfile(kbId, {
+    await createCleanProfile(request, headers, kbId, {
       l1Enabled: true,
       l2Enabled: true,
       l3Enabled: false,
@@ -50,6 +50,6 @@ test('T8 ACC-03 L2 denoise watermark and toc', async ({ page, request }, testInf
     await screenshotPair(page, testInfo, docId, kbId, '03')
   } finally {
     await cleanupKb(request, headers, kbId)
-    await deleteCleanProfile(kbId)
+    await deleteCleanProfile(request, headers, kbId)
   }
 })

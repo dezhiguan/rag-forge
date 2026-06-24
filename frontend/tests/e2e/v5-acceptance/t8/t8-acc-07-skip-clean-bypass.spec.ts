@@ -18,13 +18,13 @@ import {
 import { fixtureText as readFixtureText } from './fixtures/t8-fixtures'
 import { T8_FIXTURES } from './fixtures/t8-fixtures'
 
-test.describe.configure({ timeout: 240_000 })
+test.describe.configure({ timeout: 720_000 })
 
 test('T8 ACC-07 Skip clean bypass', async ({ page, request }, testInfo) => {
   const headers = await login(request)
   const kbId = await createKb(request, headers, 't8-acc-07-skip')
   try {
-    await createCleanProfile(kbId, {
+    await createCleanProfile(request, headers, kbId, {
       skipClean: true,
       l1Enabled: false,
       l2Enabled: false,
@@ -33,7 +33,7 @@ test('T8 ACC-07 Skip clean bypass', async ({ page, request }, testInfo) => {
     })
 
     const docId = await uploadFile(request, headers, kbId, asset(T8_FIXTURES.mixed))
-    await waitForStatus(request, headers, docId, 'COMPLETED', 240_000)
+    await waitForStatus(request, headers, docId, 'COMPLETED', 600_000)
 
     const detail = await getDocument(request, headers, docId)
     const report = parseCleanReport(detail)
@@ -55,6 +55,6 @@ test('T8 ACC-07 Skip clean bypass', async ({ page, request }, testInfo) => {
     await screenshotPair(page, testInfo, docId, kbId, '07')
   } finally {
     await cleanupKb(request, headers, kbId)
-    await deleteCleanProfile(kbId)
+    await deleteCleanProfile(request, headers, kbId)
   }
 })

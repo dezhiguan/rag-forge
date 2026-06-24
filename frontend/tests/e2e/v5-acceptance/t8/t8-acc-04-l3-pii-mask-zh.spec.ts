@@ -24,7 +24,7 @@ test('T8 ACC-04 L3 pii mask zh', async ({ page, request }, testInfo) => {
   const headers = await login(request)
   const kbId = await createKb(request, headers, 't8-acc-04-l3')
   try {
-    await createCleanProfile(kbId, {
+    await createCleanProfile(request, headers, kbId, {
       l1Enabled: true,
       l2Enabled: true,
       l3Enabled: true,
@@ -58,6 +58,6 @@ test('T8 ACC-04 L3 pii mask zh', async ({ page, request }, testInfo) => {
     await screenshotPair(page, testInfo, docId, kbId, '04')
   } finally {
     await cleanupKb(request, headers, kbId)
-    await deleteCleanProfile(kbId)
+    await deleteCleanProfile(request, headers, kbId)
   }
 })

@@ -1,7 +1,6 @@
 import { expect, type APIRequestContext, type Page, type TestInfo, test as base } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
 
 export const test = base
 export { expect }
@@ -58,13 +57,6 @@ export type CleanProfilePayload = {
 
 const ASSET_ROOT = path.resolve(import.meta.dirname, '../t8/fixtures')
 const API_BASE_URL = (process.env.RAGFORGE_E2E_API_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '').replace(/\/$/, '')
-
-const PG_HOST = process.env.RAGFORGE_PG_HOST || process.env.POSTGRES_HOST || '127.0.0.1'
-const PG_PORT = process.env.RAGFORGE_PG_PORT || process.env.POSTGRES_PORT || '5432'
-const PG_DATABASE = process.env.RAGFORGE_PG_DATABASE || process.env.POSTGRES_DB || 'ragforge'
-const PG_USER = process.env.RAGFORGE_PG_USER || process.env.POSTGRES_USER || 'amy'
-const PG_PASSWORD = process.env.RAGFORGE_PG_PASSWORD || process.env.POSTGRES_PASSWORD || 'amy'
-const PSQL_BIN = process.env.PSQL_BIN || '/Applications/Postgres.app/Contents/Versions/latest/bin/psql'
 
 export function apiUrl(pathname: string) {
   return API_BASE_URL ? `${API_BASE_URL}${pathname}` : pathname
@@ -128,19 +120,29 @@ export async function login(request: APIRequestContext): Promise<Record<string, 
 }
 
 export async function createKb(request: APIRequestContext, headers: Record<string, string>, name: string, imageMode: 'OFF' | 'ON' = 'OFF') {
-  const res = await request.post(apiUrl('/api/v1/kb'), {
-    headers,
-    data: {
-      name: `${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      description: 'T8 acceptance Playwright E2E',
-      chunkSize: 256,
-      chunkOverlap: 24,
-    },
-  })
-  expect(res.ok(), await res.text()).toBeTruthy()
-  const kb = unwrap(await res.json())
-  await setKbImageMode(request, headers, kb.id, imageMode)
-  return kb.id as number
+  let lastText = ''
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const res = await request.post(apiUrl('/api/v1/kb'), {
+      headers,
+      data: {
+        name: `${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        description: 'T8 acceptance Playwright E2E',
+        chunkSize: 256,
+        chunkOverlap: 24,
+      },
+    })
+    if (res.ok()) {
+      const kb = unwrap(await res.json())
+      await setKbImageMode(request, headers, kb.id, imageMode)
+      return kb.id as number
+    }
+    lastText = await res.text()
+    if (attempt < 5) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 2_000))
+    }
+  }
+  expect(false, `create kb failed after retries: ${lastText}`).toBeTruthy()
+  throw new Error('unreachable')
 }
 
 export async function setKbImageMode(
@@ -279,19 +281,27 @@ export async function cleanupKb(request: APIRequestContext, headers: Record<stri
   }
 }
 
-export async function createCleanProfile(kbId: number, profile: CleanProfilePayload = cleanProfileDefaults()) {
-  const defaulted = { ...cleanProfileDefaults(), ...profile }
-  const config = JSON.stringify(defaulted)
-  const sql = `INSERT INTO clean_profiles (scope, scope_id, config, created_at, updated_at)
-    VALUES ('KB', ${kbId}, '${config.replace(/'/g, "''" )}'::jsonb, NOW(), NOW())
-    ON CONFLICT (scope, scope_id)
-    DO UPDATE SET config = EXCLUDED.config, updated_at = NOW()`
-  runPsql(sql)
+export async function createCleanProfile(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+  kbId: number,
+  profile: CleanProfilePayload = cleanProfileDefaults(),
+) {
+  const res = await request.post(apiUrl(`/api/v1/admin/e2e/kb/${kbId}/clean-profile`), {
+    headers,
+    data: { ...cleanProfileDefaults(), ...profile },
+  })
+  expect(res.ok(), await res.text()).toBeTruthy()
 }
 
-export function deleteCleanProfile(kbId: number) {
+export async function deleteCleanProfile(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+  kbId: number,
+) {
   try {
-    runPsql(`DELETE FROM clean_profiles WHERE scope='KB' AND scope_id=${kbId}`)
+    const res = await request.delete(apiUrl(`/api/v1/admin/e2e/kb/${kbId}/clean-profile`), { headers })
+    expect(res.ok(), await res.text()).toBeTruthy()
   } catch {
     // best effort cleanup
   }
@@ -303,43 +313,19 @@ export async function openUploadDonePage(page: Page, kbId: number, filename: str
 }
 
 export async function loginPage(page: Page) {
-  const token = process.env.RAGFORGE_E2E_TOKEN
-  if (token) {
-    await page.goto('/login', { waitUntil: 'domcontentloaded' })
-    await page.evaluate(async ({ accessToken }) => {
-      const mod = await import('/src/composables/useAuth.js')
-      mod.useAuth().setSession(accessToken, {
-        displayName: 't8-e2e-admin',
-        ragRole: 'ADMIN',
-        scopes: [
-          'rag:dashboard:read',
-          'rag:kb:create',
-          'rag:kb:read',
-          'rag:kb:write',
-          'rag:doc:read',
-          'rag:doc:write',
-          'rag:debug:run',
-          'rag:apikey:admin',
-        ],
-      })
-      const router = (await import('/src/router/index.js')).default
-      await router.push('/')
-    }, { accessToken: token })
-    await expect(page).toHaveURL(/\/$/)
-    return
-  }
-
   const user = process.env.RAGFORGE_E2E_USER || 'admin'
   const password = process.env.RAGFORGE_E2E_PASSWORD || 'admin'
-  // The backend auth proxy (auth-gateway) can transiently time out ("认证代理不可用"). The UI form
-  // login persists the session correctly across reloads, so we keep it but retry on a transient miss.
+  // Login through the same auth proxy as the UI and install refresh cookies into the browser
+  // context. The production SPA keeps auth in memory and relies on /api/auth/refresh on deep links.
   let lastErr: unknown
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      await page.goto('/login', { waitUntil: 'domcontentloaded' })
-      await page.getByLabel('账号 / 手机号 / 邮箱').fill(user)
-      await page.getByLabel('密码').fill(password)
-      await page.getByRole('button', { name: '登 录' }).click()
+      const res = await page.request.post(apiUrl('/api/auth/login'), {
+        data: { account: user, password, remember: false },
+        timeout: 30_000,
+      })
+      expect(res.ok(), await res.text()).toBeTruthy()
+      await installAuthCookies(page, res)
       await expect(page).toHaveURL(/\/$/, { timeout: 15_000 })
       return
     } catch (err) {
@@ -350,6 +336,51 @@ export async function loginPage(page: Page) {
     }
   }
   throw lastErr
+}
+
+async function installAuthCookies(page: Page, res: { headersArray(): { name: string; value: string }[] }) {
+  const origin = new URL(apiUrl('/'))
+  const cookies = res
+    .headersArray()
+    .filter((header) => header.name.toLowerCase() === 'set-cookie')
+    .map((header) => parseSetCookie(header.value, origin.hostname))
+    .filter((cookie): cookie is NonNullable<ReturnType<typeof parseSetCookie>> => Boolean(cookie))
+  if (cookies.length > 0) {
+    await page.context().addCookies(cookies)
+  }
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+}
+
+function parseSetCookie(value: string, domain: string) {
+  const parts = value.split(';').map((part) => part.trim())
+  const [nameValue, ...attrs] = parts
+  const eq = nameValue.indexOf('=')
+  if (eq <= 0) return null
+  const cookie: {
+    name: string
+    value: string
+    domain: string
+    path: string
+    httpOnly?: boolean
+    secure?: boolean
+    sameSite?: 'Strict' | 'Lax' | 'None'
+  } = {
+    name: nameValue.slice(0, eq),
+    value: nameValue.slice(eq + 1),
+    domain,
+    path: '/',
+  }
+  for (const attr of attrs) {
+    const [rawKey, rawVal] = attr.split('=')
+    const key = rawKey.toLowerCase()
+    if (key === 'path' && rawVal) cookie.path = rawVal
+    if (key === 'httponly') cookie.httpOnly = true
+    if (key === 'secure') cookie.secure = true
+    if (key === 'samesite' && rawVal && ['Strict', 'Lax', 'None'].includes(rawVal)) {
+      cookie.sameSite = rawVal as 'Strict' | 'Lax' | 'None'
+    }
+  }
+  return cookie
 }
 
 export async function screenshotPair(page: Page, testInfo: TestInfo, docId: number, kbId: number, suffix = 'case') {
@@ -380,16 +411,4 @@ function mimeType(name: string) {
   if (ext === '.png') return 'image/png'
   if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
   return 'application/octet-stream'
-}
-
-function runPsql(sql: string) {
-  execFileSync(
-    PSQL_BIN,
-    ['-h', PG_HOST, '-p', PG_PORT, '-d', PG_DATABASE, '-U', PG_USER, '-c', sql],
-    {
-      encoding: 'utf8',
-      env: { ...process.env, PGPASSWORD: PG_PASSWORD },
-      stdio: ['ignore', 'pipe', 'inherit'],
-    },
-  )
 }

@@ -22,7 +22,7 @@ test('T8 ACC-10 200KB doc perf baseline', async ({ page, request }, testInfo) =>
   const headers = await login(request)
   const kbId = await createKb(request, headers, 't8-acc-10-perf')
   try {
-    await createCleanProfile(kbId, {
+    await createCleanProfile(request, headers, kbId, {
       l1Enabled: true,
       l2Enabled: true,
       l3Enabled: true,
@@ -47,15 +47,20 @@ test('T8 ACC-10 200KB doc perf baseline', async ({ page, request }, testInfo) =>
 
       const nextButton = uiTab.getByRole('button', { name: '下一页' })
       const prevButton = uiTab.getByRole('button', { name: '上一页' })
+      const refreshButton = uiTab.getByRole('button', { name: '刷新' }).first()
 
-      await nextButton.waitFor({ state: 'visible', timeout: 20_000 })
+      await refreshButton.waitFor({ state: 'visible', timeout: 20_000 })
 
       let direction = 1
       for (let step = 0; step < 8; step++) {
         const target = direction > 0 ? nextButton : prevButton
-        const enabled = await target.isEnabled()
+        const hasPager = (await target.count()) > 0
+        const enabled = hasPager && (await target.isEnabled())
         if (!enabled) {
-          direction *= -1
+          const before = Date.now()
+          await refreshButton.click()
+          await uiTab.waitForTimeout(250)
+          paginationLatencies.push(Date.now() - before)
           continue
         }
 
@@ -104,6 +109,6 @@ test('T8 ACC-10 200KB doc perf baseline', async ({ page, request }, testInfo) =>
     await screenshotPair(page, testInfo, docId, kbId, '10')
   } finally {
     await cleanupKb(request, headers, kbId)
-    await deleteCleanProfile(kbId)
+    await deleteCleanProfile(request, headers, kbId)
   }
 })

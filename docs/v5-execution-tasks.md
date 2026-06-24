@@ -23,12 +23,11 @@
    - 现状：Grafana cost monitor dashboard 已提供，但目标 K3s 集群未部署 Grafana。
    - V6 必须：K3s 部署 Prometheus + Grafana 栈，导入 `docs/grafana-v5.json`，30 天账单对账记录。
 
-4. **answer_mode 默认值与 KB 编辑 UI（V30 hotfix）**
-   - 现状：V28 把 `knowledge_bases.answer_mode` 默认设 `OFF`，AnswerService 在 `OFF` 时直接 403 ANSWER_DISABLED；KB 创建/编辑 API 和 UI 都没暴露 `answerMode` 开关，用户只能 SQL 改才能用应答功能。
-   - V6 必须：
-     - 写 `V30__default_answer_mode_on.sql` 把默认改 `ON`，UPDATE 存量 `OFF` 为 `ON`。
-     - KB 编辑 DTO/Mapper/Controller/UI 暴露 answer_mode + answer_model 字段。
-   - 完成：`V30__default_answer_mode_on.sql` + KB API/UI 透传 `answer_mode/answer_model` ✅ 2026-06-22
+4. **answer_mode 默认值与 KB 编辑 UI**
+   - 现状：V28 把 `knowledge_bases.answer_mode` 默认设 `OFF`，AnswerService 在 `OFF` 时直接 403 ANSWER_DISABLED。
+   - 已完成（commit `6262881` 2026-06-22）：KB 编辑 DTO/Mapper/Controller/UI 暴露 answer_mode + answer_model 字段 ✅
+   - **未完成**：DB 默认值改 ON 的 SQL migration 还没写（commit 标题虽含 V30，但实际只有 Java 层改动，没 SQL 文件）。
+   - V6 待办：写 `V31__default_answer_mode_on.sql`（V30 已被 V6 J1 LLM-Judge 占用），把默认改 `ON`，UPDATE 存量 `OFF` 为 `ON`。
 
 > 编制：2026-06-20 · 架构师：@guandezhi
 > 用法：找到要执行的任务 → **复制 `=== COPY START ===` 与 `=== COPY END ===` 之间的全部内容** → 粘贴到 Codex

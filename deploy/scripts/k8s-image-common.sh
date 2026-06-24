@@ -4,6 +4,7 @@ set -euo pipefail
 
 K3S_IMAGES_DIR="${K3S_IMAGES_DIR:-/var/lib/rancher/k3s/agent/images}"
 RAGFORGE_IMAGE_REPO="${RAGFORGE_IMAGE_REPO:-docker.io/ragforge/backend}"
+RAGFORGE_FRONTEND_IMAGE_REPO="${RAGFORGE_FRONTEND_IMAGE_REPO:-docker.io/ragforge/frontend}"
 
 resolve_ragforge_image_tag() {
   if [[ -n "${RAGFORGE_BACKEND_IMAGE_TAG:-}" ]]; then
@@ -27,6 +28,12 @@ ragforge_backend_image() {
   local tag
   tag="$(resolve_ragforge_image_tag "${1:-}")"
   printf '%s\n' "${RAGFORGE_IMAGE_REPO}:${tag}"
+}
+
+ragforge_frontend_image() {
+  local tag
+  tag="$(resolve_ragforge_image_tag "${1:-}")"
+  printf '%s\n' "${RAGFORGE_FRONTEND_IMAGE_REPO}:${tag}"
 }
 
 import_image_to_k3s() {
@@ -108,6 +115,35 @@ render_ragforge_deployment() {
     }
     /^[[:space:]]*- name:/ && !/^[[:space:]]*- name: backend[[:space:]]*$/ {
       in_backend = 0
+    }
+    { print }
+  ' "${src}" > "${dest}"
+}
+
+render_ragforge_frontend_deployment() {
+  local src="$1"
+  local dest="$2"
+  local image="$3"
+
+  awk -v image="${image}" '
+    /^[[:space:]]*- name: frontend[[:space:]]*$/ {
+      in_frontend = 1
+      print
+      next
+    }
+    in_frontend && /^[[:space:]]*image:/ {
+      match($0, /^[[:space:]]*/)
+      print substr($0, 1, RLENGTH) "image: " image
+      next
+    }
+    in_frontend && /^[[:space:]]*imagePullPolicy:/ {
+      match($0, /^[[:space:]]*/)
+      print substr($0, 1, RLENGTH) "imagePullPolicy: IfNotPresent"
+      in_frontend = 0
+      next
+    }
+    /^[[:space:]]*- name:/ && !/^[[:space:]]*- name: frontend[[:space:]]*$/ {
+      in_frontend = 0
     }
     { print }
   ' "${src}" > "${dest}"

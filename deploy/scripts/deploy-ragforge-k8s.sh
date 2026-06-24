@@ -54,9 +54,10 @@ fi
 IMAGE_TAG="$(resolve_ragforge_image_tag "${REPO_ROOT}")"
 export RAGFORGE_BACKEND_IMAGE_TAG="${IMAGE_TAG}"
 BACKEND_IMAGE="$(ragforge_backend_image "${REPO_ROOT}")"
-FRONTEND_IMAGE="ragforge/frontend:latest"
+FRONTEND_IMAGE="$(ragforge_frontend_image "${REPO_ROOT}")"
 RENDERED_DEPLOY="$(mktemp)"
-trap 'rm -f "${RENDERED_DEPLOY}"' EXIT
+RENDERED_FRONTEND_DEPLOY="$(mktemp)"
+trap 'rm -f "${RENDERED_DEPLOY}" "${RENDERED_FRONTEND_DEPLOY}"' EXIT
 
 echo "[0/6] Optional safe disk cleanup"
 if should_run_disk_cleanup; then
@@ -77,10 +78,15 @@ step_end
 step_start "[3/6] Build and import images"
 if [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
   bash "${SCRIPT_DIR}/build-ragforge-k8s-image.sh"
-  echo "[frontend] docker build -> ${FRONTEND_IMAGE}"
-  docker build -f frontend/Dockerfile --target runtime -t "${FRONTEND_IMAGE}" .
+  if [[ -d frontend/dist ]]; then
+    echo "[frontend] docker build (runtime-prebuilt) -> ${FRONTEND_IMAGE}"
+    docker build -f frontend/Dockerfile --target runtime-prebuilt -t "${FRONTEND_IMAGE}" .
+  else
+    echo "[frontend] docker build (runtime) -> ${FRONTEND_IMAGE}"
+    docker build -f frontend/Dockerfile --target runtime -t "${FRONTEND_IMAGE}" .
+  fi
   echo "[frontend] import image into k3s containerd"
-  docker save "${FRONTEND_IMAGE}" | k3s ctr -n k8s.io images import -
+  import_image_to_k3s "${FRONTEND_IMAGE}"
 else
   echo "Skip image build (SKIP_IMAGE_BUILD=1)"
   if ! k3s ctr -n k8s.io images ls | grep -q "${BACKEND_IMAGE}"; then
@@ -100,7 +106,7 @@ step_start "[4/6] Create backend secret from /opt/shared/env"
 bash "${SCRIPT_DIR}/create-ragforge-k8s-secret.sh"
 step_end
 
-step_start "[5/6] Apply manifests (image=${BACKEND_IMAGE})"
+step_start "[5/6] Apply manifests (backend=${BACKEND_IMAGE}, frontend=${FRONTEND_IMAGE})"
 if k3s kubectl -n "${NAMESPACE}" get deployment ragforge-backend >/dev/null 2>&1; then
   echo "Retiring legacy deployment/ragforge-backend before api/worker split rollout"
   k3s kubectl -n "${NAMESPACE}" delete deployment ragforge-backend --wait=true --timeout=180s
@@ -111,7 +117,8 @@ k3s kubectl apply -f "${K8S_DIR}/backend-configmap.yaml"
 k3s kubectl apply -f "${K8S_DIR}/backend-service.yaml"
 k3s kubectl apply -f "${K8S_DIR}/frontend-service.yaml"
 k3s kubectl apply -f "${RENDERED_DEPLOY}"
-k3s kubectl apply -f "${K8S_DIR}/frontend-deployment.yaml"
+render_ragforge_frontend_deployment "${K8S_DIR}/frontend-deployment.yaml" "${RENDERED_FRONTEND_DEPLOY}" "${FRONTEND_IMAGE}"
+k3s kubectl apply -f "${RENDERED_FRONTEND_DEPLOY}"
 ROLLOUT_TIMEOUT="${RAGFORGE_ROLLOUT_TIMEOUT:-600s}"
 if ! k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-api --timeout="${ROLLOUT_TIMEOUT}"; then
   echo "ragforge-api rollout failed; collecting diagnostics" >&2
@@ -138,5 +145,6 @@ step_end
 echo ""
 echo "NodePort endpoint on Server 3:"
 echo "  http://172.25.90.184:31090/api/v1/health"
-echo "Image: ${BACKEND_IMAGE}"
+echo "Backend image: ${BACKEND_IMAGE}"
+echo "Frontend image: ${FRONTEND_IMAGE}"
 echo "Tip: deploy/k3s/registries.yaml is documentation-only unless installed to /etc/rancher/k3s/registries.yaml"

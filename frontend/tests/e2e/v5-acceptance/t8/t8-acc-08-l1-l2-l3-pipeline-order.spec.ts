@@ -25,13 +25,13 @@ test('T8 ACC-08 L1 L2 L3 pipeline order', async ({ page, request }, testInfo) =>
   const fullKb = await createKb(request, headers, 't8-acc-08-full')
   const skipKb = await createKb(request, headers, 't8-acc-08-skip')
   try {
-    await createCleanProfile(fullKb, {
+    await createCleanProfile(request, headers, fullKb, {
       l1Enabled: true,
       l2Enabled: true,
       l3Enabled: true,
       piiPolicy: 'MASK',
     })
-    await createCleanProfile(skipKb, {
+    await createCleanProfile(request, headers, skipKb, {
       skipClean: true,
       l1Enabled: false,
       l2Enabled: false,
@@ -88,7 +88,7 @@ test('T8 ACC-08 L1 L2 L3 pipeline order', async ({ page, request }, testInfo) =>
   } finally {
     await cleanupKb(request, headers, fullKb)
     await cleanupKb(request, headers, skipKb)
-    await deleteCleanProfile(fullKb)
-    await deleteCleanProfile(skipKb)
+    await deleteCleanProfile(request, headers, fullKb)
+    await deleteCleanProfile(request, headers, skipKb)
   }
 })

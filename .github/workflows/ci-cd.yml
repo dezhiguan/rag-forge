@@ -277,15 +277,16 @@ jobs:
           APP_DIR="${APP_DIR:-/opt/rag-forge/k8s-src}"
           SSH_OPTS=(-F "${HOME}/.ssh/config" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 
-          timeout 10m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "APP_DIR='${APP_DIR}' bash -s" <<'EOF'
+          timeout 10m ssh -T "${SSH_OPTS[@]}" ragforge-k3s "APP_DIR='${APP_DIR}' IMAGE_TAG='${GITHUB_SHA::12}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${APP_DIR}"
           if [[ ! -d frontend/dist ]]; then
             echo "Missing frontend/dist for runtime-prebuilt image" >&2
             exit 1
           fi
-          docker build -f frontend/Dockerfile --target runtime-prebuilt -t ragforge/frontend:latest .
-          docker save ragforge/frontend:latest | sudo k3s ctr -n k8s.io images import -
+          FRONTEND_IMAGE="docker.io/ragforge/frontend:${IMAGE_TAG}"
+          docker build -f frontend/Dockerfile --target runtime-prebuilt -t "${FRONTEND_IMAGE}" .
+          docker save "${FRONTEND_IMAGE}" | sudo k3s ctr -n k8s.io images import -
           EOF
 
       - name: Deploy backend to k3s on Server 3
@@ -312,6 +313,7 @@ jobs:
           set -euo pipefail
           sudo k3s kubectl -n ragforge rollout status deployment/ragforge-api --timeout=600s
           sudo k3s kubectl -n ragforge rollout status deployment/ragforge-worker --timeout=600s
+          sudo k3s kubectl -n ragforge rollout status deployment/ragforge-frontend --timeout=180s
           sudo k3s kubectl -n ragforge get pods -o wide
           for i in $(seq 1 60); do
             if curl -sf "http://127.0.0.1:31090/api/v1/health" >/dev/null; then

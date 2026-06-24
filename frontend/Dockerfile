@@ -1,7 +1,7 @@
 # Multi-stage build for RAGForge frontend on k3s (Server 3).
 # Build context: rag-forge repository root.
 #
-#   docker build -f frontend/Dockerfile -t ragforge/frontend:latest .
+#   docker build -f frontend/Dockerfile -t docker.io/ragforge/frontend:<tag> .
 
 FROM node:20-alpine AS build
 WORKDIR /src
