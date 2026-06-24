@@ -43,6 +43,8 @@ export function uploadErrorMessage(error) {
   return messages[code] || '上传失败，点击重试'
 }
 
+const DEFAULT_CONTENT_TYPE = 'application/octet-stream'
+
 export async function presignUpload(kbId, filename, contentType, declaredSize) {
   const res = await uploadRequest.post('/uploads/presign', {
     kbId,
@@ -75,8 +77,9 @@ export async function registerUpload(
 export function putToOss(presignedPutUrl, file, contentType, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
+    const realContentType = contentType || DEFAULT_CONTENT_TYPE
     xhr.open('PUT', presignedPutUrl)
-    xhr.setRequestHeader('Content-Type', contentType)
+    xhr.setRequestHeader('Content-Type', realContentType)
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable || !onProgress) return
