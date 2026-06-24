@@ -15,6 +15,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -28,10 +29,29 @@ public class SecurityConfig {
   private final ObjectMapper objectMapper;
 
   @Bean
+  @Order(1)
+  public SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity http) throws Exception {
+    return http
+        .securityMatcher("/actuator/**")
+        .csrf(AbstractHttpConfigurer::disable)
+        .formLogin(AbstractHttpConfigurer::disable)
+        .logout(AbstractHttpConfigurer::disable)
+        .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .httpBasic(httpBasic -> httpBasic.realmName("ragforge-metrics"))
+        .authorizeHttpRequests(
+            auth ->
+                auth.requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/actuator/prometheus", "/actuator/metrics", "/actuator/info")
+                    .hasRole("METRICS_READER")
+                    .anyRequest().authenticated())
+        .build();
+  }
+
+  @Bean
+  @Order(2)
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
     return http
         .csrf(AbstractHttpConfigurer::disable)
-        .httpBasic(AbstractHttpConfigurer::disable)
         .formLogin(AbstractHttpConfigurer::disable)
         .logout(AbstractHttpConfigurer::disable)
         .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -44,6 +64,8 @@ public class SecurityConfig {
         .authorizeHttpRequests(
             auth ->
                 auth.requestMatchers("/api/v1/health", "/actuator/health", "/api/auth/**").permitAll()
+                    .requestMatchers("/actuator/prometheus", "/actuator/metrics", "/actuator/info")
+                    .hasRole("METRICS_READER")
                     .requestMatchers("/api/v1/.well-known/ragforge-admin-backend-jwks.json").permitAll()
                     .requestMatchers("/api/v1/events/**").permitAll()
                     .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/internal/**", "/mcp/**", "/sse", "/sse/**")

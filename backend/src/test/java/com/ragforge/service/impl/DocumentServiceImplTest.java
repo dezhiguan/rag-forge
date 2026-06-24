@@ -21,6 +21,9 @@ import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.service.FileStorageService;
+import com.ragforge.storage.ObjectMeta;
+import com.ragforge.storage.ObjectStorage;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,6 +47,7 @@ class DocumentServiceImplTest {
   @Mock private DocumentMapper documentMapper;
   @Mock private DocumentChunkMapper documentChunkMapper;
   @Mock private FileStorageService fileStorageService;
+  @Mock private ObjectStorage objectStorage;
   @Mock private DocumentProcessProducer documentProcessProducer;
   @Mock private EsIndexService esIndexService;
 
@@ -248,6 +252,40 @@ class DocumentServiceImplTest {
 
     assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
     assertThat(response.getHeaders().getFirst("Content-Disposition")).contains("doc.pdf");
+  }
+
+  @Test
+  void download_readsFromObjectStorageWhenBucketPresent() {
+    Document doc = doc(9L, 1L, "doc.pdf", "COMPLETED");
+    doc.setStorageBucket("rag-test-bucket");
+    doc.setFilePath("tenant-1/kb_1/uplt/test/doc.pdf");
+    ObjectMeta meta = new ObjectMeta();
+    meta.setSizeBytes(12L);
+
+    when(documentMapper.selectById(9L)).thenReturn(doc);
+    when(objectStorage.head("rag-test-bucket", "tenant-1/kb_1/uplt/test/doc.pdf")).thenReturn(meta);
+    when(objectStorage.get("rag-test-bucket", "tenant-1/kb_1/uplt/test/doc.pdf"))
+        .thenReturn(new ByteArrayInputStream("oss-file-bytes".getBytes(StandardCharsets.UTF_8)));
+
+    ResponseEntity<?> response = documentService.download(9L);
+
+    assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(response.getHeaders().getFirst("Content-Disposition")).contains("doc.pdf");
+    assertThat(response.getHeaders().getContentLength()).isEqualTo(12);
+  }
+
+  @Test
+  void download_missingObjectStorageObject_throws404() {
+    Document doc = doc(10L, 1L, "doc.pdf", "COMPLETED");
+    doc.setStorageBucket("rag-test-bucket");
+    doc.setFilePath("tenant-1/kb_1/uplt/missing.doc.pdf");
+
+    when(documentMapper.selectById(10L)).thenReturn(doc);
+    when(objectStorage.head("rag-test-bucket", "tenant-1/kb_1/uplt/missing.doc.pdf")).thenReturn(null);
+
+    assertThatThrownBy(() -> documentService.download(10L))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("原文件不存在");
   }
 
   @Test

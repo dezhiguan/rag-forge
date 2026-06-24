@@ -48,6 +48,11 @@ spec:
               value: api
             - name: SPRING_MAIN_WEB_APPLICATION_TYPE
               value: servlet
+            - name: METRICS_READER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ragforge-backend-env
+                  key: METRICS_READER_PASSWORD
             - name: JAVA_TOOL_OPTIONS
               value: "-Xms512m -Xmx1g"
           startupProbe:
@@ -139,7 +144,7 @@ spec:
             - name: SPRING_MAIN_WEB_APPLICATION_TYPE
               value: none
             - name: JAVA_TOOL_OPTIONS
-              value: "-Xms512m -Xmx1g"
+              value: "-Xms512m -Xmx1g -Dorg.apache.poi.openxml4j.opc.OPCPackage.useTempFile=true"
           resources:
             requests:
               cpu: 250m

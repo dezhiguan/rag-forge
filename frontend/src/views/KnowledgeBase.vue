@@ -370,7 +370,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { KB_DOCUMENT_DELETE_ENABLED, KNOWLEDGE_BASE_DELETE_ENABLED } from '../config/uiPolicy'
 import { createKb, deleteKb, listKb, updateKb } from '../api/kb'
 import {
@@ -399,6 +399,7 @@ import {
 } from '../composables/useDocumentStatus'
 
 const router = useRouter()
+const route = useRoute()
 const { start: startDocPolling, stop: stopDocPolling } = useDocumentPolling()
 
 const kbList = ref([])
@@ -817,7 +818,11 @@ async function onDrop(e) {
 }
 
 function goDoc(id, kbId) {
-  router.push(documentDetailRoute(id, { from: 'knowledge', kbId }))
+  router.push(documentDetailRoute(id, {
+    from: 'knowledge',
+    kbId,
+    returnTo: route.fullPath,
+  }))
 }
 
 function goDocuments(kbId) {
