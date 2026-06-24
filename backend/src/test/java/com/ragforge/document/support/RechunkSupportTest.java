@@ -41,12 +41,25 @@ class RechunkSupportTest {
   void validateRejectsChunkSizeOutOfRange() {
     RechunkRequest req = new RechunkRequest();
     req.setStrategy("FIXED_WINDOW");
-    req.setChunkSize(10_000);
+    req.setChunkSize(3000);
 
     assertThatThrownBy(() -> RechunkSupport.validateRequest(req, 5000))
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).getMessage())
         .isEqualTo("CHUNK_SIZE_OUT_OF_RANGE");
+  }
+
+  @Test
+  void validateRejectsChunkOverlapOutOfRange() {
+    RechunkRequest req = new RechunkRequest();
+    req.setStrategy("FIXED_WINDOW");
+    req.setChunkSize(512);
+    req.setChunkOverlap(600);
+
+    assertThatThrownBy(() -> RechunkSupport.validateRequest(req, 5000))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).getMessage())
+        .isEqualTo("CHUNK_OVERLAP_OUT_OF_RANGE");
   }
 
   @Test

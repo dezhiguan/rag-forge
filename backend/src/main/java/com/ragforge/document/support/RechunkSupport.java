@@ -48,7 +48,7 @@ public final class RechunkSupport {
       }
       if (chunkOverlap != null) {
         if (chunkOverlap < 0 || chunkOverlap > MAX_OVERLAP) {
-          throw new BizException(400, "CHUNK_SIZE_OUT_OF_RANGE");
+          throw new BizException(400, "CHUNK_OVERLAP_OUT_OF_RANGE");
         }
       }
     }

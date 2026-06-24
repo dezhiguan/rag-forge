@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -472,10 +473,27 @@ public class DocumentPipelineService {
       self.clearRechunkRequest(doc.getId());
       return result;
     } catch (RuntimeException e) {
-      self.clearRechunkRequest(doc.getId());
+      if (isStrategyInputError(e)) {
+        self.clearRechunkRequest(doc.getId());
+      }
       throw e;
     }
   }
+
+  private static boolean isStrategyInputError(RuntimeException e) {
+    if (!(e instanceof BizException biz)) {
+      return false;
+    }
+    return STRATEGY_INPUT_ERROR_CODES.contains(biz.getMessage());
+  }
+
+  private static final Set<String> STRATEGY_INPUT_ERROR_CODES =
+      Set.of(
+          "INVALID_STRATEGY",
+          "SEMANTIC_REQUIRES_LONG_TEXT",
+          "CHUNK_SIZE_OUT_OF_RANGE",
+          "CHUNK_OVERLAP_OUT_OF_RANGE",
+          "INVALID_CHUNKER_PROFILE_JSON");
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void clearRechunkRequest(Long documentId) {

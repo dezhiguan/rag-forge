@@ -26,6 +26,7 @@ const ERROR_CODE_LABELS = {
   SEMANTIC_REQUIRES_LONG_TEXT: '文本不足 2000 字，无法使用语义分块',
   INVALID_STRATEGY: '选择的策略无效，请刷新页面重试',
   CHUNK_SIZE_OUT_OF_RANGE: '块大小需要在 64-2048 范围内',
+  CHUNK_OVERLAP_OUT_OF_RANGE: '块重叠需要在 0-512 范围内',
   ALREADY_IN_PROGRESS: '文档正在处理，请等待完成后重试',
 }
 

@@ -2,7 +2,7 @@
   <Teleport to="body">
     <transition name="rechunk-fade">
       <div v-if="modelValue" class="rechunk-mask" @click.self="close">
-        <div class="rechunk-dialog" role="dialog" aria-modal="true" @keydown.esc.prevent="close">
+        <div class="rechunk-dialog" role="dialog" aria-modal="true">
           <header class="rechunk-header">
             <div>
               <div class="rechunk-title">📊 重新分块</div>
@@ -87,7 +87,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -137,7 +137,6 @@ const documentType = computed(() => {
 const textLength = computed(() => {
   const report = parseCleanReport(props.doc?.cleanReportJson)
   if (report?.cleanedLength != null) return Number(report.cleanedLength) || 0
-  if (props.doc?.fileSize != null) return Number(props.doc.fileSize) || 0
   return 0
 })
 
@@ -239,6 +238,14 @@ function parseCleanReport(raw) {
 function close() {
   emit('update:modelValue', false)
 }
+
+function onKey(e) {
+  if (!props.modelValue) return
+  if (e.key === 'Escape') close()
+}
+
+onMounted(() => window.addEventListener('keydown', onKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 function submit() {
   if (submitDisabled.value) return

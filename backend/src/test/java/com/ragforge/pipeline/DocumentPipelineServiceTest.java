@@ -29,6 +29,7 @@ import com.ragforge.pipeline.chunker.Chunk;
 import com.ragforge.pipeline.chunker.ChunkParams;
 import com.ragforge.pipeline.chunker.ChunkingResult;
 import com.ragforge.pipeline.chunker.ChunkingService;
+import java.io.IOException;
 import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.image.EmbeddedImageExtractor;
 import com.ragforge.pipeline.image.ExtractedImage;
@@ -109,6 +110,7 @@ class DocumentPipelineServiceTest {
     doNothing().when(documentPipelineService).updateDocumentChunkCount(anyLong(), anyInt());
     doNothing().when(documentPipelineService).updateCleanReport(anyLong(), any(), anyString());
     doNothing().when(documentPipelineService).incrementKbCount(anyLong(), anyInt(), anyBoolean());
+    doNothing().when(documentPipelineService).clearRechunkRequest(anyLong());
   }
 
   @Test
@@ -458,6 +460,71 @@ class DocumentPipelineServiceTest {
     documentPipelineService.incrementKbCount(99L, 3, true);
 
     verify(knowledgeBaseMapper, never()).update(org.mockito.ArgumentMatchers.isNull(), any());
+  }
+
+  @Test
+  void processDocument_rechunkSuccess_clearsRechunkRequest() throws Exception {
+    Document doc = document(11L, 10L, "rechunk.md");
+    doc.setRechunkStrategy("FIXED_WINDOW");
+    doc.setRechunkParamsJson("{\"chunkSize\":512,\"overlap\":64}");
+    KnowledgeBase kb = knowledgeBase(10L);
+    List<Chunk> chunks = List.of(new Chunk(0, "hello", 5));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(110L, 0));
+
+    when(documentMapper.selectById(11L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("hello", 1L, 1));
+    when(chunkingService.splitWithStrategy(eq(doc), eq(kb), eq("hello"), eq("FIXED_WINDOW"), any(ChunkParams.class)))
+        .thenReturn(chunkingResult(chunks));
+    when(embeddingService.embedBatch(List.of("hello"))).thenReturn(vectors);
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(eq(11L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(11L);
+
+    verify(chunkingService, never()).split(any(Document.class), any(KnowledgeBase.class), anyString());
+    verify(documentPipelineService).clearRechunkRequest(11L);
+  }
+
+  @Test
+  void processDocument_rechunkStrategyInputError_clearsRechunkRequest() throws Exception {
+    Document doc = document(12L, 10L, "rechunk-bad.md");
+    doc.setRechunkStrategy("INVALID_STRATEGY");
+    KnowledgeBase kb = knowledgeBase(10L);
+
+    when(documentMapper.selectById(12L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("hello", 1L, 1));
+    when(chunkingService.splitWithStrategy(eq(doc), eq(kb), eq("hello"), eq("INVALID_STRATEGY"), eq(null)))
+        .thenThrow(new BizException(400, "INVALID_STRATEGY"));
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(12L))
+        .isInstanceOf(BizException.class)
+        .hasMessage("INVALID_STRATEGY");
+
+    verify(documentPipelineService).clearRechunkRequest(12L);
+  }
+
+  @Test
+  void processDocument_rechunkTransientFailure_keepsRechunkRequest() throws Exception {
+    Document doc = document(13L, 10L, "rechunk-retry.md");
+    doc.setRechunkStrategy("SEMANTIC");
+    KnowledgeBase kb = knowledgeBase(10L);
+
+    when(documentMapper.selectById(13L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString())).thenReturn(new ParseResult("hello", 1L, 1));
+    when(chunkingService.splitWithStrategy(eq(doc), eq(kb), eq("hello"), eq("SEMANTIC"), eq(null)))
+        .thenThrow(new RuntimeException(new IOException("DashScope unavailable")));
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(13L))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("DashScope unavailable");
+
+    verify(documentPipelineService, never()).clearRechunkRequest(13L);
   }
 
   private static Document document(long id, long kbId, String filename) {
