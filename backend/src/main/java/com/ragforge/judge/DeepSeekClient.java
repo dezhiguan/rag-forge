@@ -36,8 +36,11 @@ public class DeepSeekClient {
   @Value("${app.deepseek.base-url:https://api.deepseek.com/v1}")
   private String baseUrl;
 
-  @Value("${app.deepseek.model:deepseek-chat}")
+  @Value("${app.deepseek.model:deepseek-v4-flash}")
   private String model;
+
+  @Value("${app.deepseek.enable-thinking:false}")
+  private boolean enableThinking;
 
   @Value("${app.deepseek.temperature:0.0}")
   private double temperature;
@@ -75,6 +78,9 @@ public class DeepSeekClient {
         requestBody.put("model", model);
         requestBody.set("messages", messages);
         requestBody.put("temperature", temperature);
+        requestBody
+            .putObject("thinking")
+            .put("type", enableThinking ? "enabled" : "disabled");
         requestBody.putObject("response_format").put("type", "json_object");
 
         String body = requestBody.toString();
@@ -127,6 +133,10 @@ public class DeepSeekClient {
   public record ChatResult(
       String content, int promptTokens, int completionTokens, int latencyMs) {
 
+    /**
+     * V4-Flash miss price: input ¥1/M, output ¥2/M. Cache hits cost 1/50 of miss price; this
+     * estimate uses miss price (conservative).
+     */
     public BigDecimal estimateCostCny() {
       BigDecimal inputCost =
           BigDecimal.valueOf(promptTokens)

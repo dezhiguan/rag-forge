@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 @RocketMQMessageListener(
     topic = AnswerJudgeProducer.TOPIC,
     consumerGroup = "ragforge-judge-consumer",
+    consumeThreadNumber = 20,
+    consumeThreadMax = 20,
     maxReconsumeTimes = 3)
 public class AnswerJudgeConsumer implements RocketMQListener<AnswerJudgeMessage> {
 

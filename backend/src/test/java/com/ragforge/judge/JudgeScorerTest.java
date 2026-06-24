@@ -231,7 +231,8 @@ class JudgeScorerTest {
     DeepSeekClient client = new DeepSeekClient(restTemplate, OBJECT_MAPPER);
     ReflectionTestUtils.setField(client, "apiKey", "test-key");
     ReflectionTestUtils.setField(client, "baseUrl", "https://api.deepseek.com/v1");
-    ReflectionTestUtils.setField(client, "model", "deepseek-chat");
+    ReflectionTestUtils.setField(client, "model", "deepseek-v4-flash");
+    ReflectionTestUtils.setField(client, "enableThinking", false);
     ReflectionTestUtils.setField(client, "maxRetries", 1);
     ReflectionTestUtils.setField(client, "retryBackoffMs", 1);
 
@@ -250,6 +251,7 @@ class JudgeScorerTest {
     assertThat(requestEntity.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
     assertThat(requestEntity.getBody()).contains("\"response_format\":{\"type\":\"json_object\"}");
     assertThat(requestEntity.getBody()).contains("\"temperature\":0.0");
+    assertThat(requestEntity.getBody()).contains("\"thinking\":{\"type\":\"disabled\"}");
   }
 
   @Test
@@ -267,7 +269,8 @@ class JudgeScorerTest {
     DeepSeekClient client = new DeepSeekClient(restTemplate, OBJECT_MAPPER);
     ReflectionTestUtils.setField(client, "apiKey", "test-key");
     ReflectionTestUtils.setField(client, "baseUrl", "https://api.deepseek.com/v1");
-    ReflectionTestUtils.setField(client, "model", "deepseek-chat");
+    ReflectionTestUtils.setField(client, "model", "deepseek-v4-flash");
+    ReflectionTestUtils.setField(client, "enableThinking", false);
     ReflectionTestUtils.setField(client, "temperature", 0.5d);
     ReflectionTestUtils.setField(client, "maxRetries", 1);
     ReflectionTestUtils.setField(client, "retryBackoffMs", 1);
@@ -287,7 +290,8 @@ class JudgeScorerTest {
     DeepSeekClient client = new DeepSeekClient(restTemplate, OBJECT_MAPPER);
     ReflectionTestUtils.setField(client, "apiKey", "test-key");
     ReflectionTestUtils.setField(client, "baseUrl", "https://api.deepseek.com/v1");
-    ReflectionTestUtils.setField(client, "model", "deepseek-chat");
+    ReflectionTestUtils.setField(client, "model", "deepseek-v4-flash");
+    ReflectionTestUtils.setField(client, "enableThinking", false);
     ReflectionTestUtils.setField(client, "maxRetries", 2);
     ReflectionTestUtils.setField(client, "retryBackoffMs", 1);
 
@@ -324,7 +328,8 @@ class JudgeScorerTest {
     DeepSeekClient client = new DeepSeekClient(new RestTemplate(), OBJECT_MAPPER);
     ReflectionTestUtils.setField(client, "apiKey", key);
     ReflectionTestUtils.setField(client, "baseUrl", System.getenv().getOrDefault("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"));
-    ReflectionTestUtils.setField(client, "model", System.getenv().getOrDefault("DEEPSEEK_MODEL", "deepseek-chat"));
+    ReflectionTestUtils.setField(client, "model", System.getenv().getOrDefault("DEEPSEEK_MODEL", "deepseek-v4-flash"));
+    ReflectionTestUtils.setField(client, "enableThinking", false);
     ReflectionTestUtils.setField(client, "temperature", 0.0d);
     ReflectionTestUtils.setField(client, "maxRetries", 2);
     ReflectionTestUtils.setField(client, "retryBackoffMs", 1000);

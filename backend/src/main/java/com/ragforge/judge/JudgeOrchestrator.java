@@ -37,7 +37,7 @@ public class JudgeOrchestrator {
   private final RagforgeMetrics metrics;
   private final ObjectMapper objectMapper;
 
-  @Value("${app.deepseek.model:deepseek-chat}")
+  @Value("${app.deepseek.model:deepseek-v4-flash}")
   private String judgeModel;
 
   @Value("${ragforge.judge.stability-check.enabled:false}")
