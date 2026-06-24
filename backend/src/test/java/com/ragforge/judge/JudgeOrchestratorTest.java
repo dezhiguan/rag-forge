@@ -183,6 +183,60 @@ class JudgeOrchestratorUnitTest {
   }
 
   @Test
+  void testFailureReasonTruncated() {
+    AnswerLogMapper answerLogMapper = org.mockito.Mockito.mock(AnswerLogMapper.class);
+    DocumentChunkMapper documentChunkMapper = org.mockito.Mockito.mock(DocumentChunkMapper.class);
+    JudgeResultMapper judgeResultMapper = org.mockito.Mockito.mock(JudgeResultMapper.class);
+    JudgeScorer scorer = org.mockito.Mockito.mock(JudgeScorer.class);
+    RagforgeMetrics metrics = org.mockito.Mockito.mock(RagforgeMetrics.class);
+    ObjectMapper objectMapper = new ObjectMapper();
+
+    String longReason = "x".repeat(500);
+
+    AnswerLog answerLog = new AnswerLog();
+    answerLog.setId(105L);
+    answerLog.setTenantId("default");
+    answerLog.setQuery("long failure?");
+    answerLog.setAnswer("answer");
+    answerLog.setKbIdsCsv("11");
+    answerLog.setCitationsSnapshot("[]");
+    when(answerLogMapper.selectByIdWithKbIdsCsv(105L)).thenReturn(answerLog);
+
+    when(scorer.score(any(), eq(ScoreDimension.FAITHFULNESS))).thenReturn(fail(ScoreDimension.FAITHFULNESS, longReason));
+    when(scorer.score(any(), eq(ScoreDimension.CONTEXT_PRECISION))).thenReturn(success(ScoreDimension.CONTEXT_PRECISION, "0.8"));
+    when(scorer.score(any(), eq(ScoreDimension.ANSWER_RELEVANCE))).thenReturn(success(ScoreDimension.ANSWER_RELEVANCE, "0.85"));
+    when(scorer.score(any(), eq(ScoreDimension.COMPOSITE))).thenReturn(success(ScoreDimension.COMPOSITE, "0.88"));
+    org.mockito.Mockito.doAnswer(
+            invocation -> {
+              JudgeResult inserted = invocation.getArgument(0);
+              inserted.setId(1005L);
+              return 1;
+            })
+        .when(judgeResultMapper)
+        .insert(any(JudgeResult.class));
+
+    JudgeOrchestrator orchestrator =
+        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
+    AnswerJudgeMessage msg = new AnswerJudgeMessage();
+    msg.setAnswerLogId(105L);
+    msg.setSource("PRODUCTION");
+
+    orchestrator.judge(msg);
+
+    verify(judgeResultMapper)
+        .updateById(
+            argThat(
+                (JudgeResult r) -> {
+                  String reason = r.getFailureReason();
+                  return "FAILED".equals(r.getStatus())
+                      && reason != null
+                      && reason.length() == 240
+                      && reason.endsWith("...")
+                      && reason.length() <= 256;
+                }));
+  }
+
+  @Test
   void answerLogNotFoundSkipsSilently() {
     AnswerLogMapper answerLogMapper = org.mockito.Mockito.mock(AnswerLogMapper.class);
     DocumentChunkMapper documentChunkMapper = org.mockito.Mockito.mock(DocumentChunkMapper.class);

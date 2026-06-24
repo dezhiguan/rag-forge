@@ -127,7 +127,7 @@ node: 8.138.191.228
 namespace: ragforge
 ```
 
-T12 后 backend 拆为两类 Deployment：
+T12 后 backend 拆为三类 Deployment：
 
 ```mermaid
 flowchart TB
@@ -138,10 +138,13 @@ flowchart TB
   API1 --> Redis[(Redis)]
   API1 --> MQ[(RocketMQ)]
   MQ --> W1[Deployment ragforge-worker replica 2, RAGFORGE_ROLE=worker]
+  MQ --> J1[Deployment ragforge-judge replica 1, RAGFORGE_ROLE=judge]
   W1 --> PG
   W1 --> ES
   W1 --> OSS[(Aliyun OSS / local fallback)]
   W1 --> DashScope[DashScope OCR / VL Embedding]
+  J1 --> PG
+  J1 --> DeepSeek[DeepSeek V4-Flash Judge]
 ```
 
 角色语义：
@@ -149,8 +152,9 @@ flowchart TB
 | role | 行为 |
 |---|---|
 | `api` | 接 HTTP，不注册 RocketMQ Consumer |
-| `worker` | 消费 MQ，`spring.main.web-application-type=none`，不暴露 HTTP |
-| `all` | 默认值，单机开发/兼容部署时 HTTP + MQ 都启用 |
+| `worker` | 消费文档处理 MQ，`spring.main.web-application-type=none`，不暴露 HTTP |
+| `judge` | 消费 `ragforge-answer-judge` topic，`consumeThreadNumber/Max=20`（注解硬编码，改并发需改代码重打镜像） |
+| `all` | 默认值，单机开发/兼容部署时 HTTP + 全部 MQ Consumer 都启用 |
 
 不拆多个文档处理 topic，也不按文本/图片拆 Worker，因为 T10-rewrite 后 text 和 image 都调用 DashScope API，资源画像趋同。
 

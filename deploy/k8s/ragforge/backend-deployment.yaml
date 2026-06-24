@@ -200,8 +200,6 @@ spec:
           env:
             - name: RAGFORGE_ROLE
               value: judge
-            - name: RAGFORGE_JUDGE_CONSUMER_THREADS
-              value: "20"
             - name: SPRING_MAIN_WEB_APPLICATION_TYPE
               value: none
             - name: JAVA_TOOL_OPTIONS

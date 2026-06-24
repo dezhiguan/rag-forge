@@ -20,7 +20,7 @@ CREATE TABLE judge_results (
   judge_cost_cny DECIMAL(10,4),
 
   status VARCHAR(16) NOT NULL DEFAULT 'COMPLETED',
-  failure_reason VARCHAR(256),
+  failure_reason TEXT,
 
   source VARCHAR(16) NOT NULL,
   golden_question_id BIGINT,

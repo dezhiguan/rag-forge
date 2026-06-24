@@ -93,7 +93,6 @@ ragforge:
     golden-replay:
       enabled: ${RAGFORGE_JUDGE_GOLDEN_REPLAY_ENABLED:true}
       cron: ${RAGFORGE_JUDGE_GOLDEN_REPLAY_CRON:0 0 3 * * *}
-    consumer-threads: ${RAGFORGE_JUDGE_CONSUMER_THREADS:20}
     cost-guard:
       # Set false in local/debug environments to disable scheduled judge cost budget alerts.
       enabled: ${RAGFORGE_JUDGE_COST_GUARD_ENABLED:true}
@@ -171,6 +170,7 @@ app:
     base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
     model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
     enable-thinking: ${DEEPSEEK_ENABLE_THINKING:false}
+    max-tokens: ${DEEPSEEK_MAX_TOKENS:1024}
     temperature: 0.0
     timeout-ms: 30000
     max-retries: 3

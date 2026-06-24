@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 @Component
 @Conditional(JudgeRoleCondition.class)
 @RequiredArgsConstructor
+// RocketMQ 注解仅接受 compile-time 常量，故 consumeThreadNumber/Max 硬编码 20。
+// 如需调整必须改代码 + 重新打镜像。
 @RocketMQMessageListener(
     topic = AnswerJudgeProducer.TOPIC,
     consumerGroup = "ragforge-judge-consumer",

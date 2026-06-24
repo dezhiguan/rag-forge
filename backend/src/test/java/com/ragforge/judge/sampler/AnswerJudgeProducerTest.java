@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
+import com.ragforge.judge.JudgeOrchestrator;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,7 +27,7 @@ class AnswerJudgeProducerTest {
     JudgeSampler sampler = org.mockito.Mockito.mock(JudgeSampler.class);
     Environment environment = org.mockito.Mockito.mock(Environment.class);
 
-    AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment);
+    AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment, orchestratorProvider());
     ReflectionTestUtils.setField(producer, "dispatchMode", "disabled");
 
     producer.publishJudgeRequest(sampleMessage(123L), sampleRequest(123L));
@@ -36,13 +37,18 @@ class AnswerJudgeProducerTest {
   }
 
   @Test
-  void publish_inlineModeBypassesMq() {
+  void publish_inlineModeBypassesMqAndRunsOrchestrator() {
     RocketMQTemplate rocketMQTemplate = org.mockito.Mockito.mock(RocketMQTemplate.class);
     JudgeSampler sampler = org.mockito.Mockito.mock(JudgeSampler.class);
     Environment environment = org.mockito.Mockito.mock(Environment.class);
+    JudgeOrchestrator orchestrator = org.mockito.Mockito.mock(JudgeOrchestrator.class);
+    org.springframework.beans.factory.ObjectProvider<JudgeOrchestrator> orchestratorProvider =
+        org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
     when(environment.getActiveProfiles()).thenReturn(new String[] {});
+    when(orchestratorProvider.getIfAvailable()).thenReturn(orchestrator);
 
-    AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment);
+    AnswerJudgeProducer producer =
+        new AnswerJudgeProducer(rocketMQTemplate, sampler, environment, orchestratorProvider);
     ReflectionTestUtils.setField(producer, "dispatchMode", "inline");
     when(sampler.decide(argThat(req -> req.answerLogId() == 123L && req.forceSample() == false)))
         .thenReturn(new SampleDecision(true, 1L, null, "KEEP_BY_RATE"));
@@ -51,6 +57,7 @@ class AnswerJudgeProducerTest {
 
     verify(rocketMQTemplate, never()).convertAndSend(anyString(), any(AnswerJudgeMessage.class));
     verify(sampler).decide(any());
+    org.mockito.Mockito.verify(orchestrator).judge(any());
   }
 
   @Test
@@ -64,7 +71,7 @@ class AnswerJudgeProducerTest {
     when(sampler.decide(argThat(req -> req.answerLogId() == 123L && req.forceSample() == false)))
         .thenReturn(new SampleDecision(true, 1L, null, "KEEP_BY_RATE"));
 
-    AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment);
+    AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment, orchestratorProvider());
     ReflectionTestUtils.setField(producer, "dispatchMode", "mq");
 
     producer.publishJudgeRequest(sampleMessage(123L), sampleRequest(123L));
@@ -79,7 +86,7 @@ class AnswerJudgeProducerTest {
     Environment environment = org.mockito.Mockito.mock(Environment.class);
     when(environment.getActiveProfiles()).thenReturn(new String[] {"prod"});
 
-    AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment);
+    AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment, orchestratorProvider());
     ReflectionTestUtils.setField(producer, "dispatchMode", "inline");
 
     producer.publishJudgeRequest(sampleMessage(123L), sampleRequest(123L));
@@ -109,5 +116,10 @@ class AnswerJudgeProducerTest {
 
   private static SampleRequest sampleRequest(long id) {
     return new SampleRequest(id, new Long[] {10L}, "tenant-a", "PRODUCTION", false);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static org.springframework.beans.factory.ObjectProvider<JudgeOrchestrator> orchestratorProvider() {
+    return org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
   }
 }

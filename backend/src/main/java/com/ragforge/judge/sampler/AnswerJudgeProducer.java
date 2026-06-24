@@ -1,9 +1,11 @@
 package com.ragforge.judge.sampler;
 
+import com.ragforge.judge.JudgeOrchestrator;
 import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,7 @@ public class AnswerJudgeProducer {
   private final RocketMQTemplate rocketMQTemplate;
   private final JudgeSampler sampler;
   private final Environment environment;
+  private final ObjectProvider<JudgeOrchestrator> judgeOrchestrator;
 
   @Value("${ragforge.judge.dispatch-mode:mq}")
   private String dispatchMode;
@@ -38,6 +41,14 @@ public class AnswerJudgeProducer {
     }
     if ("inline".equalsIgnoreCase(dispatchMode)) {
       log.warn("INLINE_JUDGE_DISPATCH: answerLogId={}", msg.getAnswerLogId());
+      JudgeOrchestrator orchestrator = judgeOrchestrator.getIfAvailable();
+      if (orchestrator == null) {
+        log.error(
+            "Inline judge requires ragforge.role=judge or ragforge.role=all, answerLogId={}",
+            msg.getAnswerLogId());
+        return;
+      }
+      orchestrator.judge(msg);
       return;
     }
     try {

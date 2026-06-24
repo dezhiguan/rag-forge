@@ -20,6 +20,16 @@ import org.springframework.web.client.RestTemplate;
 @Component
 public class DeepSeekClient {
 
+  /**
+   * V4-Flash miss-price per 1K tokens (CNY). Cache hit is 1/50 of miss; estimate uses miss.
+   *
+   * @see <a href="https://api-docs.deepseek.com/quick_start/pricing">DeepSeek pricing</a>
+   *      (2026-06-23, ¥1/M input miss, ¥2/M output)
+   */
+  private static final BigDecimal V4_FLASH_INPUT_PRICE_CNY_PER_K_MISS = new BigDecimal("0.001");
+
+  private static final BigDecimal V4_FLASH_OUTPUT_PRICE_CNY_PER_K = new BigDecimal("0.002");
+
   private final RestTemplate deepseekRestTemplate;
   private final ObjectMapper objectMapper;
 
@@ -41,6 +51,9 @@ public class DeepSeekClient {
 
   @Value("${app.deepseek.enable-thinking:false}")
   private boolean enableThinking;
+
+  @Value("${app.deepseek.max-tokens:1024}")
+  private int maxTokens = 1024;
 
   @Value("${app.deepseek.temperature:0.0}")
   private double temperature;
@@ -69,6 +82,9 @@ public class DeepSeekClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey);
+        // 避免连接池复用导致响应体截断（运行态 judge 链路曾出现仅读到 "{" 的 JSON 解析失败）
+        headers.setConnection("close");
+        headers.set("Accept-Encoding", "identity");
 
         var messages = objectMapper.createArrayNode();
         messages.add(objectMapper.createObjectNode().put("role", "system").put("content", systemPrompt));
@@ -78,10 +94,13 @@ public class DeepSeekClient {
         requestBody.put("model", model);
         requestBody.set("messages", messages);
         requestBody.put("temperature", temperature);
+        // V4 thinking toggle: {"thinking": {"type": "enabled|disabled"}} (default enabled).
+        // https://api-docs.deepseek.com/api/create-chat-completion
         requestBody
             .putObject("thinking")
             .put("type", enableThinking ? "enabled" : "disabled");
         requestBody.putObject("response_format").put("type", "json_object");
+        requestBody.put("max_tokens", Math.max(1, maxTokens));
 
         String body = requestBody.toString();
         ResponseEntity<String> response =
@@ -90,14 +109,38 @@ public class DeepSeekClient {
 
         String responseBody = response.getBody();
         if (responseBody == null || responseBody.isBlank()) {
-          throw new RuntimeException("DeepSeek response is empty");
+          throw new RuntimeException(
+              "DeepSeek response is empty, httpStatus=" + response.getStatusCode());
         }
 
-        JsonNode root = objectMapper.readTree(responseBody);
-        String content =
-            root.path("choices").path(0).path("message").path("content").asText("").trim();
+        JsonNode root;
+        try {
+          root = objectMapper.readTree(responseBody);
+        } catch (Exception parseEx) {
+          String preview =
+              responseBody.length() <= 200 ? responseBody : responseBody.substring(0, 200) + "...";
+          throw new RuntimeException(
+              "DeepSeek response JSON parse failed, httpStatus="
+                  + response.getStatusCode()
+                  + ", bodyLen="
+                  + responseBody.length()
+                  + ", preview="
+                  + preview,
+              parseEx);
+        }
+        JsonNode choice = root.path("choices").path(0);
+        String finishReason = choice.path("finish_reason").asText("unknown");
+        JsonNode message = choice.path("message");
+        String content = message.path("content").asText("").trim();
         if (content.isBlank()) {
-          throw new RuntimeException("DeepSeek returned empty content");
+          // thinking 未关闭时 reasoning_content 可能有内容；judge 应 disabled，此处仅兜底
+          content = message.path("reasoning_content").asText("").trim();
+        }
+        if (content.isBlank()) {
+          throw new RuntimeException("DeepSeek empty content, finish_reason=" + finishReason);
+        }
+        if ("length".equals(finishReason)) {
+          throw new RuntimeException("DeepSeek response truncated, finish_reason=length");
         }
         int promptTokens = root.path("usage").path("prompt_tokens").asInt(0);
         int completionTokens = root.path("usage").path("completion_tokens").asInt(0);
@@ -136,15 +179,17 @@ public class DeepSeekClient {
     /**
      * V4-Flash miss price: input ¥1/M, output ¥2/M. Cache hits cost 1/50 of miss price; this
      * estimate uses miss price (conservative).
+     *
+     * @see <a href="https://api-docs.deepseek.com/quick_start/pricing">DeepSeek pricing</a>
      */
     public BigDecimal estimateCostCny() {
       BigDecimal inputCost =
           BigDecimal.valueOf(promptTokens)
-              .multiply(BigDecimal.valueOf(0.001))
+              .multiply(V4_FLASH_INPUT_PRICE_CNY_PER_K_MISS)
               .divide(BigDecimal.valueOf(1000), 4, RoundingMode.HALF_UP);
       BigDecimal outputCost =
           BigDecimal.valueOf(completionTokens)
-              .multiply(BigDecimal.valueOf(0.002))
+              .multiply(V4_FLASH_OUTPUT_PRICE_CNY_PER_K)
               .divide(BigDecimal.valueOf(1000), 4, RoundingMode.HALF_UP);
       return inputCost.add(outputCost);
     }

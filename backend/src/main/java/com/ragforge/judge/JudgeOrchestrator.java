@@ -11,6 +11,7 @@ import com.ragforge.mapper.JudgeResultMapper;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.entity.AnswerLog;
 import com.ragforge.model.entity.DocumentChunk;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.ragforge.model.entity.JudgeResult;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -114,7 +115,29 @@ public class JudgeOrchestrator {
     } finally {
       result.setJudgeCostCny(cost);
       result.setJudgeLatencyMs(Math.toIntExact(Math.max(0L, latency)));
-      judgeResultMapper.updateById(result);
+      // truncate failure_reason 防止超过 VARCHAR(256)（V32 迁移前兜底）
+      String reason = result.getFailureReason();
+      if (reason != null && reason.length() > 240) {
+        result.setFailureReason(reason.substring(0, 237) + "...");
+      }
+      try {
+        judgeResultMapper.updateById(result);
+      } catch (Exception updateEx) {
+        log.error(
+            "Judge updateById failed; trying status-only fallback. answerLogId={}",
+            answerLog.getId(),
+            updateEx);
+        try {
+          judgeResultMapper.update(
+              null,
+              new LambdaUpdateWrapper<JudgeResult>()
+                  .eq(JudgeResult::getId, result.getId())
+                  .set(JudgeResult::getStatus, "FAILED")
+                  .set(JudgeResult::getFailureReason, "PERSISTENCE_FAILED"));
+        } catch (Exception fallbackEx) {
+          log.error("Judge status-only fallback also failed. id={}", result.getId(), fallbackEx);
+        }
+      }
     }
 
     metrics.recordJudgeCost(result.getSource(), cost);
@@ -263,6 +286,8 @@ public class JudgeOrchestrator {
       entry.put("reasoning", score.getReasoning());
       entry.put("issues", score.getIssues());
       entry.put("stable", score.isStable());
+      entry.put("prompt_tokens", score.getPromptTokens());
+      entry.put("completion_tokens", score.getCompletionTokens());
       if (score.getRawResponse() != null) {
         entry.put("raw", score.getRawResponse());
       }
