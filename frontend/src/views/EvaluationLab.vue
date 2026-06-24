@@ -829,7 +829,10 @@ import {
 } from '../api/eval'
 import { listKb } from '../api/kb'
 import { search as searchApi } from '../api/search'
+import { confirm as confirmDialog } from '../composables/useConfirm'
+import { useToast } from '../composables/useToast'
 
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
@@ -998,11 +1001,11 @@ function openCreateDataset() {
 
 async function onCreateDataset() {
   if (!datasetForm.value.name?.trim()) {
-    alert('请填写数据集名称')
+    toast.warning('请填写数据集名称')
     return
   }
   if (!datasetForm.value.kbId) {
-    alert('请选择关联知识库')
+    toast.warning('请选择关联知识库')
     return
   }
   submittingDataset.value = true
@@ -1019,11 +1022,24 @@ async function onCreateDataset() {
 }
 
 async function onDeleteDataset(ds) {
-  if (!confirm(`确定删除数据集「${ds.name}」？关联题目将一并删除。`)) return
-  await deleteEvalDataset(ds.id)
-  if (expandedDatasetId.value === ds.id) expandedDatasetId.value = null
-  delete questionsMap[ds.id]
-  await loadDatasets()
+  const ok = await confirmDialog({
+    title: '删除数据集',
+    message: `确定删除数据集「${ds.name}」？`,
+    detail: '关联题目将一并删除。',
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
+  try {
+    await deleteEvalDataset(ds.id)
+    if (expandedDatasetId.value === ds.id) expandedDatasetId.value = null
+    delete questionsMap[ds.id]
+    await loadDatasets()
+    toast.success('数据集已删除')
+  } catch {
+    // 全局拦截器已 toast
+  }
 }
 
 function openAddQuestion(datasetId) {
@@ -1054,7 +1070,7 @@ function openEditQuestion(datasetId, question) {
 
 async function onSearchCandidates() {
   if (!questionForm.value.question?.trim()) {
-    alert('请先填写问题')
+    toast.warning('请先填写问题')
     return
   }
   searchingCandidates.value = true
@@ -1077,7 +1093,7 @@ async function onSearchCandidates() {
     }))
     addQuestionStep.value = 2
   } catch {
-    alert('检索候选 Chunk 失败，请稍后重试')
+    toast.error('检索候选 Chunk 失败，请稍后重试')
   } finally {
     searchingCandidates.value = false
   }
@@ -1091,7 +1107,7 @@ function candidatePreview(content) {
 
 async function onAddQuestion() {
   if (!questionForm.value.question?.trim()) {
-    alert('请填写问题')
+    toast.warning('请填写问题')
     return
   }
   submittingQuestion.value = true
@@ -1146,10 +1162,10 @@ async function updateQuestionJudgeFields(datasetId, question, judgeFields) {
       judgeEnabled: question.judgeEnabled,
       judgeTags: question.judgeTags,
     })
-  } catch (e) {
+  } catch {
     question.judgeEnabled = previous.judgeEnabled
     question.judgeTags = previous.judgeTags
-    alert(e?.response?.data?.message || e?.message || 'Golden Set 更新失败')
+    // 全局拦截器已 toast
   }
 }
 
@@ -1207,15 +1223,15 @@ async function preloadQuickStartChunks() {
 
 async function onCreateQuickStart() {
   if (!quickStartKbId.value) {
-    alert('请选择知识库')
+    toast.warning('请选择知识库')
     return
   }
   if (!quickStartName.value?.trim()) {
-    alert('请填写数据集名称')
+    toast.warning('请填写数据集名称')
     return
   }
   if (!quickStartReady.value) {
-    alert('当前知识库没有检索到足够的可标注 Chunk，暂不能创建快速体验数据集')
+    toast.warning('当前知识库没有检索到足够的可标注 Chunk，暂不能创建快速体验数据集')
     return
   }
   creatingQuickStart.value = true
@@ -1227,7 +1243,7 @@ async function onCreateQuickStart() {
     })
     const datasetId = ds.data?.id
     if (!datasetId) {
-      alert('数据集创建失败')
+      toast.error('数据集创建失败')
       return
     }
 
@@ -1245,8 +1261,8 @@ async function onCreateQuickStart() {
       expandedDatasetId.value = datasetId
       await loadQuestions(datasetId, 1)
     }
-  } catch (e) {
-    alert('创建失败：' + (e?.response?.data?.message || e?.message || '未知错误'))
+  } catch {
+    // 全局拦截器已 toast
   } finally {
     creatingQuickStart.value = false
   }
@@ -1258,7 +1274,7 @@ async function onBatchImport() {
     .map((l) => l.trim())
     .filter(Boolean)
   if (!lines.length) {
-    alert('请至少输入一行问题')
+    toast.warning('请至少输入一行问题')
     return
   }
   submittingBatch.value = true
@@ -1276,10 +1292,22 @@ async function onBatchImport() {
 }
 
 async function onDeleteQuestion(datasetId, question) {
-  if (!confirm(`确定删除题目「${question.question.slice(0, 30)}…」？`)) return
-  await deleteEvalQuestion(datasetId, question.id)
-  await loadDatasets()
-  await loadQuestions(datasetId, questionPage[datasetId] || 1)
+  const ok = await confirmDialog({
+    title: '删除题目',
+    message: `确定删除题目「${question.question.slice(0, 30)}…」？`,
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
+  try {
+    await deleteEvalQuestion(datasetId, question.id)
+    await loadDatasets()
+    await loadQuestions(datasetId, questionPage[datasetId] || 1)
+    toast.success('题目已删除')
+  } catch {
+    // 全局拦截器已 toast
+  }
 }
 
 function openRunExperiment(datasetId) {
@@ -1295,7 +1323,7 @@ function openRunExperiment(datasetId) {
 
 async function onRunExperiment() {
   if (!runForm.value.datasetId) {
-    alert('请选择数据集')
+    toast.warning('请选择数据集')
     return
   }
   runningExperiment.value = true
@@ -1328,19 +1356,19 @@ async function onRunExperiment() {
 
 async function onRunChunkerAb() {
   if (!chunkerAbForm.value.evalDatasetId) {
-    alert('请选择评测数据集')
+    toast.warning('请选择评测数据集')
     return
   }
   if (!chunkerAbForm.value.strategies.length) {
-    alert('请至少选择一种分块策略')
+    toast.warning('请至少选择一种分块策略')
     return
   }
   runningChunkerAb.value = true
   try {
     const res = await runChunkerAb(chunkerAbForm.value)
     chunkerAbResults.value = res.data?.results ?? []
-  } catch (e) {
-    alert(e?.response?.data?.message || e?.message || '分块 A/B 运行失败')
+  } catch {
+    // 全局拦截器已 toast
   } finally {
     runningChunkerAb.value = false
   }
@@ -1357,9 +1385,21 @@ async function openExperimentDetail(id) {
 }
 
 async function onDeleteExperiment(exp) {
-  if (!confirm(`确定删除实验 #${exp.id}？`)) return
-  await deleteExperiment(exp.id)
-  await loadExperiments()
+  const ok = await confirmDialog({
+    title: '删除实验',
+    message: `确定删除实验 #${exp.id}？`,
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
+  try {
+    await deleteExperiment(exp.id)
+    await loadExperiments()
+    toast.success('实验已删除')
+  } catch {
+    // 全局拦截器已 toast
+  }
 }
 
 function formatTime(iso) {

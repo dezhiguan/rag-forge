@@ -82,6 +82,10 @@ import { deleteDocument, downloadDocument, listDocuments, reprocessDocument } fr
 
 const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import { documentDetailRoute } from '../composables/useDocumentNav'
+import { confirm as confirmDialog } from '../composables/useConfirm'
+import { useToast } from '../composables/useToast'
+
+const toast = useToast()
 
 const route = useRoute()
 const router = useRouter()
@@ -130,11 +134,23 @@ async function onReprocessDoc(doc) {
 
 async function onDeleteDoc(doc) {
   if (!deleteEnabled) return
-  if (!confirm(`确定删除文档「${doc.filename}」？`)) return
-  await deleteDocument(doc.id)
-  const nextPage = docs.value.length === 1 && page.value > 1 ? page.value - 1 : page.value
-  await loadDocs(nextPage)
-  await loadKb()
+  const ok = await confirmDialog({
+    title: '删除文档',
+    message: `确定删除文档「${doc.filename}」？`,
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
+  try {
+    await deleteDocument(doc.id)
+    const nextPage = docs.value.length === 1 && page.value > 1 ? page.value - 1 : page.value
+    await loadDocs(nextPage)
+    await loadKb()
+    toast.success('文档已删除')
+  } catch {
+    // 全局拦截器已 toast
+  }
 }
 
 async function onDownloadDoc(doc) {

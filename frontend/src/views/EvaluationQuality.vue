@@ -401,6 +401,10 @@ import {
 } from '../api/quality'
 import { listKb } from '../api/kb'
 import { useAuth } from '../composables/useAuth'
+import { confirm as confirmDialog } from '../composables/useConfirm'
+import { useToast } from '../composables/useToast'
+
+const toast = useToast()
 
 const { clearSession } = useAuth()
 const router = useRouter()
@@ -603,8 +607,16 @@ async function saveSampling(payload) {
     settingsError.value = '抽样率必须在 0% 到 100% 之间'
     return
   }
-  const confirmed = rate > 0.1 ? confirm('抽样率超过 10%，确认保存？') : false
-  if (rate > 0.1 && !confirmed) return
+  let confirmed = false
+  if (rate > 0.1) {
+    const ok = await confirmDialog({
+      title: '抽样率较高',
+      message: '抽样率超过 10%，确认保存？',
+      variant: 'warning',
+    })
+    if (!ok) return
+    confirmed = true
+  }
   savingSampling.value = true
   settingsError.value = ''
   try {
@@ -618,9 +630,21 @@ async function saveSampling(payload) {
 }
 
 async function removeSampling(id) {
-  if (!confirm('确定删除该抽样覆盖？')) return
-  await deleteSamplingConfig(id)
-  await loadSamplingSettings()
+  const ok = await confirmDialog({
+    title: '删除抽样覆盖',
+    message: '确定删除该抽样覆盖？',
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
+  try {
+    await deleteSamplingConfig(id)
+    await loadSamplingSettings()
+    toast.success('抽样覆盖已删除')
+  } catch {
+    // 全局拦截器已 toast
+  }
 }
 
 async function replayGoldenNow() {

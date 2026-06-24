@@ -92,6 +92,10 @@
 import { onMounted, ref, computed } from 'vue'
 import { API_KEY_DELETE_ENABLED } from '../config/uiPolicy'
 import { listApiKeys, createApiKey, enableApiKey, deleteApiKey } from '../api/apikey'
+import { confirm as confirmDialog } from '../composables/useConfirm'
+import { useToast } from '../composables/useToast'
+
+const toast = useToast()
 
 const deleteEnabled = API_KEY_DELETE_ENABLED
 const activeApi = ref('/search')
@@ -168,12 +172,20 @@ async function onToggleKey(key) {
 
 async function onDeleteKey(key) {
   if (!deleteEnabled) return
-  if (!confirm(`确定删除 API Key「${key.keyName}」？`)) return
+  const ok = await confirmDialog({
+    title: '删除 API Key',
+    message: `确定删除 API Key「${key.keyName}」？`,
+    confirmText: '删除',
+    cancelText: '取消',
+    variant: 'danger',
+  })
+  if (!ok) return
   try {
     await deleteApiKey(key.id)
     apiKeys.value = apiKeys.value.filter(k => k.id !== key.id)
+    toast.success('API Key 已删除')
   } catch {
-    // error handled by interceptor
+    // 全局拦截器已 toast
   }
 }
 

@@ -191,6 +191,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { listKb } from '../api/kb'
 import { search as searchApi } from '../api/search'
+import { useToast } from '../composables/useToast'
+
+const toast = useToast()
 
 const kbList = ref([])
 const rows = ref([])
@@ -292,7 +295,7 @@ function buildPayload(strategy) {
 async function runProbe() {
   const query = form.query.trim()
   if (!query) {
-    alert('请输入查询语句')
+    toast.warning('请输入查询语句')
     return
   }
 

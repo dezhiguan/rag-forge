@@ -307,6 +307,9 @@ import { listDocuments } from '../api/document'
 import { search as searchApi } from '../api/search'
 import { listEvalDatasets, saveQuestionFromSearch } from '../api/eval'
 import { llmGenerate } from '../api/llm'
+import { useToast } from '../composables/useToast'
+
+const toast = useToast()
 
 const route = useRoute()
 const router = useRouter()
@@ -665,11 +668,11 @@ function buildPayload(q, strategy) {
 async function doSearch() {
   const q = query.value.trim()
   if (!q && config.modality !== 'image') {
-    alert('请输入检索查询')
+    toast.warning('请输入检索查询')
     return
   }
   if (config.modality === 'image' && !queryImageBase64.value) {
-    alert('请选择 Query 图片')
+    toast.warning('请选择 Query 图片')
     return
   }
 
@@ -815,7 +818,7 @@ function topScore(list, s) {
 
 async function openSaveModal() {
   if (!query.value.trim()) {
-    alert('请先输入检索查询')
+    toast.warning('请先输入检索查询')
     return
   }
   try {
@@ -825,7 +828,7 @@ async function openSaveModal() {
     evalDatasets.value = []
   }
   if (!evalDatasets.value.length) {
-    alert('暂无评测数据集，请先在评测实验室创建')
+    toast.warning('暂无评测数据集，请先在评测实验室创建')
     return
   }
   saveDatasetId.value = evalDatasets.value[0].id
@@ -846,7 +849,7 @@ function closeSaveModal() {
 
 async function onSaveCase() {
   if (!saveDatasetId.value) {
-    alert('请选择数据集')
+    toast.warning('请选择数据集')
     return
   }
   savingCase.value = true
