@@ -3,12 +3,16 @@ function firstQueryValue(value) {
   return value
 }
 
-function resolveKbId(queryKbId, fallback) {
-  const fromQuery = Number(firstQueryValue(queryKbId))
-  if (Number.isInteger(fromQuery) && fromQuery > 0) return fromQuery
-  const fromFallback = Number(fallback)
-  if (Number.isInteger(fromFallback) && fromFallback > 0) return fromFallback
+export function parsePositiveId(value) {
+  const parsed = Number(firstQueryValue(value))
+  if (Number.isInteger(parsed) && parsed > 0) return parsed
   return null
+}
+
+function resolveKbId(queryKbId, fallback) {
+  const fromQuery = parsePositiveId(queryKbId)
+  if (fromQuery != null) return fromQuery
+  return parsePositiveId(fallback)
 }
 
 function safePush(router, path) {
@@ -26,7 +30,8 @@ function resolveBackPath(route, kbId) {
 export function documentDetailRoute(docId, { from, kbId, returnTo } = {}) {
   const query = {}
   if (from) query.from = from
-  if (kbId != null) query.kbId = String(kbId)
+  const resolvedKbId = resolveKbId(kbId)
+  if (resolvedKbId != null) query.kbId = String(resolvedKbId)
   if (returnTo) query.returnTo = returnTo
   return { path: `/document/${docId}`, query }
 }

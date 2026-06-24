@@ -42,21 +42,31 @@ const DOWNLOAD_PATHS = [
   (id) => `/documents/${id}/content`,
 ]
 
+function assertKbId(kbId) {
+  const id = Number(kbId)
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error('INVALID_KB_ID')
+  }
+  return id
+}
+
 export const uploadDocument = (kbId, file, { onProgress, onPhaseChange, onConflict = 'REJECT' } = {}) => {
+  const id = assertKbId(kbId)
   // 统一走直传：图片也通过 presign 直传 OSS
   if (PRESIGN_THRESHOLD > 0 && file.size <= PRESIGN_THRESHOLD) {
-    return relayUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict)
+    return relayUploadFlow(id, file, onProgress, onPhaseChange, onConflict)
   }
-  return presignUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict)
+  return presignUploadFlow(id, file, onProgress, onPhaseChange, onConflict)
 }
 
 export const relayUpload = (kbId, file, onProgress, onConflict = 'REJECT') => {
+  const id = assertKbId(kbId)
   const formData = new FormData()
   formData.append('file', file)
   formData.append(
     'meta',
     JSON.stringify({
-      kbId,
+      kbId: id,
       identity: {},
       onConflict,
       ingestSource: 'ui-upload-relay',
@@ -116,13 +126,16 @@ async function presignUploadFlow(kbId, file, onProgress, onPhaseChange, onConfli
 }
 
 export const replaceDocument = (kbId, docId, file) => {
+  const id = assertKbId(kbId)
   const formData = new FormData()
   formData.append('file', file)
-  return request.post(`/kb/${kbId}/documents/replace/${docId}`, formData)
+  return request.post(`/kb/${id}/documents/replace/${docId}`, formData)
 }
 
-export const listDocuments = (kbId, page = 1, size = 20) =>
-  request.get(`/kb/${kbId}/documents`, { params: { page, size } })
+export const listDocuments = (kbId, page = 1, size = 20) => {
+  const id = assertKbId(kbId)
+  return request.get(`/kb/${id}/documents`, { params: { page, size } })
+}
 
 export const getDocument = (id) => request.get(`/documents/${id}`)
 

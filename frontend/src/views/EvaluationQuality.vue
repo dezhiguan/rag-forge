@@ -494,7 +494,7 @@ const anomalyMessage = computed(() => {
 const normalizedDays = computed(() => Number(days.value) || 7)
 const queryParams = computed(() => {
   const params = { days: normalizedDays.value }
-  if (kbId.value != null) {
+  if (Number.isInteger(kbId.value) && kbId.value > 0) {
     params.kbId = kbId.value
   }
   return params

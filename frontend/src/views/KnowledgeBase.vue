@@ -545,6 +545,7 @@ function watchProcessingDocs(kbId) {
 }
 
 async function loadDocs(kbId) {
+  if (!Number.isInteger(kbId) || kbId <= 0) return
   docsLoading[kbId] = true
   try {
     const res = await listDocuments(kbId, 1, 3)
@@ -675,14 +676,15 @@ function onPickFile() {
 }
 
 async function handleFiles(files) {
-  if (!uploadKbId.value) {
+  const kbIdNum = Number(uploadKbId.value)
+  if (!Number.isInteger(kbIdNum) || kbIdNum <= 0) {
     toast.warning('请先选择上传到哪个知识库')
     return
   }
   if (!files || files.length === 0) return
 
   uploadProcessing.value = true
-  const kbId = uploadKbId.value
+  const kbId = kbIdNum
   const items = files.map((file) => createUploadItem(file, kbId))
   uploadItems.value = [...items, ...uploadItems.value]
   try {
@@ -826,8 +828,9 @@ function goDoc(id, kbId) {
 }
 
 function goDocuments(kbId) {
-  if (!kbId) return
-  router.push(`/knowledge/${kbId}/documents`)
+  const id = Number(kbId)
+  if (!Number.isInteger(id) || id <= 0) return
+  router.push(`/knowledge/${id}/documents`)
 }
 
 function fileTypeLabel(filename) {
@@ -838,15 +841,20 @@ function fileTypeLabel(filename) {
 }
 
 async function onReprocessDoc(doc) {
+  const targetKbId = doc.kbId ?? expandedKbId.value
+  if (!Number.isInteger(Number(targetKbId)) || Number(targetKbId) <= 0) {
+    toast.warning('无法确定文档所属知识库')
+    return
+  }
   try {
     await reprocessDocument(doc.id)
-    applyStatusToDoc(doc.kbId, doc.id, {
+    applyStatusToDoc(targetKbId, doc.id, {
       parseStatus: 'pending',
       chunkCount: 0,
       errorMsg: null,
     })
-    ensureActiveTracking(doc.id, doc.kbId, 'pending')
-    beginPollingDoc(doc.id, doc.kbId)
+    ensureActiveTracking(doc.id, targetKbId, 'pending')
+    beginPollingDoc(doc.id, targetKbId)
     toast.success('已提交重新处理')
   } catch {
     // 全局拦截器已 toast

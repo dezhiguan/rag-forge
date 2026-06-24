@@ -81,7 +81,7 @@ import { listKb } from '../api/kb'
 import { deleteDocument, downloadDocument, listDocuments, reprocessDocument } from '../api/document'
 
 const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
-import { documentDetailRoute } from '../composables/useDocumentNav'
+import { documentDetailRoute, parsePositiveId } from '../composables/useDocumentNav'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 
@@ -96,7 +96,7 @@ const size = 20
 const total = ref(0)
 const loading = ref(false)
 
-const kbId = computed(() => Number(route.params.kbId))
+const kbId = computed(() => parsePositiveId(route.params.kbId))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size)))
 
 const breadcrumbItems = computed(() => [
@@ -111,6 +111,10 @@ async function loadKb() {
 }
 
 async function loadDocs(nextPage = 1) {
+  if (!kbId.value) {
+    router.replace('/knowledge')
+    return
+  }
   loading.value = true
   try {
     const res = await listDocuments(kbId.value, nextPage, size)

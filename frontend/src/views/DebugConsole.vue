@@ -623,13 +623,14 @@ function sortResults(list, s) {
 }
 
 async function loadDocsForKb(kbId) {
-  if (!kbId) {
+  const id = Number(kbId)
+  if (!Number.isInteger(id) || id <= 0) {
     docList.value = []
     config.docId = null
     return
   }
   try {
-    const res = await listDocuments(kbId, 1, 200)
+    const res = await listDocuments(id, 1, 200)
     docList.value = res.data?.list ?? []
   } catch {
     docList.value = []
