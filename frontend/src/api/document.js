@@ -35,10 +35,6 @@ export function inferContentType(file) {
   return EXTENSION_CONTENT_TYPES[ext] || DEFAULT_CONTENT_TYPE
 }
 
-export function isImageFile(file) {
-  return inferContentType(file).startsWith('image/')
-}
-
 const DOWNLOAD_PATHS = [
   (id) => `/documents/${id}/download`,
   (id) => `/documents/${id}/file`,
