@@ -208,7 +208,6 @@
         </button>
       </div>
     </div>
-  </div>
 
   <Teleport to="body">
     <transition name="clean-modal-fade">
@@ -265,6 +264,7 @@
     :chunks="chunks"
     @submit="onRechunkSubmit"
   />
+  </div>
 </template>
 
 <script setup>
