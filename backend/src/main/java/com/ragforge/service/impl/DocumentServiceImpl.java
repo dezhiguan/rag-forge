@@ -21,6 +21,8 @@ import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.service.DocumentService;
 import com.ragforge.service.FileStorageService;
+import com.ragforge.storage.ObjectMeta;
+import com.ragforge.storage.ObjectStorage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -38,6 +40,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.io.InputStreamResource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,6 +65,7 @@ public class DocumentServiceImpl implements DocumentService {
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper documentChunkMapper;
   private final FileStorageService fileStorageService;
+  private final ObjectStorage objectStorage;
   private final DocumentProcessProducer documentProcessProducer;
   private final EsIndexService esIndexService;
 
@@ -277,6 +281,11 @@ public class DocumentServiceImpl implements DocumentService {
     if (doc == null) {
       throw new BizException(404, "文档不存在");
     }
+
+    if (StringUtils.hasText(doc.getStorageBucket())) {
+      return downloadFromObjectStorage(doc);
+    }
+
     if (!StringUtils.hasText(doc.getFilePath())) {
       throw new BizException(404, "原文件不存在");
     }
@@ -299,6 +308,44 @@ public class DocumentServiceImpl implements DocumentService {
     } catch (IOException e) {
       throw new BizException(500, "读取文件失败");
     }
+  }
+
+  private ResponseEntity<Resource> downloadFromObjectStorage(Document doc) {
+    String bucket = doc.getStorageBucket();
+    String key = doc.getStorageKey();
+    if (!StringUtils.hasText(key)) {
+      throw new BizException(404, "原文件不存在");
+    }
+
+    ObjectMeta meta;
+    try {
+      meta = objectStorage.head(bucket, key);
+    } catch (RuntimeException e) {
+      throw new BizException(500, "读取文件失败");
+    }
+
+    if (meta == null) {
+      throw new BizException(404, "原文件不存在");
+    }
+
+    InputStream stream;
+    try {
+      stream = objectStorage.get(bucket, key);
+    } catch (RuntimeException e) {
+      throw new BizException(500, "读取文件失败");
+    }
+
+    String filename = StringUtils.hasText(doc.getFilename()) ? doc.getFilename() : key;
+    ContentDisposition disposition =
+        ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build();
+
+    var response = ResponseEntity.ok()
+        .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+        .contentType(MediaType.APPLICATION_OCTET_STREAM);
+    if (meta.getSizeBytes() != null) {
+      response = response.contentLength(meta.getSizeBytes());
+    }
+    return response.body(new InputStreamResource(stream));
   }
 
   @Override
