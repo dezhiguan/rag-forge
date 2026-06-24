@@ -13,7 +13,7 @@
         :key="item.path"
         :to="item.path"
         class="nav-item"
-        :class="{ active: $route.path === item.path || (item.path !== '/' && $route.path.startsWith(item.path)) }"
+        :class="{ active: isNavActive(item.path) }"
         :title="collapsed && !isMobile ? item.label : ''"
         @click="onNavClick"
       >
@@ -67,6 +67,13 @@ function onNavClick() {
   if (isMobile.value) {
     emit('close-mobile')
   }
+}
+
+function isNavActive(itemPath) {
+  const current = route.path
+  if (current === itemPath) return true
+  if (itemPath === '/') return false
+  return current.startsWith(`${itemPath}/`)
 }
 
 const ALL_NAV_ITEMS = [

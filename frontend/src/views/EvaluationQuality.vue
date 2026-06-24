@@ -802,7 +802,12 @@ async function loadOverview() {
       sampleCount: item.sampleCount || 0,
     }))
 
-    sampleCount.value = data?.samples?.sampleCount != null ? Number(data.samples.sampleCount) : trendPoints.value.reduce((acc, item) => acc + Number(item.sampleCount || 0), 0)
+    sampleCount.value =
+        data?.samples?.totalSamples != null
+            ? Number(data.samples.totalSamples)
+            : data?.samples?.sampleCount != null
+                ? Number(data.samples.sampleCount)
+                : trendPoints.value.reduce((acc, item) => acc + Number(item.sampleCount || 0), 0)
     anomaly.value = data?.anomaly || null
   } catch (error) {
     globalError.value = parseHttpError(error)
