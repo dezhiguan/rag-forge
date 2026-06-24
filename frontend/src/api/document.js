@@ -38,6 +38,31 @@ function isImageFile(file) {
   return inferContentType(file).startsWith('image/')
 }
 
+const DOWNLOAD_PATHS = [
+  (id) => `/documents/${id}/download`,
+  (id) => `/documents/${id}/file`,
+  (id) => `/documents/${id}/download/file`,
+  (id) => `/documents/${id}/content`,
+]
+
+async function requestDownloadDocument(path) {
+  try {
+    return await request.get(path, { responseType: 'blob', silent: true })
+  } catch (err) {
+    const status = err?.response?.status
+    const isNotFound = status === 404
+    if (isNotFound && path !== path) {
+      throw err
+    }
+    if (!isNotFound) {
+      err.config = err.config || {}
+      err.config.silent = false
+      throw err
+    }
+    throw err
+  }
+}
+
 export const uploadDocument = (kbId, file, { onProgress, onPhaseChange, onConflict = 'REJECT' } = {}) => {
   // Images go through server relay: browser PUT to OSS often fails (CORS / presign).
   if (isImageFile(file)) {
@@ -136,5 +161,29 @@ export const reprocessDocument = (id) => request.post(`/documents/${id}/reproces
 
 export const rechunkDocument = (id) => request.post(`/documents/${id}/rechunk`)
 
-export const downloadDocument = (id) =>
-  request.get(`/documents/${id}/download`, { responseType: 'blob' })
+export const downloadDocument = async (id) => {
+  const docId = Number(id)
+  if (Number.isNaN(docId)) {
+    return request.get(`/documents/${id}/download`, { responseType: 'blob' })
+  }
+
+  let lastErr = null
+  for (let index = 0; index < DOWNLOAD_PATHS.length; index += 1) {
+    const path = DOWNLOAD_PATHS[index](docId)
+    try {
+      return await request.get(path, { responseType: 'blob', silent: true })
+    } catch (err) {
+      lastErr = err
+      const status = err?.response?.status
+      if (status !== 404) {
+        err.config = err.config || {}
+        err.config.silent = false
+        throw err
+      }
+      if (index === DOWNLOAD_PATHS.length - 1) {
+        if (lastErr?.config) lastErr.config.silent = false
+        throw lastErr
+      }
+    }
+  }
+}
