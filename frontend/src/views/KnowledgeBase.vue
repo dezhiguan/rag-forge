@@ -740,6 +740,7 @@ async function uploadOneItem(item, onConflict = 'REJECT') {
     }
   } catch (e) {
     item.status = 'failed'
+    item.phase = 'failed'  // 避免 UI 卡在最后一次成功阶段的文案（如"计算指纹"）
     item.errorCode = uploadErrorCode(e)
     item.errorMessage = uploadErrorMessage(e)
   }
@@ -803,6 +804,7 @@ function phaseLabel(phase) {
     relay: '服务端上传',
     registering: '登记文档',
     done: '完成',
+    failed: '失败',
   }
   return map[phase] || phase || '-'
 }
