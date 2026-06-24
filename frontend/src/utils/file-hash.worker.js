@@ -1,11 +1,13 @@
-export async function hashFile(file) {
+export async function hashFile(input) {
   if (typeof crypto === 'undefined' || !crypto.subtle) {
     throw new Error('HASH_NOT_SUPPORTED')
   }
-  self.postMessage({ type: 'progress', loaded: 0, total: file.size })
-  const buf = await file.arrayBuffer()
-  self.postMessage({ type: 'progress', loaded: file.size, total: file.size })
-  const hash = await crypto.subtle.digest('SHA-256', buf)
+  const buffer = input instanceof ArrayBuffer
+    ? input
+    : await input.arrayBuffer()
+  self.postMessage?.({ type: 'progress', loaded: 0, total: buffer.byteLength })
+  const hash = await crypto.subtle.digest('SHA-256', buffer)
+  self.postMessage?.({ type: 'progress', loaded: buffer.byteLength, total: buffer.byteLength })
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
@@ -14,7 +16,7 @@ export async function hashFile(file) {
 if (typeof self !== 'undefined' && typeof self.addEventListener === 'function') {
   self.addEventListener('message', async (event) => {
     try {
-      const hex = await hashFile(event.data.file)
+      const hex = await hashFile(event.data.buffer)
       self.postMessage({ type: 'done', hex })
     } catch (error) {
       self.postMessage({ type: 'error', message: error?.message || 'HASH_FAILED' })
