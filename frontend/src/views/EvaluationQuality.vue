@@ -1,12 +1,6 @@
 <template>
   <div class="page-body quality-page">
-    <div class="quality-header">
-      <div>
-        <h1 class="quality-title">质量看板</h1>
-        <p class="quality-subtitle">LLM-as-Judge 评测质量趋势与成本监控</p>
-      </div>
-      <button class="btn-primary" @click="openSamplingDrawer">设置</button>
-    </div>
+    <p class="quality-subtitle">LLM-as-Judge 评测质量趋势与成本监控</p>
 
     <div v-if="globalError" class="quality-error-banner">
       {{ globalError }}
@@ -44,6 +38,16 @@
           <button class="btn-ghost-small" @click="applyKbFilter">应用</button>
           <button class="btn-ghost-small" @click="clearKbFilter">清除</button>
         </div>
+      </div>
+
+      <div class="toolbar-spacer" />
+
+      <div class="toolbar-block toolbar-action">
+        <label>&nbsp;</label>
+        <button class="btn-settings" @click="openSamplingDrawer">
+          <span class="btn-settings-icon">⚙</span>
+          <span>设置</span>
+        </button>
       </div>
     </section>
 
@@ -948,23 +952,9 @@ watch(
   gap: 14px;
 }
 
-.quality-header {
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.quality-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #0f172a;
-}
-
 .quality-subtitle {
   color: var(--text-muted);
-  margin-top: 4px;
+  margin: 0 0 2px 0;
   font-size: 13px;
 }
 
@@ -996,27 +986,71 @@ watch(
 .quality-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 18px;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 10px 14px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 .toolbar-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+}
+
+.toolbar-block > label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.toolbar-spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toolbar-action {
+  justify-content: flex-end;
 }
 
 .toolbar-btns {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .kb-filter-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+}
+
+.btn-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  color: #fff;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+}
+
+.btn-settings:hover {
+  background: linear-gradient(180deg, #2563eb, #1d4ed8);
+  border-color: #1d4ed8;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+
+.btn-settings-icon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .toolbar-block input {
@@ -1037,20 +1071,28 @@ watch(
 .quality-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 12px;
 }
 
 .kpi-card {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.kpi-card:hover {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
 }
 
 .kpi-title {
   color: var(--text-muted);
   font-size: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
 }
 
 .kpi-value {
