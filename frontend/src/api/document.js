@@ -1,12 +1,15 @@
 import request from './request'
 import { sha256 } from '../utils/file-hash'
 import {
+  UploadError,
   presignUpload,
   putToOss,
   registerUpload,
 } from './upload'
 
 const PRESIGN_THRESHOLD = 0
+const PRESIGN_THRESHOLD_NOTE =
+  '0 = 全部走直传，relayUpload 仅用于直传失败后的临时兜底（例如问题排查）或未来小文件优化'
 const DEFAULT_CONTENT_TYPE = 'application/octet-stream'
 
 const EXTENSION_CONTENT_TYPES = {
@@ -46,10 +49,7 @@ const DOWNLOAD_PATHS = [
 ]
 
 export const uploadDocument = (kbId, file, { onProgress, onPhaseChange, onConflict = 'REJECT' } = {}) => {
-  // Images go through server relay: browser PUT to OSS often fails (CORS / presign).
-  if (isImageFile(file)) {
-    return relayUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict)
-  }
+  // 统一走直传：图片也通过 presign 直传 OSS
   if (PRESIGN_THRESHOLD > 0 && file.size <= PRESIGN_THRESHOLD) {
     return relayUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict)
   }
@@ -93,7 +93,7 @@ async function relayUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict
 }
 
 async function presignUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict) {
-  const contentType = inferContentType(file)
+  const contentType = inferContentType(file) || DEFAULT_CONTENT_TYPE
   onPhaseChange?.('hashing')
   const contentMd5 = await sha256(file)
 
@@ -104,8 +104,8 @@ async function presignUploadFlow(kbId, file, onProgress, onPhaseChange, onConfli
   onPhaseChange?.('uploading')
   try {
     await putToOss(presignedPutUrl, file, contentType, onProgress)
-  } catch {
-    return relayUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict)
+  } catch (e) {
+    throw new UploadError('OSS_PUT_FAILED', e)
   }
 
   onPhaseChange?.('registering')
@@ -169,3 +169,5 @@ export const downloadDocument = async (id) => {
     }
   }
 }
+
+export const PRESIGN_THRESHOLD_INFO = PRESIGN_THRESHOLD_NOTE
