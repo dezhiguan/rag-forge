@@ -321,9 +321,27 @@
           <div v-if="globalRatePercent > 5" class="cost-warning">
             当前抽样率超过 5%，请结合调用量评估月度成本。
           </div>
-          <button class="btn-primary" :disabled="savingSampling" @click="saveGlobalSampling">
-            {{ savingSampling ? '保存中...' : '保存全局配置' }}
-          </button>
+          <div class="drawer-action-row">
+            <button
+              class="btn-save-config"
+              :class="{ 'is-saving': savingSampling }"
+              :disabled="savingSampling"
+              @click="saveGlobalSampling"
+            >
+              <span v-if="savingSampling" class="btn-save-spinner" aria-hidden="true" />
+              <svg v-else class="btn-save-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M4 3.5h8.5L16 7v9.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  stroke-linejoin="round"
+                />
+                <path d="M8 3.5v4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M6 13.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+              </svg>
+              <span>{{ savingSampling ? '保存中...' : '保存全局配置' }}</span>
+            </button>
+          </div>
         </section>
 
         <section class="drawer-section">
@@ -351,7 +369,7 @@
         <section class="drawer-section">
           <h3>Golden Set 回放</h3>
           <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
-          <button class="btn-primary" :disabled="replayingGolden" @click="replayGoldenNow">
+          <button class="btn-save-config btn-save-config--secondary" :disabled="replayingGolden" @click="replayGoldenNow">
             {{ replayingGolden ? '已提交...' : '立即回放' }}
           </button>
           <p class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
@@ -1359,6 +1377,100 @@ watch(
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 12px;
+}
+
+.drawer-action-row {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.btn-save-config {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 18px;
+  border: 1px solid #0d9488;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #14b8a6 0%, #0f766e 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow:
+    0 1px 2px rgba(15, 118, 110, 0.2),
+    0 4px 14px rgba(15, 118, 110, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.btn-save-config:hover:not(:disabled) {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgba(15, 118, 110, 0.22),
+    0 8px 20px rgba(15, 118, 110, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.btn-save-config:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.98);
+  box-shadow:
+    0 1px 2px rgba(15, 118, 110, 0.2),
+    inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.btn-save-config:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-save-config.is-saving {
+  background: linear-gradient(180deg, #5eead4 0%, #14b8a6 100%);
+}
+
+.btn-save-config--secondary {
+  width: auto;
+  align-self: flex-start;
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  border-color: #2563eb;
+  box-shadow:
+    0 1px 2px rgba(37, 99, 235, 0.2),
+    0 4px 14px rgba(37, 99, 235, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.btn-save-config--secondary:hover:not(:disabled) {
+  box-shadow:
+    0 2px 4px rgba(37, 99, 235, 0.24),
+    0 8px 20px rgba(37, 99, 235, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.btn-save-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.95;
+}
+
+.btn-save-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: save-spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes save-spin {
+  to { transform: rotate(360deg); }
 }
 
 .quality-error-banner,
