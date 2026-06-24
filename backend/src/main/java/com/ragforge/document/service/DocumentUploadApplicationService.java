@@ -2,6 +2,7 @@ package com.ragforge.document.service;
 
 import com.ragforge.document.dto.UploadRelayResult;
 import com.ragforge.model.dto.PresignUploadRequest;
+import com.ragforge.model.dto.RechunkRequest;
 import com.ragforge.model.dto.RegisterUploadRequest;
 import java.util.Map;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,5 +17,5 @@ public interface DocumentUploadApplicationService {
 
   Map<String, Object> reprocess(Long id);
 
-  Map<String, Object> rechunk(Long id);
+  Map<String, Object> rechunk(Long id, RechunkRequest request);
 }

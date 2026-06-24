@@ -11,6 +11,7 @@ import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.pipeline.chunker.Chunk;
+import com.ragforge.pipeline.chunker.ChunkParams;
 import com.ragforge.pipeline.chunker.ChunkingResult;
 import com.ragforge.pipeline.chunker.ChunkingService;
 import com.ragforge.pipeline.embedder.EmbeddingService;
@@ -149,7 +150,7 @@ public class DocumentPipelineService {
       self.updateStatus(documentId, STATUS_CHUNKING);
 
       stageStart = System.currentTimeMillis();
-      ChunkingResult chunking = chunkingService.split(doc, kb, text);
+      ChunkingResult chunking = resolveChunking(doc, kb, text);
       List<Chunk> chunks = chunking.getChunks();
       chunkCount = chunks.size();
       chunkLatencyMs = System.currentTimeMillis() - stageStart;
@@ -451,6 +452,40 @@ public class DocumentPipelineService {
       return "";
     }
     return text.length() > 8000 ? text.substring(0, 8000) : text;
+  }
+
+  private ChunkingResult resolveChunking(Document doc, KnowledgeBase kb, String text) {
+    if (!StringUtils.hasText(doc.getRechunkStrategy())) {
+      return chunkingService.split(doc, kb, text);
+    }
+    try {
+      ChunkParams overrideParams = null;
+      if (StringUtils.hasText(doc.getRechunkParamsJson())) {
+        try {
+          overrideParams = objectMapper.readValue(doc.getRechunkParamsJson(), ChunkParams.class);
+        } catch (Exception e) {
+          throw new BizException(400, "INVALID_CHUNKER_PROFILE_JSON");
+        }
+      }
+      ChunkingResult result =
+          chunkingService.splitWithStrategy(doc, kb, text, doc.getRechunkStrategy(), overrideParams);
+      self.clearRechunkRequest(doc.getId());
+      return result;
+    } catch (RuntimeException e) {
+      self.clearRechunkRequest(doc.getId());
+      throw e;
+    }
+  }
+
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void clearRechunkRequest(Long documentId) {
+    documentMapper.update(
+        null,
+        new LambdaUpdateWrapper<Document>()
+            .eq(Document::getId, documentId)
+            .set(Document::getRechunkStrategy, null)
+            .set(Document::getRechunkParamsJson, null)
+            .set(Document::getUpdatedAt, LocalDateTime.now()));
   }
 
   private ParseResult resolveText(Document doc) throws Exception {

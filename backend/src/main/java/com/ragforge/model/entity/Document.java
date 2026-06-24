@@ -29,6 +29,9 @@ public class Document {
   private String indexedContent;
   @TableField(value = "clean_report_json", typeHandler = JsonbStringTypeHandler.class)
   private String cleanReportJson;
+  private String rechunkStrategy;
+  @TableField(value = "rechunk_params_json", typeHandler = JsonbStringTypeHandler.class)
+  private String rechunkParamsJson;
   private Long cleanProfileId;
   private Integer version;
   private String parseStatus;

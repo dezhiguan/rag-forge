@@ -53,6 +53,45 @@ public class ChunkingService {
     throw new BizException(500, "NO_CHUNKER_STRATEGY_AVAILABLE");
   }
 
+  /** Run exactly one strategy (no fallback chain) for explicit rechunk requests. */
+  public ChunkingResult splitWithStrategy(
+      Document doc, KnowledgeBase kb, String text, String strategyName, ChunkParams overrideParams) {
+    String normalized = normalizeName(strategyName);
+    ChunkerStrategy strategy =
+        strategies.stream()
+            .filter(item -> normalizeName(item.name()).equals(normalized))
+            .findFirst()
+            .orElseThrow(() -> new BizException(400, "INVALID_STRATEGY"));
+
+    ChunkerProfile profile = resolveProfile(kb);
+    applyLegacyKbParams(profile, kb);
+    ChunkParams params = profile.getParams() == null ? new ChunkParams() : profile.getParams();
+    if (overrideParams != null) {
+      if (overrideParams.getChunkSize() > 0) {
+        params.setChunkSize(overrideParams.getChunkSize());
+      }
+      if (overrideParams.getOverlap() >= 0) {
+        params.setOverlap(overrideParams.getOverlap());
+      }
+    }
+
+    CleanedText cleanedText = new CleanedText(text == null ? "" : text);
+    DocumentMeta meta = buildMeta(doc, kb, cleanedText);
+    if (!strategy.supports(meta)) {
+      if ("SEMANTIC".equals(normalized)) {
+        throw new BizException(400, "SEMANTIC_REQUIRES_LONG_TEXT");
+      }
+      throw new BizException(400, "INVALID_STRATEGY");
+    }
+
+    List<Chunk> chunks = strategy.split(cleanedText, params);
+    if (chunks == null || chunks.isEmpty()) {
+      throw new BizException(500, "NO_CHUNKER_STRATEGY_AVAILABLE");
+    }
+    normalizeChunks(chunks, strategy.name());
+    return new ChunkingResult(strategy.name(), params, chunks);
+  }
+
   public ChunkerProfile resolveProfile(KnowledgeBase kb) {
     if (kb == null || !StringUtils.hasText(kb.getChunkerProfileJson())) {
       return new ChunkerProfile();

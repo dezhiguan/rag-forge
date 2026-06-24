@@ -19,7 +19,10 @@ import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.common.PageResult;
 import com.ragforge.common.RelayUploadLimits;
 import com.ragforge.document.service.impl.DocumentUploadApplicationServiceImpl;
+import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.pipeline.chunker.ChunkingService;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.entity.Document;
@@ -67,6 +70,9 @@ class DocumentControllerTest {
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private UploadTokenService uploadTokenService;
   @Mock private DocumentMapper documentMapper;
+  @Mock private DocumentChunkMapper documentChunkMapper;
+  @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
+  @Mock private ChunkingService chunkingService;
   @Mock private DocumentProcessProducer mqProducer;
 
   private MockMvc mockMvc;
@@ -91,6 +97,9 @@ class DocumentControllerTest {
                         new ObjectMapper(),
                         uploadTokenService,
                         documentMapper,
+                        documentChunkMapper,
+                        knowledgeBaseMapper,
+                        chunkingService,
                         mqProducer)))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(

@@ -135,7 +135,12 @@ export const deleteDocument = (id) => request.delete(`/documents/${id}`)
 
 export const reprocessDocument = (id) => request.post(`/documents/${id}/reprocess`)
 
-export const rechunkDocument = (id) => request.post(`/documents/${id}/rechunk`)
+export const rechunkDocument = (id, options = {}) =>
+  request.post(`/documents/${id}/rechunk`, {
+    strategy: options.strategy,
+    chunkSize: options.chunkSize,
+    chunkOverlap: options.chunkOverlap,
+  })
 
 export const downloadDocument = async (id) => {
   const docId = Number(id)

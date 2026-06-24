@@ -5,7 +5,18 @@ import com.ragforge.common.BizException;
 import com.ragforge.common.RelayUploadLimits;
 import com.ragforge.document.dto.UploadRelayResult;
 import com.ragforge.document.service.DocumentUploadApplicationService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.ragforge.document.support.RechunkSupport;
+import com.ragforge.mapper.DocumentChunkMapper;
+import com.ragforge.model.dto.RechunkRequest;
+import com.ragforge.model.entity.DocumentChunk;
+import com.ragforge.pipeline.chunker.ChunkParams;
+import com.ragforge.pipeline.chunker.ChunkerProfile;
+import com.ragforge.pipeline.chunker.ChunkingService;
+import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.dto.Identity;
 import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
@@ -29,7 +40,9 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +51,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -54,6 +68,9 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
   private final ObjectMapper objectMapper;
   private final UploadTokenService uploadTokenService;
   private final DocumentMapper documentMapper;
+  private final DocumentChunkMapper documentChunkMapper;
+  private final KnowledgeBaseMapper knowledgeBaseMapper;
+  private final ChunkingService chunkingService;
   private final DocumentProcessProducer mqProducer;
 
   @Override
@@ -258,10 +275,13 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
 
   @Override
   @Transactional
-  public Map<String, Object> rechunk(Long id) {
+  public Map<String, Object> rechunk(Long id, RechunkRequest request) {
     Document doc = documentMapper.selectById(id);
     if (doc == null) {
       throw new BizException(404, "DOCUMENT_NOT_FOUND");
+    }
+    if (!kbAccessGuard.canWrite(doc.getKbId())) {
+      throw new BizException(403, "KB_WRITE_FORBIDDEN");
     }
 
     String status = normalizeStatus(doc.getParseStatus());
@@ -269,9 +289,87 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
       throw new BizException(409, "ALREADY_IN_PROGRESS");
     }
 
-    documentMapper.updateStatus(id, "REPROCESSING");
+    List<DocumentChunk> existingChunks =
+        documentChunkMapper.selectList(
+            new LambdaQueryWrapper<DocumentChunk>().eq(DocumentChunk::getDocId, id));
+    String oldStrategy = RechunkSupport.resolveOldStrategy(existingChunks);
+
+    if (RechunkSupport.isImageOnlyDocument(doc, existingChunks)) {
+      documentMapper.update(
+          null,
+          new LambdaUpdateWrapper<Document>()
+              .eq(Document::getId, id)
+              .set(Document::getRechunkStrategy, null)
+              .set(Document::getRechunkParamsJson, null)
+              .set(Document::getParseStatus, "REPROCESSING")
+              .set(Document::getUpdatedAt, LocalDateTime.now()));
+      sendProcessAfterCommit(id);
+      return Map.of(
+          "documentId",
+          id,
+          "status",
+          "REPROCESSING",
+          "oldStrategy",
+          oldStrategy,
+          "newStrategy",
+          "IMAGE_PIPELINE");
+    }
+
+    int cleanedTextLength = RechunkSupport.resolveCleanedTextLength(doc, objectMapper);
+    RechunkSupport.validateRequest(request, cleanedTextLength);
+
+    String newStrategy = resolveNewStrategy(doc.getKbId(), request);
+    String storedStrategy =
+        request != null && StringUtils.hasText(request.getStrategy())
+            ? RechunkSupport.normalizeStrategy(request.getStrategy())
+            : null;
+    String paramsJson = buildRechunkParamsJson(request, doc.getKbId());
+
+    documentMapper.update(
+        null,
+        new LambdaUpdateWrapper<Document>()
+            .eq(Document::getId, id)
+            .set(Document::getRechunkStrategy, storedStrategy)
+            .set(Document::getRechunkParamsJson, paramsJson)
+            .set(Document::getParseStatus, "REPROCESSING")
+            .set(Document::getUpdatedAt, LocalDateTime.now()));
     sendProcessAfterCommit(id);
-    return Map.of("documentId", id, "status", "REPROCESSING");
+    return Map.of(
+        "documentId",
+        id,
+        "status",
+        "REPROCESSING",
+        "oldStrategy",
+        oldStrategy,
+        "newStrategy",
+        newStrategy);
+  }
+
+  private String resolveNewStrategy(Long kbId, RechunkRequest request) {
+    if (request != null && StringUtils.hasText(request.getStrategy())) {
+      return RechunkSupport.normalizeStrategy(request.getStrategy());
+    }
+    KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+    ChunkerProfile profile = chunkingService.resolveProfile(kb);
+    return profile.getDefaultStrategy() == null ? "MARKDOWN_HEADING" : profile.getDefaultStrategy();
+  }
+
+  private String buildRechunkParamsJson(RechunkRequest request, Long kbId) {
+    if (request == null || !StringUtils.hasText(request.getStrategy())) {
+      return null;
+    }
+    String strategy = RechunkSupport.normalizeStrategy(request.getStrategy());
+    if (!RechunkSupport.usesFixedParams(strategy)) {
+      return null;
+    }
+    KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+    ChunkerProfile profile = chunkingService.resolveProfile(kb);
+    ChunkParams params = RechunkSupport.toChunkParams(request, profile.getParams());
+    try {
+      return objectMapper.writeValueAsString(params);
+    } catch (Exception e) {
+      throw new BizException(400, "INVALID_CHUNKER_PROFILE_JSON");
+    }
   }
 
   private void applyFileMd5(IngestCommand cmd, String fileBytesMd5) {

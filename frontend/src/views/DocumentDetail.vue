@@ -258,6 +258,13 @@
       </div>
     </transition>
   </Teleport>
+
+  <RechunkDialog
+    v-model="showRechunkDialog"
+    :doc="doc"
+    :chunks="chunks"
+    @submit="onRechunkSubmit"
+  />
 </template>
 
 <script setup>
@@ -268,6 +275,7 @@ import { useToast } from '../composables/useToast'
 
 const toast = useToast()
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
+import RechunkDialog from '../components/RechunkDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
 import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rechunkDocument } from '../api/document'
@@ -286,6 +294,7 @@ const router = useRouter()
 const loading = ref(false)
 const retrying = ref(false)
 const rechunking = ref(false)
+const showRechunkDialog = ref(false)
 const showCleanPanel = ref(false)
 const doc = ref(null)
 const chunks = ref([])
@@ -541,36 +550,38 @@ async function onReprocess() {
   }
 }
 
-async function confirmRechunk() {
+function confirmRechunk() {
   if (!doc.value || !canRechunk.value || rechunking.value) return
-  const ok = await confirmDialog({
-    title: '重新分块',
-    message: `确定重新分块文档「${doc.value.filename}」？`,
-    detail: '系统会删除旧分块并重新生成向量索引，期间该文档不可检索。',
-    confirmText: '重新分块',
-    cancelText: '取消',
-    variant: 'warning',
-  })
-  if (!ok) return
-  await onRechunk()
+  showRechunkDialog.value = true
 }
 
-async function onRechunk() {
+async function onRechunkSubmit(payload = {}) {
   if (!doc.value) return
+  showRechunkDialog.value = false
   rechunking.value = true
   try {
-    const res = await rechunkDocument(doc.value.id)
+    const res = await rechunkDocument(doc.value.id, payload)
     doc.value.parseStatus = res.data?.status || res.status || 'REPROCESSING'
     doc.value.errorMsg = null
     doc.value.chunkCount = 0
     resetChunks()
     setupPolling()
-    toast.success('已提交重新分块')
+    if (payload.imageOnly) {
+      toast.success('已提交重新处理图像')
+    } else {
+      const strategy = payload.strategy || res.newStrategy || res.data?.newStrategy
+      const label = CHUNKER_STRATEGY_LABELS[strategy] || strategy || '默认策略'
+      toast.success(`已提交重新分块（${label}）`)
+    }
   } catch {
     // 全局拦截器已 toast
   } finally {
     rechunking.value = false
   }
+}
+
+async function onRechunk() {
+  await onRechunkSubmit({})
 }
 
 function formatTime(iso) {

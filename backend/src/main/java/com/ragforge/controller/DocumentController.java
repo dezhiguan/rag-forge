@@ -5,6 +5,7 @@ import com.ragforge.common.Result;
 import com.ragforge.document.dto.UploadRelayResult;
 import com.ragforge.document.service.DocumentUploadApplicationService;
 import com.ragforge.model.dto.PresignUploadRequest;
+import com.ragforge.model.dto.RechunkRequest;
 import com.ragforge.model.dto.RegisterUploadRequest;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
@@ -137,7 +138,8 @@ public class DocumentController {
 
   @PostMapping("/documents/{id}/rechunk")
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR') and @kbAccessGuard.canWriteDocument(#id)")
-  public ResponseEntity<Map<String, Object>> rechunk(@PathVariable Long id) {
-    return ResponseEntity.ok(uploadApplicationService.rechunk(id));
+  public ResponseEntity<Map<String, Object>> rechunk(
+      @PathVariable Long id, @RequestBody(required = false) RechunkRequest req) {
+    return ResponseEntity.ok(uploadApplicationService.rechunk(id, req));
   }
 }

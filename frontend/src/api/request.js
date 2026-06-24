@@ -23,6 +23,10 @@ const ERROR_CODE_LABELS = {
   FILE_TOO_LARGE_FOR_RELAY: '文件过大，请改用直传上传',
   IMAGE_CONTENT_NOT_SUPPORTED_UNTIL_T10: '当前版本不支持该格式的图片',
   UNSUPPORTED_CONTENT_TYPE: '暂不支持此文件类型',
+  SEMANTIC_REQUIRES_LONG_TEXT: '文本不足 2000 字，无法使用语义分块',
+  INVALID_STRATEGY: '选择的策略无效，请刷新页面重试',
+  CHUNK_SIZE_OUT_OF_RANGE: '块大小需要在 64-2048 范围内',
+  ALREADY_IN_PROGRESS: '文档正在处理，请等待完成后重试',
 }
 
 function translateError(payload) {
