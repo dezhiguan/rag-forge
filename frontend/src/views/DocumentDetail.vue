@@ -188,7 +188,7 @@
               </div>
               <div v-if="(cleanReport.removedRegions || []).length" class="removed-list">
                 <div v-for="(r, idx) in (cleanReport.removedRegions || []).slice(0, 8)" :key="idx" class="removed-item">
-                  <span>{{ r.reason }}</span>
+                  <span class="removed-tag">{{ removedReasonLabel(r.reason) }}</span>
                   <code>{{ summarizeContent(r.text || '') }}</code>
                 </div>
               </div>
@@ -283,7 +283,7 @@ const cleanDiffLines = computed(() => {
   return cleaned.map((line, index) => ({
     index,
     text: line,
-    changed: line !== original[index],
+    changed: line.trim() !== '' && line !== original[index],
   }))
 })
 
@@ -495,6 +495,17 @@ function formatBytes(bytes) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
   return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`
+}
+
+const REMOVED_REASON_LABELS = {
+  REPEATED_HEADER_FOOTER: '重复页眉页脚',
+  WATERMARK: '水印',
+  TOC: '目录',
+  REPEATED_EDGE_LINE: '边缘重复行',
+}
+
+function removedReasonLabel(reason) {
+  return REMOVED_REASON_LABELS[reason] || reason || '未知'
 }
 
 function parseCleanReport(raw) {
@@ -892,6 +903,14 @@ function piiLabel(key) {
   font-weight: 700;
 }
 
+.clean-col:first-child .clean-col-title::before {
+  content: '📥 ';
+}
+
+.clean-col:last-child .clean-col-title::before {
+  content: '✨ ';
+}
+
 .clean-text {
   margin: 0;
   max-height: 260px;
@@ -901,16 +920,24 @@ function piiLabel(key) {
   word-break: break-word;
   color: #334155;
   font-size: 11px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  line-height: 1.55;
   line-height: 1.55;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .diff-line {
-  display: block;
-  margin: 0 -3px;
-  padding: 0 3px;
-  background: #fff7ed;
-  color: #9a3412;
+  display: inline-block;
+  width: 100%;
+  padding: 0 4px;
+  background: #fef9c3;
+  color: #854d0e;
+  border-left: 2px solid #facc15;
+  box-sizing: border-box;
+}
+
+.diff-line:empty {
+  display: none;
 }
 
 .removed-list {
@@ -921,20 +948,26 @@ function piiLabel(key) {
 }
 
 .removed-item {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 6px;
   background: #fff;
-  padding: 6px 8px;
+  padding: 6px 10px;
   font-size: 11px;
 }
 
-.removed-item span {
-  color: #64748b;
-  font-weight: 700;
+.removed-item .removed-tag {
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .removed-item code {
