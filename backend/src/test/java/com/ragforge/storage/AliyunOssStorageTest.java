@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.aliyun.oss.HttpMethod;
+import com.aliyun.oss.model.OSSObjectSummary;
 import com.aliyun.oss.model.ObjectMetadata;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -184,6 +186,23 @@ class AliyunOssStorageTest {
       failIfNeeded();
       lastTtl = ttl;
       return "https://oss.example/" + bucket + "/" + key + "?method=" + method.name();
+    }
+
+    @Override
+    public List<OSSObjectSummary> list(String bucket, String prefix) {
+      failIfNeeded();
+      return metadata.keySet().stream()
+          .filter((key) -> key.startsWith(bucket + "/" + prefix))
+          .map(
+              (key) -> {
+                OSSObjectSummary summary = new OSSObjectSummary();
+                summary.setBucketName(bucket);
+                summary.setKey(key.substring((bucket + "/").length()));
+                summary.setSize(objects.getOrDefault(key, new byte[0]).length);
+                summary.setLastModified(metadata.get(key).getLastModified());
+                return summary;
+              })
+          .toList();
     }
 
     @Override

@@ -1,10 +1,70 @@
 import request from './request'
+import { sha256 } from '../utils/file-hash'
+import {
+  UploadError,
+  presignUpload,
+  putToOss,
+  registerUpload,
+} from './upload'
 
-export const uploadDocument = (kbId, file) => {
+const PRESIGN_THRESHOLD = 0
+const DEFAULT_CONTENT_TYPE = 'application/octet-stream'
+
+export const uploadDocument = (kbId, file, { onProgress, onPhaseChange, onConflict = 'REJECT' } = {}) => {
+  if (PRESIGN_THRESHOLD > 0 && file.size <= PRESIGN_THRESHOLD) {
+    return relayUpload(kbId, file, onProgress)
+  }
+  return presignUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict)
+}
+
+export const relayUpload = (kbId, file, onProgress) => {
   const formData = new FormData()
   formData.append('file', file)
-  // Let axios set multipart boundary automatically.
-  return request.post(`/kb/${kbId}/documents`, formData)
+  formData.append(
+    'meta',
+    JSON.stringify({
+      kbId,
+      identity: {},
+      onConflict: 'REJECT',
+      ingestSource: 'ui-upload-relay',
+      metadata: { filename: file.name },
+    }),
+  )
+  return request.post('/documents', formData, {
+    onUploadProgress: (event) => {
+      if (!event.total) return
+      onProgress?.(Math.round((event.loaded / event.total) * 100))
+    },
+  })
+}
+
+async function presignUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict) {
+  const contentType = file.type || DEFAULT_CONTENT_TYPE
+  onPhaseChange?.('hashing')
+  const contentMd5 = await sha256(file)
+
+  onPhaseChange?.('presigning')
+  const { uploadToken, presignedPutUrl } =
+    await presignUpload(kbId, file.name, contentType, file.size)
+
+  onPhaseChange?.('uploading')
+  try {
+    await putToOss(presignedPutUrl, file, contentType, onProgress)
+  } catch (e) {
+    throw new UploadError('OSS_PUT_FAILED', e)
+  }
+
+  onPhaseChange?.('registering')
+  const result = await registerUpload(
+    kbId,
+    uploadToken,
+    { contentMd5 },
+    onConflict,
+    'ui-upload',
+    { filename: file.name },
+  )
+  onPhaseChange?.('done')
+  return { data: result }
 }
 
 export const replaceDocument = (kbId, docId, file) => {

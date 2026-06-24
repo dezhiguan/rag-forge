@@ -54,6 +54,48 @@
             </div>
             <div class="upload-hint">单文件最大 50MB · 支持批量上传</div>
           </div>
+
+          <div v-if="uploadItems.length" class="upload-queue">
+            <article
+              v-for="item in uploadItems"
+              :key="item.id"
+              class="upload-item"
+              :class="{ failed: item.status === 'failed', done: item.status === 'done' }"
+            >
+              <div class="upload-item-main">
+                <div class="upload-item-title">{{ item.file.name }}</div>
+                <div class="upload-item-meta">
+                  {{ formatBytes(item.file.size) }} · {{ phaseLabel(item.phase) }}
+                </div>
+                <div v-if="item.errorMessage" class="upload-item-error">{{ item.errorMessage }}</div>
+              </div>
+              <div class="upload-progress-cell">
+                <div class="upload-progress-text">{{ item.progress }}%</div>
+                <div class="upload-progress-bar">
+                  <span :style="{ width: `${item.progress}%` }" />
+                </div>
+                <div v-if="item.status === 'failed'" class="upload-retry-actions">
+                  <button class="btn-ghost btn-ghost-small" @click.stop="retryUploadItem(item)">
+                    重试
+                  </button>
+                  <button
+                    v-if="item.errorCode === 'DOC_IDENTITY_CONFLICT'"
+                    class="btn-ghost btn-ghost-small"
+                    @click.stop="retryUploadItem(item, 'REPLACE')"
+                  >
+                    覆盖
+                  </button>
+                  <button
+                    v-if="item.errorCode === 'DOC_IDENTITY_CONFLICT'"
+                    class="btn-ghost btn-ghost-small"
+                    @click.stop="skipUploadItem(item)"
+                  >
+                    跳过
+                  </button>
+                </div>
+              </div>
+            </article>
+          </div>
         </div>
 
         <div class="pipeline-bar" aria-label="processing pipeline">
@@ -297,9 +339,9 @@ import {
   downloadDocument,
   listDocuments,
   reprocessDocument,
-  replaceDocument,
   uploadDocument,
 } from '../api/document'
+import { uploadErrorCode, uploadErrorMessage } from '../api/upload'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import { documentDetailRoute } from '../composables/useDocumentNav'
 
@@ -327,11 +369,14 @@ const uploadKbId = ref(null)
 const uploadProcessing = ref(false)
 const isDragOver = ref(false)
 const fileInputRef = ref(null)
+const uploadItems = ref([])
+let uploadItemSeq = 0
 const activeDocId = ref(null)
 const activeStatus = ref(null)
 const pendingTrackQueue = ref([])
 
 const STATUS_ORDER = ['pending', 'parsing', 'chunking', 'embedding', 'indexing', 'completed']
+const UPLOAD_CONCURRENCY = 3
 
 const showCreate = ref(false)
 const showEdit = ref(false)
@@ -569,41 +614,121 @@ async function handleFiles(files) {
   if (!files || files.length === 0) return
 
   uploadProcessing.value = true
+  const kbId = uploadKbId.value
+  const items = files.map((file) => createUploadItem(file, kbId))
+  uploadItems.value = [...items, ...uploadItems.value]
   try {
-    for (const file of files) {
-      const res = await uploadDocument(uploadKbId.value, file)
-      const payload = res.data
-      if (payload?.exists && payload?.existingDocument) {
-        const version = payload.existingDocument.version ?? 1
-        const confirmed = confirm(`该文件已存在（v${version}），是否覆盖更新？`)
-        if (confirmed) {
-          const replaceRes = await replaceDocument(
-            uploadKbId.value,
-            payload.existingDocument.id,
-            file,
-          )
-          const replaced = replaceRes.data
-          if (replaced?.id) {
-            beginPollingDoc(replaced.id, uploadKbId.value)
-          }
-        }
-      } else {
-        const docId = payload?.documentId ?? payload?.document?.id
-        if (docId) {
-          beginPollingDoc(docId, uploadKbId.value)
-        }
-      }
-    }
+    await runWithConcurrency(items, UPLOAD_CONCURRENCY, (item) => uploadOneItem(item))
     await loadKbs()
-    if (expandedKbId.value === uploadKbId.value) {
-      await loadDocs(uploadKbId.value)
-    } else if (uploadKbId.value) {
-      expandedKbId.value = uploadKbId.value
-      await loadDocs(uploadKbId.value)
+    if (expandedKbId.value === kbId) {
+      await loadDocs(kbId)
+    } else if (kbId) {
+      expandedKbId.value = kbId
+      await loadDocs(kbId)
     }
   } finally {
     uploadProcessing.value = false
   }
+}
+
+function createUploadItem(file, kbId) {
+  return {
+    id: ++uploadItemSeq,
+    kbId,
+    file,
+    progress: 0,
+    phase: 'queued',
+    status: 'queued',
+    errorCode: null,
+    errorMessage: '',
+  }
+}
+
+async function uploadOneItem(item, onConflict = 'REJECT') {
+  item.status = 'uploading'
+  item.errorCode = null
+  item.errorMessage = ''
+  item.progress = 0
+  try {
+    const res = await uploadDocument(item.kbId, item.file, {
+      onConflict,
+      onProgress: (progress) => {
+        item.progress = Math.max(item.progress, progress)
+      },
+      onPhaseChange: (phase) => {
+        item.phase = phase
+        item.progress = Math.max(item.progress, phaseProgress(phase))
+      },
+    })
+    const payload = res.data
+    const docId = payload?.documentId ?? payload?.document?.id
+    item.phase = 'done'
+    item.status = 'done'
+    item.progress = 100
+    if (docId) {
+      beginPollingDoc(docId, item.kbId)
+    }
+  } catch (e) {
+    item.status = 'failed'
+    item.errorCode = uploadErrorCode(e)
+    item.errorMessage = uploadErrorMessage(e)
+  }
+}
+
+async function retryUploadItem(item, onConflict = 'REJECT') {
+  await uploadOneItem(item, onConflict)
+  await refreshAfterUpload(item.kbId)
+}
+
+function skipUploadItem(item) {
+  item.status = 'done'
+  item.phase = 'done'
+  item.progress = 100
+  item.errorCode = null
+  item.errorMessage = ''
+}
+
+async function refreshAfterUpload(kbId) {
+  await loadKbs()
+  if (expandedKbId.value === kbId) {
+    await loadDocs(kbId)
+  }
+}
+
+async function runWithConcurrency(items, limit, worker) {
+  let index = 0
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const item = items[index]
+      index += 1
+      await worker(item)
+    }
+  })
+  await Promise.all(runners)
+}
+
+function phaseProgress(phase) {
+  const map = {
+    queued: 0,
+    hashing: 2,
+    presigning: 8,
+    uploading: 10,
+    registering: 96,
+    done: 100,
+  }
+  return map[phase] ?? 0
+}
+
+function phaseLabel(phase) {
+  const map = {
+    queued: '排队中',
+    hashing: '计算指纹',
+    presigning: '申请直传地址',
+    uploading: '上传 OSS',
+    registering: '登记文档',
+    done: '完成',
+  }
+  return map[phase] || phase || '-'
 }
 
 function onFileChange(e) {
@@ -828,6 +953,90 @@ onMounted(async () => {
   color: var(--text-muted);
 }
 .hidden-file { display: none; }
+
+.upload-queue {
+  display: grid;
+  gap: 8px;
+}
+
+.upload-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.upload-item.done {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: #f0fdf4;
+}
+
+.upload-item.failed {
+  border-color: rgba(220, 38, 38, 0.28);
+  background: #fef2f2;
+}
+
+.upload-item-main {
+  min-width: 0;
+}
+
+.upload-item-title {
+  color: var(--slate);
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-item-meta {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.upload-item-error {
+  margin-top: 4px;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.upload-progress-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.upload-progress-text {
+  color: var(--slate);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.upload-progress-bar {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.upload-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 0.16s ease;
+}
+
+.upload-retry-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
 
 .pipeline-bar {
   display: flex;

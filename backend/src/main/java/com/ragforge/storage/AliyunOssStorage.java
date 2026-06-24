@@ -5,7 +5,10 @@ import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.OSSException;
 import com.aliyun.oss.model.GeneratePresignedUrlRequest;
+import com.aliyun.oss.model.ListObjectsRequest;
 import com.aliyun.oss.model.OSSObject;
+import com.aliyun.oss.model.OSSObjectSummary;
+import com.aliyun.oss.model.ObjectListing;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.PutObjectRequest;
 import com.aliyun.oss.model.PutObjectResult;
@@ -13,8 +16,10 @@ import java.io.InputStream;
 import java.net.URL;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class AliyunOssStorage implements ObjectStorage {
@@ -99,6 +104,23 @@ public class AliyunOssStorage implements ObjectStorage {
     return head(bucket, key) != null;
   }
 
+  public List<OssObjectInfo> listObjects(String bucket, String prefix) {
+    String resolvedBucket = resolveBucket(bucket);
+    String resolvedPrefix = prefix == null ? "" : prefix;
+    try {
+      return oss.list(resolvedBucket, resolvedPrefix).stream()
+          .map(
+              item ->
+                  new OssObjectInfo(
+                      item.getKey(),
+                      item.getLastModified() == null ? null : item.getLastModified().toInstant(),
+                      item.getSize()))
+          .toList();
+    } catch (RuntimeException e) {
+      throw storageFailure("Failed to list OSS objects", resolvedBucket, resolvedPrefix, e);
+    }
+  }
+
   private String presigned(
       String bucket, String key, Duration ttl, HttpMethod method, ObjectMeta objectMeta) {
     if (ttl == null || ttl.isNegative() || ttl.isZero()) {
@@ -177,8 +199,12 @@ public class AliyunOssStorage implements ObjectStorage {
 
     String presigned(String bucket, String key, HttpMethod method, Duration ttl, ObjectMetadata meta);
 
+    List<OSSObjectSummary> list(String bucket, String prefix);
+
     void delete(String bucket, String key);
   }
+
+  public record OssObjectInfo(String key, Instant lastModified, Long sizeBytes) {}
 
   private static final class DefaultOssGateway implements OssGateway {
     private final OSS client;
@@ -232,6 +258,20 @@ public class AliyunOssStorage implements ObjectStorage {
       }
       URL url = client.generatePresignedUrl(request);
       return url.toString();
+    }
+
+    @Override
+    public List<OSSObjectSummary> list(String bucket, String prefix) {
+      List<OSSObjectSummary> summaries = new ArrayList<>();
+      ListObjectsRequest request = new ListObjectsRequest(bucket);
+      request.setPrefix(prefix);
+      ObjectListing listing;
+      do {
+        listing = client.listObjects(request);
+        summaries.addAll(listing.getObjectSummaries());
+        request.setMarker(listing.getNextMarker());
+      } while (listing.isTruncated());
+      return summaries;
     }
 
     @Override

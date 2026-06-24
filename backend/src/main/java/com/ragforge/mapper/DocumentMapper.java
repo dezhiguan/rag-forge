@@ -53,6 +53,16 @@ public interface DocumentMapper extends BaseMapper<Document> {
   Document selectByContentMd5ForUpdate(
       @Param("kbId") Long kbId, @Param("contentMd5") String contentMd5);
 
+  @Select(
+      """
+      SELECT COUNT(1)
+      FROM documents
+      WHERE storage_bucket = #{bucket}
+        AND file_path = #{storageKey}
+      """)
+  long countByStorageLocation(
+      @Param("bucket") String bucket, @Param("storageKey") String storageKey);
+
   @Update("UPDATE documents SET parse_status = #{status}, updated_at = NOW() WHERE id = #{id}")
   int updateStatus(@Param("id") Long id, @Param("status") String status);
 
