@@ -15,8 +15,10 @@ import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @Slf4j
@@ -74,6 +76,23 @@ public class GlobalExceptionHandler {
   @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
   public ResponseEntity<Result<Void>> handleAccessDenied(Exception ex) {
     return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Result.fail(403, "Forbidden"));
+  }
+
+  // 前端偶发把 NaN / 空串作为 path/query 数字参数传过来（例如 /kb/NaN/documents），
+  // 默认会落到 Exception → 500 + 噪声堆栈。改为 400，便于前端识别并刷新本地状态。
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<Result<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    String name = ex.getName();
+    Object value = ex.getValue();
+    log.warn("Invalid request param: name={}, value={}", name, value);
+    String msg = String.format("INVALID_PARAM: %s=%s", name, value);
+    return ResponseEntity.badRequest().body(Result.fail(400, msg));
+  }
+
+  @ExceptionHandler(MissingServletRequestParameterException.class)
+  public ResponseEntity<Result<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
+    return ResponseEntity.badRequest()
+        .body(Result.fail(400, "MISSING_PARAM: " + ex.getParameterName()));
   }
 
   @ExceptionHandler(Exception.class)

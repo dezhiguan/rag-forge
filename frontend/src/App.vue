@@ -18,9 +18,9 @@
         <span class="top-bar-title">{{ currentPage.label }}</span>
         <UserMenu v-if="isAuthenticated" />
       </div>
-      <router-view v-slot="{ Component }">
+      <router-view v-slot="{ Component, route: matchedRoute }">
         <transition name="page-fade" mode="out-in">
-          <component :is="Component" />
+          <component :is="Component" :key="matchedRoute.fullPath" />
         </transition>
       </router-view>
     </main>

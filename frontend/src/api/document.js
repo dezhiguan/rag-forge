@@ -99,7 +99,12 @@ async function relayUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict
 async function presignUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict) {
   const contentType = inferContentType(file) || DEFAULT_CONTENT_TYPE
   onPhaseChange?.('hashing')
-  const contentMd5 = await sha256(file)
+  // hashing 阶段加 60s 上限，避免 Web Worker 在极端环境（Playwright 有头模式 / 旧浏览器）真挂死时无声等待。
+  // 30MB 实测 ~300ms，60s 已经远高于任何合理上限。
+  const contentMd5 = await Promise.race([
+    sha256(file),
+    new Promise((_, rej) => setTimeout(() => rej(new UploadError('HASH_TIMEOUT')), 60_000)),
+  ])
 
   onPhaseChange?.('presigning')
   const { uploadToken, presignedPutUrl } =

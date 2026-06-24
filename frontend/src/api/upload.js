@@ -33,6 +33,7 @@ export function uploadErrorCode(error) {
 export function uploadErrorMessage(error) {
   const code = uploadErrorCode(error)
   const messages = {
+    INVALID_KB_ID: '知识库未选择或已失效，请重新选择',
     KB_WRITE_FORBIDDEN: '您没有该 KB 的写权限',
     UPLOAD_NOT_FOUND: '上传未完成或已过期，请重新上传',
     SIZE_MISMATCH: '文件传输不完整，请重试',
@@ -45,9 +46,18 @@ export function uploadErrorMessage(error) {
 
 const DEFAULT_CONTENT_TYPE = 'application/octet-stream'
 
+function assertKbId(kbId) {
+  const id = Number(kbId)
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new UploadError('INVALID_KB_ID')
+  }
+  return id
+}
+
 export async function presignUpload(kbId, filename, contentType, declaredSize) {
+  const id = assertKbId(kbId)
   const res = await uploadRequest.post('/uploads/presign', {
-    kbId,
+    kbId: id,
     filename,
     contentType,
     declaredSize,
@@ -63,8 +73,9 @@ export async function registerUpload(
   ingestSource = 'ui-upload',
   metadata = {},
 ) {
+  const id = assertKbId(kbId)
   const res = await uploadRequest.post('/documents/register', {
-    kbId,
+    kbId: id,
     uploadToken,
     identity,
     onConflict,
