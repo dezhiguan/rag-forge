@@ -35,6 +35,29 @@ export function inferContentType(file) {
   return EXTENSION_CONTENT_TYPES[ext] || DEFAULT_CONTENT_TYPE
 }
 
+function sniffContentTypeFromBytes(head) {
+  if (!head || head.length < 4) return null
+  if (head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return 'image/png'
+  if (head[0] === 0xff && head[1] === 0xd8) return 'image/jpeg'
+  if (head[0] === 0x47 && head[1] === 0x49 && head[2] === 0x46) return 'image/gif'
+  if (head.length >= 12 && head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46) {
+    return 'image/webp'
+  }
+  return null
+}
+
+export async function inferContentTypeAsync(file) {
+  const fromName = inferContentType(file)
+  if (fromName !== DEFAULT_CONTENT_TYPE) return fromName
+  if (file?.type) return file.type
+  try {
+    const head = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+    return sniffContentTypeFromBytes(head) || fromName
+  } catch {
+    return fromName
+  }
+}
+
 const DOWNLOAD_PATHS = [
   (id) => `/documents/${id}/download`,
   (id) => `/documents/${id}/file`,
@@ -97,7 +120,7 @@ async function relayUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict
 }
 
 async function presignUploadFlow(kbId, file, onProgress, onPhaseChange, onConflict) {
-  const contentType = inferContentType(file) || DEFAULT_CONTENT_TYPE
+  const contentType = (await inferContentTypeAsync(file)) || DEFAULT_CONTENT_TYPE
   onPhaseChange?.('hashing')
   // hashing 阶段加 60s 上限，避免 Web Worker 在极端环境（Playwright 有头模式 / 旧浏览器）真挂死时无声等待。
   // 30MB 实测 ~300ms，60s 已经远高于任何合理上限。

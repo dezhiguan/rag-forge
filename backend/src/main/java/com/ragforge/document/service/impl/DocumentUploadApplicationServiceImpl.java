@@ -295,14 +295,7 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     String oldStrategy = RechunkSupport.resolveOldStrategy(existingChunks);
 
     if (RechunkSupport.isImageOnlyDocument(doc, existingChunks)) {
-      documentMapper.update(
-          null,
-          new LambdaUpdateWrapper<Document>()
-              .eq(Document::getId, id)
-              .set(Document::getRechunkStrategy, null)
-              .set(Document::getRechunkParamsJson, null)
-              .set(Document::getParseStatus, "REPROCESSING")
-              .set(Document::getUpdatedAt, LocalDateTime.now()));
+      documentMapper.updateRechunkRequest(id, null, null, "REPROCESSING");
       sendProcessAfterCommit(id);
       return Map.of(
           "documentId",
@@ -325,14 +318,7 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
             : null;
     String paramsJson = buildRechunkParamsJson(request, doc.getKbId());
 
-    documentMapper.update(
-        null,
-        new LambdaUpdateWrapper<Document>()
-            .eq(Document::getId, id)
-            .set(Document::getRechunkStrategy, storedStrategy)
-            .set(Document::getRechunkParamsJson, paramsJson)
-            .set(Document::getParseStatus, "REPROCESSING")
-            .set(Document::getUpdatedAt, LocalDateTime.now()));
+    documentMapper.updateRechunkRequest(id, storedStrategy, paramsJson, "REPROCESSING");
     sendProcessAfterCommit(id);
     return Map.of(
         "documentId",

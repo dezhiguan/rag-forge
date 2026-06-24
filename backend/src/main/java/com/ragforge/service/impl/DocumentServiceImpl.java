@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ragforge.common.BizException;
 import com.ragforge.common.PageResult;
+import com.ragforge.document.support.RechunkSupport;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
@@ -23,6 +24,8 @@ import com.ragforge.service.DocumentService;
 import com.ragforge.service.FileStorageService;
 import com.ragforge.storage.ObjectMeta;
 import com.ragforge.storage.ObjectStorage;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -68,6 +71,7 @@ public class DocumentServiceImpl implements DocumentService {
   private final ObjectStorage objectStorage;
   private final DocumentProcessProducer documentProcessProducer;
   private final EsIndexService esIndexService;
+  private final ObjectMapper objectMapper;
 
   @Override
   @Transactional
@@ -238,8 +242,41 @@ public class DocumentServiceImpl implements DocumentService {
       vo.setChunkSize(kb.getChunkSize());
       vo.setChunkOverlap(kb.getChunkOverlap());
     }
+    applyEffectiveChunkParams(vo, id);
     vo.setChunks(List.of());
     return vo;
+  }
+
+  /** 文档详情展示实际分块参数（rechunk 后覆盖 KB 默认值）。 */
+  private void applyEffectiveChunkParams(DocumentDetailVO vo, Long docId) {
+    DocumentChunk sample =
+        documentChunkMapper.selectOne(
+            new LambdaQueryWrapper<DocumentChunk>()
+                .eq(DocumentChunk::getDocId, docId)
+                .and(
+                    w ->
+                        w.isNull(DocumentChunk::getChunkModality)
+                            .or()
+                            .apply("upper(chunk_modality) not like 'IMAGE%'"))
+                .orderByAsc(DocumentChunk::getChunkIndex)
+                .last("LIMIT 1"));
+    if (sample == null
+        || !StringUtils.hasText(sample.getChunkerStrategy())
+        || !RechunkSupport.usesFixedParams(sample.getChunkerStrategy())
+        || !StringUtils.hasText(sample.getChunkerParamsJson())) {
+      return;
+    }
+    try {
+      JsonNode node = objectMapper.readTree(sample.getChunkerParamsJson());
+      if (node.hasNonNull("chunkSize")) {
+        vo.setChunkSize(node.get("chunkSize").asInt());
+      }
+      if (node.hasNonNull("overlap")) {
+        vo.setChunkOverlap(node.get("overlap").asInt());
+      }
+    } catch (Exception e) {
+      log.debug("applyEffectiveChunkParams skipped: docId={} {}", docId, e.getMessage());
+    }
   }
 
   @Override
