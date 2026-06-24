@@ -162,7 +162,8 @@ class DocumentControllerTest {
     verify(ingestService).register(captor.capture());
     IngestCommand cmd = captor.getValue();
     assertThat(cmd.getIdentity().getContentMd5()).isEqualTo("business-md5");
-    assertThat(cmd.getFileBytesMd5()).isEqualTo("5d41402abc4b2a76b9719d911017c592");
+    assertThat(cmd.getFileBytesMd5())
+        .isEqualTo("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
   }
 
   @Test
@@ -190,8 +191,10 @@ class DocumentControllerTest {
 
     verify(ingestService).register(captor.capture());
     IngestCommand cmd = captor.getValue();
-    assertThat(cmd.getIdentity().getContentMd5()).isEqualTo("5d41402abc4b2a76b9719d911017c592");
-    assertThat(cmd.getFileBytesMd5()).isEqualTo("5d41402abc4b2a76b9719d911017c592");
+    assertThat(cmd.getIdentity().getContentMd5())
+        .isEqualTo("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+    assertThat(cmd.getFileBytesMd5())
+        .isEqualTo("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
   }
 
   @Test

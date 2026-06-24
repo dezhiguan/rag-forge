@@ -169,14 +169,14 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     String key = null;
     try {
       tempFile = Files.createTempFile("ragforge-upload-", ".bin");
-      MessageDigest digest = MessageDigest.getInstance("MD5");
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
       try (InputStream raw = file.getInputStream();
           DigestInputStream in = new DigestInputStream(raw, digest);
           var out = Files.newOutputStream(tempFile)) {
         in.transferTo(out);
       }
-      String fileBytesMd5 = HexFormat.of().formatHex(digest.digest());
-      applyFileMd5(cmd, fileBytesMd5);
+      String fileContentHash = HexFormat.of().formatHex(digest.digest());
+      applyFileMd5(cmd, fileContentHash);
 
       String originalFilename = cleanFilename(file.getOriginalFilename());
       key = storageKey(kbId, originalFilename);
@@ -189,7 +189,7 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
       ObjectMeta objectMeta = new ObjectMeta();
       objectMeta.setContentType(file.getContentType());
       objectMeta.setSizeBytes(file.getSize());
-      objectMeta.setUserMeta(Map.of("content-md5", fileBytesMd5, "kb-id", String.valueOf(kbId)));
+      objectMeta.setUserMeta(Map.of("content-sha256", fileContentHash, "kb-id", String.valueOf(kbId)));
       try (InputStream in = Files.newInputStream(tempFile)) {
         objectStorage.put(bucket, key, in, objectMeta);
       }
