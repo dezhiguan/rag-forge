@@ -75,6 +75,9 @@
                   <span :style="{ width: `${item.progress}%` }" />
                 </div>
                 <div v-if="item.status === 'failed'" class="upload-retry-actions">
+                  <button class="btn-ghost btn-ghost-small" @click.stop="dismissUploadItem(item)">
+                    取消
+                  </button>
                   <button class="btn-ghost btn-ghost-small" @click.stop="retryUploadItem(item)">
                     重试
                   </button>
@@ -688,6 +691,10 @@ function skipUploadItem(item) {
   item.errorMessage = ''
 }
 
+function dismissUploadItem(item) {
+  uploadItems.value = uploadItems.value.filter((entry) => entry.id !== item.id)
+}
+
 async function refreshAfterUpload(kbId) {
   await loadKbs()
   if (expandedKbId.value === kbId) {
@@ -713,6 +720,7 @@ function phaseProgress(phase) {
     hashing: 2,
     presigning: 8,
     uploading: 10,
+    relay: 15,
     registering: 96,
     done: 100,
   }
@@ -725,6 +733,7 @@ function phaseLabel(phase) {
     hashing: '计算指纹',
     presigning: '申请直传地址',
     uploading: '上传 OSS',
+    relay: '服务端上传',
     registering: '登记文档',
     done: '完成',
   }

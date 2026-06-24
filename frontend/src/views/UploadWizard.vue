@@ -109,6 +109,7 @@ const phaseLabel = computed(() => {
     hashing: '计算文件指纹',
     presigning: '申请 OSS 直传地址',
     uploading: '上传 OSS',
+    relay: '服务端上传',
     registering: '登记文档',
     done: '上传完成',
   }
@@ -153,6 +154,7 @@ function phaseProgress(phase) {
     hashing: 2,
     presigning: 8,
     uploading: 10,
+    relay: 15,
     registering: 96,
     done: 100,
   }
