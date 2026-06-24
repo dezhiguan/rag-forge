@@ -14,7 +14,7 @@
 - 来源 `AllowedOrigin`
   - `https://ragforge.net`
   - `http://localhost:5173`
-- 允许 Methods: `GET`, `PUT`, `POST`, `HEAD`
+- 允许 Methods: `GET`, `PUT`, `POST`, `HEAD`, `DELETE`
 - 允许 Headers: `*`
 - 暴露 Headers: `ETag`, `x-oss-request-id`
 - 缓存时间 `MaxAgeSeconds`: `600`
@@ -26,7 +26,7 @@
 3. 点击“创建规则”，按上面的 CORS 规则填写。
 4. 保存后等待规则生效，再从 `https://ragforge.net` 或本地 `http://localhost:5173` 上传测试文件。
 
-截图建议保存到 `docs/upload-presign-acceptance/oss-cors-rule.png`，用于 PR 验收说明。
+截图建议保存到 `docs/upload-presign-acceptance/oss-cors-after-fix.png`，用于 PR 验收说明。
 
 ## 诊断方式
 
