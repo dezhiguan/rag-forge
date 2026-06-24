@@ -15,7 +15,7 @@ public interface JudgeQueryService {
 
   List<KbSliceVo> byKb(int days, Set<Long> readableKbIds);
 
-  List<WorstCaseVo> worstCases(int limit, int days, Long kbId);
+  List<WorstCaseVo> worstCases(int limit, int days, Long kbId, Set<Long> readableKbIds);
 
   CaseDetailVo caseDetail(Long judgeResultId);
 

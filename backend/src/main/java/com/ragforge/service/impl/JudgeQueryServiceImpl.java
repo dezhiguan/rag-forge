@@ -43,6 +43,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -176,35 +178,51 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
   }
 
   @Override
-  public List<WorstCaseVo> worstCases(int limit, int days, Long kbId) {
+  public List<WorstCaseVo> worstCases(int limit, int days, Long kbId, Set<Long> readableKbIds) {
     int safeLimit = normalizeLimit(limit);
     int safeDays = normalizeDays(days);
     LocalDate start = LocalDate.now().minusDays(safeDays - 1);
 
-    String sql =
-        kbId == null
-            ? """
-              SELECT id, answer_log_id, query, overall_score, created_at, judge_raw_response
-              FROM judge_results
-              WHERE status='COMPLETED'
-                AND created_at >= ?
-              ORDER BY overall_score ASC NULLS LAST, created_at DESC
-              LIMIT ?
-              """
-            : """
-              SELECT id, answer_log_id, query, overall_score, created_at, judge_raw_response
-              FROM judge_results
-              WHERE status='COMPLETED'
-                AND created_at >= ?
-                AND ? = ANY(kb_ids)
-              ORDER BY overall_score ASC NULLS LAST, created_at DESC
-              LIMIT ?
-              """;
-
-    List<Map<String, Object>> rows =
-        kbId == null
-            ? jdbcTemplate.queryForList(sql, start, safeLimit)
-            : jdbcTemplate.queryForList(sql, start, kbId, safeLimit);
+    List<Map<String, Object>> rows;
+    if (kbId == null) {
+      List<Long> safeReadableKbIds =
+          readableKbIds == null ? List.of() : readableKbIds.stream().filter(Objects::nonNull).toList();
+      if (CollectionUtils.isEmpty(safeReadableKbIds)) {
+        return List.of();
+      }
+      String sql =
+          """
+          SELECT id, answer_log_id, query, overall_score, created_at, judge_raw_response
+          FROM judge_results
+          WHERE status='COMPLETED'
+            AND created_at >= :start
+            AND EXISTS (
+              SELECT 1
+              FROM unnest(kb_ids) AS readable(kb_id)
+              WHERE readable.kb_id IN (:readableKbIds)
+            )
+          ORDER BY overall_score ASC NULLS LAST, created_at DESC
+          LIMIT :limit
+          """;
+      MapSqlParameterSource params =
+          new MapSqlParameterSource()
+              .addValue("start", start)
+              .addValue("readableKbIds", safeReadableKbIds)
+              .addValue("limit", safeLimit);
+      rows = new NamedParameterJdbcTemplate(jdbcTemplate).queryForList(sql, params);
+    } else {
+      String sql =
+          """
+          SELECT id, answer_log_id, query, overall_score, created_at, judge_raw_response
+          FROM judge_results
+          WHERE status='COMPLETED'
+            AND created_at >= ?
+            AND ? = ANY(kb_ids)
+          ORDER BY overall_score ASC NULLS LAST, created_at DESC
+          LIMIT ?
+          """;
+      rows = jdbcTemplate.queryForList(sql, start, kbId, safeLimit);
+    }
 
     return rows.stream().map(this::toWorstCase).toList();
   }
@@ -217,7 +235,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
 
     JudgeResult result = judgeResultMapper.selectById(judgeResultId);
     if (result == null) {
-      throw new BizException(404, "CASE_NOT_FOUND");
+      throw new BizException(404, "JUDGE_RESULT_NOT_FOUND");
     }
 
     AnswerLog log = answerLogMapper.selectByIdWithKbIdsCsv(result.getAnswerLogId());

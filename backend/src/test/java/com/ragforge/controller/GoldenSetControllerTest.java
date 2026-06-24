@@ -17,10 +17,16 @@ import com.ragforge.security.KbAccessGuard;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.JudgeQueryService;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import net.javacrumbs.shedlock.core.LockConfiguration;
+import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.core.SimpleLock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +45,7 @@ class GoldenSetControllerTest {
   @Mock private KbAccessGuard kbAccessGuard;
 
   private final List<Runnable> queuedTasks = new ArrayList<>();
+  private final FakeLockProvider lockProvider = new FakeLockProvider();
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -46,7 +53,7 @@ class GoldenSetControllerTest {
     Executor queuedExecutor = queuedTasks::add;
     GoldenSetController controller =
         new GoldenSetController(
-            replayJob, judgeQueryService, evalDatasetMapper, kbAccessGuard, queuedExecutor);
+            replayJob, judgeQueryService, evalDatasetMapper, kbAccessGuard, queuedExecutor, lockProvider);
     mockMvc =
         standaloneSetup(controller)
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -102,12 +109,24 @@ class GoldenSetControllerTest {
         .andExpect(jsonPath("$.code").value(409));
 
     assertThat(queuedTasks).hasSize(1);
+    assertThat(lockProvider.lastLockName).isEqualTo(GoldenSetReplayJob.SCHEDULER_LOCK_NAME);
   }
 
   @Test
-  void manualReplayLockName_matchesSchedulerLockName() {
-    assertThat(GoldenSetController.MANUAL_REPLAY_LOCK_NAME)
-        .isEqualTo(GoldenSetReplayJob.SCHEDULER_LOCK_NAME);
+  void replayNow_cron持有分布式锁_手动触发返回409() throws Exception {
+    when(evalDatasetMapper.selectById(7L)).thenReturn(dataset(7L, 99L));
+    when(kbAccessGuard.canRead(99L)).thenReturn(true);
+    lockProvider.lock(
+        new LockConfiguration(
+            Instant.now(), GoldenSetReplayJob.SCHEDULER_LOCK_NAME, Duration.ofHours(2), Duration.ZERO));
+
+    mockMvc
+        .perform(post("/api/v1/evaluation/golden-set/replay?datasetId=7&limit=5"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value(409))
+        .andExpect(jsonPath("$.msg").value("REPLAY_ALREADY_RUNNING"));
+
+    verify(replayJob, never()).replay(7L, 5);
   }
 
   private static EvalDataset dataset(Long id, Long kbId) {
@@ -115,5 +134,20 @@ class GoldenSetControllerTest {
     dataset.setId(id);
     dataset.setKbId(kbId);
     return dataset;
+  }
+
+  private static class FakeLockProvider implements LockProvider {
+    private boolean locked;
+    private String lastLockName;
+
+    @Override
+    public Optional<SimpleLock> lock(LockConfiguration lockConfiguration) {
+      lastLockName = lockConfiguration.getName();
+      if (locked) {
+        return Optional.empty();
+      }
+      locked = true;
+      return Optional.of(() -> locked = false);
+    }
   }
 }

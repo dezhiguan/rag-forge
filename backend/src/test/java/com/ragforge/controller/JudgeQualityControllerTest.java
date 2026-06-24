@@ -118,7 +118,7 @@ class JudgeQualityControllerTest {
 
   @Test
   void worstCases_typicalAndQueryByKb() throws Exception {
-    when(queryService.worstCases(5, 7, 9L)).thenReturn(List.of());
+    when(queryService.worstCases(eq(5), eq(7), eq(9L), any())).thenReturn(List.of());
     when(kbAccessGuard.canRead(9L)).thenReturn(true);
 
     mockMvc
@@ -126,7 +126,20 @@ class JudgeQualityControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(200));
 
-    verify(queryService).worstCases(5, 7, 9L);
+    verify(queryService).worstCases(5, 7, 9L, Set.of());
+  }
+
+  @Test
+  void worstCases_withoutKbFiltersByReadableKbIds() throws Exception {
+    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(1L, 2L));
+    when(queryService.worstCases(5, 7, null, Set.of(1L, 2L))).thenReturn(List.of());
+
+    mockMvc
+        .perform(get("/api/v1/evaluation/quality/worst-cases?limit=5&days=7"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(200));
+
+    verify(queryService).worstCases(5, 7, null, Set.of(1L, 2L));
   }
 
   @Test
@@ -138,7 +151,7 @@ class JudgeQualityControllerTest {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value(403));
 
-    verify(queryService, never()).worstCases(anyInt(), anyInt(), any());
+    verify(queryService, never()).worstCases(anyInt(), anyInt(), any(), any());
   }
 
   @Test
@@ -177,13 +190,53 @@ class JudgeQualityControllerTest {
   }
 
   @Test
-  void caseDetail_notFound() throws Exception {
-    when(queryService.caseDetail(100L)).thenThrow(new BizException(404, "CASE_NOT_FOUND"));
+  void caseDetail_detailNull_返回404() throws Exception {
+    when(queryService.caseDetail(100L)).thenReturn(null);
 
     mockMvc
         .perform(get("/api/v1/evaluation/quality/case/100"))
         .andExpect(status().isNotFound())
-        .andExpect(jsonPath("$.code").value(404));
+        .andExpect(jsonPath("$.code").value(404))
+        .andExpect(jsonPath("$.msg").value("JUDGE_RESULT_NOT_FOUND"));
+  }
+
+  @Test
+  void caseDetail_kbIds为空_返回200() throws Exception {
+    CaseDetailVo detail = buildCaseDetail();
+    detail.setKbIds(List.of());
+    when(queryService.caseDetail(100L)).thenReturn(detail);
+
+    mockMvc
+        .perform(get("/api/v1/evaluation/quality/case/100"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(200));
+
+    verify(kbAccessGuard, never()).canRead(any());
+  }
+
+  @Test
+  void caseDetail_kbIds为null_返回200() throws Exception {
+    CaseDetailVo detail = buildCaseDetail();
+    detail.setKbIds(null);
+    when(queryService.caseDetail(100L)).thenReturn(detail);
+
+    mockMvc
+        .perform(get("/api/v1/evaluation/quality/case/100"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(200));
+
+    verify(kbAccessGuard, never()).canRead(any());
+  }
+
+  @Test
+  void caseDetail_notFound() throws Exception {
+    when(queryService.caseDetail(100L)).thenThrow(new BizException(404, "JUDGE_RESULT_NOT_FOUND"));
+
+    mockMvc
+        .perform(get("/api/v1/evaluation/quality/case/100"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value(404))
+        .andExpect(jsonPath("$.msg").value("JUDGE_RESULT_NOT_FOUND"));
   }
 
   @Test

@@ -73,7 +73,7 @@ class AnswerJudgeProducerTest {
   }
 
   @Test
-  void send_inlineModeInProdForbidden() {
+  void send_inlineModeInProdLogsAndSkipsBecauseStartupGuardOwnsFailFast() {
     RocketMQTemplate rocketMQTemplate = org.mockito.Mockito.mock(RocketMQTemplate.class);
     JudgeSampler sampler = org.mockito.Mockito.mock(JudgeSampler.class);
     Environment environment = org.mockito.Mockito.mock(Environment.class);
@@ -82,8 +82,10 @@ class AnswerJudgeProducerTest {
     AnswerJudgeProducer producer = new AnswerJudgeProducer(rocketMQTemplate, sampler, environment);
     ReflectionTestUtils.setField(producer, "dispatchMode", "inline");
 
-    assertThrows(
-        IllegalStateException.class, () -> producer.publishJudgeRequest(sampleMessage(123L), sampleRequest(123L)));
+    producer.publishJudgeRequest(sampleMessage(123L), sampleRequest(123L));
+
+    verify(rocketMQTemplate, never()).convertAndSend(anyString(), any(AnswerJudgeMessage.class));
+    verify(sampler, never()).decide(any());
   }
 
   @Test

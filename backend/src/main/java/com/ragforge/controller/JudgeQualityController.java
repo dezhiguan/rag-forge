@@ -50,18 +50,25 @@ public class JudgeQualityController {
       @RequestParam(defaultValue = "10") int limit,
       @RequestParam(defaultValue = "7") int days,
       @RequestParam(required = false) Long kbId) {
+    Set<Long> readableKbIds = Set.of();
     if (kbId != null && !kbAccessGuard.canRead(kbId)) {
       throw new com.ragforge.common.BizException(403, "KB_ACCESS_DENIED");
     }
-    return Result.ok(queryService.worstCases(limit, days, kbId));
+    if (kbId == null) {
+      readableKbIds = new HashSet<>(kbAccessGuard.allReadableKbIds());
+    }
+    return Result.ok(queryService.worstCases(limit, days, kbId, readableKbIds));
   }
 
   @GetMapping("/case/{judgeResultId}")
   public Result<CaseDetailVo> caseDetail(@PathVariable Long judgeResultId) {
     CaseDetailVo detail = queryService.caseDetail(judgeResultId);
-    if (detail.getKbIds() == null
-        || detail.getKbIds().isEmpty()
-        || detail.getKbIds().stream().anyMatch(kbId -> !kbAccessGuard.canRead(kbId))) {
+    if (detail == null) {
+      throw new BizException(404, "JUDGE_RESULT_NOT_FOUND");
+    }
+    if (detail.getKbIds() != null
+        && !detail.getKbIds().isEmpty()
+        && detail.getKbIds().stream().anyMatch(kbId -> !kbAccessGuard.canRead(kbId))) {
       throw new BizException(403, "KB_ACCESS_DENIED");
     }
     return Result.ok(detail);
