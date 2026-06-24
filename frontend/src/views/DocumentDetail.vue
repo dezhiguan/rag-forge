@@ -396,6 +396,12 @@ const breadcrumbItems = computed(() => {
 })
 
 function onBack() {
+  // 关掉所有 Teleport 弹层，避免离开页面后遮罩残留导致整页空白
+  showCleanPanel.value = false
+  showRechunkDialog.value = false
+  // 立刻停止本页定时器，避免轮询打到已卸载组件
+  const id = Number(route.params.id)
+  if (id) stopPolling(id)
   navigateBackFromDocument(router, route, doc.value?.kbId)
 }
 
