@@ -16,7 +16,7 @@ public final class RechunkSupport {
   public static final Set<String> VALID_STRATEGIES =
       Set.of("MARKDOWN_HEADING", "FIXED_WINDOW", "RECURSIVE", "SEMANTIC", "TABLE_AWARE");
 
-  public static final int MIN_CHUNK_SIZE = 64;
+  public static final int MIN_CHUNK_SIZE = 256;
   public static final int MAX_CHUNK_SIZE = 2048;
   public static final int MAX_OVERLAP = 512;
   public static final int SEMANTIC_MIN_TEXT_LENGTH = 2000;

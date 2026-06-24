@@ -296,7 +296,7 @@
             <textarea v-model="editForm.description" rows="3" placeholder="可选" />
           </label>
           <div class="edit-grid">
-            <label class="field">
+            <label class="field" :class="{ invalid: editChunkSizeError }">
               <span class="field-label-with-hint">
                 分块大小（字符）
                 <span
@@ -316,9 +316,19 @@
                   </span>
                 </span>
               </span>
-              <input v-model.number="editForm.chunkSize" type="number" min="100" step="100" />
+              <input
+                v-model.number="editForm.chunkSize"
+                type="number"
+                :min="CHUNK_SIZE_MIN"
+                :max="CHUNK_SIZE_MAX"
+                step="1"
+                :placeholder="`${CHUNK_SIZE_MIN}-${CHUNK_SIZE_MAX}`"
+                @keydown="blockNegativeNumberKey"
+                @blur="onEditChunkSizeBlur"
+              />
+              <span v-if="editChunkSizeError" class="field-error">{{ editChunkSizeError }}</span>
             </label>
-            <label class="field">
+            <label class="field" :class="{ invalid: editChunkOverlapError }">
               <span class="field-label-with-hint">
                 分块重叠（字符）
                 <span
@@ -338,7 +348,17 @@
                   </span>
                 </span>
               </span>
-              <input v-model.number="editForm.chunkOverlap" type="number" min="0" step="10" />
+              <input
+                v-model.number="editForm.chunkOverlap"
+                type="number"
+                :min="CHUNK_OVERLAP_MIN"
+                :max="CHUNK_OVERLAP_MAX"
+                step="1"
+                :placeholder="`${CHUNK_OVERLAP_MIN}-${CHUNK_OVERLAP_MAX}`"
+                @keydown="blockNegativeNumberKey"
+                @blur="onEditChunkOverlapBlur"
+              />
+              <span v-if="editChunkOverlapError" class="field-error">{{ editChunkOverlapError }}</span>
             </label>
           </div>
           <div class="edit-grid">
@@ -369,7 +389,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KB_DOCUMENT_DELETE_ENABLED, KNOWLEDGE_BASE_DELETE_ENABLED } from '../config/uiPolicy'
 import { createKb, deleteKb, listKb, updateKb } from '../api/kb'
@@ -385,6 +405,17 @@ import { useDocumentPolling } from '../composables/useDocumentPolling'
 import { documentDetailRoute } from '../composables/useDocumentNav'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import {
+  CHUNK_OVERLAP_MAX,
+  CHUNK_OVERLAP_MIN,
+  CHUNK_SIZE_MAX,
+  CHUNK_SIZE_MIN,
+  blockNegativeNumberKey,
+  chunkOverlapError,
+  chunkSizeError,
+  normalizeChunkOverlap,
+  normalizeChunkSize,
+} from '../utils/chunkParams'
 
 const toast = useToast()
 
@@ -448,6 +479,19 @@ const editForm = ref({
 })
 const answerModes = ['OFF', 'PREVIEW', 'ON']
 const answerModels = ['qwen-plus', 'qwen-max']
+
+const editChunkSizeError = computed(() => chunkSizeError(editForm.value.chunkSize))
+const editChunkOverlapError = computed(() =>
+  chunkOverlapError(editForm.value.chunkOverlap, editForm.value.chunkSize),
+)
+
+function onEditChunkSizeBlur() {
+  editForm.value.chunkSize = normalizeChunkSize(editForm.value.chunkSize)
+}
+
+function onEditChunkOverlapBlur() {
+  editForm.value.chunkOverlap = normalizeChunkOverlap(editForm.value.chunkOverlap)
+}
 
 async function loadKbs() {
   loadingKb.value = true
@@ -631,6 +675,13 @@ function openEdit(kb) {
 async function onUpdateKb() {
   if (!editForm.value.name?.trim()) {
     toast.warning('请填写知识库名称')
+    return
+  }
+  onEditChunkSizeBlur()
+  onEditChunkOverlapBlur()
+  const paramError = editChunkSizeError.value || editChunkOverlapError.value
+  if (paramError) {
+    toast.warning(paramError)
     return
   }
   submittingKb.value = true
@@ -1504,6 +1555,16 @@ onMounted(async () => {
   outline: none;
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+.field.invalid input {
+  border-color: #ef4444;
+}
+.field-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #dc2626;
+  line-height: 1.4;
 }
 .field select {
   width: 100%;

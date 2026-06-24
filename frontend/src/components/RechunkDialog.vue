@@ -55,13 +55,31 @@
             </div>
 
             <div v-if="showFixedParams" class="params-row">
-              <label class="param-field">
+              <label class="param-field" :class="{ invalid: chunkSizeFieldError }">
                 块大小（字符）：
-                <input v-model.number="chunkSize" type="number" min="64" max="2048">
+                <input
+                  v-model.number="chunkSize"
+                  type="number"
+                  :min="CHUNK_SIZE_MIN"
+                  :max="CHUNK_SIZE_MAX"
+                  step="1"
+                  @keydown="blockNegativeNumberKey"
+                  @blur="onChunkSizeBlur"
+                >
+                <span v-if="chunkSizeFieldError" class="param-error">{{ chunkSizeFieldError }}</span>
               </label>
-              <label class="param-field">
+              <label class="param-field" :class="{ invalid: chunkOverlapFieldError }">
                 块重叠（字符）：
-                <input v-model.number="chunkOverlap" type="number" min="0" max="512">
+                <input
+                  v-model.number="chunkOverlap"
+                  type="number"
+                  :min="CHUNK_OVERLAP_MIN"
+                  :max="CHUNK_OVERLAP_MAX"
+                  step="1"
+                  @keydown="blockNegativeNumberKey"
+                  @blur="onChunkOverlapBlur"
+                >
+                <span v-if="chunkOverlapFieldError" class="param-error">{{ chunkOverlapFieldError }}</span>
               </label>
             </div>
 
@@ -89,6 +107,18 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  CHUNK_OVERLAP_MAX,
+  CHUNK_OVERLAP_MIN,
+  CHUNK_SIZE_MAX,
+  CHUNK_SIZE_MIN,
+  blockNegativeNumberKey,
+  chunkOverlapError,
+  chunkSizeError,
+  isChunkParamsValid,
+  normalizeChunkOverlap,
+  normalizeChunkSize,
+} from '../utils/chunkParams'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -218,15 +248,23 @@ const newStrategyLabel = computed(() =>
   CHUNKER_STRATEGY_LABELS[selectedStrategy.value] || selectedStrategy.value,
 )
 
+const chunkSizeFieldError = computed(() => chunkSizeError(chunkSize.value))
+const chunkOverlapFieldError = computed(() => chunkOverlapError(chunkOverlap.value, chunkSize.value))
+
 const submitDisabled = computed(() => {
   if (documentType.value === 'image') return false
   if (selectedStrategy.value === 'SEMANTIC' && semanticDisabled.value) return true
-  if (showFixedParams.value) {
-    if (!Number.isFinite(chunkSize.value) || chunkSize.value < 64 || chunkSize.value > 2048) return true
-    if (!Number.isFinite(chunkOverlap.value) || chunkOverlap.value < 0 || chunkOverlap.value > 512) return true
-  }
+  if (showFixedParams.value && !isChunkParamsValid(chunkSize.value, chunkOverlap.value)) return true
   return false
 })
+
+function onChunkSizeBlur() {
+  chunkSize.value = normalizeChunkSize(chunkSize.value)
+}
+
+function onChunkOverlapBlur() {
+  chunkOverlap.value = normalizeChunkOverlap(chunkOverlap.value)
+}
 
 watch(
   () => props.modelValue,
@@ -267,6 +305,9 @@ function submit() {
   }
   const payload = { strategy: selectedStrategy.value }
   if (showFixedParams.value) {
+    onChunkSizeBlur()
+    onChunkOverlapBlur()
+    if (!isChunkParamsValid(chunkSize.value, chunkOverlap.value)) return
     payload.chunkSize = chunkSize.value
     payload.chunkOverlap = chunkOverlap.value
   }
@@ -454,6 +495,16 @@ function submit() {
   padding: 8px 10px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
+}
+
+.param-field.invalid input {
+  border-color: #ef4444;
+}
+
+.param-error {
+  font-size: 11px;
+  color: #dc2626;
+  line-height: 1.4;
 }
 
 .rechunk-footer {
