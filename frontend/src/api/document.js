@@ -7,9 +7,7 @@ import {
   registerUpload,
 } from './upload'
 
-const PRESIGN_THRESHOLD = 0
-const PRESIGN_THRESHOLD_NOTE =
-  '0 = 全部走直传，relayUpload 仅用于直传失败后的临时兜底（例如问题排查）或未来小文件优化'
+const PRESIGN_THRESHOLD = 0 // 0 = 全部走直传，relayUpload 仅用于直传失败后的临时兜底或后续小文件优化
 const DEFAULT_CONTENT_TYPE = 'application/octet-stream'
 
 const EXTENSION_CONTENT_TYPES = {
@@ -169,5 +167,3 @@ export const downloadDocument = async (id) => {
     }
   }
 }
-
-export const PRESIGN_THRESHOLD_INFO = PRESIGN_THRESHOLD_NOTE
