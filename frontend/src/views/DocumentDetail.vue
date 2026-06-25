@@ -90,11 +90,16 @@
                   <span v-if="c.chunkModality" class="chunk-modality">{{ c.chunkModality }}</span>
                   <span class="chunk-tokens">{{ c.chunkerStrategy || (c.chunkModality?.startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW') }} · {{ c.tokenCount ?? 0 }} tokens</span>
                 </div>
+                <!--
+                  IMAGE chunk 缩略图来源：
+                  - 嵌入图（HTML/PDF/Word 抽出来的）：后端给 c.imageUrl（OSS presigned GET，10 分钟有效）
+                  - 纯图片文档（fileType=image/*）：直接用整篇下载 URL，那本身就是这张图
+                -->
                 <img
-                  v-if="isImageDoc && c.imageKey"
+                  v-if="c.imageUrl || (isImageDoc && c.imageKey)"
                   class="chunk-thumb"
-                  :src="downloadUrl"
-                  alt="文档缩略图"
+                  :src="c.imageUrl || downloadUrl"
+                  alt="chunk 预览图"
                 >
                 <div v-if="c.headingPath" class="chunk-heading">{{ c.headingPath }}</div>
                 <div class="chunk-text" :title="c.content">{{ summarizeContent(c.content) }}</div>

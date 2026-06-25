@@ -29,7 +29,7 @@ public class ImagePipelineSupport {
       ImageChunkContext context,
       int startChunkIndex,
       String imageKey) {
-    return processImage(imageBytes, imageContentType, doc, context, startChunkIndex);
+    return processImage(imageBytes, imageContentType, doc, context, startChunkIndex, imageKey);
   }
 
   public List<DocumentChunk> processStandaloneImage(
@@ -38,7 +38,7 @@ public class ImagePipelineSupport {
       Document doc,
       int startChunkIndex,
       String imageKey) {
-    return processImage(imageBytes, imageContentType, doc, new ImageChunkContext(), startChunkIndex);
+    return processImage(imageBytes, imageContentType, doc, new ImageChunkContext(), startChunkIndex, imageKey);
   }
 
   private List<DocumentChunk> processImage(
@@ -46,7 +46,8 @@ public class ImagePipelineSupport {
       String imageContentType,
       Document doc,
       ImageChunkContext context,
-      int chunkIndex) {
+      int chunkIndex,
+      String imageKey) {
     if (imageBytes == null || imageBytes.length == 0) {
       return List.of();
     }
@@ -78,6 +79,7 @@ public class ImagePipelineSupport {
     chunk.setChunkModality(ChunkModality.IMAGE);
     chunk.setVlVector(new PGvector(vector));
     chunk.setChunkMetadataJson(metadataJson(context));
+    chunk.setImageKey(imageKey);
     return List.of(chunk);
   }
 

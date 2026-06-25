@@ -295,7 +295,9 @@ public class DocumentServiceImpl implements DocumentService {
                 .eq(DocumentChunk::getDocId, id)
                 .orderByAsc(DocumentChunk::getChunkIndex));
 
-    List<DocumentChunkVO> list = result.getRecords().stream().map(this::toChunkVO).toList();
+    String storageBucket = doc.getStorageBucket();
+    List<DocumentChunkVO> list =
+        result.getRecords().stream().map((c) -> toChunkVO(c, storageBucket)).toList();
     return PageResult.of(result.getTotal(), (int) mpPage.getCurrent(), pageSize, list);
   }
 
@@ -534,7 +536,13 @@ public class DocumentServiceImpl implements DocumentService {
     return vo;
   }
 
+  private static final java.time.Duration IMAGE_PREVIEW_TTL = java.time.Duration.ofMinutes(10);
+
   private DocumentChunkVO toChunkVO(DocumentChunk chunk) {
+    return toChunkVO(chunk, null);
+  }
+
+  private DocumentChunkVO toChunkVO(DocumentChunk chunk, String storageBucket) {
     DocumentChunkVO vo = new DocumentChunkVO();
     vo.setChunkIndex(chunk.getChunkIndex());
     vo.setContent(chunk.getContent());
@@ -542,6 +550,20 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setChunkerStrategy(chunk.getChunkerStrategy());
     vo.setHeadingPath(chunk.getHeadingPath());
     vo.setChunkModality(chunk.getChunkModality());
+    vo.setImageKey(chunk.getImageKey());
+    // 只对真正落库的 IMAGE chunk 签 GET URL，签失败时静默退化为不带预览
+    // （前端 v-if 会自动隐藏 <img>），不影响 chunk 列表整体返回。
+    if (StringUtils.hasText(chunk.getImageKey()) && StringUtils.hasText(storageBucket)) {
+      try {
+        vo.setImageUrl(objectStorage.presignedGet(storageBucket, chunk.getImageKey(), IMAGE_PREVIEW_TTL));
+      } catch (Exception e) {
+        log.warn(
+            "Skip chunk image preview URL: chunkIndex={} imageKey={} err={}",
+            chunk.getChunkIndex(),
+            chunk.getImageKey(),
+            e.getMessage());
+      }
+    }
     return vo;
   }
 

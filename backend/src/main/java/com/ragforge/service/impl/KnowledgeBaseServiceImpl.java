@@ -50,7 +50,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     kb.setOwnerUserId(auth == null || auth.userId() == null ? 0L : auth.userId());
     kb.setVisibility("PRIVATE");
     kb.setKbType("GENERAL");
-    kb.setImageProcessingMode("OFF");
+    kb.setImageProcessingMode(normalizeImageMode(dto.getImageProcessingMode(), "OFF"));
     applyAnswerConfig(kb, dto.getAnswerMode(), dto.getAnswerModel());
     LocalDateTime now = LocalDateTime.now();
     kb.setCreatedAt(now);
@@ -113,6 +113,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     if (dto.getAnswerMode() != null || dto.getAnswerModel() != null) {
       applyAnswerConfig(kb, dto.getAnswerMode(), dto.getAnswerModel());
     }
+    if (StringUtils.hasText(dto.getImageProcessingMode())) {
+      kb.setImageProcessingMode(normalizeImageMode(dto.getImageProcessingMode(), kb.getImageProcessingMode()));
+    }
     if (StringUtils.hasText(dto.getStatus())) {
       kb.setStatus(dto.getStatus());
     }
@@ -161,6 +164,19 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
       }
       kb.setAnswerModel(answerModel.trim());
     }
+  }
+
+  // 把传入值规整成 ON / OFF；空串或 null 退回 fallback（创建时是 "OFF"，更新时是原值）。
+  // 防御性大写化 + 校验，避免前端误传 "on" / "On" 之类的脏数据进库。
+  private String normalizeImageMode(String value, String fallback) {
+    if (value == null) return fallback;
+    String trimmed = value.trim();
+    if (trimmed.isEmpty()) return fallback;
+    String upper = trimmed.toUpperCase();
+    if (!"ON".equals(upper) && !"OFF".equals(upper)) {
+      throw new BizException(400, "imageProcessingMode 只能是 ON / OFF");
+    }
+    return upper;
   }
 
   private String normalizeAnswerMode(String answerMode) {

@@ -18,6 +18,7 @@ public class KnowledgeBaseVO {
   private String status;
   private String answerMode;
   private String answerModel;
+  private String imageProcessingMode;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 
@@ -34,6 +35,7 @@ public class KnowledgeBaseVO {
     vo.setStatus(entity.getStatus());
     vo.setAnswerMode(entity.getAnswerMode());
     vo.setAnswerModel(entity.getAnswerModel());
+    vo.setImageProcessingMode(entity.getImageProcessingMode());
     vo.setCreatedAt(entity.getCreatedAt());
     vo.setUpdatedAt(entity.getUpdatedAt());
     return vo;
