@@ -801,16 +801,21 @@ async function uploadOneItem(item, onConflict = 'REJECT') {
     // 避免默认 REJECT 把"重复上传"粗暴渲染成"上传失败"。
     if (code === 'DOC_IDENTITY_CONFLICT' && onConflict === 'REJECT') {
       const next = await promptConflictChoice(item.file?.name)
-      if (next === 'REPLACE' || next === 'SKIP') {
-        await uploadOneItem(item, next)
+      if (next === 'REPLACE') {
+        // 覆盖：真的要重新跑一次完整 hash + PUT + register，UI 卡片留下显示新进度
+        await uploadOneItem(item, 'REPLACE')
         return
       }
-      // 用户主动取消：标记跳过而不是失败，不弹 error toast
-      item.status = 'done'
-      item.phase = 'done'
-      item.progress = 100
-      item.errorCode = null
-      item.errorMessage = '已取消（库内已有相同内容文档）'
+      if (next === 'SKIP') {
+        // 跳过：再发一次 register 让后端按 SKIP 走（safeDelete 掉新 PUT 的 OSS 对象，
+        // 避免孤儿），但 UI 不留卡片，因为没有任何新文档入库。
+        try { await uploadOneItem(item, 'SKIP') } catch { /* 静默：SKIP 失败也直接释放 UI 位 */ }
+        dismissUploadItem(item)
+        toast.success(`已跳过「${item.file?.name || '文件'}」（库内已有相同内容）`)
+        return
+      }
+      // 取消：用户主动放弃，UI 直接释放；OSS 上多出来的孤儿由 OssOrphanCleanupJob 负责清理
+      dismissUploadItem(item)
       return
     }
     item.status = 'failed'
