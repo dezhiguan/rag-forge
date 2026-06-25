@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
+import { ERROR_MESSAGES } from './error-messages'
 
 const toast = useToast()
 
@@ -80,7 +81,12 @@ request.interceptors.response.use(
       if (status === 401) {
         msg = '登录已过期，请重新登录'
       } else if (status === 403) {
-        msg = translateError(data) || '没有访问权限'
+        const url = err.config?.url || ''
+        if (url.includes('/evaluation/quality/sampling')) {
+          msg = ERROR_MESSAGES.SAMPLING_ADMIN_ONLY
+        } else {
+          msg = translateError(data) || ERROR_MESSAGES.KB_ACCESS_DENIED
+        }
       } else if (status === 404) {
         msg = translateError(data) || '资源不存在'
       } else if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '')) {
