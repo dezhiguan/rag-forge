@@ -790,12 +790,45 @@ async function uploadOneItem(item, onConflict = 'REJECT') {
       beginPollingDoc(docId, item.kbId)
     }
   } catch (e) {
+    const code = uploadErrorCode(e)
+    // 服务端 SHA-256 判重命中：弹三选一让用户决定 覆盖/跳过/取消，
+    // 避免默认 REJECT 把"重复上传"粗暴渲染成"上传失败"。
+    if (code === 'DOC_IDENTITY_CONFLICT' && onConflict === 'REJECT') {
+      const next = await promptConflictChoice(item.file?.name)
+      if (next === 'REPLACE' || next === 'SKIP') {
+        await uploadOneItem(item, next)
+        return
+      }
+      // 用户主动取消：标记跳过而不是失败，不弹 error toast
+      item.status = 'done'
+      item.phase = 'done'
+      item.progress = 100
+      item.errorCode = null
+      item.errorMessage = '已取消（库内已有相同内容文档）'
+      return
+    }
     item.status = 'failed'
     item.phase = 'failed'  // 避免 UI 卡在最后一次成功阶段的文案（如"计算指纹"）
-    item.errorCode = uploadErrorCode(e)
+    item.errorCode = code
     item.errorMessage = uploadErrorMessage(e)
     toast.error(item.errorMessage)
   }
+}
+
+async function promptConflictChoice(filename) {
+  return confirmDialog({
+    title: '已有相同内容的文档',
+    message: filename
+      ? `知识库中已存在与「${filename}」内容完全相同的文档。`
+      : '知识库中已存在内容完全相同的文档。',
+    detail: '覆盖：删除旧文档并重新处理；跳过：保留旧文档不重复入库；取消：放弃本次上传。',
+    cancelText: '取消',
+    choices: [
+      { value: 'SKIP', label: '跳过', variant: 'default' },
+      { value: 'REPLACE', label: '覆盖', variant: 'danger' },
+    ],
+    cancelValue: 'CANCEL',
+  })
 }
 
 async function retryUploadItem(item, onConflict = 'REJECT') {

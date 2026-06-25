@@ -41,6 +41,7 @@ export function uploadErrorMessage(error) {
     UPLOAD_NOT_FOUND: '上传未完成或已过期，请重新上传',
     SIZE_MISMATCH: '文件传输不完整，请重试',
     DOC_IDENTITY_CONFLICT: "已有相同内容文档，选择'覆盖'或'跳过'",
+    DOC_CONTENT_CHANGED_USE_REPLACE: '原文档内容已变更，请选择"覆盖"重新入库',
     OSS_PUT_FAILED: '上传失败，点击重试',
     NETWORK_ERROR: '上传失败，点击重试',
   }
