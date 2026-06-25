@@ -564,6 +564,20 @@ public class DocumentServiceImpl implements DocumentService {
             e.getMessage());
       }
     }
+    // 从 chunk_metadata_json 里挖 figureIndex 暴露给前端：TEXT chunk 的 rfimg://N
+    // 占位符按 figureIndex 反查到这条 IMAGE chunk 的 imageUrl 做 inline 渲染。
+    if (StringUtils.hasText(chunk.getChunkMetadataJson())) {
+      try {
+        com.fasterxml.jackson.databind.JsonNode node =
+            objectMapper.readTree(chunk.getChunkMetadataJson());
+        com.fasterxml.jackson.databind.JsonNode figNode = node.get("figureIndex");
+        if (figNode != null && figNode.isInt()) {
+          vo.setFigureIndex(figNode.intValue());
+        }
+      } catch (Exception ignored) {
+        // metadata 解析失败不影响 chunk 主体返回
+      }
+    }
     return vo;
   }
 

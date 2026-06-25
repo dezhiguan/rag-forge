@@ -145,6 +145,8 @@ async function runAnswer() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        'Cache-Control': 'no-cache',
         ...(state.accessToken ? { Authorization: `Bearer ${state.accessToken}` } : {}),
       },
       body: JSON.stringify({

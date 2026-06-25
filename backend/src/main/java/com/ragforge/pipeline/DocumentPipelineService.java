@@ -17,6 +17,7 @@ import com.ragforge.pipeline.chunker.ChunkingService;
 import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.image.EmbeddedImageExtractor;
 import com.ragforge.pipeline.image.ExtractedImage;
+import com.ragforge.pipeline.image.HtmlMarkdownImageExtractor;
 import com.ragforge.pipeline.image.ImageChunkContext;
 import com.ragforge.pipeline.image.ImagePipelineService;
 import com.ragforge.pipeline.image.ImagePipelineSupport;
@@ -514,6 +515,21 @@ public class DocumentPipelineService {
     String contentType = normalizeContentType(doc.getFileType());
     if (contentType.startsWith("text/")) {
       long start = System.currentTimeMillis();
+      // HTML/Markdown 走"抽图+占位符重写"一遍扫，TEXT chunk 里就带 ![image N](rfimg://N)
+      // 锚点，前端可以 inline 渲染；嵌入图同时进 IMAGE chunk 走 VL 向量化。
+      HtmlMarkdownImageExtractor rewriter = findHtmlMarkdownExtractor(contentType);
+      if (rewriter != null) {
+        HtmlMarkdownImageExtractor.RewriteResult result = extractAndRewriteFromObject(doc, rewriter, contentType);
+        if (result != null) {
+          return new ParseResult(
+              result.rewrittenText(),
+              System.currentTimeMillis() - start,
+              1,
+              List.of(),
+              result.images());
+        }
+      }
+      // 兜底：rewriter 找不到 / 调用失败时退回旧路径（纯文本 + 单独抽图，无占位符）
       String rawText = readRawText(doc);
       return new ParseResult(
           rawText,
@@ -680,6 +696,44 @@ public class DocumentPipelineService {
       }
     }
     return Files.readString(Path.of(doc.getFilePath()), StandardCharsets.UTF_8);
+  }
+
+  private HtmlMarkdownImageExtractor findHtmlMarkdownExtractor(String contentType) {
+    return embeddedImageExtractors.stream()
+        .filter(e -> e instanceof HtmlMarkdownImageExtractor && e.supports(contentType))
+        .map(e -> (HtmlMarkdownImageExtractor) e)
+        .findFirst()
+        .orElse(null);
+  }
+
+  private HtmlMarkdownImageExtractor.RewriteResult extractAndRewriteFromObject(
+      Document doc, HtmlMarkdownImageExtractor extractor, String contentType) {
+    Path temp = null;
+    try {
+      temp = Files.createTempFile("ragforge-rewrite-", suffixFor(doc.getFilename()));
+      if (StringUtils.hasText(doc.getStorageBucket())) {
+        try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
+          Files.copy(in, temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+      } else {
+        Files.copy(Path.of(doc.getFilePath()), temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+      }
+      return extractor.extractWithPlaceholders(temp, contentType);
+    } catch (Exception e) {
+      log.warn(
+          "extractWithPlaceholders failed, fall back to plain text path: docId={} err={}",
+          doc.getId(),
+          e.getMessage());
+      return null;
+    } finally {
+      if (temp != null) {
+        try {
+          Files.deleteIfExists(temp);
+        } catch (Exception ignored) {
+          // 临时文件清理失败不影响主链路
+        }
+      }
+    }
   }
 
   private List<ExtractedImage> extractEmbeddedImagesFromObject(Document doc) {
