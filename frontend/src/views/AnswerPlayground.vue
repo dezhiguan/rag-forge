@@ -101,9 +101,14 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { listKb } from '../api/kb'
+import { translateError } from '../api/request'
 import { useAuth } from '../composables/useAuth'
+import { useToast } from '../composables/useToast'
 
 const { state } = useAuth()
+const toast = useToast()
+
+const ANSWER_DISABLED_HINT = '该知识库没有开启应答模式，请先到知识库开启应答模式'
 const kbList = ref([])
 const query = ref('广州 Java 25-30k 技术栈')
 const answer = ref('')
@@ -154,11 +159,20 @@ async function runAnswer() {
     })
     if (!response.ok) {
       const body = await response.text()
-      throw new Error(body || `HTTP ${response.status}`)
+      if (isAnswerDisabledPayload(body)) {
+        toast.error(ANSWER_DISABLED_HINT)
+        return
+      }
+      throw new Error(translateError(parseErrorPayload(body)) || body || `HTTP ${response.status}`)
     }
     await readSse(response)
   } catch (e) {
-    error.value = e.message || '生成失败'
+    const raw = e?.message || '生成失败'
+    if (isAnswerDisabledPayload(raw)) {
+      toast.error(ANSWER_DISABLED_HINT)
+      return
+    }
+    error.value = translateError(parseErrorPayload(raw)) || raw
   } finally {
     running.value = false
   }
@@ -200,8 +214,30 @@ function handleFrame(frame) {
     citations.value = data.citations || []
     Object.assign(latency, data.latency || {})
   } else if (event === 'error') {
-    error.value = `${data.error || 'ERROR'} ${data.message || ''}`.trim()
+    const code = data.error || data.code || ''
+    if (code === 'ANSWER_DISABLED' || String(data.message || '').includes('ANSWER_DISABLED')) {
+      toast.error(ANSWER_DISABLED_HINT)
+      return
+    }
+    error.value = translateError({ msg: code, message: data.message }) || `${code} ${data.message || ''}`.trim()
   }
+}
+
+function parseErrorPayload(text) {
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { msg: text }
+  }
+}
+
+function isAnswerDisabledPayload(text) {
+  if (!text) return false
+  const payload = parseErrorPayload(text)
+  const code = payload?.msg || payload?.error || ''
+  if (code === 'ANSWER_DISABLED') return true
+  return String(text).includes('ANSWER_DISABLED')
 }
 </script>
 

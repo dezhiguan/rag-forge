@@ -7,7 +7,7 @@ const toast = useToast()
 const ERROR_CODE_LABELS = {
   KB_ACCESS_DENIED: '无权访问该知识库或案例',
   KB_WRITE_FORBIDDEN: '您没有该知识库的写权限',
-  ANSWER_DISABLED: '该知识库的应答模式已关闭，请联系管理员开启',
+  ANSWER_DISABLED: '该知识库没有开启应答模式，请先到知识库开启应答模式',
   QUERY_REQUIRED: '请输入您的问题',
   KB_IDS_REQUIRED: '请至少选择一个知识库',
   PII_LEAK: '答案中检测到敏感信息，已停止显示',
@@ -30,7 +30,7 @@ const ERROR_CODE_LABELS = {
   ALREADY_IN_PROGRESS: '文档正在处理，请等待完成后重试',
 }
 
-function translateError(payload) {
+export function translateError(payload) {
   if (!payload) return '请求失败，请稍后重试'
   if (typeof payload === 'string') return ERROR_CODE_LABELS[payload] || payload
   const code = payload.msg || payload.error || payload.code
