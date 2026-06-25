@@ -232,7 +232,14 @@
                             </div>
                             <div class="doc-links">
                               <span class="link-action" @click.stop="goDoc(doc.id, doc.kbId)">详情</span>
-                              <span class="link-action" @click.stop="onDownloadDoc(doc)">下载</span>
+                              <span
+                                class="link-action"
+                                :class="{ 'is-disabled': !isDownloadable(doc.parseStatus) }"
+                                :title="isDownloadable(doc.parseStatus) ? '下载原文件' : '文档未处理完成，无法下载'"
+                                @click.stop="isDownloadable(doc.parseStatus) && onDownloadDoc(doc)"
+                              >
+                                下载
+                              </span>
                               <span v-if="normalizeDocStatus(doc.parseStatus) === 'failed'" class="link-action" @click.stop="onReprocessDoc(doc)">重试</span>
                               <span
                                 class="link-action danger"
@@ -424,6 +431,7 @@ const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import {
   docStatusClass,
   docStatusLabel,
+  isDownloadable,
   isProcessing,
   isTerminal,
   normalizeDocStatus,
@@ -1364,6 +1372,7 @@ onMounted(async () => {
 
 .link-action { cursor: pointer; font-size: 12px; color: var(--blue); margin-right: 10px; }
 .link-action.danger { color: var(--red); margin-right: 0; }
+.link-action.is-disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.55; }
 
 .docs-row td { padding: 0; }
 .docs-panel {
