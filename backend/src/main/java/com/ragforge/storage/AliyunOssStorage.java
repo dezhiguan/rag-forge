@@ -228,11 +228,21 @@ public class AliyunOssStorage implements ObjectStorage {
     private final OSS client;
 
     private DefaultOssGateway(StorageProperties.Aliyun properties) {
-      String endpoint = requireText(properties.getEndpoint(), "storage.aliyun.endpoint");
+      // OSS SDK 在 endpoint 没有 scheme 时默认拼 http://，签出来的 presign URL 是明文 http。
+      // 前端跑在 https 站点（ragforge.net）会触发 Mixed Content 拦截，OSS 直传整段被浏览器掐掉。
+      // 这里在客户端构造时强制 https，保证后续 generatePresignedUrl 也是 https。
+      String endpoint = ensureHttps(requireText(properties.getEndpoint(), "storage.aliyun.endpoint"));
       String accessKeyId = requireText(properties.getAccessKeyId(), "storage.aliyun.accessKeyId");
       String accessKeySecret =
           requireText(properties.getAccessKeySecret(), "storage.aliyun.accessKeySecret");
       this.client = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
+    }
+
+    private static String ensureHttps(String endpoint) {
+      String trimmed = endpoint.trim();
+      if (trimmed.startsWith("https://")) return trimmed;
+      if (trimmed.startsWith("http://")) return "https://" + trimmed.substring("http://".length());
+      return "https://" + trimmed;
     }
 
     @Override
@@ -275,7 +285,10 @@ public class AliyunOssStorage implements ObjectStorage {
         request.setContentType(meta.getContentType());
       }
       URL url = client.generatePresignedUrl(request);
-      return url.toString();
+      String raw = url.toString();
+      // 兜底：即便 OSS SDK 因为某些参数路径绕过了 client 的 endpoint 配置仍返回 http://，
+      // 也强制改成 https://，避免前端 Mixed Content 拦截。
+      return raw.startsWith("http://") ? "https://" + raw.substring("http://".length()) : raw;
     }
 
     @Override
