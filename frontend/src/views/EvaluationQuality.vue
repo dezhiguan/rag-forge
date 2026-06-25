@@ -115,8 +115,8 @@
               :key="`y-${tick}`"
               :x1="chartPadding.left"
               :x2="chartInnerRight"
-              :y1="yScale(tick)"
-              :y2="yScale(tick)"
+              :y1="yForValue(tick)"
+              :y2="yForValue(tick)"
               stroke="rgba(148,163,184,0.28)"
               stroke-width="1"
             />
