@@ -731,21 +731,26 @@ function piiLabel(key) {
 .doc-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  min-height: calc(100vh - 200px);
   background: #fff;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
 
-.doc-left {
+.doc-left,
+.doc-right {
   padding: 20px;
-  border-right: 1px solid var(--border);
-  max-height: calc(100vh - 200px);
+  min-height: 0;
   overflow-y: auto;
 }
 
+.doc-left {
+  border-right: 1px solid var(--border);
+}
+
 .doc-right {
-  padding: 20px;
   background: #fafbfc;
 }
 
@@ -1245,10 +1250,13 @@ function piiLabel(key) {
     grid-template-columns: 1fr;
   }
 
+  .doc-layout {
+    min-height: auto;
+  }
+
   .doc-left {
     border-right: none;
     border-bottom: 1px solid var(--border);
-    max-height: none;
     padding: 14px;
   }
 

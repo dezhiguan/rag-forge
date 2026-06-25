@@ -27,6 +27,7 @@ export class UploadError extends Error {
 export function uploadErrorCode(error) {
   if (error?.code) return error.code
   const body = error?.response?.data
+  if (body?.errorCode && typeof body.errorCode === 'string') return body.errorCode
   return body?.msg || body?.error || body?.code || 'NETWORK_ERROR'
 }
 
@@ -34,7 +35,9 @@ export function uploadErrorMessage(error) {
   const code = uploadErrorCode(error)
   const messages = {
     INVALID_KB_ID: '知识库未选择或已失效，请重新选择',
-    KB_WRITE_FORBIDDEN: '您没有该 KB 的写权限',
+    HASH_TIMEOUT: '文件指纹计算超时，请重试',
+    HASH_WORKER_TIMEOUT: '文件指纹计算失败，请重试',
+    KB_WRITE_FORBIDDEN: '您没有该知识库的写权限，无法上传到该知识库',
     UPLOAD_NOT_FOUND: '上传未完成或已过期，请重新上传',
     SIZE_MISMATCH: '文件传输不完整，请重试',
     DOC_IDENTITY_CONFLICT: "已有相同内容文档，选择'覆盖'或'跳过'",
