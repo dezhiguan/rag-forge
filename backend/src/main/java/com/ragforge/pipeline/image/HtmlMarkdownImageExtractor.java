@@ -5,12 +5,14 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
@@ -23,7 +25,12 @@ public class HtmlMarkdownImageExtractor implements EmbeddedImageExtractor {
   private static final Pattern HTML_IMG = Pattern.compile("<img\\b[^>]*\\bsrc=[\"']([^\"']+)[\"'][^>]*>", Pattern.CASE_INSENSITIVE);
   private static final Pattern MD_IMG = Pattern.compile("!\\[[^]]*]\\(([^)]+)\\)");
 
-  private final RestTemplate restTemplate = new RestTemplate();
+  // 外部图片拉取必须有超时，避免云上 worker 出网受限时挂死整条解析链路。
+  private final RestTemplate restTemplate =
+      new RestTemplateBuilder()
+          .setConnectTimeout(Duration.ofSeconds(5))
+          .setReadTimeout(Duration.ofSeconds(10))
+          .build();
 
   @Override
   public boolean supports(String contentType) {
@@ -55,19 +62,34 @@ public class HtmlMarkdownImageExtractor implements EmbeddedImageExtractor {
     Matcher matcher = pattern.matcher(source);
     while (matcher.find()) {
       String src = matcher.group(1).trim();
-      ImageBytes image = load(src);
-      if (image == null || image.bytes().length == 0) {
-        continue;
+      // 单张图失败必须独立隔离：云上 worker 出网受限 / data-URI 损坏 / 外链 404 都
+      // 不能让整篇文档零图入库（acc-07 真实复现的回归）。
+      try {
+        ImageBytes image = load(src);
+        if (image == null || image.bytes().length == 0) {
+          log.debug("HtmlMarkdownImageExtractor skip empty image: src={}", truncate(src));
+          continue;
+        }
+        images.add(
+            new ExtractedImage(
+                image.bytes(),
+                image.contentType(),
+                null,
+                images.size(),
+                surrounding(source, matcher.start(), matcher.end()),
+                null));
+      } catch (Exception e) {
+        log.warn(
+            "HtmlMarkdownImageExtractor skip one image (continue with others): src={} err={}",
+            truncate(src),
+            e.getMessage());
       }
-      images.add(
-          new ExtractedImage(
-              image.bytes(),
-              image.contentType(),
-              null,
-              images.size(),
-              surrounding(source, matcher.start(), matcher.end()),
-              null));
     }
+  }
+
+  private static String truncate(String src) {
+    if (src == null) return "null";
+    return src.length() <= 80 ? src : src.substring(0, 77) + "...";
   }
 
   private ImageBytes load(String src) {

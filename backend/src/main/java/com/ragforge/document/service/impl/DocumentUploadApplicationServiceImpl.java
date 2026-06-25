@@ -131,7 +131,11 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
 
   @Override
   public Map<String, Object> registerUploadedDocument(RegisterUploadRequest request) {
+    // 分段计时：云上 acc-11 复现"register 120s 超时"时，必须能从日志直接定位
+    // 到具体卡在 token consume / OSS head / ingest.register 哪一步。
+    long t0 = System.currentTimeMillis();
     TokenPayload payload = uploadTokenService.consume(request.getUploadToken());
+    long t1 = System.currentTimeMillis();
     RagAuthContext context = RagAuthContextHolder.get();
     if (context == null || !payload.getTenantId().equals(currentTenantId())) {
       throw new BizException(403, "UPLOAD_TOKEN_TENANT_FORBIDDEN");
@@ -141,10 +145,27 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     }
 
     ObjectMeta head = objectStorage.head(payload.getStorageBucket(), payload.getStorageKey());
+    long t2 = System.currentTimeMillis();
     if (head == null) {
+      log.warn(
+          "register: object missing bucket={} key={} contentType={} declared={} (consumeMs={} headMs={})",
+          payload.getStorageBucket(),
+          payload.getStorageKey(),
+          payload.getContentType(),
+          payload.getDeclaredSize(),
+          t1 - t0,
+          t2 - t1);
       throw new BizException(422, "UPLOAD_NOT_FOUND");
     }
     if (head.getSizeBytes() == null || !head.getSizeBytes().equals(payload.getDeclaredSize())) {
+      log.warn(
+          "register: size mismatch bucket={} key={} headSize={} declared={} headContentType={} payloadContentType={}",
+          payload.getStorageBucket(),
+          payload.getStorageKey(),
+          head.getSizeBytes(),
+          payload.getDeclaredSize(),
+          head.getContentType(),
+          payload.getContentType());
       throw new BizException(422, "SIZE_MISMATCH");
     }
 
@@ -162,9 +183,19 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     cmd.setMetadata(request.getMetadata());
 
     IngestResult result = ingestService.register(cmd);
+    long t3 = System.currentTimeMillis();
     if (result.getStatus() == IngestResult.Status.SKIPPED) {
       safeDelete(payload.getStorageBucket(), payload.getStorageKey());
     }
+    log.info(
+        "register ok: docId={} contentType={} size={} consumeMs={} headMs={} ingestMs={} totalMs={}",
+        result.getDocumentId(),
+        head.getContentType(),
+        head.getSizeBytes(),
+        t1 - t0,
+        t2 - t1,
+        t3 - t2,
+        t3 - t0);
     return ingestResponse(result);
   }
 
