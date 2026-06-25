@@ -6,6 +6,8 @@ metadata:
   labels:
     app: ragforge-frontend
 spec:
+  strategy:
+    type: Recreate
   replicas: 1
   revisionHistoryLimit: 3
   selector:
