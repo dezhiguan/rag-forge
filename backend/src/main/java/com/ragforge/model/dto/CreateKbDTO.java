@@ -20,4 +20,8 @@ public class CreateKbDTO {
   private String answerMode;
 
   private String answerModel;
+
+  // 多模态开关：创建时默认 OFF，用户在表单里勾选才置 ON。
+  @Pattern(regexp = "ON|OFF|", message = "imageProcessingMode 只能是 ON / OFF")
+  private String imageProcessingMode;
 }
