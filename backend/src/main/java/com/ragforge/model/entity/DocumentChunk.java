@@ -39,6 +39,11 @@ public class DocumentChunk {
   private String headingPath;
   private String chunkModality;
 
+  // image_key 是 OSS 上原图的 storage key，用于 IMAGE chunk 的详情页预览（presignedGet）。
+  // 之前 entity 漏字段，导致即便 worker 把图传上 OSS，落库的 chunk 也拿不回 key、详情页无法显示图。
+  @TableField("image_key")
+  private String imageKey;
+
   private Integer tokenCount;
   private LocalDateTime createdAt;
 }

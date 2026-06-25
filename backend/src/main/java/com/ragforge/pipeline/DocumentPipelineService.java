@@ -612,6 +612,16 @@ public class DocumentPipelineService {
         return List.of();
       }
       if (image.getBytes().length < embeddedImageMinBytes()) {
+        // 默认门槛 8KB（RAGFORGE_EMBEDDED_IMAGE_MIN_BYTES）会把小图标/小缩略图直接丢掉，
+        // 之前丢得太静默，acc-07 验证时根本看不出来"为什么 2 张图只入了 1 张"。
+        // 打 WARN 让运维 / 集成方能直接从日志判断要不要把门槛调低。
+        log.warn(
+            "Embedded image dropped by min-bytes threshold: docId={} fig={} size={} threshold={} contentType={}",
+            doc.getId(),
+            image.getFigureIndex(),
+            image.getBytes().length,
+            embeddedImageMinBytes(),
+            image.getContentType());
         return List.of();
       }
       String imageKey = embeddedImageKey(doc, image);

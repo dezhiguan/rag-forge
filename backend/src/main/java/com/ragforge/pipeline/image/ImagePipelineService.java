@@ -93,7 +93,7 @@ public class ImagePipelineService {
             """
             INSERT INTO document_chunks (
               doc_id, kb_id, chunk_index, content, vl_vector,
-              token_count, chunk_type, chunk_modality, chunk_metadata_json, created_at
+              token_count, chunk_type, chunk_modality, chunk_metadata_json, image_key, created_at
             )
             VALUES
             """);
@@ -101,7 +101,7 @@ public class ImagePipelineService {
       if (i > 0) {
         sql.append(", ");
       }
-      sql.append("(?, ?, ?, ?, ?::vector, ?, ?, ?, ?::jsonb, ?)");
+      sql.append("(?, ?, ?, ?, ?::vector, ?, ?, ?, ?::jsonb, ?, ?)");
     }
     sql.append(" RETURNING id, chunk_index");
 
@@ -120,6 +120,7 @@ public class ImagePipelineService {
             ps.setString(idx++, chunk.getChunkType());
             ps.setString(idx++, chunk.getChunkModality());
             ps.setString(idx++, chunk.getChunkMetadataJson());
+            ps.setString(idx++, chunk.getImageKey());
             ps.setObject(idx++, now);
           }
           return ps;
