@@ -25,10 +25,20 @@ export class UploadError extends Error {
 }
 
 export function uploadErrorCode(error) {
-  if (error?.code) return error.code
+  // UploadError 由我们自己抛，code 是业务码（HASH_TIMEOUT / OSS_PUT_FAILED 等），直接用。
+  if (error instanceof UploadError && error.code) return error.code
+  // axios 把 response body 揭出来：后端返回 { code: 409, msg: "DOC_IDENTITY_CONFLICT", ... }，
+  // 业务码在 msg 里；errorCode 字段是某些旧响应的别名，兼容保留。
   const body = error?.response?.data
-  if (body?.errorCode && typeof body.errorCode === 'string') return body.errorCode
-  return body?.msg || body?.error || body?.code || 'NETWORK_ERROR'
+  if (body) {
+    if (typeof body.errorCode === 'string' && body.errorCode) return body.errorCode
+    if (typeof body.msg === 'string' && body.msg) return body.msg
+    if (typeof body.error === 'string' && body.error) return body.error
+  }
+  // 都拿不到时回退到 axios 自己的 error.code（ERR_NETWORK / ERR_BAD_REQUEST 等），
+  // 比直接吐 "NETWORK_ERROR" 信息更密。
+  if (error?.code) return error.code
+  return 'NETWORK_ERROR'
 }
 
 export function uploadErrorMessage(error) {
