@@ -53,7 +53,7 @@
 
     <section class="quality-kpi-grid">
       <article class="kpi-card">
-        <div class="kpi-title">综合质量</div>
+        <div class="kpi-title">综合质量（Composite）</div>
         <div class="kpi-value" :class="scoreClass(kpis.overallScore)">
           {{ formatScore(kpis.overallScore) }}
         </div>
@@ -62,7 +62,7 @@
         </div>
       </article>
       <article class="kpi-card">
-        <div class="kpi-title">答案忠实度</div>
+        <div class="kpi-title">答案忠实度（Faithfulness）</div>
         <div class="kpi-value" :class="scoreClass(kpis.faithfulness)">
           {{ formatScore(kpis.faithfulness) }}
         </div>
@@ -71,7 +71,7 @@
         </div>
       </article>
       <article class="kpi-card">
-        <div class="kpi-title">上下文精度</div>
+        <div class="kpi-title">上下文精度（Context Precision）</div>
         <div class="kpi-value" :class="scoreClass(kpis.contextPrecision)">
           {{ formatScore(kpis.contextPrecision) }}
         </div>
@@ -80,7 +80,7 @@
         </div>
       </article>
       <article class="kpi-card">
-        <div class="kpi-title">答案相关性</div>
+        <div class="kpi-title">答案相关性（Answer Relevance）</div>
         <div class="kpi-value" :class="scoreClass(kpis.answerRelevance)">
           {{ formatScore(kpis.answerRelevance) }}
         </div>
@@ -821,7 +821,8 @@ function scoreClass(value) {
   if (value === null || value === undefined || value === '') return 'score-muted'
   const num = Number(value)
   if (!Number.isFinite(num)) return 'score-muted'
-  if (num <= 0 && (sampleCount.value || 0) <= 0) return 'score-muted'
+  if ((sampleCount.value || 0) <= 0) return 'score-muted'
+  if (num <= 0) return 'score-muted'
   if (num >= 0.8) return 'score-green'
   if (num >= 0.6) return 'score-amber'
   return 'score-red'
