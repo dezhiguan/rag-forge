@@ -102,7 +102,22 @@
                   alt="chunk 预览图"
                 >
                 <div v-if="c.headingPath" class="chunk-heading">{{ c.headingPath }}</div>
-                <div class="chunk-text" :title="c.content">{{ summarizeContent(c.content) }}</div>
+                <!--
+                  TEXT chunk 里的 ![image N](rfimg://N) 占位符按 figureIndex 反查 IMAGE chunk
+                  的 imageUrl，inline 显示成 <img>；纯文字段落继续走 summarizeContent。
+                  用模板拼接而不是 v-html，避免 chunk 文本里的尖括号 / 脚本被当 HTML 注入。
+                -->
+                <div class="chunk-text" :title="c.content">
+                  <template v-for="(seg, i) in renderChunkSegments(c, figureMap)" :key="i">
+                    <img
+                      v-if="seg.type === 'image'"
+                      class="chunk-inline-img"
+                      :src="seg.url"
+                      :alt="seg.alt"
+                    >
+                    <span v-else>{{ seg.text }}</span>
+                  </template>
+                </div>
               </div>
               <div class="chunk-load-state">
                 <button v-if="chunkError" class="chunk-load-btn" @click="loadChunksPage(chunkPage)">
@@ -316,6 +331,55 @@ const isCompletedDoc = computed(() => normalizedStatus.value === 'completed')
 const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
 const isImageDoc = computed(() => (doc.value?.fileType || '').toLowerCase().startsWith('image/'))
 const downloadUrl = computed(() => doc.value?.id ? `/api/v1/documents/${doc.value.id}/download` : '')
+
+// figureIndex -> imageUrl 映射，TEXT chunk 里的 ![image N](rfimg://N) 占位符按 N 反查这张表
+// 拿到真实预签 URL inline 渲染。来源是同一篇文档所有已加载 IMAGE chunk 的 figureIndex + imageUrl。
+const figureMap = computed(() => {
+  const map = new Map()
+  for (const c of chunks.value) {
+    if (c?.imageUrl && Number.isInteger(c?.figureIndex)) {
+      map.set(c.figureIndex, c.imageUrl)
+    }
+  }
+  return map
+})
+
+const RFIMG_PATTERN = /!\[([^\]]*)\]\(rfimg:\/\/(\d+)\)/g
+
+// IMAGE chunk 不走占位符渲染（它本身就是图），直接给一个 text 段返回原文 / 占位文字。
+// TEXT chunk 按 RFIMG_PATTERN 切段：text → image → text → image ...
+// 图查不到（minBytes 过滤掉、figureMap 没命中）时保留原占位符可见，避免静默"假装啥都没有"。
+function renderChunkSegments(chunk, figMap) {
+  const content = chunk?.content || ''
+  if ((chunk?.chunkModality || '').toUpperCase().startsWith('IMAGE')) {
+    return [{ type: 'text', text: summarizeContent(content) }]
+  }
+  if (!RFIMG_PATTERN.test(content)) {
+    return [{ type: 'text', text: summarizeContent(content) }]
+  }
+  RFIMG_PATTERN.lastIndex = 0
+  const segs = []
+  let last = 0
+  let m
+  while ((m = RFIMG_PATTERN.exec(content)) !== null) {
+    if (m.index > last) {
+      segs.push({ type: 'text', text: content.slice(last, m.index) })
+    }
+    const figIdx = parseInt(m[2], 10)
+    const url = figMap.get(figIdx)
+    if (url) {
+      segs.push({ type: 'image', url, alt: m[1] || `image ${figIdx}` })
+    } else {
+      // 图缺失（被 minBytes 过滤 / 当前页还没加载到对应 IMAGE chunk），把占位符当文本显示
+      segs.push({ type: 'text', text: m[0] })
+    }
+    last = m.index + m[0].length
+  }
+  if (last < content.length) {
+    segs.push({ type: 'text', text: content.slice(last) })
+  }
+  return segs
+}
 const canRechunk = computed(() => doc.value && !['pending', 'processing', 'reprocessing'].includes(normalizedStatus.value))
 // 外部身份信息只对真正来自外部系统的文档展示。UI 上传永远没有这两个字段，
 // 折叠整段比留一排"—"更干净；md5 + 来源通道挪到了"文档元信息"面板。
@@ -823,6 +887,17 @@ function piiLabel(key) {
   color: var(--gray);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* inline 嵌入图：跟段落文字穿插显示，区别于 chunk-thumb 那种独占整行的预览图 */
+.chunk-inline-img {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
 }
 
 .chunk-load-state {
