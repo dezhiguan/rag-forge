@@ -71,7 +71,7 @@ public class AnswerService {
   public SseEmitter answer(AnswerRequest request) {
     validateRequest(request);
     RagAuthContext authContext = RagAuthContextHolder.get();
-    SseEmitter emitter = new SseEmitter(120_000L);
+    SseEmitter emitter = new SseEmitter(600_000L);
     CompletableFuture.runAsync(
         () -> {
           try {
