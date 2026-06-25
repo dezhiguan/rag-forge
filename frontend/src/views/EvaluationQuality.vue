@@ -102,7 +102,7 @@
       </div>
       <div class="panel-body">
         <div v-if="loading.overview" class="state-hint">加载中...</div>
-        <div v-else-if="trendPoints.length === 0 || sampleCount <= 0" class="state-hint">暂无评测数据，请检查 Golden Set 是否启用</div>
+        <div v-else-if="sampleCount <= 0 && trendPoints.length === 0" class="state-hint">暂无评测数据，请检查 Golden Set 是否启用</div>
         <div v-else class="trend-chart-wrap">
           <div class="trend-meta">hover 查看当日样本与分数</div>
           <svg
@@ -235,7 +235,7 @@
               class="worst-item"
               @click="openCase(item.judgeResultId)"
             >
-              <div class="worst-query">{{ truncateText(item.query, 72) }}</div>
+              <div class="worst-query">{{ truncateText(item.query, 50) }}</div>
               <div class="worst-meta">
                 <span :class="scoreClass(item.overallScore)">评分 {{ formatScore(item.overallScore) }}</span>
                 <span>•</span>
@@ -255,7 +255,6 @@
       </div>
       <div class="panel-body">
         <div v-if="loading.cost" class="state-hint">加载中...</div>
-        <div v-else-if="!cost.totalCalls && sampleCount === 0" class="state-hint">暂无评测调用数据</div>
         <div v-else class="cost-section">
           <div class="cost-cards">
             <div class="cost-card">
@@ -311,14 +310,20 @@
         <section class="drawer-section">
           <h3>全局抽样率</h3>
           <div class="rate-row">
-            <input v-model.number="globalRatePercent" type="range" min="0" max="10" step="0.5" />
+            <input v-model.number="globalRatePercent" type="range" min="0" max="20" step="0.5" />
             <strong>{{ globalRatePercent.toFixed(1) }}%</strong>
           </div>
           <label class="inline-check">
             <input v-model="globalSamplingEnabled" type="checkbox" />
             启用全局抽样
           </label>
-          <div v-if="globalRatePercent > 5" class="cost-warning">
+          <div v-if="globalRatePercent > 10" class="cost-warning">
+            <label class="inline-check">
+              <input v-model="highCostConfirmed" type="checkbox" />
+              我已确认成本风险
+            </label>
+          </div>
+          <div v-else-if="globalRatePercent > 5" class="cost-warning">
             当前抽样率超过 5%，请结合调用量评估月度成本。
           </div>
           <div class="drawer-action-row">
@@ -369,8 +374,13 @@
         <section class="drawer-section">
           <h3>Golden Set 回放</h3>
           <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
-          <button class="btn-save-config btn-save-config--secondary" :disabled="replayingGolden" @click="replayGoldenNow">
-            {{ replayingGolden ? '已提交...' : '立即回放' }}
+          <button
+            class="btn-save-config btn-save-config--secondary"
+            :disabled="replayingGolden"
+            :title="replayingGolden ? '任务进行中' : ''"
+            @click="replayGoldenNow"
+          >
+            {{ replayingGolden ? '任务进行中...' : '立即回放' }}
           </button>
           <p class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
         </section>
@@ -400,6 +410,7 @@ import {
   upsertSamplingConfig,
 } from '../api/quality'
 import { listKb } from '../api/kb'
+import { resolveHttpError } from '../api/error-messages'
 import { useAuth } from '../composables/useAuth'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
@@ -466,6 +477,8 @@ const savingSampling = ref(false)
 const replayingGolden = ref(false)
 const settingsError = ref('')
 const monthlyBudgetCny = ref(200)
+const highCostConfirmed = ref(false)
+const kbFilterError = ref('')
 const kbOverrideForm = reactive({
   scopeId: null,
   ratePercent: 1,
@@ -551,6 +564,7 @@ function unwrapResponse(resp) {
 
 async function openSamplingDrawer() {
   showSamplingDrawer.value = true
+  highCostConfirmed.value = false
   await loadSamplingSettings()
 }
 
@@ -609,12 +623,10 @@ async function saveSampling(payload) {
   }
   let confirmed = false
   if (rate > 0.1) {
-    const ok = await confirmDialog({
-      title: '抽样率较高',
-      message: '抽样率超过 10%，确认保存？',
-      variant: 'warning',
-    })
-    if (!ok) return
+    if (!highCostConfirmed.value) {
+      toast.error('当前抽样率超过 10%，月度成本会显著增加，请勾选确认后再保存')
+      return
+    }
     confirmed = true
   }
   savingSampling.value = true
@@ -622,8 +634,12 @@ async function saveSampling(payload) {
   try {
     await upsertSamplingConfig(Object.assign({}, payload, { confirmed }))
     await loadSamplingSettings()
+    toast.success('抽样配置已更新')
   } catch (error) {
-    settingsError.value = error?.response?.data?.message || parseHttpError(error)
+    settingsError.value = resolveHttpError(error, { kind: 'sampling' })
+    if (!error?.config?.silent) {
+      toast.error(resolveHttpError(error, { kind: 'sampling' }))
+    }
   } finally {
     savingSampling.value = false
   }
@@ -653,8 +669,11 @@ async function replayGoldenNow() {
   try {
     await replayGoldenSetNow({ limit: 100 })
     await loadSamplingSettings()
+    toast.success('回放已开始')
   } catch (error) {
-    settingsError.value = parseHttpError(error)
+    const msg = resolveHttpError(error, { kind: 'replay' })
+    settingsError.value = msg
+    toast.error(msg)
   } finally {
     setTimeout(() => {
       replayingGolden.value = false
@@ -685,18 +704,14 @@ function parseHttpError(error) {
     router.push('/login')
     return '登录已失效，请重新登录'
   }
-  if (status === 403) {
-    return '无权访问该 KB'
-  }
-  if (status >= 500) {
-    return '数据加载失败，请刷新重试'
-  }
-  return '请求失败，请稍后重试'
+  return resolveHttpError(error, { load: true, kind: 'overview' })
 }
 
 function formatScore(value) {
   const num = Number(value)
-  if (!Number.isFinite(num)) return '—'
+  if (!Number.isFinite(num)) {
+    return (sampleCount.value || 0) <= 0 ? '0.00' : '—'
+  }
   return num.toFixed(2)
 }
 
@@ -720,7 +735,7 @@ function formatDateOnly(value) {
   if (!value) return '--'
   const date = new Date(`${value}T00:00:00`)
   if (Number.isNaN(date.getTime())) return '--'
-  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 function formatDateTime(value) {
@@ -776,14 +791,22 @@ function setDays(value) {
 }
 
 function applyKbFilter() {
-  const parsed = Number.parseInt(kbIdInput.value, 10)
-  if (Number.isFinite(parsed)) {
-    kbId.value = parsed
-    router.push({ path: '/evaluation/quality', query: { days: normalizedDays.value, kbId: parsed } })
-  } else {
-    kbId.value = null
-    router.push({ path: '/evaluation/quality', query: { days: normalizedDays.value } })
+  const raw = (kbIdInput.value || '').trim()
+  if (!raw) {
+    clearKbFilter()
+    return
   }
+  if (!/^\d+$/.test(raw)) {
+    toast.error('请输入有效的知识库 ID（数字）')
+    return
+  }
+  const parsed = Number.parseInt(raw, 10)
+  if (parsed <= 0) {
+    toast.error('请输入有效的知识库 ID（数字）')
+    return
+  }
+  kbId.value = parsed
+  router.push({ path: '/evaluation/quality', query: { days: normalizedDays.value, kbId: parsed } })
 }
 
 function clearKbFilter() {
@@ -799,6 +822,7 @@ function openKb(targetKbId) {
 
 function openCase(id) {
   if (!id) return
+  sessionStorage.setItem('qualityDashboardQuery', JSON.stringify(route.query || {}))
   router.push(`/evaluation/quality/case/${id}`)
 }
 
@@ -852,7 +876,15 @@ async function loadOverview() {
                 : trendPoints.value.reduce((acc, item) => acc + Number(item.sampleCount || 0), 0)
     anomaly.value = data?.anomaly || null
   } catch (error) {
-    globalError.value = parseHttpError(error)
+    const status = error?.response?.status || error?.status
+    if (kbId.value && status === 403) {
+      toast.error(resolveHttpError(error, { kind: 'kb-filter' }))
+    } else if (status >= 500) {
+      toast.error(resolveHttpError(error, { load: true }))
+      globalError.value = resolveHttpError(error, { load: true })
+    } else {
+      globalError.value = parseHttpError(error)
+    }
     trendPoints.value = []
   } finally {
     loading.overview = false

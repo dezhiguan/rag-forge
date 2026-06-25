@@ -32,7 +32,7 @@
             </article>
             <article class="score-card bottleneck-card">
               <div class="score-card-title">瓶颈</div>
-              <div class="score-card-value">{{ caseDetail.bottleneck || '—' }}</div>
+              <div class="score-card-value">{{ bottleneckLabel(caseDetail.bottleneck) }}</div>
             </article>
           </div>
         </div>
@@ -69,7 +69,7 @@
                   score: <strong>{{ Number.isFinite(Number(chunk.score)) ? Number(chunk.score).toFixed(2) : '—' }}</strong>
                 </span>
                 <span :class="chunkRelevantClass(chunk.relevant)">
-                  {{ chunk.relevant ? 'RELEVANT' : '⚠️ 偏题' }}
+                  {{ chunk.relevant ? 'RELEVANT' : '⚠ 不相关' }}
                 </span>
               </div>
               <p>{{ chunk.content || '（chunk 内容为空）' }}</p>
@@ -106,6 +106,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchCaseDetail } from '../api/quality'
+import { bottleneckLabel, resolveHttpError } from '../api/error-messages'
 import { useAuth } from '../composables/useAuth'
 
 const { clearSession } = useAuth()
@@ -169,13 +170,7 @@ function parseError(error) {
     router.push('/login')
     return '登录已失效，请重新登录'
   }
-  if (status === 403) {
-    return '无权访问该 KB'
-  }
-  if (status >= 500) {
-    return '数据加载失败，请刷新重试'
-  }
-  return '请求失败，请稍后重试'
+  return resolveHttpError(error, { kind: 'case' })
 }
 
 function scoreText(value) {
@@ -197,7 +192,14 @@ function chunkRelevantClass(relevant) {
 }
 
 function goBack() {
-  router.push('/evaluation/quality')
+  let query = {}
+  try {
+    const saved = sessionStorage.getItem('qualityDashboardQuery')
+    if (saved) query = JSON.parse(saved)
+  } catch {
+    query = {}
+  }
+  router.push({ path: '/evaluation/quality', query })
 }
 
 async function loadCaseDetail() {
