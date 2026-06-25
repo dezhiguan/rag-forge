@@ -19,7 +19,7 @@
 
           <section v-else class="rechunk-body">
             <div v-if="documentType === 'mixed'" class="hint-banner">
-              💡 该文档含 {{ imageChunkCount }} 张图片，图片部分仍由图像管道处理。<br>
+              💡 该文档含有图片，图片部分仍由图像管道处理。<br>
               下方策略仅作用于文本部分。
             </div>
 
