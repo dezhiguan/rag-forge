@@ -381,13 +381,16 @@
           <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
           <button
             class="btn-save-config btn-save-config--secondary"
-            :disabled="replayingGolden"
-            :title="replayingGolden ? '任务进行中' : ''"
+            :disabled="replayingGolden || goldenEnabledCount <= 0"
+            :title="replayDisabledReason"
             @click="replayGoldenNow"
           >
             {{ replayingGolden ? '任务进行中...' : '立即回放' }}
           </button>
-          <p class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
+          <p v-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
+            当前没有启用的黄金集题目，请先在「评测实验室」里把题目的 judgeEnabled 设为 true。
+          </p>
+          <p v-else class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
         </section>
 
         <section class="drawer-section">
@@ -558,6 +561,12 @@ const visibleSeries = computed(() => {
     })
 })
 
+const replayDisabledReason = computed(() => {
+  if (replayingGolden.value) return '任务进行中'
+  if (goldenEnabledCount.value <= 0) return '当前启用题数为 0，无法触发回放'
+  return ''
+})
+
 const kbSamplingConfigs = computed(() =>
   samplingConfigs.value
     .filter((item) => item.scopeType === 'KB')
@@ -682,6 +691,10 @@ async function removeSampling(id) {
 }
 
 async function replayGoldenNow() {
+  if (goldenEnabledCount.value <= 0) {
+    toast.error('当前启用题数为 0，请先在评测实验室启用黄金集题目')
+    return
+  }
   replayingGolden.value = true
   settingsError.value = ''
   try {
@@ -1588,6 +1601,10 @@ watch(
   opacity: 0.72;
   cursor: not-allowed;
   transform: none;
+}
+
+.golden-empty-hint {
+  color: #b45309;
 }
 
 .btn-save-config.is-saving {
