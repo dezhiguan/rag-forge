@@ -144,8 +144,8 @@
                           <tr>
                             <th style="width: 34%;">问题</th>
                             <th>期望标注</th>
-                            <th style="width: 110px;">Golden Set</th>
-                            <th style="width: 150px;">Tags</th>
+                            <th style="width: 110px;">Golden Set（黄金集）</th>
+                            <th style="width: 150px;">Tags（标签）</th>
                             <th style="width: 80px;">操作</th>
                           </tr>
                         </thead>
@@ -184,7 +184,7 @@
                                 @click.stop
                                 @change="onJudgeTagsChange(ds.id, q, $event)"
                               >
-                                <option v-for="tag in judgeTagOptions" :key="tag" :value="tag">{{ tag }}</option>
+                                <option v-for="tag in judgeTagOptions" :key="tag.value" :value="tag.value">{{ tag.label }}</option>
                               </select>
                             </td>
                             <td>
@@ -863,7 +863,14 @@ const chunkerStrategyOptions = [
   { value: 'FIXED_WINDOW', label: 'Fixed Window' },
 ]
 
-const judgeTagOptions = ['core', 'regression', 'business', 'retrieval', 'answer', 'pii']
+const judgeTagOptions = [
+  { value: 'core', label: 'core（核心）' },
+  { value: 'regression', label: 'regression（回归）' },
+  { value: 'business', label: 'business（业务）' },
+  { value: 'retrieval', label: 'retrieval（检索）' },
+  { value: 'answer', label: 'answer（答案）' },
+  { value: 'pii', label: 'pii（脱敏）' },
+]
 
 const questionsMap = reactive({})
 const questionsLoading = reactive({})

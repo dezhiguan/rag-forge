@@ -946,7 +946,9 @@ async function loadOverview() {
   } catch (error) {
     const status = error?.response?.status || error?.status
     if (kbId.value && status === 403) {
-      toast.error(resolveHttpError(error, { kind: 'kb-filter' }))
+      const msg = resolveHttpError(error, { kind: 'kb-filter' })
+      toast.error(msg)
+      globalError.value = msg
     } else if (status >= 500) {
       toast.error(resolveHttpError(error, { load: true }))
       globalError.value = resolveHttpError(error, { load: true })
@@ -978,7 +980,14 @@ async function loadKbRows() {
       }))
       .sort((a, b) => Number(a.overallScore || 0) - Number(b.overallScore || 0))
   } catch (error) {
-    globalError.value = parseHttpError(error)
+    const status = error?.response?.status || error?.status
+    if (kbId.value && status === 403) {
+      const msg = resolveHttpError(error, { kind: 'kb-filter' })
+      toast.error(msg)
+      globalError.value = msg
+    } else {
+      globalError.value = parseHttpError(error)
+    }
     kbRows.value = []
   } finally {
     loading.kb = false
@@ -1000,7 +1009,14 @@ async function loadWorstCases() {
         }))
       : []
   } catch (error) {
-    globalError.value = parseHttpError(error)
+    const status = error?.response?.status || error?.status
+    if (kbId.value && status === 403) {
+      const msg = resolveHttpError(error, { kind: 'kb-filter' })
+      toast.error(msg)
+      globalError.value = msg
+    } else {
+      globalError.value = parseHttpError(error)
+    }
     worstCases.value = []
   } finally {
     loading.worst = false
