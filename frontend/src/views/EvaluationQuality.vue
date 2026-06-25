@@ -506,13 +506,45 @@ const chartInnerBottom = chartHeight - chartPadding.bottom
 
 const yGrid = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
+const SEVERITY_LABELS = {
+  CRITICAL: '严重',
+  WARN: '警告',
+}
+
+function translateAnomalyReason(reason, severity) {
+  if (!reason || reason === 'stable') {
+    return severity === 'CRITICAL'
+      ? '触发严重异常阈值'
+      : '失败率偏高，请检查 LLM 调用稳定性'
+  }
+  const dropMatch = /^overall_score_dropped_by_([\d.]+)%$/.exec(reason)
+  if (dropMatch) {
+    return `综合质量较上期下降 ${dropMatch[1]}%`
+  }
+  const faithfulnessMatch = /^faithfulness_dropped_by_([\d.]+)%$/.exec(reason)
+  if (faithfulnessMatch) {
+    return `答案忠实度较上期下降 ${faithfulnessMatch[1]}%`
+  }
+  const precisionMatch = /^context_precision_dropped_by_([\d.]+)%$/.exec(reason)
+  if (precisionMatch) {
+    return `上下文精度较上期下降 ${precisionMatch[1]}%`
+  }
+  const relevanceMatch = /^answer_relevance_dropped_by_([\d.]+)%$/.exec(reason)
+  if (relevanceMatch) {
+    return `答案相关性较上期下降 ${relevanceMatch[1]}%`
+  }
+  if (reason === 'sample_count_zero') return '近期评测样本数为 0'
+  if (reason === 'cost_exceeds_budget') return '评测成本已超月度预算'
+  return reason
+}
+
 const anomalyMessage = computed(() => {
   if (!anomaly.value) return null
   const severity = anomaly.value.severity
   if (!severity || severity === 'NORMAL') return null
   return {
-    text: anomaly.value.reason || '异常阈值触发',
-    level: severity,
+    text: translateAnomalyReason(anomaly.value.reason, severity),
+    level: SEVERITY_LABELS[severity] || severity,
     severityClass: severity === 'CRITICAL' ? 'anomaly-critical' : 'anomaly-warn',
   }
 })
