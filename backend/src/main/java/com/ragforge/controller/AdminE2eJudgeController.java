@@ -49,7 +49,7 @@ public class AdminE2eJudgeController {
     String answer = req.getAnswer() != null ? req.getAnswer() : "e2e answer with [1] citation";
     String citationsJson =
         req.getCitationsSnapshot() != null
-            ? objectMapper.writeValueAsString(req.getCitationsSnapshot())
+            ? toJsonString(req.getCitationsSnapshot())
             : "[{\"chunkId\":1,\"score\":0.82,\"content\":\"snippet\",\"relevant\":true}]";
     LocalDateTime createdAt =
         req.getCreatedAt() != null ? LocalDateTime.parse(req.getCreatedAt(), ISO) : LocalDateTime.now();
@@ -71,8 +71,8 @@ public class AdminE2eJudgeController {
 
     String rawJson =
         req.getJudgeRawResponse() != null
-            ? objectMapper.writeValueAsString(req.getJudgeRawResponse())
-            : defaultRawResponse(req);
+            ? toJsonString(req.getJudgeRawResponse())
+            : toJsonString(defaultRawResponse(req));
 
     Long judgeResultId =
         jdbcTemplate.queryForObject(
@@ -170,6 +170,14 @@ public class AdminE2eJudgeController {
       return new BigDecimal(fallback);
     }
     return new BigDecimal(value);
+  }
+
+  private String toJsonString(Object value) {
+    try {
+      return objectMapper.writeValueAsString(value);
+    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      throw new IllegalArgumentException("invalid json payload", e);
+    }
   }
 
   private Map<String, Object> defaultRawResponse(SeedJudgeResultRequest req) {
