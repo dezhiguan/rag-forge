@@ -29,7 +29,6 @@
                 </option>
               </select>
             </label>
-            <div v-if="uploadProcessing" class="processing-hint">处理中…</div>
           </div>
 
           <div
@@ -449,7 +448,6 @@ const docsMap = reactive({})
 const docsLoading = reactive({})
 
 const uploadKbId = ref(null)
-const uploadProcessing = ref(false)
 const isDragOver = ref(false)
 const fileInputRef = ref(null)
 const uploadItems = ref([])
@@ -742,21 +740,16 @@ async function handleFiles(files) {
   }
   if (!files || files.length === 0) return
 
-  uploadProcessing.value = true
   const kbId = kbIdNum
   const items = files.map((file) => createUploadItem(file, kbId))
   uploadItems.value = [...items, ...uploadItems.value]
-  try {
-    await runWithConcurrency(items, UPLOAD_CONCURRENCY, (item) => uploadOneItem(item))
-    await loadKbs()
-    if (expandedKbId.value === kbId) {
-      await loadDocs(kbId)
-    } else if (kbId) {
-      expandedKbId.value = kbId
-      await loadDocs(kbId)
-    }
-  } finally {
-    uploadProcessing.value = false
+  await runWithConcurrency(items, UPLOAD_CONCURRENCY, (item) => uploadOneItem(item))
+  await loadKbs()
+  if (expandedKbId.value === kbId) {
+    await loadDocs(kbId)
+  } else if (kbId) {
+    expandedKbId.value = kbId
+    await loadDocs(kbId)
   }
 }
 
@@ -1106,12 +1099,6 @@ onMounted(async () => {
   font-size: 13px;
   background: #fff;
   color: var(--text);
-}
-
-.processing-hint {
-  font-size: 12px;
-  color: var(--blue);
-  font-weight: 600;
 }
 
 .upload-zone {
