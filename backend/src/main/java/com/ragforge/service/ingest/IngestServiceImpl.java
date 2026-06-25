@@ -16,15 +16,35 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class IngestServiceImpl implements IngestService {
+
+  // 专用低优先级线程池给 afterCommit 派发 MQ；避免 RocketMQ broker 抖动反吃 HTTP 请求线程，
+  // 直接导致 /documents/register 在云上 120s 超时（acc-11 复现的回归）。
+  private static final TaskExecutor MQ_DISPATCH_EXECUTOR = buildMqDispatchExecutor();
+
+  private static TaskExecutor buildMqDispatchExecutor() {
+    ThreadPoolTaskExecutor exec = new ThreadPoolTaskExecutor();
+    exec.setCorePoolSize(2);
+    exec.setMaxPoolSize(8);
+    exec.setQueueCapacity(256);
+    exec.setThreadNamePrefix("ingest-mq-dispatch-");
+    exec.setWaitForTasksToCompleteOnShutdown(true);
+    exec.setAwaitTerminationSeconds(5);
+    exec.initialize();
+    return exec;
+  }
 
   private static final String STATUS_PENDING = "PENDING";
   private static final String STATUS_REPROCESSING = "REPROCESSING";
@@ -116,9 +136,35 @@ public class IngestServiceImpl implements IngestService {
     doc.setCreatedAt(LocalDateTime.now());
     documentMapper.insert(doc);
 
-    afterCommit(() -> mqProducer.send(doc.getId()));
+    final Long docId = doc.getId();
+    afterCommit(() -> dispatchMqAsync(docId, "create"));
     metrics.recordIngestCreated();
-    return IngestResult.created(doc.getId());
+    return IngestResult.created(docId);
+  }
+
+  private void dispatchMqAsync(Long documentId, String action) {
+    // afterCommit 回调跑在 HTTP 请求线程上，MQ 派发必须移交后台线程，
+    // 否则一旦 RocketMQ broker 抖动，前端 register 调用就会被吃掉 sendMsgTimeout × retries。
+    MQ_DISPATCH_EXECUTOR.execute(
+        () -> {
+          long start = System.currentTimeMillis();
+          try {
+            mqProducer.send(documentId);
+            log.info(
+                "MQ dispatched: docId={} action={} latencyMs={}",
+                documentId,
+                action,
+                System.currentTimeMillis() - start);
+          } catch (Exception e) {
+            log.error(
+                "MQ dispatch failed: docId={} action={} latencyMs={} err={}",
+                documentId,
+                action,
+                System.currentTimeMillis() - start,
+                e.getMessage(),
+                e);
+          }
+        });
   }
 
   private IngestResult doReplace(Document old, IngestCommand cmd) {
@@ -137,7 +183,7 @@ public class IngestServiceImpl implements IngestService {
           if (StringUtils.hasText(oldBucket) && StringUtils.hasText(oldKey)) {
             objectStorage.delete(oldBucket, oldKey);
           }
-          mqProducer.send(oldDocId);
+          dispatchMqAsync(oldDocId, "replace");
         });
 
     metrics.recordIngestReplaced();

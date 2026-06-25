@@ -46,7 +46,14 @@
             />
             <div class="doc-actions">
               <button class="link-btn" @click="goDoc(doc.id)">详情</button>
-              <button class="link-btn" @click="onDownloadDoc(doc)">下载</button>
+              <button
+                class="link-btn"
+                :disabled="!isDownloadable(doc.parseStatus)"
+                :title="isDownloadable(doc.parseStatus) ? '下载原文件' : '文档未处理完成，无法下载'"
+                @click="onDownloadDoc(doc)"
+              >
+                下载
+              </button>
               <button v-if="doc.parseStatus === 'failed'" class="link-btn" @click="onReprocessDoc(doc)">重试</button>
               <button
                 class="link-btn danger"
@@ -84,6 +91,7 @@ const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import { documentDetailRoute, parsePositiveId } from '../composables/useDocumentNav'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import { isDownloadable } from '../composables/useDocumentStatus'
 
 const toast = useToast()
 
@@ -371,6 +379,14 @@ watch(kbId, (nextKbId, prevKbId) => {
 .link-btn.danger {
   color: var(--red);
   border-color: #fecaca;
+}
+
+.link-btn:disabled {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: #f8fafc;
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .empty {

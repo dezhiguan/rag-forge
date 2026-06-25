@@ -9,13 +9,15 @@ const state = reactive({
   cancelText: '取消',
   variant: 'default', // 'default' | 'danger' | 'warning'
   icon: '',
+  choices: [],            // 多选模式：[{ value, label, variant }]，留空则回退到 confirm/cancel 两按钮
+  cancelValue: false,     // 取消（或遮罩点击 / ESC）时 resolve 的值；默认 false 兼容旧调用
   resolve: null,
 })
 
 export function confirm(opts = {}) {
   return new Promise((resolve) => {
     if (state.open && state.resolve) {
-      state.resolve(false)
+      state.resolve(state.cancelValue)
     }
     state.title = opts.title || '请确认'
     state.message = opts.message || ''
@@ -24,6 +26,10 @@ export function confirm(opts = {}) {
     state.cancelText = opts.cancelText || '取消'
     state.variant = opts.variant || 'default'
     state.icon = opts.icon || (opts.variant === 'danger' ? '⚠️' : opts.variant === 'warning' ? '❗' : '❓')
+    state.choices = Array.isArray(opts.choices) ? opts.choices : []
+    state.cancelValue = Object.prototype.hasOwnProperty.call(opts, 'cancelValue')
+      ? opts.cancelValue
+      : (state.choices.length > 0 ? null : false)
     state.resolve = resolve
     state.open = true
   })

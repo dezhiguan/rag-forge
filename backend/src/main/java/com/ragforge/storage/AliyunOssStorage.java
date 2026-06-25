@@ -178,7 +178,25 @@ public class AliyunOssStorage implements ObjectStorage {
 
   private static StorageException storageFailure(
       String message, String bucket, String key, RuntimeException cause) {
-    return new StorageException(message + ": bucket=" + bucket + ", key=" + key, cause);
+    // 把 OSS 真实错误码（NoSuchKey / AccessDenied / SignatureDoesNotMatch 等）抽到顶层 message，
+    // 否则只看 e.getMessage() 永远只看到 "Failed to get/put OSS object: ..."，定位不到根因。
+    String ossCode = extractOssErrorCode(cause);
+    String detail = message + ": bucket=" + bucket + ", key=" + key;
+    if (ossCode != null) {
+      detail += " ossErrorCode=" + ossCode;
+    }
+    return new StorageException(detail, cause);
+  }
+
+  private static String extractOssErrorCode(Throwable cause) {
+    Throwable cursor = cause;
+    while (cursor != null) {
+      if (cursor instanceof OSSException oss) {
+        return oss.getErrorCode();
+      }
+      cursor = cursor.getCause();
+    }
+    return null;
   }
 
   private static String requireText(String value, String name) {

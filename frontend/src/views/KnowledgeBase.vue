@@ -29,7 +29,6 @@
                 </option>
               </select>
             </label>
-            <div v-if="uploadProcessing" class="processing-hint">处理中…</div>
           </div>
 
           <div
@@ -232,7 +231,14 @@
                             </div>
                             <div class="doc-links">
                               <span class="link-action" @click.stop="goDoc(doc.id, doc.kbId)">详情</span>
-                              <span class="link-action" @click.stop="onDownloadDoc(doc)">下载</span>
+                              <span
+                                class="link-action"
+                                :class="{ 'is-disabled': !isDownloadable(doc.parseStatus) }"
+                                :title="isDownloadable(doc.parseStatus) ? '下载原文件' : '文档未处理完成，无法下载'"
+                                @click.stop="isDownloadable(doc.parseStatus) && onDownloadDoc(doc)"
+                              >
+                                下载
+                              </span>
                               <span v-if="normalizeDocStatus(doc.parseStatus) === 'failed'" class="link-action" @click.stop="onReprocessDoc(doc)">重试</span>
                               <span
                                 class="link-action danger"
@@ -424,6 +430,7 @@ const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import {
   docStatusClass,
   docStatusLabel,
+  isDownloadable,
   isProcessing,
   isTerminal,
   normalizeDocStatus,
@@ -441,7 +448,6 @@ const docsMap = reactive({})
 const docsLoading = reactive({})
 
 const uploadKbId = ref(null)
-const uploadProcessing = ref(false)
 const isDragOver = ref(false)
 const fileInputRef = ref(null)
 const uploadItems = ref([])
@@ -734,21 +740,21 @@ async function handleFiles(files) {
   }
   if (!files || files.length === 0) return
 
-  uploadProcessing.value = true
   const kbId = kbIdNum
-  const items = files.map((file) => createUploadItem(file, kbId))
-  uploadItems.value = [...items, ...uploadItems.value]
-  try {
-    await runWithConcurrency(items, UPLOAD_CONCURRENCY, (item) => uploadOneItem(item))
-    await loadKbs()
-    if (expandedKbId.value === kbId) {
-      await loadDocs(kbId)
-    } else if (kbId) {
-      expandedKbId.value = kbId
-      await loadDocs(kbId)
-    }
-  } finally {
-    uploadProcessing.value = false
+  const rawItems = files.map((file) => createUploadItem(file, kbId))
+  uploadItems.value = [...rawItems, ...uploadItems.value]
+  // 关键：传给 uploadOneItem 的必须是 uploadItems.value 里的 reactive proxy，
+  // 不能是 createUploadItem 返回的原始对象。否则 item.phase / item.progress 的修改
+  // 改不到 Vue 跟踪的 proxy 上，UI 一直停留在初始的 "排队中 0%"，直到末尾某个数组级
+  // 操作触发整体 re-render 才一次性跳到 100。
+  const liveItems = uploadItems.value.slice(0, rawItems.length)
+  await runWithConcurrency(liveItems, UPLOAD_CONCURRENCY, (item) => uploadOneItem(item))
+  await loadKbs()
+  if (expandedKbId.value === kbId) {
+    await loadDocs(kbId)
+  } else if (kbId) {
+    expandedKbId.value = kbId
+    await loadDocs(kbId)
   }
 }
 
@@ -790,12 +796,50 @@ async function uploadOneItem(item, onConflict = 'REJECT') {
       beginPollingDoc(docId, item.kbId)
     }
   } catch (e) {
+    const code = uploadErrorCode(e)
+    // 服务端 SHA-256 判重命中：弹三选一让用户决定 覆盖/跳过/取消，
+    // 避免默认 REJECT 把"重复上传"粗暴渲染成"上传失败"。
+    if (code === 'DOC_IDENTITY_CONFLICT' && onConflict === 'REJECT') {
+      const next = await promptConflictChoice(item.file?.name)
+      if (next === 'REPLACE') {
+        // 覆盖：真的要重新跑一次完整 hash + PUT + register，UI 卡片留下显示新进度
+        await uploadOneItem(item, 'REPLACE')
+        return
+      }
+      if (next === 'SKIP') {
+        // 跳过：再发一次 register 让后端按 SKIP 走（safeDelete 掉新 PUT 的 OSS 对象，
+        // 避免孤儿），但 UI 不留卡片，因为没有任何新文档入库。
+        try { await uploadOneItem(item, 'SKIP') } catch { /* 静默：SKIP 失败也直接释放 UI 位 */ }
+        dismissUploadItem(item)
+        toast.success(`已跳过「${item.file?.name || '文件'}」（库内已有相同内容）`)
+        return
+      }
+      // 取消：用户主动放弃，UI 直接释放；OSS 上多出来的孤儿由 OssOrphanCleanupJob 负责清理
+      dismissUploadItem(item)
+      return
+    }
     item.status = 'failed'
     item.phase = 'failed'  // 避免 UI 卡在最后一次成功阶段的文案（如"计算指纹"）
-    item.errorCode = uploadErrorCode(e)
+    item.errorCode = code
     item.errorMessage = uploadErrorMessage(e)
     toast.error(item.errorMessage)
   }
+}
+
+async function promptConflictChoice(filename) {
+  return confirmDialog({
+    title: '已有相同内容的文档',
+    message: filename
+      ? `知识库中已存在与「${filename}」内容完全相同的文档。`
+      : '知识库中已存在内容完全相同的文档。',
+    detail: '覆盖：删除旧文档并重新处理；跳过：保留旧文档不重复入库；取消：放弃本次上传。',
+    cancelText: '取消',
+    choices: [
+      { value: 'SKIP', label: '跳过', variant: 'default' },
+      { value: 'REPLACE', label: '覆盖', variant: 'danger' },
+    ],
+    cancelValue: 'CANCEL',
+  })
 }
 
 async function retryUploadItem(item, onConflict = 'REJECT') {
@@ -1067,12 +1111,6 @@ onMounted(async () => {
   color: var(--text);
 }
 
-.processing-hint {
-  font-size: 12px;
-  color: var(--blue);
-  font-weight: 600;
-}
-
 .upload-zone {
   border: 2px dashed #e2e8f0;
   border-radius: var(--radius-md);
@@ -1331,6 +1369,7 @@ onMounted(async () => {
 
 .link-action { cursor: pointer; font-size: 12px; color: var(--blue); margin-right: 10px; }
 .link-action.danger { color: var(--red); margin-right: 0; }
+.link-action.is-disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.55; }
 
 .docs-row td { padding: 0; }
 .docs-panel {

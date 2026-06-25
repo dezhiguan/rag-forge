@@ -162,9 +162,30 @@ public class ImagePipelineService {
     if (StringUtils.hasText(doc.getStorageBucket())) {
       try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
         return in.readAllBytes();
+      } catch (RuntimeException e) {
+        // 带上 docId + ingestSource 才能在多份遗留 doc 共存时定位是哪一条出问题：
+        // 例如旧的 relay 路径（无 kb_ 前缀的 key）跟新 presign 路径（uplt_*）会同时存在，
+        // 失败时必须看清是哪条历史 doc 卡住了 worker。
+        log.error(
+            "Image pipeline OSS get failed: docId={} kbId={} bucket={} key={} ingestSource={} keyShape={}",
+            doc.getId(),
+            doc.getKbId(),
+            doc.getStorageBucket(),
+            doc.getStorageKey(),
+            doc.getIngestSource(),
+            classifyKeyShape(doc.getStorageKey()),
+            e);
+        throw e;
       }
     }
     return Files.readAllBytes(Path.of(doc.getFilePath()));
+  }
+
+  private static String classifyKeyShape(String key) {
+    if (key == null) return "null";
+    if (key.contains("/kb_") && key.contains("/uplt_")) return "presign-v8";
+    if (key.matches(".+/\\d+/[0-9a-fA-F-]{36}/.+")) return "relay-legacy";
+    return "other";
   }
 
   private static String truncate(String message) {

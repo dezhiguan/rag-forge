@@ -51,30 +51,22 @@
           </div>
         </header>
 
-        <section v-if="hasIdentityInfo" class="identity-section">
-          <div class="section-title">身份信息</div>
+        <!--
+          外部身份信息只对来自外部系统（MCP / 爬虫 / ETL）的文档展示；
+          UI 上传不会填 externalId/sourceUrl，整段隐藏避免一排"—"。
+          md5 + 来源通道挪到下面的"文档元信息"面板，作为文件基础属性始终可见。
+        -->
+        <section v-if="hasExternalIdentity" class="identity-section">
+          <div class="section-title">外部身份信息</div>
           <div class="meta-list">
-            <div class="meta-row">
+            <div v-if="doc.externalId" class="meta-row">
               <span class="meta-key">externalId</span>
-              <span class="meta-val">{{ doc.externalId || '—' }}</span>
+              <span class="meta-val">{{ doc.externalId }}</span>
             </div>
-            <div class="meta-row">
+            <div v-if="doc.sourceUrl" class="meta-row">
               <span class="meta-key">sourceUrl</span>
               <span class="meta-val">
-                <a v-if="doc.sourceUrl" :href="doc.sourceUrl" target="_blank" rel="noopener noreferrer">
-                  {{ doc.sourceUrl }}
-                </a>
-                <span v-else>—</span>
-              </span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-key">来源通道</span>
-              <span class="meta-val">{{ doc.ingestSource || '—' }}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-key">内容 md5</span>
-              <span class="meta-val">
-                <code>{{ doc.contentMd5 || '—' }}</code>
+                <a :href="doc.sourceUrl" target="_blank" rel="noopener noreferrer">{{ doc.sourceUrl }}</a>
               </span>
             </div>
           </div>
@@ -168,6 +160,14 @@
               <div class="meta-row">
                 <span class="meta-key">知识库</span>
                 <span class="meta-val">{{ doc.kbName || '-' }}</span>
+              </div>
+              <div v-if="doc.ingestSource" class="meta-row">
+                <span class="meta-key">来源通道</span>
+                <span class="meta-val">{{ doc.ingestSource }}</span>
+              </div>
+              <div v-if="doc.contentMd5" class="meta-row">
+                <span class="meta-key">内容 md5</span>
+                <span class="meta-val"><code>{{ doc.contentMd5 }}</code></span>
               </div>
               <div class="meta-row">
                 <span class="meta-key">状态</span>
@@ -312,13 +312,10 @@ const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
 const isImageDoc = computed(() => (doc.value?.fileType || '').toLowerCase().startsWith('image/'))
 const downloadUrl = computed(() => doc.value?.id ? `/api/v1/documents/${doc.value.id}/download` : '')
 const canRechunk = computed(() => doc.value && !['pending', 'processing', 'reprocessing'].includes(normalizedStatus.value))
-const hasIdentityInfo = computed(() =>
-  Boolean(
-    doc.value?.externalId
-      || doc.value?.sourceUrl
-      || doc.value?.contentMd5
-      || doc.value?.ingestSource,
-  ),
+// 外部身份信息只对真正来自外部系统的文档展示。UI 上传永远没有这两个字段，
+// 折叠整段比留一排"—"更干净；md5 + 来源通道挪到了"文档元信息"面板。
+const hasExternalIdentity = computed(() =>
+  Boolean(doc.value?.externalId || doc.value?.sourceUrl),
 )
 const CHUNKER_STRATEGY_LABELS = {
   MARKDOWN_HEADING: '按标题分块',

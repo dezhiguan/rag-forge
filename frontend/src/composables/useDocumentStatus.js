@@ -21,6 +21,12 @@ export function isTerminal(parseStatus) {
   return status === 'completed' || status === 'failed'
 }
 
+// 只有处理完成的文档才允许下载：失败的文档原文件可能根本就不在 OSS（NoSuchKey），
+// 处理中的文档下载语义模糊（用户拿到的是入库前的原始 bytes），都没必要给点击入口。
+export function isDownloadable(parseStatus) {
+  return normalizeDocStatus(parseStatus) === 'completed'
+}
+
 export function docStatusClass(parseStatus) {
   const status = normalizeDocStatus(parseStatus)
   if (status === 'completed') return 'badge-green'

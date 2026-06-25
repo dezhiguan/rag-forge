@@ -13,7 +13,19 @@
           </div>
           <div class="confirm-actions">
             <button class="confirm-btn-cancel" @click="onCancel">{{ state.cancelText }}</button>
+            <template v-if="state.choices.length > 0">
+              <button
+                v-for="choice in state.choices"
+                :key="String(choice.value)"
+                class="confirm-btn-ok"
+                :class="`is-${choice.variant || 'default'}`"
+                @click="onPick(choice.value)"
+              >
+                {{ choice.label }}
+              </button>
+            </template>
             <button
+              v-else
               class="confirm-btn-ok"
               :class="`is-${state.variant}`"
               @click="onOk"
@@ -36,14 +48,19 @@ function onOk() {
 }
 
 function onCancel() {
-  resolveConfirm(false)
+  resolveConfirm(state.cancelValue)
+}
+
+function onPick(value) {
+  resolveConfirm(value)
 }
 
 function onKey(e) {
   if (!state.open) return
   if (e.key === 'Escape') {
     onCancel()
-  } else if (e.key === 'Enter') {
+  } else if (e.key === 'Enter' && state.choices.length === 0) {
+    // 多选模式下 Enter 不默选任何一项，避免误触"覆盖"这种破坏性操作
     onOk()
   }
 }
