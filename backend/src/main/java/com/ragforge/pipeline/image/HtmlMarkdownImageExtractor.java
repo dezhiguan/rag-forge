@@ -58,6 +58,90 @@ public class HtmlMarkdownImageExtractor implements EmbeddedImageExtractor {
     }
   }
 
+  /**
+   * 一遍扫描同时完成两件事：
+   * 1) 抽出所有内嵌图（含 data-URI / http(s) 外链）
+   * 2) 把 &lt;img&gt; 和 markdown ![]() 在原位替换成自定义占位符 ![image N](rfimg://N)
+   *
+   * <p>占位符在 TEXT chunk 里保留下来作为图文位置锚点：前端拿到 chunk 后按
+   * rfimg://N 把 N 映射回当前文档对应 figureIndex 的 IMAGE chunk 的 presigned URL
+   * 实现 inline 渲染。LLM 答案生成也能引用 "参见 image 0"。
+   *
+   * <p>替换按出现位置排序（不是先 HTML 再 MD 两轮）→ figureIndex 自然按文档阅读顺序编号。
+   */
+  public RewriteResult extractWithPlaceholders(Path filePath, String contentType) {
+    try {
+      String source = Files.readString(filePath, StandardCharsets.UTF_8);
+      List<RawMatch> matches = new ArrayList<>();
+      Matcher htmlM = HTML_IMG.matcher(source);
+      while (htmlM.find()) {
+        matches.add(new RawMatch(htmlM.start(), htmlM.end(), htmlM.group(1).trim()));
+      }
+      Matcher mdM = MD_IMG.matcher(source);
+      while (mdM.find()) {
+        matches.add(new RawMatch(mdM.start(), mdM.end(), mdM.group(1).trim()));
+      }
+      matches.sort((a, b) -> Integer.compare(a.start, b.start));
+
+      StringBuilder rewritten = new StringBuilder(source.length());
+      List<ExtractedImage> images = new ArrayList<>();
+      int last = 0;
+      for (RawMatch m : matches) {
+        // 处理 HTML_IMG 和 MD_IMG 在源文本里 overlap 的极端情况：只处理第一个匹配
+        if (m.start < last) continue;
+        rewritten.append(source, last, m.start);
+        try {
+          ImageBytes img = load(m.src);
+          if (img != null && img.bytes().length > 0) {
+            int figIdx = images.size();
+            images.add(
+                new ExtractedImage(
+                    img.bytes(),
+                    img.contentType(),
+                    null,
+                    figIdx,
+                    surrounding(source, m.start, m.end),
+                    null));
+            // 用 markdown 图片语法 + 自定义 rfimg:// 协议；这样：
+            // - LLM 看到能识别为图引用
+            // - 不污染向量（占位符就几十字符）
+            // - 前端按 scheme 识别后替换为真实 presigned URL，不会误打 GET 请求
+            rewritten
+                .append("\n\n![image ")
+                .append(figIdx)
+                .append("](rfimg://")
+                .append(figIdx)
+                .append(")\n\n");
+          } else {
+            // 抽取失败（解码失败 / 空 src）就保留原 <img> / ![](...)，不破坏原文档
+            rewritten.append(source, m.start, m.end);
+          }
+        } catch (Exception e) {
+          log.warn(
+              "HtmlMarkdownImageExtractor.extractWithPlaceholders skip one image: src={} err={}",
+              truncate(m.src),
+              e.getMessage());
+          rewritten.append(source, m.start, m.end);
+        }
+        last = m.end;
+      }
+      rewritten.append(source, last, source.length());
+      log.info(
+          "HtmlMarkdownImageExtractor rewrite done: filePath={} images={} originalChars={} rewrittenChars={}",
+          filePath.getFileName(),
+          images.size(),
+          source.length(),
+          rewritten.length());
+      return new RewriteResult(rewritten.toString(), images);
+    } catch (Exception e) {
+      throw new BizException("HTML/Markdown 嵌入图重写失败: " + e.getMessage());
+    }
+  }
+
+  public record RewriteResult(String rewrittenText, List<ExtractedImage> images) {}
+
+  private record RawMatch(int start, int end, String src) {}
+
   private void collect(String source, Pattern pattern, List<ExtractedImage> images) {
     Matcher matcher = pattern.matcher(source);
     while (matcher.find()) {
