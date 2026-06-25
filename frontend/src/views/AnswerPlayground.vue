@@ -53,8 +53,8 @@
         <div class="answer-grid">
           <section class="answer-panel">
             <div class="panel-head">
-              <span>Answer</span>
-              <small v-if="latency.total">total {{ latency.total }}ms</small>
+              <span>应答内容 <small class="label-en">Answer</small></span>
+              <small v-if="latency.total">总耗时 {{ latency.total }}ms</small>
             </div>
             <div class="answer-text" :class="{ empty: !answer }">
               {{ answer || '等待生成带引用的应答' }}
@@ -63,8 +63,8 @@
 
           <section class="answer-panel">
             <div class="panel-head">
-              <span>Citations</span>
-              <small>{{ citations.length }} refs</small>
+              <span>引用来源 <small class="label-en">Citations</small></span>
+              <small>{{ citations.length }} 条引用</small>
             </div>
             <div v-if="!citations.length" class="empty-cites">暂无引用</div>
             <article v-for="citation in citations" :key="citation.id" class="citation-card">
@@ -75,7 +75,7 @@
                   <span>{{ citation.modality }}</span>
                   <span>chunk {{ citation.chunkId }}</span>
                 </div>
-                <p>{{ citation.textSnippet }}</p>
+                <p class="citation-snippet" :title="citation.textSnippet">{{ cleanSnippet(citation.textSnippet) }}</p>
               </div>
             </article>
           </section>
@@ -83,8 +83,8 @@
 
         <section class="event-strip">
           <div class="panel-head">
-            <span>SSE Events</span>
-            <small v-if="retrieval.latencyMs">retrieval {{ retrieval.latencyMs }}ms</small>
+            <span>事件流 <small class="label-en">SSE Events</small></span>
+            <small v-if="retrieval.latencyMs">检索 {{ retrieval.latencyMs }}ms</small>
           </div>
           <div class="events">
             <div v-for="(event, index) in events" :key="index" class="event-line">
@@ -118,6 +118,10 @@ const error = ref('')
 const running = ref(false)
 const retrieval = reactive({ chunks: [], latencyMs: 0 })
 const latency = reactive({ retrieval: 0, llm: 0, total: 0 })
+// completeReceived 用于区分"流正常结束"和"中途断网"。后端发完 complete event 后会
+// emitter.complete()，浏览器侧 reader.read() 等下一块时会抛 network error。这是
+// 已知的 SSE+fetch 行为，不是真错误，要吞掉避免 UI 出现误导性的"network error"。
+let completeReceived = false
 const form = reactive({
   kbId: null,
   retrievalStrategy: 'hybrid',
@@ -138,6 +142,7 @@ async function runAnswer() {
   answer.value = ''
   citations.value = []
   events.value = []
+  completeReceived = false
   Object.assign(retrieval, { chunks: [], latencyMs: 0 })
   Object.assign(latency, { retrieval: 0, llm: 0, total: 0 })
   try {
@@ -169,6 +174,7 @@ async function runAnswer() {
     }
     await readSse(response)
   } catch (e) {
+    if (completeReceived) return
     const raw = e?.message || '生成失败'
     if (isAnswerDisabledPayload(raw)) {
       toast.error(ANSWER_DISABLED_HINT)
@@ -215,6 +221,7 @@ function handleFrame(frame) {
     answer.value = data.answer || answer.value
     citations.value = data.citations || []
     Object.assign(latency, data.latency || {})
+    completeReceived = true
   } else if (event === 'error') {
     const code = data.error || data.code || ''
     if (code === 'ANSWER_DISABLED' || String(data.message || '').includes('ANSWER_DISABLED')) {
@@ -223,6 +230,16 @@ function handleFrame(frame) {
     }
     error.value = translateError({ msg: code, message: data.message }) || `${code} ${data.message || ''}`.trim()
   }
+}
+
+// 清掉文本中长串的 "====" / "----" 分隔线（FAQ fixture 里大量用作 section 边界），
+// 并压缩连续空白；最终在 CSS 里再做行数 clamp，避免单条引用撑出屏幕。
+function cleanSnippet(text) {
+  if (!text) return ''
+  return String(text)
+    .replace(/[=\-]{6,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function parseErrorPayload(text) {
@@ -343,6 +360,17 @@ function isAnswerDisabledPayload(text) {
 }
 .citation-meta b { color: #0f766e; }
 .citation-body p { color: #334155; font-size: 13px; line-height: 1.6; }
+.citation-snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  margin: 0;
+}
+.label-en { color: #94a3b8; font-weight: 500; font-size: 11px; margin-left: 4px; }
+.panel-head > span { display: inline-flex; align-items: baseline; gap: 2px; }
 .events { max-height: 190px; overflow: auto; display: grid; gap: 6px; }
 .event-line { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; font-size: 12px; }
 .event-line span { color: #0f766e; font-weight: 700; }
