@@ -138,7 +138,7 @@ prune_old_k3s_repo_images() {
   while read -r image; do
     [[ -z "${image}" ]] && continue
     local digest
-    digest="$(k3s ctr -n k8s.io images ls 2>/dev/null | awk -v image="${image}" '$1 == image {print $3; exit}')"
+    digest="$(k3s ctr -n k8s.io images ls 2>/dev/null | awk -v image="${image}" '$1 == image {digest = $3} END {if (digest != "") print digest}')"
     if [[ "${digest}" == sha256:* ]]; then
       printf '%s@%s\n' "${repo}" "${digest}"
     fi
