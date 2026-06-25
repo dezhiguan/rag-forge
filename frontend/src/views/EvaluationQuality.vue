@@ -26,7 +26,7 @@
       </div>
 
       <div class="toolbar-block">
-        <label>KB 筛选</label>
+        <label>知识库筛选</label>
         <div class="kb-filter-row">
           <input
             v-model="kbIdInput"
@@ -102,7 +102,7 @@
       </div>
       <div class="panel-body">
         <div v-if="loading.overview" class="state-hint">加载中...</div>
-        <div v-else-if="sampleCount <= 0 && trendPoints.length === 0" class="state-hint">暂无评测数据，请检查 Golden Set 是否启用</div>
+        <div v-else-if="sampleCount <= 0 && trendPoints.length === 0" class="state-hint">暂无评测数据，请检查 Golden Set（黄金集）是否启用</div>
         <div v-else class="trend-chart-wrap">
           <div class="trend-meta">hover 查看当日样本与分数</div>
           <svg
@@ -187,18 +187,18 @@
 
     <section class="split-panels">
       <article class="panel flex-panel">
-        <div class="panel-head"><h2>KB 切片</h2></div>
+        <div class="panel-head"><h2>知识库排行</h2></div>
         <div class="panel-body">
           <div v-if="loading.kb" class="state-hint">加载中...</div>
           <div v-else-if="kbRows.length === 0" class="state-hint">暂无可见评测数据</div>
           <div v-else class="table-wrap">
-            <table class="data-table">
+            <table class="data-table kb-slice-table">
               <thead>
                 <tr>
-                  <th>KB 名</th>
-                  <th>分数</th>
-                  <th>趋势</th>
-                  <th>样本数</th>
+                  <th class="col-name">知识库</th>
+                  <th class="col-score">分数</th>
+                  <th class="col-trend">趋势</th>
+                  <th class="col-count">样本数</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,14 +208,16 @@
                   class="clickable-row"
                   @click="openKb(row.kbId)"
                 >
-                  <td>{{ row.kbName || `KB ${row.kbId}` }}</td>
-                  <td><span :class="scoreClass(row.overallScore)">{{ formatScore(row.overallScore) }}</span></td>
-                  <td>
+                  <td class="col-name" :title="row.kbName || kbDisplayName(row.kbId)">
+                    <span class="kb-name-text">{{ row.kbName || kbDisplayName(row.kbId) }}</span>
+                  </td>
+                  <td class="col-score"><span :class="scoreClass(row.overallScore)">{{ formatScore(row.overallScore) }}</span></td>
+                  <td class="col-trend">
                     <span :class="trendClass(row.trend)">
                       {{ formatSigned(row.trend) }}
                     </span>
                   </td>
-                  <td>{{ row.sampleCount || 0 }}</td>
+                  <td class="col-count">{{ row.sampleCount || 0 }}</td>
                 </tr>
               </tbody>
             </table>
@@ -280,17 +282,20 @@
               class="cost-stack"
               v-for="item in costStacks"
               :key="item.key"
+              :class="{ 'cost-stack--narrow': item.pct < 12 }"
               :style="{ width: `${item.pct}%`, background: item.color }"
+              :title="`${item.label}：¥${formatMoney(item.value)}`"
             >
-              <span>{{ item.label }}</span>
+              <span v-if="item.pct >= 12">{{ item.label }}</span>
             </div>
           </div>
-            <div class="cost-legend">
-              <span v-for="item in costStacks" :key="`${item.key}-legend`" class="legend-item">
-                <i :style="{ background: item.color }" />
-                {{ item.label }}：¥{{ formatMoney(item.value) }}
-              </span>
+          <div class="cost-legend">
+            <div v-for="item in costStacks" :key="`${item.key}-legend`" class="legend-card">
+              <span class="legend-dot" :style="{ background: item.color }" />
+              <span class="legend-label">{{ item.label }}</span>
+              <span class="legend-value">¥{{ formatMoney(item.value) }}</span>
             </div>
+          </div>
         </div>
       </div>
     </section>
@@ -299,7 +304,7 @@
       <aside class="settings-drawer">
         <div class="drawer-head">
           <div>
-            <h2>抽样与 Golden Set</h2>
+            <h2>抽样与 Golden Set（黄金集）</h2>
             <p>控制线上 LLM-as-Judge 抽样率；超过 10% 保存时需要二次确认。</p>
           </div>
           <button class="drawer-close" @click="closeSamplingDrawer">关闭</button>
@@ -350,17 +355,17 @@
         </section>
 
         <section class="drawer-section">
-          <h3>KB 覆盖</h3>
+          <h3>知识库覆盖</h3>
           <div class="kb-override-form">
             <select v-model="kbOverrideForm.scopeId">
               <option :value="null" disabled>选择知识库</option>
-              <option v-for="kb in kbOptions" :key="kb.id" :value="kb.id">{{ kb.name || `KB ${kb.id}` }}</option>
+              <option v-for="kb in kbOptions" :key="kb.id" :value="kb.id">{{ kb.name || kbDisplayName(kb.id) }}</option>
             </select>
             <input v-model.number="kbOverrideForm.ratePercent" type="number" min="0" max="10" step="0.5" />
             <label><input v-model="kbOverrideForm.enabled" type="checkbox" /> 启用</label>
             <button class="btn-ghost-small" :disabled="savingSampling" @click="saveKbOverride">保存覆盖</button>
           </div>
-          <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无 KB 单独覆盖</div>
+          <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无知识库单独覆盖</div>
           <div v-else class="override-list">
             <div v-for="item in kbSamplingConfigs" :key="item.id" class="override-item">
               <span>{{ kbName(item.scopeId) }}</span>
@@ -372,7 +377,7 @@
         </section>
 
         <section class="drawer-section">
-          <h3>Golden Set 回放</h3>
+          <h3>Golden Set（黄金集）回放</h3>
           <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
           <button
             class="btn-save-config btn-save-config--secondary"
@@ -422,6 +427,11 @@ const router = useRouter()
 const route = useRoute()
 
 const dayOptions = [7, 30, 90]
+const COST_SOURCE_LABELS = {
+  PRODUCTION: '线上生产',
+  GOLDEN_SET: 'Golden Set（黄金集）',
+  MANUAL: '手动评测',
+}
 const metricOptions = [
   { key: 'overall', label: '总体', color: '#0f766e' },
   { key: 'faithfulness', label: '忠实度', color: '#2563eb' },
@@ -555,11 +565,19 @@ const kbSamplingConfigs = computed(() =>
 )
 
 function unwrapResponse(resp) {
-  const body = resp?.data != null ? resp.data : resp
-  if (body && typeof body === 'object' && body.code === 200 && 'data' in body) {
+  const body = resp?.data !== undefined && resp?.data !== null ? resp.data : resp
+  if (body != null && typeof body === 'object' && body.code === 200 && 'data' in body) {
     return body.data
   }
-  return body || {}
+  if (body !== undefined && body !== null) {
+    return body
+  }
+  return {}
+}
+
+function toCount(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
 }
 
 async function openSamplingDrawer() {
@@ -583,7 +601,7 @@ async function loadSamplingSettings() {
     ])
     samplingConfigs.value = unwrapResponse(configsResp) || []
     kbOptions.value = unwrapResponse(kbResp) || []
-    goldenEnabledCount.value = Number(unwrapResponse(goldenResp) || 0)
+    goldenEnabledCount.value = toCount(unwrapResponse(goldenResp))
     const globalConfig = samplingConfigs.value.find((item) => item.scopeType === 'GLOBAL')
     if (globalConfig) {
       globalRatePercent.value = ratePercent(globalConfig.sampleRate)
@@ -692,9 +710,13 @@ function percentToRate(value) {
   return Math.max(0, Math.min(100, pct)) / 100
 }
 
+function kbDisplayName(id) {
+  return `知识库 #${id}`
+}
+
 function kbName(id) {
   const kb = kbOptions.value.find((item) => item.id === id)
-  return kb?.name || `KB ${id}`
+  return kb?.name || kbDisplayName(id)
 }
 
 function parseHttpError(error) {
@@ -988,7 +1010,7 @@ const costStacks = computed(() => {
   const sourceOrder = ['PRODUCTION', 'GOLDEN_SET', 'MANUAL']
   const entries = sourceOrder.map((source) => ({
     key: source,
-    label: source,
+    label: COST_SOURCE_LABELS[source] || source,
     value: Number(cost.value?.costBySource?.[source] || 0),
     color: sourceMap[source],
   }))
@@ -1242,6 +1264,65 @@ watch(
 .clickable-row { cursor: pointer; }
 .clickable-row:hover { background: rgba(59,130,246,0.06); }
 
+.kb-slice-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.kb-slice-table thead th,
+.kb-slice-table tbody td {
+  padding: 10px 12px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.kb-slice-table thead th {
+  white-space: nowrap;
+}
+
+.kb-slice-table .col-name {
+  width: auto;
+  text-align: left;
+}
+
+.kb-slice-table .col-score {
+  width: 64px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.kb-slice-table .col-trend {
+  width: 88px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.kb-slice-table .col-count {
+  width: 56px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.kb-slice-table tbody td.col-score,
+.kb-slice-table tbody td.col-trend,
+.kb-slice-table tbody td.col-count {
+  color: #475569;
+}
+
+.kb-name-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+}
+
 .worst-list { display: flex; flex-direction: column; gap: 8px; }
 .worst-item {
   border: 1px solid var(--border);
@@ -1283,40 +1364,63 @@ watch(
 
 .cost-stack-wrap {
   display: flex;
-  height: 26px;
-  border-radius: 999px;
+  height: 32px;
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
+  background: #f1f5f9;
 }
 
 .cost-stack {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   color: #fff;
-  min-width: 1%;
+  min-width: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.cost-stack--narrow {
+  min-width: 2px;
 }
 
 .cost-legend {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.legend-card {
   display: flex;
-  gap: 14px;
-  color: var(--text-muted);
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-
-.legend-item {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
 }
 
-.legend-item i {
+.legend-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  display: inline-block;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  color: #64748b;
+  flex: 1;
+  min-width: 0;
+}
+
+.legend-value {
+  color: #0f172a;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .drawer-mask {
@@ -1608,6 +1712,10 @@ watch(
 
   .quality-kpi-grid,
   .cost-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .cost-legend {
     grid-template-columns: 1fr;
   }
 }
