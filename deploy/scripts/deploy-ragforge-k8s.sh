@@ -125,6 +125,8 @@ if [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
   fi
   echo "[frontend] import image into k3s containerd"
   import_image_to_k3s "${FRONTEND_IMAGE}"
+  prune_old_k3s_repo_images "${RAGFORGE_FRONTEND_IMAGE_REPO}" "${RAGFORGE_K3S_IMAGE_KEEP:-4}" "${NAMESPACE}" "${FRONTEND_IMAGE}"
+  prune_old_docker_repo_images "${RAGFORGE_FRONTEND_IMAGE_REPO}" "${RAGFORGE_DOCKER_IMAGE_KEEP:-4}" "${FRONTEND_IMAGE}"
 else
   echo "Skip image build (SKIP_IMAGE_BUILD=1)"
   if ! k3s ctr -n k8s.io images ls | grep -q "${BACKEND_IMAGE}"; then

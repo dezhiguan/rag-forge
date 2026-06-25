@@ -36,6 +36,8 @@ docker build -f backend/Dockerfile -t "${BACKEND_IMAGE}" backend/
 
 echo "[backend] import image into k3s containerd"
 import_image_to_k3s "${BACKEND_IMAGE}"
+prune_old_k3s_repo_images "${RAGFORGE_IMAGE_REPO}" "${RAGFORGE_K3S_IMAGE_KEEP:-4}" "${RAGFORGE_K8S_NAMESPACE:-ragforge}" "${BACKEND_IMAGE}"
+prune_old_docker_repo_images "${RAGFORGE_IMAGE_REPO}" "${RAGFORGE_DOCKER_IMAGE_KEEP:-4}" "${BACKEND_IMAGE}"
 
 if [[ "${EUID}" -eq 0 ]]; then
   TAR_NAME="ragforge-backend-${IMAGE_TAG}.tar"

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Safe disk cleanup for Server 3 app layer. Does NOT touch k3s/containerd/kubelet data dirs.
+# Safe disk cleanup for Server 3 app layer.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deploy/scripts/k8s-image-common.sh
+source "${SCRIPT_DIR}/k8s-image-common.sh"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Run as root: sudo bash $0" >&2
@@ -33,8 +37,19 @@ if command -v docker >/dev/null 2>&1; then
 fi
 
 echo ""
+echo "== k3s/containerd: remove old RAGForge images =="
+prune_old_k3s_repo_images "${RAGFORGE_IMAGE_REPO}" "${RAGFORGE_K3S_IMAGE_KEEP:-4}" "${RAGFORGE_K8S_NAMESPACE:-ragforge}"
+prune_old_k3s_repo_images "${RAGFORGE_FRONTEND_IMAGE_REPO}" "${RAGFORGE_K3S_IMAGE_KEEP:-4}" "${RAGFORGE_K8S_NAMESPACE:-ragforge}"
+
+echo ""
+echo "== Docker: remove old RAGForge images =="
+prune_old_docker_repo_images "${RAGFORGE_IMAGE_REPO}" "${RAGFORGE_DOCKER_IMAGE_KEEP:-4}"
+prune_old_docker_repo_images "${RAGFORGE_FRONTEND_IMAGE_REPO}" "${RAGFORGE_DOCKER_IMAGE_KEEP:-4}"
+
+echo ""
 echo "== Disk after =="
 df -h /
 
 echo ""
-echo "Protected paths (NOT cleaned): /var/lib/rancher/k3s /var/lib/containerd /var/lib/kubelet /data/files"
+echo "Protected paths (NOT cleaned): /var/lib/kubelet /data/files"
+echo "k3s/containerd cleanup only removes old RAGForge image refs and keeps active deployments."
