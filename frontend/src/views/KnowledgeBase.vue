@@ -741,9 +741,14 @@ async function handleFiles(files) {
   if (!files || files.length === 0) return
 
   const kbId = kbIdNum
-  const items = files.map((file) => createUploadItem(file, kbId))
-  uploadItems.value = [...items, ...uploadItems.value]
-  await runWithConcurrency(items, UPLOAD_CONCURRENCY, (item) => uploadOneItem(item))
+  const rawItems = files.map((file) => createUploadItem(file, kbId))
+  uploadItems.value = [...rawItems, ...uploadItems.value]
+  // 关键：传给 uploadOneItem 的必须是 uploadItems.value 里的 reactive proxy，
+  // 不能是 createUploadItem 返回的原始对象。否则 item.phase / item.progress 的修改
+  // 改不到 Vue 跟踪的 proxy 上，UI 一直停留在初始的 "排队中 0%"，直到末尾某个数组级
+  // 操作触发整体 re-render 才一次性跳到 100。
+  const liveItems = uploadItems.value.slice(0, rawItems.length)
+  await runWithConcurrency(liveItems, UPLOAD_CONCURRENCY, (item) => uploadOneItem(item))
   await loadKbs()
   if (expandedKbId.value === kbId) {
     await loadDocs(kbId)
