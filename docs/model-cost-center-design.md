@@ -182,15 +182,16 @@ interface ModelUsageRecorder { void record(ModelUsageEvent e); }
 - `frontend/src/views/ModelCostCenter.vue` —— 单页三 Tab，结构/配色严格对齐视觉稿。
 - `frontend/src/api/model.js` —— **已创建**（getModelList / toggleModel / getModelCostStats / getModelCostDetail）。
 
-### 3.2 路由（`router/index.ts`）—— 在 `/api` 前插一条
+### 3.2 路由（`router/index.js`）—— 在 `/api` 前插一条
 ```
 { path: '/models', name: 'ModelCostCenter', component: () => import('../views/ModelCostCenter.vue'),
-  meta: { icon: '🧠', label: '模型 & 成本', role: 'ADMIN', scope: 'rag:model:admin' } }
+  meta: { icon: '🧠', label: '模型 & 成本', role: 'ADMIN' } }
 ```
+> 实现取舍：仅用 `role: 'ADMIN'` 守卫，**不挂自定义 scope**。后端 Controller 已用 `@PreAuthorize("hasRole('ADMIN')")` 强制，等价且更稳；避免新 scope 未被签发导致菜单被 `canAccessRoute` 误隐藏。
 
 ### 3.3 侧边栏（`components/Sidebar.vue` 的 `ALL_NAV_ITEMS`）—— 在「API 网关」前加：
 ```
-{ path: '/models', icon: '🧠', label: '模型 & 成本', meta: { role: 'ADMIN', scope: 'rag:model:admin' } }
+{ path: '/models', icon: '🧠', label: '模型 & 成本', meta: { role: 'ADMIN' } }
 ```
 
 ### 3.4 页面结构（对齐视觉稿）
@@ -222,7 +223,7 @@ interface ModelUsageRecorder { void record(ModelUsageEvent e); }
 
 ## 5. 权限
 
-新增 scope **`rag:model:admin`**，仅 `ADMIN` 角色。需在**当前 `rag:apikey:admin` 被授予的同一处**（角色→scope 映射 / guards）登记该 scope，否则路由守卫 `canAccessRoute` 会拦截。后端 Controller 用项目现有的鉴权注解/拦截器保护（与 `ApiGateway` 一致）。
+**仅 `ADMIN` 角色**可访问。后端 Controller 用 `@PreAuthorize("hasRole('ADMIN')")`（与现有 `JudgeSamplingController` 一致），前端路由/侧边栏用 `role: 'ADMIN'` 守卫。本期**不引入自定义 scope**（`rag:model:admin`）——因为新 scope 需在签发处登记否则会被 `canAccessRoute` 误拦；role 守卫已等价覆盖。若后续要更细粒度，再补 scope 并同步签发逻辑。
 
 ---
 
