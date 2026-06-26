@@ -24,7 +24,7 @@
 | `AnswerService` | `recordAnswerTokens(prompt, completion)` | qwen-plus / ANSWER |
 | `JudgeOrchestrator` | `recordDeepSeekTokens(...)` + `recordJudgeCost(...)` | deepseek-v4-flash / JUDGE |
 | Query 改写 (`LlmServiceImpl`) | 目前**未计量** | qwen-turbo / REWRITE → 本期补一处 record |
-| Reranker (`jina-reranker-v3`) | 本地无 Token 费 | RERANK → 只记调用次数 |
+| Reranker (`RerankerClient` → DashScope `qwen3-rerank`) | 目前**未计量** | RERANK → 本期补一处 record（usage 优先/文档长度估算） |
 
 **实现策略 = 在这些已有 record 调用点旁边，并联一个 `ModelUsageRecorder.record(event)`，把同一份 Token 数据异步写入成本库。** 不改动检索/应答主链路的同步逻辑。
 
@@ -70,7 +70,7 @@
 | jina-reranker-v3 | jina-reranker-v3 | local | RERANK | 0 | 0 | t | f | f | null |
 | qwen-vl-ocr | qwen-vl-ocr | dashscope | OCR | 5.00 | 0 | f | f | t | null |
 
-> 注：`jina-reranker-v3`(primary, enabled) + `qwen3-rerank`(备用, disabled) 显式表达了之前 flag 的"双精排路线"；`qwen-vl-ocr` 默认停用对应当前 `RAGFORGE_MULTIMODAL_ENABLED` 实际状态，按你环境调整。
+> 注：RERANK 主备以**实际代码路径**为准 —— `RetrievalService` → `RerankerClient` 调 DashScope `qwen3-rerank`，故 `qwen3-rerank`=enabled primary、`jina-reranker-v3`(本地服务未接入 Java 链路)=disabled 备用（见 V36 迁移）。`qwen-vl-ocr` 默认停用对应当前 `RAGFORGE_MULTIMODAL_ENABLED` 实际状态，按环境调整。
 
 #### 表二：`model_usage_daily`（日级汇总，看板主数据源）
 
@@ -147,7 +147,9 @@ interface ModelUsageRecorder { void record(ModelUsageEvent e); }
 - **非阻塞**：`record()` 只入内存队列（如 `ConcurrentLinkedQueue` 或有界 `BlockingQueue`，队列满则丢弃并打点，绝不阻塞业务线程）。
 - **批量落库**：`@Scheduled(fixedDelay=5s)` 消费队列，按 `(model_code, stat_date)` 在内存聚合后，对 `model_usage_daily` 做 **UPSERT 累加**（`INSERT ... ON CONFLICT (model_code, stat_date) DO UPDATE SET call_count = call_count + EXCLUDED...`）。
 - **接入方式**：在 §0.1 表格列出的每个现有 `metrics.recordXxx(...)` 调用点**旁边**加一行 `usageRecorder.record(...)`。REWRITE 处需新增计量（当前缺失）。
-- **实现状态（本次交付）**：已并联计量的付费 LLM 路径 = **ANSWER / REWRITE / JUDGE**（chat-completion 调用，prompt/completion Token 精确可得，计价口径一致）。**EMBEDDING / OCR / RERANK 暂未并联**——其 Token 语义不同：embedding 的文本 Token 当前未在响应里捕获、OCR 走图像 Token、rerank 为本地零费；这三者需各自确认 API usage 字段后再接，作为 fast-follow，避免上报估算值污染成本口径。`ModelUsageRecorder` 为通用实现，补接仅是在对应调用点加一行 `record(...)`。
+- **实现状态（本次交付）**：**6 个用途全部已并联计量**。
+  - 精确口径（chat-completion，prompt/completion Token 精确）：**ANSWER / REWRITE / JUDGE**。
+  - usage 优先 + 估算兜底：**EMBEDDING / OCR / RERANK** —— 优先读响应 `usage` 的 token；缺失则按文本/文档字符数估算（`len/4`，与既有 OCR `estimateTokens` 同口径）。这是工程取舍：用真实 usage 时精确，API 不返回 token 时给出一致的估算而非 0，估算逻辑集中、可后续替换为精确值。
 - **禁止**：不得在模型调用的同步路径里直接 `INSERT` 数据库。
 
 > 备选方案：复用现有 RocketMQ 发计量事件。**本期不采用**——引入 MQ 收发两端、消费幂等、积压监控，对一个看板属过度设计。内存队列 + 定时 UPSERT 足够，数据延迟 ≤5s 对看板无感知影响。
@@ -211,7 +213,7 @@ interface ModelUsageRecorder { void record(ModelUsageEvent e); }
 | 现状问题（之前已 flag） | 本方案如何解决 |
 |------------------------|---------------|
 | `qwen-plus` 硬编码在 `AnswerService.orElse(...)` | 改走 `ModelResolver.resolve(ANSWER)`，配置进 `model_config` |
-| 精排双路线（qwen3-rerank vs jina）未声明 | 注册表里 jina=primary/enabled、qwen3-rerank=fallback/disabled，关系显式化 |
+| 精排双路线（qwen3-rerank vs jina）未声明 | 查清实际走 DashScope `qwen3-rerank`、本地 jina 未接入；注册表 qwen3-rerank=enabled primary、jina=disabled 备用（V36 修正） |
 | 模型散落 yml + 代码，无法运营 | 收口到 `model_config` 单一事实源 |
 | REWRITE 无 Token 计量 | §2.4 补一处 `recordVl…`/`usageRecorder.record` |
 
