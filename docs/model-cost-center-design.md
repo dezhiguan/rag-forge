@@ -66,8 +66,8 @@
 | deepseek-v4-flash | deepseek-v4-flash | deepseek | JUDGE | 1.00 | 2.00 | f | t | t | null |
 | qwen-turbo | qwen-turbo | dashscope | REWRITE | 0.30 | 0.60 | f | t | t | null |
 | qwen-plus | qwen-plus | dashscope | ANSWER | 0.80 | 2.00 | f | t | t | null |
-| jina-reranker-v3 | jina-reranker-v3 | local | RERANK | 0 | 0 | t | t | t | qwen3-rerank |
-| qwen3-rerank | qwen3-rerank | dashscope | RERANK | 1.50 | 0 | f | f | f | null |
+| qwen3-rerank | qwen3-rerank | dashscope | RERANK | 1.50 | 0 | f | t | t | jina-reranker-v3 |
+| jina-reranker-v3 | jina-reranker-v3 | local | RERANK | 0 | 0 | t | f | f | null |
 | qwen-vl-ocr | qwen-vl-ocr | dashscope | OCR | 5.00 | 0 | f | f | t | null |
 
 > 注：`jina-reranker-v3`(primary, enabled) + `qwen3-rerank`(备用, disabled) 显式表达了之前 flag 的"双精排路线"；`qwen-vl-ocr` 默认停用对应当前 `RAGFORGE_MULTIMODAL_ENABLED` 实际状态，按你环境调整。

@@ -27,7 +27,7 @@ class RerankerClientTest {
 
   @BeforeEach
   void setUp() {
-    rerankerClient = new RerankerClient(restTemplate);
+    rerankerClient = new RerankerClient(restTemplate, org.mockito.Mockito.mock(com.ragforge.modelcenter.ModelUsageRecorder.class));
     ReflectionTestUtils.setField(rerankerClient, "apiKey", "test-key");
     ReflectionTestUtils.setField(
         rerankerClient, "dashscopeBaseUrl", "https://dashscope.aliyuncs.com/compatible-mode/v1");

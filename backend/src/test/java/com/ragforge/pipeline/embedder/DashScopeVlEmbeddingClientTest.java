@@ -73,7 +73,10 @@ class DashScopeVlEmbeddingClientTest {
 
   private DashScopeVlEmbeddingClient client(String url) {
     return new DashScopeVlEmbeddingClient(
-        properties(url), objectMapper, new RagforgeMetrics(new SimpleMeterRegistry()));
+        properties(url),
+        objectMapper,
+        new RagforgeMetrics(new SimpleMeterRegistry()),
+        org.mockito.Mockito.mock(com.ragforge.modelcenter.ModelUsageRecorder.class));
   }
 
   @Test

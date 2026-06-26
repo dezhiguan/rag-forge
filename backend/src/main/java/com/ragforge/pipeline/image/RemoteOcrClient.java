@@ -22,12 +22,18 @@ public class RemoteOcrClient implements OcrClient {
   private final EmbeddingProperties properties;
   private final ObjectMapper objectMapper;
   private final RagforgeMetrics metrics;
+  private final com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
   private final HttpClient httpClient;
 
-  public RemoteOcrClient(EmbeddingProperties properties, ObjectMapper objectMapper, RagforgeMetrics metrics) {
+  public RemoteOcrClient(
+      EmbeddingProperties properties,
+      ObjectMapper objectMapper,
+      RagforgeMetrics metrics,
+      com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder) {
     this.properties = properties;
     this.objectMapper = objectMapper;
     this.metrics = metrics;
+    this.modelUsageRecorder = modelUsageRecorder;
     this.httpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(properties.getOcr().getTimeoutMs()))
@@ -39,6 +45,7 @@ public class RemoteOcrClient implements OcrClient {
     if (imageBytes == null || imageBytes.length == 0) {
       return new OcrResult("");
     }
+    long start = System.currentTimeMillis();
     try {
       String body = objectMapper.writeValueAsString(buildPayload(imageBytes, contentType));
       HttpRequest.Builder builder =
@@ -54,8 +61,21 @@ public class RemoteOcrClient implements OcrClient {
       if (response.statusCode() / 100 != 2) {
         throw new BizException("OCR_HTTP_" + response.statusCode());
       }
-      String text = extractOcrText(objectMapper.readTree(response.body()));
-      metrics.recordOcrCall(1, estimateTokens(text));
+      JsonNode tree = objectMapper.readTree(response.body());
+      String text = extractOcrText(tree);
+      int outTokens = estimateTokens(text);
+      metrics.recordOcrCall(1, outTokens);
+      // 计量并联：input=usage 的 image/input token，output=usage 或文本估算
+      long inputTokens = firstUsageLong(tree, "image_tokens", "input_tokens");
+      long outputTokens = firstUsageLong(tree, "output_tokens");
+      modelUsageRecorder.record(
+          new com.ragforge.modelcenter.ModelUsageEvent(
+              properties.getOcr().getModel(),
+              com.ragforge.modelcenter.Purpose.OCR,
+              inputTokens,
+              outputTokens > 0 ? outputTokens : outTokens,
+              System.currentTimeMillis() - start,
+              true));
       return new OcrResult(text);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -117,5 +137,21 @@ public class RemoteOcrClient implements OcrClient {
 
   private static int estimateTokens(String text) {
     return text == null || text.isBlank() ? 0 : Math.max(1, text.length() / 4);
+  }
+
+  private static long firstUsageLong(JsonNode tree, String... fields) {
+    JsonNode usage = tree.path("usage");
+    JsonNode usageOut = tree.path("output").path("usage");
+    for (String f : fields) {
+      long v = usage.path(f).asLong(0);
+      if (v > 0) {
+        return v;
+      }
+      long v2 = usageOut.path(f).asLong(0);
+      if (v2 > 0) {
+        return v2;
+      }
+    }
+    return 0;
   }
 }

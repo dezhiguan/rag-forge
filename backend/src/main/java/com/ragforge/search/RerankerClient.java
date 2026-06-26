@@ -20,6 +20,7 @@ import org.springframework.web.client.RestTemplate;
 public class RerankerClient {
 
   private final RestTemplate restTemplate;
+  private final com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
 
   @Value("${app.dashscope.api-key:}")
   private String apiKey;
@@ -83,6 +84,11 @@ public class RerankerClient {
       }
 
       long latencyMs = System.currentTimeMillis() - start;
+      // 计量并联：input=usage.total_tokens（缺失按文档字符数估算），rerank 无输出 token
+      long inputTokens = rerankUsageTokens(respBody, documents);
+      modelUsageRecorder.record(
+          new com.ragforge.modelcenter.ModelUsageEvent(
+              model, com.ragforge.modelcenter.Purpose.RERANK, inputTokens, 0, latencyMs, true));
       log.info("Reranker completed: docCount={} topN={} latency={}ms scores={}",
           documents.size(),
           results.size(),
@@ -94,6 +100,27 @@ public class RerankerClient {
       log.warn("Reranker unavailable, fallback to original order: latency={}ms err={}", latencyMs, e.getMessage());
       return new RerankOutput(fallback(topN, documents.size()), latencyMs);
     }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static long rerankUsageTokens(Map<String, Object> respBody, List<String> documents) {
+    Object usageObj = respBody.get("usage");
+    if (usageObj instanceof Map<?, ?> usage) {
+      Object t = ((Map<String, Object>) usage).get("total_tokens");
+      if (t == null) {
+        t = ((Map<String, Object>) usage).get("input_tokens");
+      }
+      if (t instanceof Number n && n.longValue() > 0) {
+        return n.longValue();
+      }
+    }
+    long est = 0;
+    for (String d : documents) {
+      if (d != null) {
+        est += Math.max(1, d.length() / 4);
+      }
+    }
+    return est;
   }
 
   private static int toInt(Object v) {

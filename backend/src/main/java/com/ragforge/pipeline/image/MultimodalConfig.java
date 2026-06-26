@@ -13,7 +13,10 @@ public class MultimodalConfig {
 
   @Bean
   public OcrClient ocrClient(
-      EmbeddingProperties properties, ObjectMapper objectMapper, RagforgeMetrics metrics) {
-    return new RemoteOcrClient(properties, objectMapper, metrics);
+      EmbeddingProperties properties,
+      ObjectMapper objectMapper,
+      RagforgeMetrics metrics,
+      com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder) {
+    return new RemoteOcrClient(properties, objectMapper, metrics, modelUsageRecorder);
   }
 }

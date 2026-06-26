@@ -30,13 +30,18 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
   private final EmbeddingProperties properties;
   private final ObjectMapper objectMapper;
   private final RagforgeMetrics metrics;
+  private final com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
   private final HttpClient httpClient;
 
   public DashScopeVlEmbeddingClient(
-      EmbeddingProperties properties, ObjectMapper objectMapper, RagforgeMetrics metrics) {
+      EmbeddingProperties properties,
+      ObjectMapper objectMapper,
+      RagforgeMetrics metrics,
+      com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder) {
     this.properties = properties;
     this.objectMapper = objectMapper;
     this.metrics = metrics;
+    this.modelUsageRecorder = modelUsageRecorder;
     this.httpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(properties.getVl().getTimeoutMs()))
@@ -58,6 +63,7 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
   }
 
   private List<float[]> call(List<EmbeddingInput> inputs) {
+    long start = System.currentTimeMillis();
     try {
       String body = objectMapper.writeValueAsString(buildPayload(inputs));
       HttpRequest.Builder builder =
@@ -77,7 +83,18 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
       metrics.recordVlEmbeddingCall(inputs.size());
       metrics.recordVlEmbeddingImageTokens(
           (int) inputs.stream().filter(input -> input != null && input.isImage()).count());
-      return parseEmbeddings(objectMapper.readTree(response.body()), inputs.size());
+      JsonNode tree = objectMapper.readTree(response.body());
+      // 计量并联：优先用响应 usage 的 token；缺失则按文本长度估算（与 OCR 同口径）
+      long inputTokens = readUsageTokens(tree, inputs);
+      modelUsageRecorder.record(
+          new com.ragforge.modelcenter.ModelUsageEvent(
+              properties.getVl().getModel(),
+              com.ragforge.modelcenter.Purpose.EMBEDDING,
+              inputTokens,
+              0,
+              System.currentTimeMillis() - start,
+              true));
+      return parseEmbeddings(tree, inputs.size());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new BizException("VL Embedding 调用被中断");
@@ -86,6 +103,37 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
     } catch (Exception e) {
       throw new BizException("VL Embedding 调用失败: " + e.getMessage());
     }
+  }
+
+  /** 读取 usage token；缺失则按文本长度估算（图片输入不计文本 token）。 */
+  private long readUsageTokens(JsonNode tree, List<EmbeddingInput> inputs) {
+    long t = firstUsageLong(tree, "input_tokens", "total_tokens", "text_tokens");
+    if (t > 0) {
+      return t;
+    }
+    long est = 0;
+    for (EmbeddingInput in : inputs) {
+      if (in != null && !in.isImage() && in.getText() != null) {
+        est += Math.max(1, in.getText().length() / 4);
+      }
+    }
+    return est;
+  }
+
+  private static long firstUsageLong(JsonNode tree, String... fields) {
+    JsonNode usage = tree.path("usage");
+    JsonNode usageOut = tree.path("output").path("usage");
+    for (String f : fields) {
+      long v = usage.path(f).asLong(0);
+      if (v > 0) {
+        return v;
+      }
+      long v2 = usageOut.path(f).asLong(0);
+      if (v2 > 0) {
+        return v2;
+      }
+    }
+    return 0;
   }
 
   private Map<String, Object> buildPayload(List<EmbeddingInput> inputs) {
