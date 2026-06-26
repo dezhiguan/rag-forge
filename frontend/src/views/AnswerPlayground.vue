@@ -15,26 +15,26 @@
         <label class="field">
           <span>检索策略</span>
           <select v-model="form.retrievalStrategy">
-            <option value="hybrid">hybrid</option>
-            <option value="vector">vector</option>
-            <option value="keyword">keyword</option>
-            <option value="rewrite">rewrite</option>
-            <option value="full">full</option>
+            <option value="hybrid">混合检索</option>
+            <option value="vector">向量检索</option>
+            <option value="keyword">关键词检索</option>
+            <option value="rewrite">改写检索</option>
+            <option value="full">全链路检索</option>
           </select>
         </label>
         <label class="field">
           <span>应答模式</span>
           <select v-model="form.answerMode">
-            <option value="ON">ON</option>
-            <option value="PREVIEW">PREVIEW</option>
+            <option value="ON">开启</option>
+            <option value="PREVIEW">预览</option>
           </select>
         </label>
         <label class="field compact">
-          <span>Top-K</span>
+          <span>召回数量</span>
           <input v-model.number="form.topK" type="number" min="1" max="30">
         </label>
         <label class="field compact">
-          <span>Max Tokens</span>
+          <span>最大 Token 数</span>
           <input v-model.number="form.maxTokens" type="number" min="64" max="4000">
         </label>
         <button class="run-btn" :disabled="running || !form.kbId || !query.trim()" @click="runAnswer">
@@ -53,7 +53,7 @@
         <div class="answer-grid">
           <section class="answer-panel">
             <div class="panel-head">
-              <span>应答内容 <small class="label-en">Answer</small></span>
+              <span>应答内容</span>
               <small v-if="latency.total">总耗时 {{ latency.total }}ms</small>
             </div>
             <div class="answer-text" :class="{ empty: !answer }">
@@ -63,7 +63,7 @@
 
           <section class="answer-panel">
             <div class="panel-head">
-              <span>引用来源 <small class="label-en">Citations</small></span>
+              <span>引用来源</span>
               <small>{{ citations.length }} 条引用</small>
             </div>
             <div v-if="!citations.length" class="empty-cites">暂无引用</div>
@@ -83,7 +83,7 @@
 
         <section class="event-strip">
           <div class="panel-head">
-            <span>事件流 <small class="label-en">SSE Events</small></span>
+            <span>事件流</span>
             <small v-if="retrieval.latencyMs">检索 {{ retrieval.latencyMs }}ms</small>
           </div>
           <div class="events">
