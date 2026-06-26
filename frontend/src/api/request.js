@@ -29,12 +29,44 @@ const ERROR_CODE_LABELS = {
   CHUNK_SIZE_OUT_OF_RANGE: '块大小需要在 256-2048 范围内',
   CHUNK_OVERLAP_OUT_OF_RANGE: '块重叠需要在 0-512 范围内',
   ALREADY_IN_PROGRESS: '文档正在处理，请等待完成后重试',
+  ENABLED_REQUIRED: '缺少启用状态参数，请刷新页面后重试',
+}
+
+// 模型 & 成本中心：用途环节中文名（与前端 PURPOSE_META 保持一致）
+const PURPOSE_LABELS = {
+  EMBEDDING: '向量化',
+  JUDGE: '评测/Judge',
+  REWRITE: 'Query 改写',
+  ANSWER: '答案生成',
+  RERANK: '精排',
+  OCR: '图片 OCR',
+}
+
+// 带动态后缀的错误码翻译（形如 CODE:DETAIL）。返回 null 表示不匹配。
+function translateDynamicCode(code) {
+  if (typeof code !== 'string') return null
+  const idx = code.indexOf(':')
+  if (idx < 0) return null
+  const prefix = code.slice(0, idx)
+  const detail = code.slice(idx + 1)
+  if (prefix === 'MODEL_DISABLE_WOULD_LEAVE_PURPOSE_UNAVAILABLE') {
+    const purpose = PURPOSE_LABELS[detail] || detail
+    return `停用失败：「${purpose}」环节将没有可用模型，请先为该用途启用一个备用模型`
+  }
+  if (prefix === 'MODEL_NOT_FOUND') {
+    return `模型不存在或已下线：${detail}`
+  }
+  return null
 }
 
 export function translateError(payload) {
   if (!payload) return '请求失败，请稍后重试'
-  if (typeof payload === 'string') return ERROR_CODE_LABELS[payload] || payload
+  if (typeof payload === 'string') {
+    return translateDynamicCode(payload) || ERROR_CODE_LABELS[payload] || payload
+  }
   const code = payload.msg || payload.error || payload.code
+  const dynamic = translateDynamicCode(code)
+  if (dynamic) return dynamic
   if (code && ERROR_CODE_LABELS[code]) return ERROR_CODE_LABELS[code]
   if (payload.message) return payload.message
   if (typeof payload.code === 'number') {

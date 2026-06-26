@@ -143,7 +143,7 @@
 
     <!-- ============ 用户配额（Roadmap 占位） ============ -->
     <section v-show="activeTab === 2">
-      <div class="note">⚠️ 当前为单实例部署，无多租户用户体系，配额功能暂未启用 —— 此处展示规划方向。</div>
+      <div class="note">🚧 用户配额功能待开发</div>
       <div class="roadmap">
         <div class="roadmap-ico">🚦</div>
         <div class="pill">ROADMAP · 多租户化阶段</div>
@@ -265,13 +265,8 @@ async function onToggle(model, nextEnabled) {
     // 费用/状态可能变化，刷新看板侧数据
     refreshStats()
   } catch (e) {
-    // 后端 409：停用会令该用途无可用模型。interceptor 已弹原始码，这里补友好提示。
-    const code = e?.msg || ''
-    if (code.startsWith('MODEL_DISABLE_WOULD_LEAVE_PURPOSE_UNAVAILABLE')) {
-      toast.error(`停用失败：${purposeLabel(model.purpose)} 将没有可用模型，请先启用备用模型`)
-    }
-    // 失败回滚：强制还原 checkbox 视图
-    model.enabled = model.enabled
+    // 后端 409（停用会令该用途无可用模型）等错误已由 request 拦截器统一翻译并弹友好提示，
+    // 这里只需把开关回滚：强制重渲染，让 checkbox 还原到 model.enabled 的真实值。
     models.value = [...models.value]
   } finally {
     toggling.value = ''
