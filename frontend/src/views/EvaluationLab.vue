@@ -321,20 +321,20 @@
             <div class="strategy-checks">
               <label v-for="item in chunkerStrategyOptions" :key="item.value" class="check-item">
                 <input v-model="chunkerAbForm.strategies" type="checkbox" :value="item.value">
-                <span>{{ item.label }}</span>
+                <span>{{ item.label }}<span class="field-hint">（{{ item.hint }}）</span></span>
               </label>
             </div>
             <div class="ab-param-grid">
               <label class="field">
-                <span>chunkSize</span>
+                <span>chunkSize<span class="field-hint">（分块大小）</span></span>
                 <input v-model.number="chunkerAbForm.params.chunkSize" type="number" min="100" max="2000" />
               </label>
               <label class="field">
-                <span>overlap</span>
+                <span>overlap<span class="field-hint">（重叠字符数）</span></span>
                 <input v-model.number="chunkerAbForm.params.overlap" type="number" min="0" max="500" />
               </label>
               <label class="field">
-                <span>simThreshold</span>
+                <span>simThreshold<span class="field-hint">（语义相似度阈值）</span></span>
                 <input v-model.number="chunkerAbForm.params.simThreshold" type="number" min="0.1" max="0.95" step="0.05" />
               </label>
             </div>
@@ -856,11 +856,11 @@ const strategyLabelMap = {
 }
 
 const chunkerStrategyOptions = [
-  { value: 'RECURSIVE', label: 'Recursive' },
-  { value: 'MARKDOWN_HEADING', label: 'Markdown Heading' },
-  { value: 'SEMANTIC', label: 'Semantic' },
-  { value: 'TABLE_AWARE', label: 'Table Aware' },
-  { value: 'FIXED_WINDOW', label: 'Fixed Window' },
+  { value: 'RECURSIVE', label: 'Recursive', hint: '递归切分' },
+  { value: 'MARKDOWN_HEADING', label: 'Markdown Heading', hint: '按标题分块' },
+  { value: 'SEMANTIC', label: 'Semantic', hint: '语义分块' },
+  { value: 'TABLE_AWARE', label: 'Table Aware', hint: '表格感知' },
+  { value: 'FIXED_WINDOW', label: 'Fixed Window', hint: '固定窗口' },
 ]
 
 const judgeTagOptions = [
@@ -1382,7 +1382,9 @@ async function onRunChunkerAb() {
 }
 
 function chunkerStrategyLabel(strategy) {
-  return (chunkerStrategyOptions.find((item) => item.value === strategy)?.label) || strategy
+  const item = chunkerStrategyOptions.find((entry) => entry.value === strategy)
+  if (!item) return strategy
+  return item.hint ? `${item.label}（${item.hint}）` : item.label
 }
 
 async function openExperimentDetail(id) {
@@ -1850,6 +1852,11 @@ onMounted(async () => {
   background: #f8fafc;
   font-size: 13px;
   color: var(--slate);
+}
+.field-hint {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 11px;
 }
 .ab-param-grid {
   display: grid;
