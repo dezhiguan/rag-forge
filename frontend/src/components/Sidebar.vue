@@ -84,6 +84,7 @@ const ALL_NAV_ITEMS = [
   { path: '/perf-probe', icon: '⏱', label: '性能诊断', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/eval', icon: '🧪', label: '评测实验室', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/evaluation/quality', icon: '📈', label: '质量看板', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/models', icon: '🧠', label: '模型 & 成本', meta: { role: 'ADMIN' } },
   { path: '/api', icon: '🔌', label: 'API 网关', meta: { role: 'ADMIN', scope: 'rag:apikey:admin' } },
 ]
 

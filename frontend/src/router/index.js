@@ -30,6 +30,7 @@ const routes = [
   { path: '/eval', name: 'EvaluationLab', component: () => import('../views/EvaluationLab.vue'), meta: { icon: '🧪', label: '评测实验室', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/evaluation/quality', name: 'EvaluationQuality', component: () => import('../views/EvaluationQuality.vue'), meta: { icon: '📈', label: '质量看板', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/evaluation/quality/case/:id', name: 'EvaluationQualityCase', component: () => import('../views/EvaluationQualityCase.vue'), meta: { icon: '🧪', label: '案例详情', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/models', name: 'ModelCostCenter', component: () => import('../views/ModelCostCenter.vue'), meta: { icon: '🧠', label: '模型 & 成本', role: 'ADMIN' } },
   { path: '/api', name: 'ApiGateway', component: () => import('../views/ApiGateway.vue'), meta: { icon: '🔌', label: 'API 网关', role: 'ADMIN', scope: 'rag:apikey:admin' } },
   { path: '/api-gateway', redirect: '/api', meta: { role: 'ADMIN', scope: 'rag:apikey:admin' } },
 ]
