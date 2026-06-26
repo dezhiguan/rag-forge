@@ -147,6 +147,7 @@ interface ModelUsageRecorder { void record(ModelUsageEvent e); }
 - **非阻塞**：`record()` 只入内存队列（如 `ConcurrentLinkedQueue` 或有界 `BlockingQueue`，队列满则丢弃并打点，绝不阻塞业务线程）。
 - **批量落库**：`@Scheduled(fixedDelay=5s)` 消费队列，按 `(model_code, stat_date)` 在内存聚合后，对 `model_usage_daily` 做 **UPSERT 累加**（`INSERT ... ON CONFLICT (model_code, stat_date) DO UPDATE SET call_count = call_count + EXCLUDED...`）。
 - **接入方式**：在 §0.1 表格列出的每个现有 `metrics.recordXxx(...)` 调用点**旁边**加一行 `usageRecorder.record(...)`。REWRITE 处需新增计量（当前缺失）。
+- **实现状态（本次交付）**：已并联计量的付费 LLM 路径 = **ANSWER / REWRITE / JUDGE**（chat-completion 调用，prompt/completion Token 精确可得，计价口径一致）。**EMBEDDING / OCR / RERANK 暂未并联**——其 Token 语义不同：embedding 的文本 Token 当前未在响应里捕获、OCR 走图像 Token、rerank 为本地零费；这三者需各自确认 API usage 字段后再接，作为 fast-follow，避免上报估算值污染成本口径。`ModelUsageRecorder` 为通用实现，补接仅是在对应调用点加一行 `record(...)`。
 - **禁止**：不得在模型调用的同步路径里直接 `INSERT` 数据库。
 
 > 备选方案：复用现有 RocketMQ 发计量事件。**本期不采用**——引入 MQ 收发两端、消费幂等、积压监控，对一个看板属过度设计。内存队列 + 定时 UPSERT 足够，数据延迟 ≤5s 对看板无感知影响。
