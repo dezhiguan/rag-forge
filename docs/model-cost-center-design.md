@@ -58,7 +58,8 @@
 约束：`UNIQUE(code)`；建议**部分唯一索引**保证每个 purpose 只有一个 enabled 的 primary：
 `CREATE UNIQUE INDEX uq_model_primary ON model_config(purpose) WHERE is_primary AND enabled;`
 
-**种子数据（7 行，对应当前真实模型与价格，价格以实现时 DashScope/DeepSeek 官网为准）：**
+**种子数据（7 行，价格已按官网核对，单位元/百万 Token；OCR/rerank 由 V37 校准）：**
+> 单价口径：DeepSeek 取缓存未命中价（命中 0.02 未单建模）；qwen3-vl-embedding 取文本价 0.70（图片 1.80 未单建模）；qwen-vl-ocr 输入/输出同价 6.00；qwen3-rerank 仅输入 0.50。这些"单档"简化在多档计价模型下会略偏高/偏低，已在 V37 注释标注，需要精确可后续加分档列。
 
 | code | display_name | vendor | purpose | input_price | output_price | is_local | enabled | is_primary | fallback_code |
 |------|--------------|--------|---------|-------------|--------------|----------|---------|-----------|---------------|
@@ -66,9 +67,9 @@
 | deepseek-v4-flash | deepseek-v4-flash | deepseek | JUDGE | 1.00 | 2.00 | f | t | t | null |
 | qwen-turbo | qwen-turbo | dashscope | REWRITE | 0.30 | 0.60 | f | t | t | null |
 | qwen-plus | qwen-plus | dashscope | ANSWER | 0.80 | 2.00 | f | t | t | null |
-| qwen3-rerank | qwen3-rerank | dashscope | RERANK | 1.50 | 0 | f | t | t | jina-reranker-v3 |
+| qwen3-rerank | qwen3-rerank | dashscope | RERANK | 0.50 | 0 | f | t | t | jina-reranker-v3 |
 | jina-reranker-v3 | jina-reranker-v3 | local | RERANK | 0 | 0 | t | f | f | null |
-| qwen-vl-ocr | qwen-vl-ocr | dashscope | OCR | 5.00 | 0 | f | f | t | null |
+| qwen-vl-ocr | qwen-vl-ocr | dashscope | OCR | 6.00 | 6.00 | f | f | t | null |
 
 > 注：RERANK 主备以**实际代码路径**为准 —— `RetrievalService` → `RerankerClient` 调 DashScope `qwen3-rerank`，故 `qwen3-rerank`=enabled primary、`jina-reranker-v3`(本地服务未接入 Java 链路)=disabled 备用（见 V36 迁移）。`qwen-vl-ocr` 默认停用对应当前 `RAGFORGE_MULTIMODAL_ENABLED` 实际状态，按环境调整。
 
