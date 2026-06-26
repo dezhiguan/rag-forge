@@ -1,6 +1,7 @@
 package com.ragforge.modelcenter;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ragforge.common.BizException;
 import com.ragforge.mapper.ModelConfigMapper;
 import com.ragforge.mapper.ModelUsageDailyMapper;
 import com.ragforge.model.entity.ModelConfig;
@@ -11,6 +12,7 @@ import com.ragforge.modelcenter.vo.ModelItemVo;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,6 +31,45 @@ public class ModelCenterService {
 
   private final ModelConfigMapper modelConfigMapper;
   private final ModelUsageDailyMapper usageMapper;
+  private final ModelResolver modelResolver;
+
+  /**
+   * 启用/停用模型。停用会触发守卫：若停用后该用途无任何可用模型，拒绝并抛 409，避免改坏检索/应答链路。
+   *
+   * @return 更新后的启用状态
+   */
+  public boolean toggle(String code, boolean enabled) {
+    ModelConfig cfg =
+        modelConfigMapper.selectOne(new LambdaQueryWrapper<ModelConfig>().eq(ModelConfig::getCode, code));
+    if (cfg == null) {
+      throw new BizException(404, "MODEL_NOT_FOUND:" + code);
+    }
+    if (Boolean.valueOf(enabled).equals(cfg.getEnabled())) {
+      return enabled; // 幂等，无变更
+    }
+    if (!enabled) {
+      Purpose purpose = parsePurpose(cfg.getPurpose());
+      if (purpose != null && !modelResolver.purposeStillResolvableWithout(purpose, code)) {
+        throw new BizException(409, "MODEL_DISABLE_WOULD_LEAVE_PURPOSE_UNAVAILABLE:" + purpose.name());
+      }
+    }
+    cfg.setEnabled(enabled);
+    cfg.setUpdatedAt(LocalDateTime.now());
+    modelConfigMapper.updateById(cfg);
+    modelResolver.refresh();
+    return enabled;
+  }
+
+  private static Purpose parsePurpose(String raw) {
+    if (raw == null) {
+      return null;
+    }
+    try {
+      return Purpose.valueOf(raw);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
 
   /** 模型列表：每个模型带本月费用。 */
   public List<ModelItemVo> listModels() {

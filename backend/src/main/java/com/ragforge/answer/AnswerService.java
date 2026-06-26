@@ -15,6 +15,8 @@ import com.ragforge.mapper.AnswerLogMapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.metrics.RagforgeMetrics;
+import com.ragforge.modelcenter.ModelResolver;
+import com.ragforge.modelcenter.Purpose;
 import com.ragforge.model.dto.LlmGenerateRequest;
 import com.ragforge.model.entity.AnswerLog;
 import com.ragforge.model.entity.Document;
@@ -67,6 +69,7 @@ public class AnswerService {
   private final L3PiiMaskCleaner piiMaskCleaner;
   private final RagforgeMetrics metrics;
   private final AnswerJudgeProducer answerJudgeProducer;
+  private final ModelResolver modelResolver;
 
   public SseEmitter answer(AnswerRequest request) {
     validateRequest(request);
@@ -224,7 +227,8 @@ public class AnswerService {
         .map(KnowledgeBase::getAnswerModel)
         .filter(value -> value != null && !value.isBlank())
         .findFirst()
-        .orElse("qwen-plus");
+        // KB 未显式指定时，全局默认从模型注册表动态解析（无可用模型则回退 qwen-plus）
+        .orElseGet(() -> modelResolver.resolveCodeOrDefault(Purpose.ANSWER, "qwen-plus"));
   }
 
   private void writeLog(

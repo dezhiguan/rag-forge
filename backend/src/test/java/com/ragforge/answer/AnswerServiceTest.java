@@ -51,6 +51,7 @@ class AnswerServiceTest {
   @Mock private DocumentMapper documentMapper;
   @Mock private ObjectStorage objectStorage;
   @Mock private AnswerJudgeProducer answerJudgeProducer;
+  @Mock private com.ragforge.modelcenter.ModelResolver modelResolver;
 
   private AnswerService answerService;
 
@@ -68,7 +69,11 @@ class AnswerServiceTest {
             new ObjectMapper(),
             new L3PiiMaskCleaner(),
             new RagforgeMetrics(new SimpleMeterRegistry()),
-            answerJudgeProducer);
+            answerJudgeProducer,
+            modelResolver);
+    lenient()
+        .when(modelResolver.resolveCodeOrDefault(any(), any()))
+        .thenReturn("qwen-plus");
     lenient().when(answerLogMapper.insertAnswerLog(any())).thenAnswer(
         invocation -> {
           AnswerLog log = invocation.getArgument(0);

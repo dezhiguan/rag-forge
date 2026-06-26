@@ -2,6 +2,8 @@ package com.ragforge.search;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.modelcenter.ModelResolver;
+import com.ragforge.modelcenter.Purpose;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -27,6 +29,7 @@ public class QueryRewriter {
 
   private final RestTemplate restTemplate;
   private final ObjectMapper objectMapper;
+  private final ModelResolver modelResolver;
 
   @Value("${app.dashscope.api-key:}")
   private String apiKey;
@@ -58,10 +61,13 @@ public class QueryRewriter {
       headers.setContentType(MediaType.APPLICATION_JSON);
       headers.setBearerAuth(apiKey);
 
+      // 动态解析 REWRITE 生效模型；无可用模型时回退到 yml 默认值（改写本身可优雅降级）
+      String effectiveModel = modelResolver.resolveCodeOrDefault(Purpose.REWRITE, model);
+
       String requestBody =
           objectMapper
               .createObjectNode()
-              .put("model", model)
+              .put("model", effectiveModel)
               .put("temperature", 0.3)
               .set(
                   "messages",

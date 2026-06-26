@@ -22,12 +22,16 @@ import org.springframework.web.client.RestTemplate;
 class QueryRewriterTest {
 
   @Mock private RestTemplate restTemplate;
+  @Mock private com.ragforge.modelcenter.ModelResolver modelResolver;
 
   private QueryRewriter queryRewriter;
 
   @BeforeEach
   void setUp() {
-    queryRewriter = new QueryRewriter(restTemplate, new ObjectMapper());
+    queryRewriter = new QueryRewriter(restTemplate, new ObjectMapper(), modelResolver);
+    org.mockito.Mockito.lenient()
+        .when(modelResolver.resolveCodeOrDefault(any(), any()))
+        .thenAnswer(inv -> inv.getArgument(1));
     ReflectionTestUtils.setField(queryRewriter, "apiKey", "test-key");
     ReflectionTestUtils.setField(
         queryRewriter, "baseUrl", "https://dashscope.aliyuncs.com/compatible-mode/v1");
