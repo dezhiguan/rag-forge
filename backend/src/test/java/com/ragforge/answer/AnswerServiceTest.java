@@ -63,7 +63,8 @@ class AnswerServiceTest {
             retrievalService,
             new PromptBuilder(),
             llmService,
-            new CitationLinker(documentMapper, objectStorage),
+            new CitationLinker(
+                documentMapper, objectStorage, org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)),
             new GuardRails(),
             answerLogMapper,
             knowledgeBaseMapper,

@@ -9,13 +9,17 @@ import com.ragforge.storage.ObjectStorage;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class CitationLinkerTest {
 
   @Test
   void linksInRangeAndDropsOutOfRangeRefs() {
     CitationLinker linker =
-        new CitationLinker(Mockito.mock(DocumentMapper.class), Mockito.mock(ObjectStorage.class));
+        new CitationLinker(
+            Mockito.mock(DocumentMapper.class),
+            Mockito.mock(ObjectStorage.class),
+            Mockito.mock(JdbcTemplate.class));
 
     List<Citation> citations =
         linker.link("参考 [1][2][3][99]", List.of(hit(1), hit(2), hit(3)));

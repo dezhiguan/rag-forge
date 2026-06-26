@@ -40,15 +40,19 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -418,6 +422,7 @@ class PromptBuilder {
   }
 }
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 class CitationLinker {
@@ -426,12 +431,16 @@ class CitationLinker {
 
   private final DocumentMapper documentMapper;
   private final ObjectStorage objectStorage;
+  private final JdbcTemplate jdbcTemplate;
 
   List<Citation> link(String answer, List<SearchResult> chunks) {
     Set<Integer> citedIndices = extractIndices(answer);
     if (citedIndices.isEmpty()) {
       return List.of();
     }
+    // 检索链路（VectorSearchService/EsSearchService）不回填 image_key 列，SearchResult.imageKey
+    // 恒为 null。这里为被引用的 IMAGE chunk 单独批量取真实 image_key（列缺失时降级为空 map）。
+    Map<Long, String> imageKeyByChunk = fetchImageKeys(citedImageChunkIds(citedIndices, chunks));
     List<Citation> citations = new ArrayList<>();
     for (int idx : citedIndices) {
       if (idx < 1 || chunks == null || idx > chunks.size()) {
@@ -445,11 +454,58 @@ class CitationLinker {
       citation.setModality(textOrDefault(c.getChunkModality(), "TEXT"));
       citation.setTextSnippet(truncate(c.getContent(), 300));
       if ("IMAGE".equalsIgnoreCase(c.getChunkModality())) {
-        citation.setImageUrl(imageUrl(c));
+        String imageKey = textOrDefault(c.getImageKey(), imageKeyByChunk.get(c.getChunkId()));
+        citation.setImageUrl(imageUrl(c, imageKey));
       }
       citations.add(citation);
     }
     return citations;
+  }
+
+  /** 收集被引用的 IMAGE chunk 的 chunkId，用于批量取 image_key。 */
+  private static List<Long> citedImageChunkIds(Set<Integer> citedIndices, List<SearchResult> chunks) {
+    if (chunks == null) {
+      return List.of();
+    }
+    List<Long> ids = new ArrayList<>();
+    for (int idx : citedIndices) {
+      if (idx < 1 || idx > chunks.size()) {
+        continue;
+      }
+      SearchResult c = chunks.get(idx - 1);
+      if ("IMAGE".equalsIgnoreCase(c.getChunkModality()) && c.getChunkId() != null) {
+        ids.add(c.getChunkId());
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * 批量取 image_key（原生 JDBC，与 DocumentServiceImpl 同一套路）。image_key 列在部分环境
+   * 可能缺失，捕获异常后降级为空 map：引用文本照常展示，仅缺图片缩略。
+   */
+  private Map<Long, String> fetchImageKeys(List<Long> ids) {
+    if (ids == null || ids.isEmpty()) {
+      return Map.of();
+    }
+    String placeholders = String.join(",", Collections.nCopies(ids.size(), "?"));
+    String sql = "SELECT id, image_key FROM document_chunks WHERE id IN (" + placeholders + ")";
+    Map<Long, String> map = new HashMap<>();
+    try {
+      jdbcTemplate.query(
+          sql,
+          ids.stream().filter(Objects::nonNull).toArray(),
+          rs -> {
+            long id = rs.getLong(1);
+            String key = rs.getString(2);
+            if (key != null && !key.isEmpty()) {
+              map.put(id, key);
+            }
+          });
+    } catch (Exception e) {
+      log.warn("fetchImageKeys skipped (image_key column likely missing): {}", e.getMessage());
+    }
+    return map;
   }
 
   Set<Integer> extractIndices(String answer) {
@@ -464,16 +520,17 @@ class CitationLinker {
     return indices;
   }
 
-  private String imageUrl(SearchResult result) {
+  private String imageUrl(SearchResult result, String imageKey) {
+    if (imageKey == null || imageKey.isBlank()) {
+      // 取不到 IMAGE chunk 的真实 image_key 时返回 null：不能回退去签原始文档 storageKey，
+      // 否则 PDF 等非图片对象会被前端 <img> 渲染成裂图。
+      return null;
+    }
     Document doc = result.getDocId() == null ? null : documentMapper.selectById(result.getDocId());
-    if (doc == null) {
+    if (doc == null || doc.getStorageBucket() == null || doc.getStorageBucket().isBlank()) {
       return null;
     }
-    String key = textOrDefault(result.getImageKey(), doc.getStorageKey());
-    if (key == null || key.isBlank() || doc.getStorageBucket() == null || doc.getStorageBucket().isBlank()) {
-      return null;
-    }
-    return objectStorage.presignedGet(doc.getStorageBucket(), key, IMAGE_URL_TTL);
+    return objectStorage.presignedGet(doc.getStorageBucket(), imageKey, IMAGE_URL_TTL);
   }
 
   private static String truncate(String value, int max) {
