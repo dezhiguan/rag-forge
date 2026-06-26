@@ -37,6 +37,7 @@ public class JudgeOrchestrator {
   private final JudgeScorer scorer;
   private final RagforgeMetrics metrics;
   private final ObjectMapper objectMapper;
+  private final com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
 
   @Value("${app.deepseek.model:deepseek-v4-flash}")
   private String judgeModel;
@@ -71,6 +72,8 @@ public class JudgeOrchestrator {
 
     BigDecimal cost = BigDecimal.ZERO;
     long latency = 0L;
+    long judgePromptTokens = 0L;
+    long judgeCompletionTokens = 0L;
 
     judgeResultMapper.insert(result);
 
@@ -94,6 +97,8 @@ public class JudgeOrchestrator {
           metrics.recordDeepSeekTokens(
               score.getPromptTokens() == null ? 0 : score.getPromptTokens(),
               score.getCompletionTokens() == null ? 0 : score.getCompletionTokens());
+          judgePromptTokens += score.getPromptTokens() == null ? 0 : score.getPromptTokens();
+          judgeCompletionTokens += score.getCompletionTokens() == null ? 0 : score.getCompletionTokens();
           recordScore(result.getSource(), score, kbIds);
           cost = cost.add(safeCost(score));
           latency += safeLatency(score);
@@ -141,6 +146,14 @@ public class JudgeOrchestrator {
     }
 
     metrics.recordJudgeCost(result.getSource(), cost);
+    modelUsageRecorder.record(
+        new com.ragforge.modelcenter.ModelUsageEvent(
+            judgeModel,
+            com.ragforge.modelcenter.Purpose.JUDGE,
+            judgePromptTokens,
+            judgeCompletionTokens,
+            latency,
+            "COMPLETED".equals(result.getStatus())));
   }
 
   private JudgeScore scoreDimension(JudgeContext ctx, ScoreDimension dimension) {

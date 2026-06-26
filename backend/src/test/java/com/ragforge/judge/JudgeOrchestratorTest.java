@@ -77,7 +77,8 @@ class JudgeOrchestratorUnitTest {
         .insert(any(JudgeResult.class));
 
     JudgeOrchestrator orchestrator =
-        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
+        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper,
+            org.mockito.Mockito.mock(com.ragforge.modelcenter.ModelUsageRecorder.class));
     AnswerJudgeMessage msg = new AnswerJudgeMessage();
     msg.setAnswerLogId(101L);
     msg.setSource("PRODUCTION");
@@ -125,7 +126,8 @@ class JudgeOrchestratorUnitTest {
         .insert(any(JudgeResult.class));
 
     JudgeOrchestrator orchestrator =
-        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
+        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper,
+            org.mockito.Mockito.mock(com.ragforge.modelcenter.ModelUsageRecorder.class));
     AnswerJudgeMessage msg = new AnswerJudgeMessage();
     msg.setAnswerLogId(102L);
     msg.setSource("PRODUCTION");
@@ -166,7 +168,8 @@ class JudgeOrchestratorUnitTest {
         .insert(any(JudgeResult.class));
 
     JudgeOrchestrator orchestrator =
-        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
+        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper,
+            org.mockito.Mockito.mock(com.ragforge.modelcenter.ModelUsageRecorder.class));
     AnswerJudgeMessage msg = new AnswerJudgeMessage();
     msg.setAnswerLogId(104L);
     msg.setSource("PRODUCTION");
@@ -216,7 +219,8 @@ class JudgeOrchestratorUnitTest {
         .insert(any(JudgeResult.class));
 
     JudgeOrchestrator orchestrator =
-        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
+        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper,
+            org.mockito.Mockito.mock(com.ragforge.modelcenter.ModelUsageRecorder.class));
     AnswerJudgeMessage msg = new AnswerJudgeMessage();
     msg.setAnswerLogId(105L);
     msg.setSource("PRODUCTION");
@@ -248,7 +252,8 @@ class JudgeOrchestratorUnitTest {
     when(answerLogMapper.selectByIdWithKbIdsCsv(103L)).thenReturn(null);
 
     JudgeOrchestrator orchestrator =
-        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper);
+        new JudgeOrchestrator(answerLogMapper, documentChunkMapper, judgeResultMapper, scorer, metrics, objectMapper,
+            org.mockito.Mockito.mock(com.ragforge.modelcenter.ModelUsageRecorder.class));
     AnswerJudgeMessage msg = new AnswerJudgeMessage();
     msg.setAnswerLogId(103L);
 
