@@ -103,11 +103,12 @@
             <div v-if="!chunks.length" class="inline-empty">暂无检索 chunks</div>
             <article v-else class="chunk-card" v-for="chunk in chunks" :key="chunk.chunkId">
               <div class="chunk-card-head">
+                <span v-if="chunk.index != null" class="chunk-ref" title="对应答案中的引用角标">[{{ chunk.index }}]</span>
                 <span class="chunk-id">Chunk #{{ chunk.chunkId }}</span>
-                <span class="chunk-score">
+                <span v-if="chunk.score != null" class="chunk-score">
                   分数 <strong>{{ formatChunkScore(chunk.score) }}</strong>
                 </span>
-                <span :class="chunkRelevantClass(chunk.relevant)">
+                <span v-if="chunk.relevant != null" :class="chunkRelevantClass(chunk.relevant)">
                   {{ chunk.relevant ? 'RELEVANT' : '⚠ 不相关' }}
                 </span>
               </div>
@@ -617,6 +618,20 @@ onMounted(loadCaseDetail)
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 8px;
+}
+
+.chunk-ref {
+  display: inline-flex;
+  align-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  justify-content: center;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
 }
 
 .chunk-id {

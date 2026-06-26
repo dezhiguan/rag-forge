@@ -2,6 +2,8 @@ package com.ragforge.model.vo;
 
 public class ChunkSnapshotVo {
 
+  /** 引用序号，与生成答案中的 [N] 角标对应；可能为空。 */
+  private Integer index;
   private Long chunkId;
   private Long docId;
   private String snippet;
@@ -9,6 +11,14 @@ public class ChunkSnapshotVo {
   private java.math.BigDecimal score;
   private Boolean relevant;
   private String imageUrl;
+
+  public Integer getIndex() {
+    return index;
+  }
+
+  public void setIndex(Integer index) {
+    this.index = index;
+  }
 
   public Long getChunkId() {
     return chunkId;

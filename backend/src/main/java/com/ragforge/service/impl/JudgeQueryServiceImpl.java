@@ -532,6 +532,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
         .map(
             citation -> {
               ChunkSnapshotVo vo = new ChunkSnapshotVo();
+              vo.setIndex(citation.getId() > 0 ? citation.getId() : null);
               vo.setChunkId(citation.getChunkId());
               vo.setDocId(citation.getDocId());
               vo.setSnippet(firstText(citation.getTextSnippet(), ""));
