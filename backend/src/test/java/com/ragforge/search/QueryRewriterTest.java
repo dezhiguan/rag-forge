@@ -23,12 +23,13 @@ class QueryRewriterTest {
 
   @Mock private RestTemplate restTemplate;
   @Mock private com.ragforge.modelcenter.ModelResolver modelResolver;
+  @Mock private com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
 
   private QueryRewriter queryRewriter;
 
   @BeforeEach
   void setUp() {
-    queryRewriter = new QueryRewriter(restTemplate, new ObjectMapper(), modelResolver);
+    queryRewriter = new QueryRewriter(restTemplate, new ObjectMapper(), modelResolver, modelUsageRecorder);
     org.mockito.Mockito.lenient()
         .when(modelResolver.resolveCodeOrDefault(any(), any()))
         .thenAnswer(inv -> inv.getArgument(1));

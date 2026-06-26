@@ -70,6 +70,11 @@ public class ModelResolver {
     }
   }
 
+  /** 按 code 查模型配置（含价格），用于计量计价；命中缓存，不存在返回 null。 */
+  public ModelConfig findByCode(String code) {
+    return code == null ? null : byCode.get(code);
+  }
+
   /** 校验：停用 code 后，其用途是否仍有可解析的模型（供 toggle 守卫使用）。 */
   public boolean purposeStillResolvableWithout(Purpose purpose, String disablingCode) {
     return byPurpose.getOrDefault(purpose, List.of()).stream()

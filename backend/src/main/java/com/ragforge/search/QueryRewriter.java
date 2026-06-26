@@ -3,6 +3,8 @@ package com.ragforge.search;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.modelcenter.ModelResolver;
+import com.ragforge.modelcenter.ModelUsageEvent;
+import com.ragforge.modelcenter.ModelUsageRecorder;
 import com.ragforge.modelcenter.Purpose;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -30,6 +32,7 @@ public class QueryRewriter {
   private final RestTemplate restTemplate;
   private final ObjectMapper objectMapper;
   private final ModelResolver modelResolver;
+  private final ModelUsageRecorder modelUsageRecorder;
 
   @Value("${app.dashscope.api-key:}")
   private String apiKey;
@@ -97,6 +100,19 @@ public class QueryRewriter {
       JsonNode root = objectMapper.readTree(body);
       String content =
           root.path("choices").path(0).path("message").path("content").asText("").trim();
+
+      // 计量并联：上报本次改写的 Token 用量（非阻塞，不影响改写主链路）
+      int promptTokens = root.path("usage").path("prompt_tokens").asInt(0);
+      int completionTokens = root.path("usage").path("completion_tokens").asInt(0);
+      modelUsageRecorder.record(
+          new ModelUsageEvent(
+              effectiveModel,
+              Purpose.REWRITE,
+              promptTokens,
+              completionTokens,
+              System.currentTimeMillis() - start,
+              true));
+
       if (content.isBlank()) {
         log.info("Query rewrite fallback: reason=empty_content latency={}ms", System.currentTimeMillis() - start);
         return fallback;

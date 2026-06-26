@@ -52,6 +52,7 @@ class AnswerServiceTest {
   @Mock private ObjectStorage objectStorage;
   @Mock private AnswerJudgeProducer answerJudgeProducer;
   @Mock private com.ragforge.modelcenter.ModelResolver modelResolver;
+  @Mock private com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
 
   private AnswerService answerService;
 
@@ -70,7 +71,8 @@ class AnswerServiceTest {
             new L3PiiMaskCleaner(),
             new RagforgeMetrics(new SimpleMeterRegistry()),
             answerJudgeProducer,
-            modelResolver);
+            modelResolver,
+            modelUsageRecorder);
     lenient()
         .when(modelResolver.resolveCodeOrDefault(any(), any()))
         .thenReturn("qwen-plus");

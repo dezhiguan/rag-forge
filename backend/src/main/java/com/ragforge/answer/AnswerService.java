@@ -16,6 +16,8 @@ import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.modelcenter.ModelResolver;
+import com.ragforge.modelcenter.ModelUsageEvent;
+import com.ragforge.modelcenter.ModelUsageRecorder;
 import com.ragforge.modelcenter.Purpose;
 import com.ragforge.model.dto.LlmGenerateRequest;
 import com.ragforge.model.entity.AnswerLog;
@@ -70,6 +72,7 @@ public class AnswerService {
   private final RagforgeMetrics metrics;
   private final AnswerJudgeProducer answerJudgeProducer;
   private final ModelResolver modelResolver;
+  private final ModelUsageRecorder modelUsageRecorder;
 
   public SseEmitter answer(AnswerRequest request) {
     validateRequest(request);
@@ -179,6 +182,14 @@ public class AnswerService {
     response.setGuardRailResult(guard.name());
     response.setLlmModel(llmModel);
     metrics.recordAnswerTokens(llmResult.promptTokens(), llmResult.completionTokens());
+    modelUsageRecorder.record(
+        new ModelUsageEvent(
+            llmModel,
+            Purpose.ANSWER,
+            llmResult.promptTokens(),
+            llmResult.completionTokens(),
+            llmLatency,
+            true));
     metrics.updateAnswerCitationRate(citations.size(), retrieval.getResults().size());
     if (guard != GuardRailResult.PASS) {
       metrics.recordAnswerGuardRailBlocked(guard.name());
