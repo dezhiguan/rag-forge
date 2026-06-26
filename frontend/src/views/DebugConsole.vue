@@ -1,6 +1,7 @@
 <template>
   <div>
     <div class="page-body">
+      <p class="page-subtitle">向量 + 关键词双路召回、RRF 融合与精排的检索链路调试</p>
       <div class="debug-layout">
         <div class="debug-left" :class="{ 'debug-params-collapsed': !mobileParamsOpen }">
           <div class="panel-title" @click="toggleParams">⚙️ 检索参数</div>
@@ -42,8 +43,33 @@
           </div>
           <div v-if="config.modality === 'image' || config.modality === 'both'" class="param-row">
             <div class="param-label">Query 图片</div>
-            <input class="param-file" type="file" accept="image/*" @change="onQueryImageChange">
-            <div v-if="queryImageName" class="param-hint">{{ queryImageName }}</div>
+            <div class="query-image-upload">
+              <label class="query-image-picker">
+                <input
+                  ref="queryImageInput"
+                  class="query-image-input"
+                  type="file"
+                  accept="image/*"
+                  @change="onQueryImageChange"
+                >
+                <div class="query-image-trigger">
+                  <img
+                    v-if="queryImageBase64"
+                    :src="queryImageBase64"
+                    alt="Query 预览"
+                    class="query-image-preview"
+                  >
+                  <div v-else class="query-image-placeholder">
+                    <span class="query-image-icon">+</span>
+                    <span>选择图片</span>
+                  </div>
+                </div>
+              </label>
+              <div v-if="queryImageName" class="query-image-meta">
+                <span class="query-image-name">{{ queryImageName }}</span>
+                <button type="button" class="query-image-clear" title="清除" @click="clearQueryImage">×</button>
+              </div>
+            </div>
           </div>
           <div class="param-row">
             <div class="param-label">Top-K <span style="color:var(--text-muted);font-weight:400;font-size:10px">返回结果数</span></div>
@@ -363,6 +389,7 @@ const config = reactive({
 })
 const queryImageBase64 = ref('')
 const queryImageName = ref('')
+const queryImageInput = ref(null)
 
 const compareModes = ['单策略', 'A/B 对比', '五路对比']
 const compareResults = ref([])
@@ -766,6 +793,14 @@ function onQueryImageChange(event) {
   reader.readAsDataURL(file)
 }
 
+function clearQueryImage() {
+  queryImageBase64.value = ''
+  queryImageName.value = ''
+  if (queryImageInput.value) {
+    queryImageInput.value.value = ''
+  }
+}
+
 async function doLlmGenerate() {
   rightTab.value = 'llm'
   llmLoading.value = true
@@ -895,6 +930,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.page-subtitle { color: var(--text-muted); margin: 0 0 12px 0; font-size: 13px; }
 .debug-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 240px; max-width: 100%; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; min-height: 420px; }
 .debug-left { min-width: 0; background: #f8fafc; border-right: 1px solid var(--border); padding: 16px; font-size: 11px; }
 .debug-center { min-width: 0; padding: 16px; font-size: 11px; }
@@ -941,8 +977,80 @@ onMounted(async () => {
 .param-slider input[type="range"] { flex: 1; height: 4px; -webkit-appearance: none; background: var(--border); border-radius: 2px; outline: none; }
 .param-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--blue); border-radius: 50%; cursor: pointer; }
 .param-val { font-size: 11px; font-weight: 600; color: var(--text); min-width: 28px; text-align: right; }
-.param-file { color: var(--text-secondary); font-size: 12px; width: 100%; }
 .param-hint { margin: -2px 0 10px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+.query-image-upload { width: 100%; }
+.query-image-input { display: none; }
+.query-image-picker { display: block; cursor: pointer; }
+.query-image-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  padding: 8px;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  transition: border-color 0.15s, background 0.15s;
+}
+.query-image-picker:hover .query-image-trigger {
+  border-color: var(--blue);
+  background: #eff6ff;
+}
+.query-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+.query-image-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+.query-image-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 72px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.query-image-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.query-image-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.query-image-clear {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 15px;
+  line-height: 1;
+}
+.query-image-clear:hover { color: #ef4444; }
 .divider { border-top: 1px solid var(--border); margin: 12px 0; }
 .radio-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; font-size: 11px; }
 .search-btn { width: 100%; margin-top: 12px; padding: 7px 0; background: var(--blue); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
