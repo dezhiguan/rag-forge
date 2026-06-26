@@ -6,6 +6,8 @@ public class ChunkSnapshotVo {
   private Long docId;
   private String snippet;
   private String content;
+  private java.math.BigDecimal score;
+  private Boolean relevant;
 
   public Long getChunkId() {
     return chunkId;
@@ -37,6 +39,22 @@ public class ChunkSnapshotVo {
 
   public void setContent(String content) {
     this.content = content;
+  }
+
+  public java.math.BigDecimal getScore() {
+    return score;
+  }
+
+  public void setScore(java.math.BigDecimal score) {
+    this.score = score;
+  }
+
+  public Boolean getRelevant() {
+    return relevant;
+  }
+
+  public void setRelevant(Boolean relevant) {
+    this.relevant = relevant;
   }
 }
 

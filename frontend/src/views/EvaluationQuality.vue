@@ -26,7 +26,7 @@
       </div>
 
       <div class="toolbar-block">
-        <label>KB 筛选</label>
+        <label>知识库筛选</label>
         <div class="kb-filter-row">
           <input
             v-model="kbIdInput"
@@ -53,7 +53,7 @@
 
     <section class="quality-kpi-grid">
       <article class="kpi-card">
-        <div class="kpi-title">综合质量</div>
+        <div class="kpi-title">综合质量（Composite）</div>
         <div class="kpi-value" :class="scoreClass(kpis.overallScore)">
           {{ formatScore(kpis.overallScore) }}
         </div>
@@ -62,7 +62,7 @@
         </div>
       </article>
       <article class="kpi-card">
-        <div class="kpi-title">答案忠实度</div>
+        <div class="kpi-title">答案忠实度（Faithfulness）</div>
         <div class="kpi-value" :class="scoreClass(kpis.faithfulness)">
           {{ formatScore(kpis.faithfulness) }}
         </div>
@@ -71,7 +71,7 @@
         </div>
       </article>
       <article class="kpi-card">
-        <div class="kpi-title">上下文精度</div>
+        <div class="kpi-title">上下文精度（Context Precision）</div>
         <div class="kpi-value" :class="scoreClass(kpis.contextPrecision)">
           {{ formatScore(kpis.contextPrecision) }}
         </div>
@@ -80,7 +80,7 @@
         </div>
       </article>
       <article class="kpi-card">
-        <div class="kpi-title">答案相关性</div>
+        <div class="kpi-title">答案相关性（Answer Relevance）</div>
         <div class="kpi-value" :class="scoreClass(kpis.answerRelevance)">
           {{ formatScore(kpis.answerRelevance) }}
         </div>
@@ -187,18 +187,18 @@
 
     <section class="split-panels">
       <article class="panel flex-panel">
-        <div class="panel-head"><h2>KB 切片</h2></div>
+        <div class="panel-head"><h2>知识库排行</h2></div>
         <div class="panel-body">
           <div v-if="loading.kb" class="state-hint">加载中...</div>
           <div v-else-if="kbRows.length === 0" class="state-hint">暂无可见评测数据</div>
           <div v-else class="table-wrap">
-            <table class="data-table">
+            <table class="data-table kb-slice-table">
               <thead>
                 <tr>
-                  <th>KB 名</th>
-                  <th>分数</th>
-                  <th>趋势</th>
-                  <th>样本数</th>
+                  <th class="col-name">知识库</th>
+                  <th class="col-score">分数</th>
+                  <th class="col-trend">趋势</th>
+                  <th class="col-count">样本数</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,14 +208,16 @@
                   class="clickable-row"
                   @click="openKb(row.kbId)"
                 >
-                  <td>{{ row.kbName || `KB ${row.kbId}` }}</td>
-                  <td><span :class="scoreClass(row.overallScore)">{{ formatScore(row.overallScore) }}</span></td>
-                  <td>
+                  <td class="col-name" :title="row.kbName || kbDisplayName(row.kbId)">
+                    <span class="kb-name-text">{{ row.kbName || kbDisplayName(row.kbId) }}</span>
+                  </td>
+                  <td class="col-score"><span :class="scoreClass(row.overallScore)">{{ formatScore(row.overallScore) }}</span></td>
+                  <td class="col-trend">
                     <span :class="trendClass(row.trend)">
                       {{ formatSigned(row.trend) }}
                     </span>
                   </td>
-                  <td>{{ row.sampleCount || 0 }}</td>
+                  <td class="col-count">{{ row.sampleCount || 0 }}</td>
                 </tr>
               </tbody>
             </table>
@@ -280,17 +282,20 @@
               class="cost-stack"
               v-for="item in costStacks"
               :key="item.key"
+              :class="{ 'cost-stack--narrow': item.pct < 12 }"
               :style="{ width: `${item.pct}%`, background: item.color }"
+              :title="`${item.label}：¥${formatMoney(item.value)}`"
             >
-              <span>{{ item.label }}</span>
+              <span v-if="item.pct >= 12">{{ item.label }}</span>
             </div>
           </div>
-            <div class="cost-legend">
-              <span v-for="item in costStacks" :key="`${item.key}-legend`" class="legend-item">
-                <i :style="{ background: item.color }" />
-                {{ item.label }}：¥{{ formatMoney(item.value) }}
-              </span>
+          <div class="cost-legend">
+            <div v-for="item in costStacks" :key="`${item.key}-legend`" class="legend-card">
+              <span class="legend-dot" :style="{ background: item.color }" />
+              <span class="legend-label">{{ item.label }}</span>
+              <span class="legend-value">¥{{ formatMoney(item.value) }}</span>
             </div>
+          </div>
         </div>
       </div>
     </section>
@@ -299,7 +304,7 @@
       <aside class="settings-drawer">
         <div class="drawer-head">
           <div>
-            <h2>抽样与 Golden Set</h2>
+            <h2>抽样与 Golden Set（黄金集）</h2>
             <p>控制线上 LLM-as-Judge 抽样率；超过 10% 保存时需要二次确认。</p>
           </div>
           <button class="drawer-close" @click="closeSamplingDrawer">关闭</button>
@@ -350,17 +355,17 @@
         </section>
 
         <section class="drawer-section">
-          <h3>KB 覆盖</h3>
+          <h3>知识库覆盖</h3>
           <div class="kb-override-form">
             <select v-model="kbOverrideForm.scopeId">
               <option :value="null" disabled>选择知识库</option>
-              <option v-for="kb in kbOptions" :key="kb.id" :value="kb.id">{{ kb.name || `KB ${kb.id}` }}</option>
+              <option v-for="kb in kbOptions" :key="kb.id" :value="kb.id">{{ kb.name || kbDisplayName(kb.id) }}</option>
             </select>
             <input v-model.number="kbOverrideForm.ratePercent" type="number" min="0" max="10" step="0.5" />
             <label><input v-model="kbOverrideForm.enabled" type="checkbox" /> 启用</label>
             <button class="btn-ghost-small" :disabled="savingSampling" @click="saveKbOverride">保存覆盖</button>
           </div>
-          <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无 KB 单独覆盖</div>
+          <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无知识库单独覆盖</div>
           <div v-else class="override-list">
             <div v-for="item in kbSamplingConfigs" :key="item.id" class="override-item">
               <span>{{ kbName(item.scopeId) }}</span>
@@ -372,17 +377,20 @@
         </section>
 
         <section class="drawer-section">
-          <h3>Golden Set 回放</h3>
+          <h3>Golden Set（黄金集）回放</h3>
           <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
           <button
             class="btn-save-config btn-save-config--secondary"
-            :disabled="replayingGolden"
-            :title="replayingGolden ? '任务进行中' : ''"
+            :disabled="replayingGolden || goldenEnabledCount <= 0"
+            :title="replayDisabledReason"
             @click="replayGoldenNow"
           >
             {{ replayingGolden ? '任务进行中...' : '立即回放' }}
           </button>
-          <p class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
+          <p v-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
+            当前没有启用的黄金集题目，请先在「评测实验室」里把题目的 judgeEnabled 设为 true。
+          </p>
+          <p v-else class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
         </section>
 
         <section class="drawer-section">
@@ -422,6 +430,11 @@ const router = useRouter()
 const route = useRoute()
 
 const dayOptions = [7, 30, 90]
+const COST_SOURCE_LABELS = {
+  PRODUCTION: '线上生产',
+  GOLDEN_SET: 'Golden Set（黄金集）',
+  MANUAL: '手动评测',
+}
 const metricOptions = [
   { key: 'overall', label: '总体', color: '#0f766e' },
   { key: 'faithfulness', label: '忠实度', color: '#2563eb' },
@@ -493,13 +506,45 @@ const chartInnerBottom = chartHeight - chartPadding.bottom
 
 const yGrid = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
+const SEVERITY_LABELS = {
+  CRITICAL: '严重',
+  WARN: '警告',
+}
+
+function translateAnomalyReason(reason, severity) {
+  if (!reason || reason === 'stable') {
+    return severity === 'CRITICAL'
+      ? '触发严重异常阈值'
+      : '失败率偏高，请检查 LLM 调用稳定性'
+  }
+  const dropMatch = /^overall_score_dropped_by_([\d.]+)%$/.exec(reason)
+  if (dropMatch) {
+    return `综合质量较上期下降 ${dropMatch[1]}%`
+  }
+  const faithfulnessMatch = /^faithfulness_dropped_by_([\d.]+)%$/.exec(reason)
+  if (faithfulnessMatch) {
+    return `答案忠实度较上期下降 ${faithfulnessMatch[1]}%`
+  }
+  const precisionMatch = /^context_precision_dropped_by_([\d.]+)%$/.exec(reason)
+  if (precisionMatch) {
+    return `上下文精度较上期下降 ${precisionMatch[1]}%`
+  }
+  const relevanceMatch = /^answer_relevance_dropped_by_([\d.]+)%$/.exec(reason)
+  if (relevanceMatch) {
+    return `答案相关性较上期下降 ${relevanceMatch[1]}%`
+  }
+  if (reason === 'sample_count_zero') return '近期评测样本数为 0'
+  if (reason === 'cost_exceeds_budget') return '评测成本已超月度预算'
+  return reason
+}
+
 const anomalyMessage = computed(() => {
   if (!anomaly.value) return null
   const severity = anomaly.value.severity
   if (!severity || severity === 'NORMAL') return null
   return {
-    text: anomaly.value.reason || '异常阈值触发',
-    level: severity,
+    text: translateAnomalyReason(anomaly.value.reason, severity),
+    level: SEVERITY_LABELS[severity] || severity,
     severityClass: severity === 'CRITICAL' ? 'anomaly-critical' : 'anomaly-warn',
   }
 })
@@ -548,6 +593,12 @@ const visibleSeries = computed(() => {
     })
 })
 
+const replayDisabledReason = computed(() => {
+  if (replayingGolden.value) return '任务进行中'
+  if (goldenEnabledCount.value <= 0) return '当前启用题数为 0，无法触发回放'
+  return ''
+})
+
 const kbSamplingConfigs = computed(() =>
   samplingConfigs.value
     .filter((item) => item.scopeType === 'KB')
@@ -555,11 +606,19 @@ const kbSamplingConfigs = computed(() =>
 )
 
 function unwrapResponse(resp) {
-  const body = resp?.data != null ? resp.data : resp
-  if (body && typeof body === 'object' && body.code === 200 && 'data' in body) {
+  const body = resp?.data !== undefined && resp?.data !== null ? resp.data : resp
+  if (body != null && typeof body === 'object' && body.code === 200 && 'data' in body) {
     return body.data
   }
-  return body || {}
+  if (body !== undefined && body !== null) {
+    return body
+  }
+  return {}
+}
+
+function toCount(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
 }
 
 async function openSamplingDrawer() {
@@ -583,7 +642,7 @@ async function loadSamplingSettings() {
     ])
     samplingConfigs.value = unwrapResponse(configsResp) || []
     kbOptions.value = unwrapResponse(kbResp) || []
-    goldenEnabledCount.value = Number(unwrapResponse(goldenResp) || 0)
+    goldenEnabledCount.value = toCount(unwrapResponse(goldenResp))
     const globalConfig = samplingConfigs.value.find((item) => item.scopeType === 'GLOBAL')
     if (globalConfig) {
       globalRatePercent.value = ratePercent(globalConfig.sampleRate)
@@ -664,6 +723,10 @@ async function removeSampling(id) {
 }
 
 async function replayGoldenNow() {
+  if (goldenEnabledCount.value <= 0) {
+    toast.error('当前启用题数为 0，请先在评测实验室启用黄金集题目')
+    return
+  }
   replayingGolden.value = true
   settingsError.value = ''
   try {
@@ -692,9 +755,13 @@ function percentToRate(value) {
   return Math.max(0, Math.min(100, pct)) / 100
 }
 
+function kbDisplayName(id) {
+  return `知识库 #${id}`
+}
+
 function kbName(id) {
   const kb = kbOptions.value.find((item) => item.id === id)
-  return kb?.name || `KB ${id}`
+  return kb?.name || kbDisplayName(id)
 }
 
 function parseHttpError(error) {
@@ -754,7 +821,8 @@ function scoreClass(value) {
   if (value === null || value === undefined || value === '') return 'score-muted'
   const num = Number(value)
   if (!Number.isFinite(num)) return 'score-muted'
-  if (num <= 0 && (sampleCount.value || 0) <= 0) return 'score-muted'
+  if ((sampleCount.value || 0) <= 0) return 'score-muted'
+  if (num <= 0) return 'score-muted'
   if (num >= 0.8) return 'score-green'
   if (num >= 0.6) return 'score-amber'
   return 'score-red'
@@ -878,7 +946,9 @@ async function loadOverview() {
   } catch (error) {
     const status = error?.response?.status || error?.status
     if (kbId.value && status === 403) {
-      toast.error(resolveHttpError(error, { kind: 'kb-filter' }))
+      const msg = resolveHttpError(error, { kind: 'kb-filter' })
+      toast.error(msg)
+      globalError.value = msg
     } else if (status >= 500) {
       toast.error(resolveHttpError(error, { load: true }))
       globalError.value = resolveHttpError(error, { load: true })
@@ -910,7 +980,14 @@ async function loadKbRows() {
       }))
       .sort((a, b) => Number(a.overallScore || 0) - Number(b.overallScore || 0))
   } catch (error) {
-    globalError.value = parseHttpError(error)
+    const status = error?.response?.status || error?.status
+    if (kbId.value && status === 403) {
+      const msg = resolveHttpError(error, { kind: 'kb-filter' })
+      toast.error(msg)
+      globalError.value = msg
+    } else {
+      globalError.value = parseHttpError(error)
+    }
     kbRows.value = []
   } finally {
     loading.kb = false
@@ -932,7 +1009,14 @@ async function loadWorstCases() {
         }))
       : []
   } catch (error) {
-    globalError.value = parseHttpError(error)
+    const status = error?.response?.status || error?.status
+    if (kbId.value && status === 403) {
+      const msg = resolveHttpError(error, { kind: 'kb-filter' })
+      toast.error(msg)
+      globalError.value = msg
+    } else {
+      globalError.value = parseHttpError(error)
+    }
     worstCases.value = []
   } finally {
     loading.worst = false
@@ -988,7 +1072,7 @@ const costStacks = computed(() => {
   const sourceOrder = ['PRODUCTION', 'GOLDEN_SET', 'MANUAL']
   const entries = sourceOrder.map((source) => ({
     key: source,
-    label: source,
+    label: COST_SOURCE_LABELS[source] || source,
     value: Number(cost.value?.costBySource?.[source] || 0),
     color: sourceMap[source],
   }))
@@ -1242,6 +1326,65 @@ watch(
 .clickable-row { cursor: pointer; }
 .clickable-row:hover { background: rgba(59,130,246,0.06); }
 
+.kb-slice-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.kb-slice-table thead th,
+.kb-slice-table tbody td {
+  padding: 10px 12px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.kb-slice-table thead th {
+  white-space: nowrap;
+}
+
+.kb-slice-table .col-name {
+  width: auto;
+  text-align: left;
+}
+
+.kb-slice-table .col-score {
+  width: 64px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.kb-slice-table .col-trend {
+  width: 88px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.kb-slice-table .col-count {
+  width: 56px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.kb-slice-table tbody td.col-score,
+.kb-slice-table tbody td.col-trend,
+.kb-slice-table tbody td.col-count {
+  color: #475569;
+}
+
+.kb-name-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+}
+
 .worst-list { display: flex; flex-direction: column; gap: 8px; }
 .worst-item {
   border: 1px solid var(--border);
@@ -1283,40 +1426,63 @@ watch(
 
 .cost-stack-wrap {
   display: flex;
-  height: 26px;
-  border-radius: 999px;
+  height: 32px;
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
+  background: #f1f5f9;
 }
 
 .cost-stack {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   color: #fff;
-  min-width: 1%;
+  min-width: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.cost-stack--narrow {
+  min-width: 2px;
 }
 
 .cost-legend {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.legend-card {
   display: flex;
-  gap: 14px;
-  color: var(--text-muted);
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-
-.legend-item {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
 }
 
-.legend-item i {
+.legend-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  display: inline-block;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  color: #64748b;
+  flex: 1;
+  min-width: 0;
+}
+
+.legend-value {
+  color: #0f172a;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .drawer-mask {
@@ -1486,6 +1652,10 @@ watch(
   transform: none;
 }
 
+.golden-empty-hint {
+  color: #b45309;
+}
+
 .btn-save-config.is-saving {
   background: linear-gradient(180deg, #5eead4 0%, #14b8a6 100%);
 }
@@ -1608,6 +1778,10 @@ watch(
 
   .quality-kpi-grid,
   .cost-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .cost-legend {
     grid-template-columns: 1fr;
   }
 }

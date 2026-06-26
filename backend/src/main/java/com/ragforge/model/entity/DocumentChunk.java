@@ -41,7 +41,11 @@ public class DocumentChunk {
 
   // image_key 是 OSS 上原图的 storage key，用于 IMAGE chunk 的详情页预览（presignedGet）。
   // 之前 entity 漏字段，导致即便 worker 把图传上 OSS，落库的 chunk 也拿不回 key、详情页无法显示图。
-  @TableField("image_key")
+  //
+  // 标 exist=false：MyBatis-Plus 不会把它包进自动生成的 SELECT / INSERT，避免 V25 在云上
+  // 没真正应用、image_key 列不存在时整条 SELECT 500。读写都改走 ImagePipelineService 和
+  // DocumentServiceImpl 里的原生 JDBC 路径（同时各有 try/catch 兜底）。
+  @TableField(exist = false)
   private String imageKey;
 
   private Integer tokenCount;

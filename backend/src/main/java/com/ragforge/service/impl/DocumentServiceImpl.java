@@ -72,6 +72,8 @@ public class DocumentServiceImpl implements DocumentService {
   private final DocumentProcessProducer documentProcessProducer;
   private final EsIndexService esIndexService;
   private final ObjectMapper objectMapper;
+  // image_key 单独走原生 JDBC 读，避免 V25 在云上没真正应用时整条 SELECT 500。
+  private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
   @Override
   @Transactional
@@ -296,9 +298,42 @@ public class DocumentServiceImpl implements DocumentService {
                 .orderByAsc(DocumentChunk::getChunkIndex));
 
     String storageBucket = doc.getStorageBucket();
+    java.util.Map<Long, String> imageKeyMap = fetchImageKeys(result.getRecords());
     List<DocumentChunkVO> list =
-        result.getRecords().stream().map((c) -> toChunkVO(c, storageBucket)).toList();
+        result.getRecords().stream()
+            .map((c) -> toChunkVO(c, storageBucket, imageKeyMap.get(c.getId())))
+            .toList();
     return PageResult.of(result.getTotal(), (int) mpPage.getCurrent(), pageSize, list);
+  }
+
+  /**
+   * 批量取 image_key。entity 标了 exist=false 不走 MyBatis，列存在与否都不影响主 SELECT；
+   * 这里再加 try/catch 兜底：列不存在时返回空 map，详情页只是缺图预览 URL，
+   * chunk 列表本身照常返回。
+   */
+  private java.util.Map<Long, String> fetchImageKeys(List<DocumentChunk> chunks) {
+    if (chunks == null || chunks.isEmpty()) return java.util.Map.of();
+    List<Long> ids = chunks.stream().map(DocumentChunk::getId).filter(java.util.Objects::nonNull).toList();
+    if (ids.isEmpty()) return java.util.Map.of();
+    String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+    String sql = "SELECT id, image_key FROM document_chunks WHERE id IN (" + placeholders + ")";
+    java.util.Map<Long, String> map = new java.util.HashMap<>();
+    try {
+      jdbcTemplate.query(
+          sql,
+          ids.toArray(),
+          rs -> {
+            long id = rs.getLong(1);
+            String key = rs.getString(2);
+            if (key != null && !key.isEmpty()) map.put(id, key);
+          });
+    } catch (Exception e) {
+      log.warn(
+          "fetchImageKeys skipped (column likely missing on this env): chunkIds={} err={}",
+          ids.size(),
+          e.getMessage());
+    }
+    return map;
   }
 
   @Override
@@ -539,10 +574,10 @@ public class DocumentServiceImpl implements DocumentService {
   private static final java.time.Duration IMAGE_PREVIEW_TTL = java.time.Duration.ofMinutes(10);
 
   private DocumentChunkVO toChunkVO(DocumentChunk chunk) {
-    return toChunkVO(chunk, null);
+    return toChunkVO(chunk, null, null);
   }
 
-  private DocumentChunkVO toChunkVO(DocumentChunk chunk, String storageBucket) {
+  private DocumentChunkVO toChunkVO(DocumentChunk chunk, String storageBucket, String imageKey) {
     DocumentChunkVO vo = new DocumentChunkVO();
     vo.setChunkIndex(chunk.getChunkIndex());
     vo.setContent(chunk.getContent());
@@ -550,17 +585,17 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setChunkerStrategy(chunk.getChunkerStrategy());
     vo.setHeadingPath(chunk.getHeadingPath());
     vo.setChunkModality(chunk.getChunkModality());
-    vo.setImageKey(chunk.getImageKey());
+    vo.setImageKey(imageKey);
     // 只对真正落库的 IMAGE chunk 签 GET URL，签失败时静默退化为不带预览
     // （前端 v-if 会自动隐藏 <img>），不影响 chunk 列表整体返回。
-    if (StringUtils.hasText(chunk.getImageKey()) && StringUtils.hasText(storageBucket)) {
+    if (StringUtils.hasText(imageKey) && StringUtils.hasText(storageBucket)) {
       try {
-        vo.setImageUrl(objectStorage.presignedGet(storageBucket, chunk.getImageKey(), IMAGE_PREVIEW_TTL));
+        vo.setImageUrl(objectStorage.presignedGet(storageBucket, imageKey, IMAGE_PREVIEW_TTL));
       } catch (Exception e) {
         log.warn(
             "Skip chunk image preview URL: chunkIndex={} imageKey={} err={}",
             chunk.getChunkIndex(),
-            chunk.getImageKey(),
+            imageKey,
             e.getMessage());
       }
     }

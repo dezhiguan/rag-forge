@@ -7,7 +7,9 @@ metadata:
     app: ragforge-api
     role: api
 spec:
-  # Single-node k3s: keep total backend JVM count at 2 (1 api + 1 worker).
+  # Single-node k3s: avoid surge (old+new) which exhausts memory during rollout.
+  strategy:
+    type: Recreate
   replicas: 1
   revisionHistoryLimit: 3
   selector:
@@ -106,6 +108,8 @@ metadata:
     app: ragforge-worker
     role: worker
 spec:
+  strategy:
+    type: Recreate
   replicas: 1
   revisionHistoryLimit: 3
   selector:
@@ -172,6 +176,8 @@ metadata:
     app: ragforge-judge
     role: judge
 spec:
+  strategy:
+    type: Recreate
   replicas: 1
   revisionHistoryLimit: 3
   selector:

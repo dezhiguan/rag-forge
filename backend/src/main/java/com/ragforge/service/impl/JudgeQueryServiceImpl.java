@@ -32,6 +32,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -247,7 +248,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     vo.setQuery(chooseFirstNonBlank(result.getQuery(), log == null ? null : log.getQuery()));
     vo.setAnswer(log == null ? null : log.getAnswer());
     vo.setCreatedAt(log == null ? null : log.getCreatedAt());
-    vo.setKbIds(result.getKbIds() == null ? List.of() : List.of(result.getKbIds()));
+    vo.setKbIds(toKbIdList(result.getKbIds()));
     vo.setChunks(resolveChunks(citations));
     vo.setScores(buildScoreMap(result));
     vo.setJudgeReasoning(truncate(chooseFirstNonBlank(result.getJudgeReasoning(), extractReasoning(raw)), 320));
@@ -427,11 +428,19 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     return new TrendWindow(overall, faithfulness, contextPrecision, answerRelevance, costSum, sampleTotal, failedTotal, failedRate);
   }
 
+  private List<Long> toKbIdList(Long[] kbIds) {
+    if (kbIds == null || kbIds.length == 0) {
+      return List.of();
+    }
+    return Arrays.stream(kbIds).filter(Objects::nonNull).toList();
+  }
+
   private Map<String, BigDecimal> buildScoreMap(JudgeResult result) {
     Map<String, BigDecimal> scores = new LinkedHashMap<>();
     scores.put("faithfulness", defaultZero(result.getFaithfulness()));
     scores.put("contextPrecision", defaultZero(result.getContextPrecision()));
     scores.put("answerRelevance", defaultZero(result.getAnswerRelevance()));
+    scores.put("overallScore", defaultZero(result.getOverallScore()));
     scores.put("overall", defaultZero(result.getOverallScore()));
     return scores;
   }
@@ -525,6 +534,8 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
               vo.setDocId(citation.getDocId());
               vo.setSnippet(firstText(citation.getTextSnippet(), ""));
               vo.setContent(chunkContentById.getOrDefault(citation.getChunkId(), ""));
+              vo.setScore(citation.getScore());
+              vo.setRelevant(citation.getRelevant());
               return vo;
             })
         .toList();

@@ -14,6 +14,43 @@ step_end() {
   echo "[$(date -Iseconds)] END (${elapsed}s): ${STEP_LABEL}"
 }
 
+cleanup_stale_pods() {
+  echo "Cleaning stale/error pods in namespace ${NAMESPACE}"
+  local pods
+  pods="$(k3s kubectl -n "${NAMESPACE}" get pods --no-headers 2>/dev/null | awk '$3 ~ /Error|Evicted|ContainerStatusUnknown|CrashLoopBackOff/ {print $1}' || true)"
+  if [[ -n "${pods}" ]]; then
+    while read -r pod; do
+      [[ -z "${pod}" ]] && continue
+      echo "Deleting stale pod: ${pod}"
+      k3s kubectl -n "${NAMESPACE}" delete pod "${pod}" --ignore-not-found=true --wait=false || true
+    done <<< "${pods}"
+  fi
+}
+
+collect_rollout_diagnostics() {
+  local deployment="$1"
+  echo "=== diagnostics for ${deployment} ===" >&2
+  k3s kubectl -n "${NAMESPACE}" get pods -l "app=${deployment}" -o wide >&2 || true
+  k3s kubectl -n "${NAMESPACE}" describe deployment "${deployment}" >&2 || true
+  local pod
+  pod="$(k3s kubectl -n "${NAMESPACE}" get pods -l "app=${deployment}" --sort-by=.metadata.creationTimestamp -o name 2>/dev/null | tail -n 1 | sed 's|pod/||')"
+  if [[ -n "${pod}" ]]; then
+    k3s kubectl -n "${NAMESPACE}" logs "${pod}" --tail=200 >&2 || true
+    k3s kubectl -n "${NAMESPACE}" logs "${pod}" --previous --tail=200 >&2 || true
+  fi
+  k3s kubectl -n "${NAMESPACE}" get events --field-selector "involvedObject.kind=Pod" --sort-by=.lastTimestamp 2>/dev/null | tail -n 20 >&2 || true
+}
+
+wait_rollout() {
+  local deployment="$1"
+  if ! k3s kubectl -n "${NAMESPACE}" rollout status "deployment/${deployment}" --timeout="${ROLLOUT_TIMEOUT}"; then
+    echo "${deployment} rollout failed; collecting diagnostics" >&2
+    k3s kubectl -n "${NAMESPACE}" get pods -o wide >&2 || true
+    collect_rollout_diagnostics "${deployment}"
+    return 1
+  fi
+}
+
 should_run_disk_cleanup() {
   if [[ "${SKIP_DISK_CLEANUP:-0}" == "1" ]]; then
     echo "Skip disk cleanup (SKIP_DISK_CLEANUP=1)"
@@ -57,6 +94,7 @@ BACKEND_IMAGE="$(ragforge_backend_image "${REPO_ROOT}")"
 FRONTEND_IMAGE="$(ragforge_frontend_image "${REPO_ROOT}")"
 RENDERED_DEPLOY="$(mktemp)"
 RENDERED_FRONTEND_DEPLOY="$(mktemp)"
+ROLLOUT_TIMEOUT="${RAGFORGE_ROLLOUT_TIMEOUT:-600s}"
 trap 'rm -f "${RENDERED_DEPLOY}" "${RENDERED_FRONTEND_DEPLOY}"' EXIT
 
 echo "[0/6] Optional safe disk cleanup"
@@ -87,6 +125,8 @@ if [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
   fi
   echo "[frontend] import image into k3s containerd"
   import_image_to_k3s "${FRONTEND_IMAGE}"
+  prune_old_k3s_repo_images "${RAGFORGE_FRONTEND_IMAGE_REPO}" "${RAGFORGE_K3S_IMAGE_KEEP:-4}" "${NAMESPACE}" "${FRONTEND_IMAGE}"
+  prune_old_docker_repo_images "${RAGFORGE_FRONTEND_IMAGE_REPO}" "${RAGFORGE_DOCKER_IMAGE_KEEP:-4}" "${FRONTEND_IMAGE}"
 else
   echo "Skip image build (SKIP_IMAGE_BUILD=1)"
   if ! k3s ctr -n k8s.io images ls | grep -q "${BACKEND_IMAGE}"; then
@@ -107,6 +147,7 @@ bash "${SCRIPT_DIR}/create-ragforge-k8s-secret.sh"
 step_end
 
 step_start "[5/6] Apply manifests (backend=${BACKEND_IMAGE}, frontend=${FRONTEND_IMAGE})"
+cleanup_stale_pods
 if k3s kubectl -n "${NAMESPACE}" get deployment ragforge-backend >/dev/null 2>&1; then
   echo "Retiring legacy deployment/ragforge-backend before api/worker split rollout"
   k3s kubectl -n "${NAMESPACE}" delete deployment ragforge-backend --wait=true --timeout=180s
@@ -116,25 +157,17 @@ k3s kubectl apply -f "${K8S_DIR}/namespace.yaml"
 k3s kubectl apply -f "${K8S_DIR}/backend-configmap.yaml"
 k3s kubectl apply -f "${K8S_DIR}/backend-service.yaml"
 k3s kubectl apply -f "${K8S_DIR}/frontend-service.yaml"
+# Single-node k3s: roll api first while worker/judge are scaled down to avoid JVM memory spike.
+k3s kubectl -n "${NAMESPACE}" scale deployment/ragforge-worker deployment/ragforge-judge --replicas=0 || true
 k3s kubectl apply -f "${RENDERED_DEPLOY}"
+wait_rollout ragforge-api
+k3s kubectl -n "${NAMESPACE}" scale deployment/ragforge-worker --replicas=1
+wait_rollout ragforge-worker
+k3s kubectl -n "${NAMESPACE}" scale deployment/ragforge-judge --replicas=1
+wait_rollout ragforge-judge
 render_ragforge_frontend_deployment "${K8S_DIR}/frontend-deployment.yaml" "${RENDERED_FRONTEND_DEPLOY}" "${FRONTEND_IMAGE}"
 k3s kubectl apply -f "${RENDERED_FRONTEND_DEPLOY}"
-ROLLOUT_TIMEOUT="${RAGFORGE_ROLLOUT_TIMEOUT:-600s}"
-if ! k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-api --timeout="${ROLLOUT_TIMEOUT}"; then
-  echo "ragforge-api rollout failed; collecting diagnostics" >&2
-  k3s kubectl -n "${NAMESPACE}" get pods -o wide >&2 || true
-  k3s kubectl -n "${NAMESPACE}" describe deployment/ragforge-api >&2 || true
-  k3s kubectl -n "${NAMESPACE}" logs deployment/ragforge-api --tail=200 >&2 || true
-  exit 1
-fi
-if ! k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-worker --timeout="${ROLLOUT_TIMEOUT}"; then
-  echo "ragforge-worker rollout failed; collecting diagnostics" >&2
-  k3s kubectl -n "${NAMESPACE}" get pods -o wide >&2 || true
-  k3s kubectl -n "${NAMESPACE}" describe deployment/ragforge-worker >&2 || true
-  k3s kubectl -n "${NAMESPACE}" logs deployment/ragforge-worker --tail=200 >&2 || true
-  exit 1
-fi
-k3s kubectl -n "${NAMESPACE}" rollout status deployment/ragforge-frontend --timeout=180s
+wait_rollout ragforge-frontend
 step_end
 
 step_start "[6/6] Current status"

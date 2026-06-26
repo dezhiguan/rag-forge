@@ -2,6 +2,7 @@ package com.ragforge.answer;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.ragforge.model.vo.SearchResponse;
+import java.math.BigDecimal;
 import java.util.List;
 import lombok.Data;
 
@@ -42,6 +43,8 @@ public final class AnswerModels {
     private String modality;
     private String textSnippet;
     private String imageUrl;
+    private BigDecimal score;
+    private Boolean relevant;
   }
 
   public record TokenUsage(int prompt, int completion) {}

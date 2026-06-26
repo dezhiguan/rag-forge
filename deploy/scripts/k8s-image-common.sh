@@ -91,6 +91,133 @@ prune_old_ragforge_airgap_tars() {
   done
 }
 
+prune_old_k3s_repo_images() {
+  local repo="$1"
+  local keep="${2:-4}"
+  local namespace="${3:-ragforge}"
+  shift 3 || true
+  local extra_keep=("$@")
+
+  if ! command -v k3s >/dev/null 2>&1; then
+    echo "WARN: k3s not found; skip image prune for ${repo}" >&2
+    return 0
+  fi
+
+  local active_images keep_images keep_digest_images tagged_images digest_images
+  active_images="$(mktemp)"
+  keep_images="$(mktemp)"
+  keep_digest_images="$(mktemp)"
+  tagged_images="$(mktemp)"
+  digest_images="$(mktemp)"
+
+  k3s kubectl -n "${namespace}" get deploy,pod \
+    -o jsonpath='{range .items[*]}{range .spec.template.spec.containers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' \
+    2>/dev/null \
+    | awk -v repo="${repo}" 'index($0, repo ":") == 1 {print}' \
+    | sort -u > "${active_images}" || true
+
+  for image in "${extra_keep[@]}"; do
+    if [[ "${image}" == "${repo}:"* ]]; then
+      printf '%s\n' "${image}"
+    fi
+  done >> "${active_images}"
+
+  k3s ctr -n k8s.io images ls -q 2>/dev/null \
+    | awk -v repo="${repo}" 'index($0, repo ":") == 1 {print}' \
+    | sort -r > "${tagged_images}" || true
+
+  k3s ctr -n k8s.io images ls -q 2>/dev/null \
+    | awk -v repo="${repo}" 'index($0, repo "@sha256:") == 1 {print}' \
+    | sort -u > "${digest_images}" || true
+
+  {
+    cat "${active_images}"
+    head -n "${keep}" "${tagged_images}"
+  } | sort -u > "${keep_images}"
+
+  while read -r image; do
+    [[ -z "${image}" ]] && continue
+    local digest
+    digest="$(k3s ctr -n k8s.io images ls 2>/dev/null | awk -v image="${image}" '$1 == image {digest = $3} END {if (digest != "") print digest}')"
+    if [[ "${digest}" == sha256:* ]]; then
+      printf '%s@%s\n' "${repo}" "${digest}"
+    fi
+  done < "${keep_images}" | sort -u > "${keep_digest_images}"
+
+  local image
+  while read -r image; do
+    [[ -z "${image}" ]] && continue
+    if grep -Fxq "${image}" "${keep_images}"; then
+      continue
+    fi
+    echo "Deleting old k3s image: ${image}"
+    k3s ctr -n k8s.io images rm "${image}" >/dev/null || true
+  done < "${tagged_images}"
+
+  while read -r image; do
+    [[ -z "${image}" ]] && continue
+    if grep -Fxq "${image}" "${keep_digest_images}"; then
+      continue
+    fi
+    echo "Deleting old k3s image digest ref: ${image}"
+    k3s ctr -n k8s.io images rm "${image}" >/dev/null || true
+  done < "${digest_images}"
+
+  k3s ctr -n k8s.io content prune >/dev/null || true
+
+  rm -f "${active_images}" "${keep_images}" "${keep_digest_images}" "${tagged_images}" "${digest_images}"
+}
+
+prune_old_docker_repo_images() {
+  local repo="$1"
+  local keep="${2:-4}"
+  shift 2 || true
+  local extra_keep=("$@")
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "WARN: docker not found; skip image prune for ${repo}" >&2
+    return 0
+  fi
+
+  local docker_repo="${repo#docker.io/}"
+  local active_images keep_images tagged_images
+  active_images="$(mktemp)"
+  keep_images="$(mktemp)"
+  tagged_images="$(mktemp)"
+
+  docker ps --format '{{.Image}}' 2>/dev/null \
+    | awk -v repo="${docker_repo}" 'index($0, repo ":") == 1 {print}' \
+    | sort -u > "${active_images}" || true
+
+  for image in "${extra_keep[@]}"; do
+    image="${image#docker.io/}"
+    if [[ "${image}" == "${docker_repo}:"* ]]; then
+      printf '%s\n' "${image}"
+    fi
+  done >> "${active_images}"
+
+  docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
+    | awk -v repo="${docker_repo}" 'index($0, repo ":") == 1 && $0 !~ /:<none>$/ {print}' \
+    | sort -r > "${tagged_images}" || true
+
+  {
+    cat "${active_images}"
+    head -n "${keep}" "${tagged_images}"
+  } | sort -u > "${keep_images}"
+
+  local image
+  while read -r image; do
+    [[ -z "${image}" ]] && continue
+    if grep -Fxq "${image}" "${keep_images}"; then
+      continue
+    fi
+    echo "Deleting old docker image: ${image}"
+    docker image rm "${image}" >/dev/null || true
+  done < "${tagged_images}"
+
+  rm -f "${active_images}" "${keep_images}" "${tagged_images}"
+}
+
 render_ragforge_deployment() {
   local src="$1"
   local dest="$2"
