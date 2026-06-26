@@ -68,7 +68,8 @@
               </td>
               <td style="text-align:center">
                 <label class="sw" :class="{ disabled: toggling === m.code }">
-                  <input type="checkbox" :checked="m.enabled" :disabled="toggling === m.code"
+                  <input type="checkbox" :key="m.code + '-' + m.enabled + '-' + uiRev"
+                         :checked="m.enabled" :disabled="toggling === m.code"
                          @change="onToggle(m, $event.target.checked)" />
                   <span class="track"></span><span class="thumb"></span>
                 </label>
@@ -172,6 +173,9 @@ const detail = ref([])
 const stats = reactive({ kpi: {}, trend: [], ranking: [] })
 const loadingModels = ref(false)
 const toggling = ref('')
+// 用于强制重建开关 input：当 toggle 失败、m.enabled 未变时，bump 此值让 :key 变化，
+// 从而把被用户点动的原生 checkbox 还原到 m.enabled 的真实值（修复开关与状态徽章不一致）。
+const uiRev = ref(0)
 
 const kpi = computed(() => stats.kpi || {})
 const trend = computed(() => stats.trend || [])
@@ -265,9 +269,10 @@ async function onToggle(model, nextEnabled) {
     // 费用/状态可能变化，刷新看板侧数据
     refreshStats()
   } catch (e) {
-    // 后端 409（停用会令该用途无可用模型）等错误已由 request 拦截器统一翻译并弹友好提示，
-    // 这里只需把开关回滚：强制重渲染，让 checkbox 还原到 model.enabled 的真实值。
-    models.value = [...models.value]
+    // 后端 409（停用会令该用途无可用模型）等错误已由 request 拦截器统一翻译并弹友好提示。
+    // 回滚开关：m.enabled 未变，:checked 的 diff 不会触发，需 bump uiRev 改变 :key 强制重建
+    // input，使其重新读取 m.enabled，把被用户点动的 checkbox 还原。
+    uiRev.value++
   } finally {
     toggling.value = ''
   }
