@@ -35,11 +35,9 @@
           <label class="field">
             <span>检索策略</span>
             <select v-model="form.strategy" :disabled="form.mode === 'all'">
-              <option value="keyword">keyword</option>
-              <option value="vector">vector</option>
-              <option value="hybrid">hybrid</option>
-              <option value="rewrite">rewrite</option>
-              <option value="full">full</option>
+              <option v-for="item in strategyOptions" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </option>
             </select>
           </label>
 
@@ -214,7 +212,15 @@ const form = reactive({
   rerankTopN: 5,
 })
 
-const strategies = ['keyword', 'vector', 'hybrid', 'rewrite', 'full']
+const strategyOptions = [
+  { value: 'keyword', label: '关键词检索' },
+  { value: 'vector', label: '向量检索' },
+  { value: 'hybrid', label: '混合检索' },
+  { value: 'rewrite', label: 'Query 改写' },
+  { value: 'full', label: '全链路 Reranker' },
+]
+
+const strategies = strategyOptions.map((item) => item.value)
 
 const displayRows = computed(() => [...rows.value].sort((a, b) => b.id - a.id))
 const lastRow = computed(() => displayRows.value[0] ?? null)
@@ -231,13 +237,13 @@ const showRerankTopN = computed(() =>
 )
 const advancedParamHint = computed(() => {
   if (form.mode === 'all') {
-    return '五路对比时：向量权重仅作用于 hybrid/full，Rerank TopN 仅作用于 full。'
+    return '五路对比时：向量权重仅作用于混合检索/全链路 Reranker，Rerank TopN 仅作用于全链路 Reranker。'
   }
   if (form.strategy === 'full') {
-    return 'full 策略会使用向量权重和 Rerank TopN。'
+    return '全链路 Reranker 策略会使用向量权重和 Rerank TopN。'
   }
   if (form.strategy === 'hybrid') {
-    return 'hybrid 策略只使用向量权重，不使用 Rerank TopN。'
+    return '混合检索策略只使用向量权重，不使用 Rerank TopN。'
   }
   return `${strategyLabel(form.strategy)} 策略不使用向量权重和 Rerank TopN。`
 })
@@ -399,14 +405,7 @@ function sleep(ms) {
 }
 
 function strategyLabel(strategy) {
-  const labels = {
-    keyword: 'Keyword',
-    vector: 'Vector',
-    hybrid: 'Hybrid',
-    rewrite: 'Rewrite',
-    full: 'Full',
-  }
-  return labels[strategy] ?? strategy
+  return strategyOptions.find((item) => item.value === strategy)?.label ?? strategy
 }
 
 onMounted(async () => {
