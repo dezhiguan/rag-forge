@@ -68,6 +68,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
   private final DocumentChunkMapper documentChunkMapper;
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final ObjectMapper objectMapper;
+  private final com.ragforge.storage.ChunkImageResolver chunkImageResolver;
 
   @Override
   public OverviewVo overview(int days, Long kbId) {
@@ -523,6 +524,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     List<DocumentChunk> chunks = documentChunkMapper.selectBatchIds(chunkIds);
     Map<Long, String> chunkContentById =
         chunks.stream().collect(Collectors.toMap(DocumentChunk::getId, DocumentChunk::getContent, (a, b) -> a));
+    Map<Long, String> imageUrlByChunk = chunkImageResolver.presignedUrls(chunkIds);
 
     return citations.stream()
         .filter(Objects::nonNull)
@@ -536,6 +538,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
               vo.setContent(chunkContentById.getOrDefault(citation.getChunkId(), ""));
               vo.setScore(citation.getScore());
               vo.setRelevant(citation.getRelevant());
+              vo.setImageUrl(imageUrlByChunk.get(citation.getChunkId()));
               return vo;
             })
         .toList();

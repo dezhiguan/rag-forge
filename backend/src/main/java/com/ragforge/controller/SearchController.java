@@ -33,6 +33,24 @@ public class SearchController {
   private final VectorSearchService vectorSearchService;
   private final KbAccessGuard kbAccessGuard;
   private final RetrievalLogService retrievalLogService;
+  private final com.ragforge.storage.ChunkImageResolver chunkImageResolver;
+
+  /** 为 IMAGE chunk 回填预签名缩略图 URL，供前端检索调试台预览。 */
+  private void enrichImageUrls(java.util.List<SearchResult> results) {
+    if (results == null || results.isEmpty()) {
+      return;
+    }
+    java.util.List<Long> imageChunkIds =
+        results.stream()
+            .filter(r -> "IMAGE".equalsIgnoreCase(r.getChunkModality()) && r.getChunkId() != null)
+            .map(SearchResult::getChunkId)
+            .toList();
+    if (imageChunkIds.isEmpty()) {
+      return;
+    }
+    java.util.Map<Long, String> urls = chunkImageResolver.presignedUrls(imageChunkIds);
+    results.forEach(r -> r.setImageUrl(urls.get(r.getChunkId())));
+  }
 
   @PostMapping("/search")
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','SERVICE_ACCOUNT')")
@@ -88,6 +106,7 @@ public class SearchController {
         output.getLatencyMs(),
         output.getResults());
 
+    enrichImageUrls(output.getResults());
     return Result.ok(
         new SearchResponse(
             output.getResults(),
@@ -122,6 +141,7 @@ public class SearchController {
             req.getTopK(),
             req.getFilter());
     long latencyMs = System.currentTimeMillis() - start;
+    enrichImageUrls(results);
     return Result.ok(new SearchResponse(results, latencyMs, "image-vector", null, null, latencyMs, null, null));
   }
 }

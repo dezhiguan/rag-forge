@@ -112,6 +112,14 @@
                 </span>
               </div>
               <p>{{ chunk.content || chunk.snippet || '（chunk 内容为空）' }}</p>
+              <img
+                v-if="chunk.imageUrl"
+                :src="chunk.imageUrl"
+                class="chunk-thumb"
+                alt="chunk 图片预览"
+                title="点击查看大图"
+                @click="previewImage = chunk.imageUrl"
+              >
             </article>
           </div>
         </article>
@@ -138,6 +146,7 @@
         </div>
       </section>
     </template>
+    <ImageLightbox :src="previewImage" @close="previewImage = ''" />
   </div>
 </template>
 
@@ -147,8 +156,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchCaseDetail } from '../api/quality'
 import { bottleneckLabel, resolveHttpError } from '../api/error-messages'
 import { useAuth } from '../composables/useAuth'
+import ImageLightbox from '../components/ImageLightbox.vue'
 
 const { clearSession } = useAuth()
+const previewImage = ref('')
 const router = useRouter()
 const route = useRoute()
 
@@ -625,6 +636,16 @@ onMounted(loadCaseDetail)
   white-space: pre-wrap;
   line-height: 1.6;
   margin: 0;
+}
+.chunk-thumb {
+  max-width: 160px;
+  max-height: 120px;
+  margin-top: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: zoom-in;
+  object-fit: cover;
+  background: #fff;
 }
 
 .badge-green {

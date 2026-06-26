@@ -16,4 +16,6 @@ public class SearchResult {
   private String chunkType;
   private String chunkModality;
   private String imageKey;
+  /** IMAGE chunk 的预签名图片 URL（仅 controller 出参时回填，供前端缩略图预览）。 */
+  private String imageUrl;
 }

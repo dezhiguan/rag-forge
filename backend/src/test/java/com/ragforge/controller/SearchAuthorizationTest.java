@@ -32,7 +32,7 @@ class SearchAuthorizationTest {
   @Test
   void requestedUnauthorizedKb_returnsKbAccessDenied() {
     SearchController controller =
-        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService);
+        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService, org.mockito.Mockito.mock(com.ragforge.storage.ChunkImageResolver.class));
     SearchRequest req = request();
     req.setKbIds(List.of(99L));
     when(kbAccessGuard.filterReadable(List.of(99L))).thenReturn(Set.of());
@@ -45,7 +45,7 @@ class SearchAuthorizationTest {
   @Test
   void emptyKbIds_autoFillsAllReadableKbIds() {
     SearchController controller =
-        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService);
+        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService, org.mockito.Mockito.mock(com.ragforge.storage.ChunkImageResolver.class));
     SearchRequest req = request();
     when(kbAccessGuard.allReadableKbIds()).thenReturn(new LinkedHashSet<>(List.of(1L, 2L)));
     when(retrievalService.retrieve(eq("java"), any(), eq(List.of(1L, 2L)), any(), any(), any(), eq(8), eq(5), any(), eq("text")))
@@ -59,7 +59,7 @@ class SearchAuthorizationTest {
   @Test
   void noReadableKbIds_returnsKbAccessDenied() {
     SearchController controller =
-        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService);
+        new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService, org.mockito.Mockito.mock(com.ragforge.storage.ChunkImageResolver.class));
     SearchRequest req = request();
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of());
 

@@ -208,6 +208,14 @@
                 </span>
               </div>
               <div class="result-text" :title="r.content" v-html="highlightContent(r.content, query)"></div>
+              <img
+                v-if="r.imageUrl"
+                :src="r.imageUrl"
+                class="result-thumb"
+                alt="chunk 图片预览"
+                title="点击查看大图"
+                @click="previewImage = r.imageUrl"
+              >
               <div class="result-meta">
                 <template v-if="activeStrategyRef === 'hybrid'">
                   向量 {{ (r.vectorScore ?? 0).toFixed(4) }} | BM25 {{ (r.bm25Score ?? 0).toFixed(2) }} | 融合 {{ (r.finalScore ?? 0).toFixed(4) }}
@@ -322,6 +330,7 @@
         </div>
       </div>
     </div>
+    <ImageLightbox :src="previewImage" @close="previewImage = ''" />
   </div>
 </template>
 
@@ -334,8 +343,10 @@ import { search as searchApi } from '../api/search'
 import { listEvalDatasets, saveQuestionFromSearch } from '../api/eval'
 import { llmGenerate } from '../api/llm'
 import { useToast } from '../composables/useToast'
+import ImageLightbox from '../components/ImageLightbox.vue'
 
 const toast = useToast()
+const previewImage = ref('')
 
 const route = useRoute()
 const router = useRouter()
@@ -1076,6 +1087,7 @@ onMounted(async () => {
 .result-modality { border: 1px solid rgba(14, 165, 233, 0.28); border-radius: 6px; background: rgba(14, 165, 233, 0.08); color: #0369a1; flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 2px 6px; }
 .result-text { color: var(--gray); line-height: 1.5; margin-bottom: 4px; word-break: break-word; }
 .result-text :deep(mark.hl) { background: #fef08a; color: inherit; padding: 0 2px; border-radius: 2px; }
+.result-thumb { max-width: 120px; max-height: 90px; border: 1px solid var(--border); border-radius: 6px; margin: 2px 0 6px; cursor: zoom-in; display: block; object-fit: cover; background: #fff; }
 .result-meta { color: var(--text-muted); font-size: 9px; line-height: 1.5; word-break: break-word; }
 .save-case { margin-top: 12px; padding: 8px; border: 1px dashed var(--blue); border-radius: var(--radius-sm); text-align: center; color: var(--blue); font-size: 11px; cursor: pointer; transition: background 0.15s; }
 .save-case:hover { background: #eff6ff; }

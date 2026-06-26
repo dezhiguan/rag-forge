@@ -1,5 +1,6 @@
 <template>
   <div class="answer-page">
+    <p class="page-subtitle">Answer-as-LLM 基于知识库的带引用应答生成与检索链路诊断</p>
     <section class="workbench">
       <aside class="answer-controls">
         <div class="control-title">应答参数</div>
@@ -262,6 +263,7 @@ function isAnswerDisabledPayload(text) {
 
 <style scoped>
 .answer-page { padding: 18px; }
+.page-subtitle { color: var(--text-muted); margin: 0 0 12px 0; font-size: 13px; }
 .workbench {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);

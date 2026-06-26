@@ -47,7 +47,8 @@ class SearchControllerTest {
     mockMvc =
         standaloneSetup(
                 new SearchController(
-                    retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService))
+                    retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService,
+                    org.mockito.Mockito.mock(com.ragforge.storage.ChunkImageResolver.class)))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .setValidator(validator)
