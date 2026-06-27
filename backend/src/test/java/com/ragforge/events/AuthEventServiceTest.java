@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.mapper.RevokedJtiMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,6 +29,7 @@ class AuthEventServiceTest {
 
   @Mock private StringRedisTemplate redisTemplate;
   @Mock private ValueOperations<String, String> valueOperations;
+  @Mock private RevokedJtiMapper revokedJtiMapper;
 
   private AuthEventProperties properties;
   private AuthEventService service;
@@ -36,7 +38,7 @@ class AuthEventServiceTest {
   void setUp() {
     properties = new AuthEventProperties();
     properties.setHmacSecret("event-secret");
-    service = new AuthEventService(properties, new ObjectMapper(), redisTemplate);
+    service = new AuthEventService(properties, new ObjectMapper(), redisTemplate, revokedJtiMapper);
   }
 
   @Test
@@ -134,6 +136,25 @@ class AuthEventServiceTest {
             eq(AuthEventService.USER_REVOKED_AFTER_PREFIX + "42"),
             eq(String.valueOf(Instant.parse(occurredAt).getEpochSecond())),
             any(Duration.class));
+  }
+
+  @Test
+  void revokeAccessTokenJtiWritesBlacklistWithExpTtl() {
+    when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+    service.revokeAccessTokenJti("jti-logout", 4102444800L);
+
+    verify(valueOperations)
+        .set(eq(AuthEventService.REVOKED_JTI_PREFIX + "jti-logout"), eq("logout"), any(Duration.class));
+    verify(revokedJtiMapper).revoke(eq("jti-logout"), any(), eq("logout"));
+  }
+
+  @Test
+  void revokedJwtChecksDatabaseWhenRedisMisses() {
+    when(redisTemplate.hasKey(AuthEventService.REVOKED_JTI_PREFIX + "jti-db")).thenReturn(false);
+    when(revokedJtiMapper.isRevoked("jti-db")).thenReturn(true);
+
+    assertThat(service.isJwtRevoked(new AuthJwtToken("jti-db", "42", 101L))).isTrue();
   }
 
   @Test

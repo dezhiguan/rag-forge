@@ -1,12 +1,13 @@
 package com.ragforge.controller;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ragforge.common.BizException;
+import com.ragforge.common.Result;
 import com.ragforge.model.dto.SearchRequest;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
@@ -30,16 +31,18 @@ class SearchAuthorizationTest {
   @Mock private RetrievalLogService retrievalLogService;
 
   @Test
-  void requestedUnauthorizedKb_returnsKbAccessDenied() {
+  void requestedUnauthorizedKb_returnsEmptyResults() {
     SearchController controller =
         new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService, org.mockito.Mockito.mock(com.ragforge.storage.ChunkImageResolver.class));
     SearchRequest req = request();
     req.setKbIds(List.of(99L));
     when(kbAccessGuard.filterReadable(List.of(99L))).thenReturn(Set.of());
 
-    assertThatThrownBy(() -> controller.search(req))
-        .isInstanceOf(BizException.class)
-        .hasMessage("KB_ACCESS_DENIED");
+    Result<?> result = controller.search(req);
+
+    assertThat(result.getCode()).isEqualTo(200);
+    assertThat(result.getData()).isNotNull();
+    verifyNoInteractions(retrievalService);
   }
 
   @Test
@@ -57,15 +60,17 @@ class SearchAuthorizationTest {
   }
 
   @Test
-  void noReadableKbIds_returnsKbAccessDenied() {
+  void noReadableKbIds_returnsEmptyResults() {
     SearchController controller =
         new SearchController(retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService, org.mockito.Mockito.mock(com.ragforge.storage.ChunkImageResolver.class));
     SearchRequest req = request();
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of());
 
-    assertThatThrownBy(() -> controller.search(req))
-        .isInstanceOf(BizException.class)
-        .hasMessage("KB_ACCESS_DENIED");
+    Result<?> result = controller.search(req);
+
+    assertThat(result.getCode()).isEqualTo(200);
+    assertThat(result.getData()).isNotNull();
+    verifyNoInteractions(retrievalService);
   }
 
   private static SearchRequest request() {
