@@ -9,8 +9,8 @@
     </button>
 
     <div v-if="open" class="menu-panel" role="menu">
-      <button type="button" role="menuitem" class="menu-item" @click="noop">个人设置</button>
-      <button type="button" role="menuitem" class="menu-item" @click="noop">安全中心</button>
+      <button type="button" role="menuitem" class="menu-item" @click="goAccount('profile')">个人设置</button>
+      <button type="button" role="menuitem" class="menu-item" @click="goAccount('security')">安全中心</button>
       <button type="button" role="menuitem" class="menu-item danger" @click="handleLogout">退出登录</button>
       <button type="button" role="menuitem" class="menu-item danger" @click="showLogoutAll = true">退出所有设备</button>
     </div>
@@ -39,12 +39,17 @@ const showLogoutAll = ref(false)
 const logoutAllLoading = ref(false)
 const menuRef = ref(null)
 
-const displayName = computed(() => state.user?.displayName || state.user?.account || 'RAGForge 用户')
-const tenantSlug = computed(() => state.user?.tenantSlug || state.user?.tenant_slug || 'personal')
+const displayName = computed(
+  () => state.me?.displayName || state.user?.displayName || state.user?.account || 'RAGForge 用户'
+)
+const tenantSlug = computed(
+  () => state.me?.tenantId || state.user?.tenantSlug || state.user?.tenant_slug || 'personal'
+)
 const initials = computed(() => displayName.value.slice(0, 1).toUpperCase())
 
-function noop() {
+function goAccount(tab) {
   open.value = false
+  router.push({ path: '/account', query: { tab } })
 }
 
 async function handleLogout() {

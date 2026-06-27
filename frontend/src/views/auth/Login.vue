@@ -1,7 +1,7 @@
 <template>
   <div class="auth-form">
-        <h1 class="form-title">管理员登录</h1>
-        <p class="form-sub">普通求职用户请前往 CareerMate</p>
+        <h1 class="form-title">登录 RAGForge</h1>
+        <p class="form-sub">还没有账号？<a class="link" href="#" @click.prevent="goRegister">立即注册</a></p>
 
         <div v-if="redirectNotice" class="tip tip-warn">
           登录会话已过期，登录后将自动跳回 <code>{{ redirectNotice }}</code>
@@ -144,6 +144,7 @@ import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
 import { loginByPassword, loginByMobile, sendSmsCode } from '../../api/auth'
+import { loadMe } from '../../api/account'
 
 const route = useRoute()
 const router = useRouter()
@@ -293,18 +294,23 @@ function applyLoginError(e) {
   form.challengeId = e.challengeId || form.challengeId
 }
 
-function finishLogin({ accessToken, user }) {
+async function finishLogin({ accessToken, user }) {
   if (!accessToken) {
     applyLoginError({ message: '登录响应缺少 access token' })
     return
   }
   setSession(accessToken, user)
+  await loadMe()
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
   router.replace(redirect.startsWith('/') ? redirect : '/')
 }
 
 function onForgotPassword() {
   router.push('/auth/reset')
+}
+
+function goRegister() {
+  router.push('/auth/register')
 }
 
 onUnmounted(() => {

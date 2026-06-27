@@ -1,5 +1,6 @@
 import { useAuth } from '../composables/useAuth'
 import { refreshAccessToken } from '../api/auth'
+import { loadMe } from '../api/account'
 
 export function installRouteGuards(router) {
   router.beforeEach(async (to) => {
@@ -12,6 +13,7 @@ export function installRouteGuards(router) {
       try {
         const session = await refreshAccessToken()
         setSession(session.accessToken, session.user)
+        await loadMe()
       } catch {
         return { path: '/login', query: { redirect: to.fullPath } }
       }

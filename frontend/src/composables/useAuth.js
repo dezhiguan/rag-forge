@@ -6,6 +6,8 @@ const state = reactive({
   ragRole: null,
   scopes: new Set(),
   resetTicket: null,
+  me: null,
+  capabilities: [],
 })
 
 const DEFAULT_ROLE_SCOPES = {
@@ -34,6 +36,16 @@ const DEFAULT_ROLE_SCOPES = {
     'rag:audit:read',
   ],
   KB_VIEWER: ['rag:dashboard:read', 'rag:kb:read', 'rag:doc:read', 'rag:debug:run', 'rag:audit:read'],
+  // 普通注册用户：可看驾驶舱/知识库/检索/应答，并对自有库读写（真正授权以后端为准）
+  USER: [
+    'rag:dashboard:read',
+    'rag:kb:read',
+    'rag:kb:create',
+    'rag:kb:write',
+    'rag:doc:read',
+    'rag:doc:write',
+    'rag:debug:run',
+  ],
 }
 
 export function useAuth() {
@@ -42,6 +54,8 @@ export function useAuth() {
     isAuthenticated: computed(() => !!state.accessToken),
     ragRole: computed(() => state.ragRole),
     scopes: computed(() => new Set(state.scopes)),
+    capabilities: computed(() => state.capabilities),
+    hasCapability: (cap) => Array.isArray(state.capabilities) && state.capabilities.includes(cap),
     setSession(token, user) {
       state.accessToken = token
       state.user = user
@@ -50,11 +64,21 @@ export function useAuth() {
       state.ragRole = role
       state.scopes = resolveScopes(user, claims, role)
     },
+    setMe(me) {
+      state.me = me || null
+      state.capabilities = me?.capabilities || []
+      if (me?.ragRole) state.ragRole = me.ragRole
+      if (me?.displayName) {
+        state.user = { ...(state.user || {}), displayName: me.displayName }
+      }
+    },
     clearSession() {
       state.accessToken = null
       state.user = null
       state.ragRole = null
       state.scopes = new Set()
+      state.me = null
+      state.capabilities = []
     },
     setResetTicket(ticket) {
       state.resetTicket = ticket
@@ -75,6 +99,8 @@ function resolveScopes(user, claims, role) {
     values.push(...DEFAULT_ROLE_SCOPES.ADMIN)
   } else if (role === 'KB_EDITOR' && values.some((scope) => scope === 'rag:admin:write' || scope === 'rag:admin:read')) {
     values.push(...DEFAULT_ROLE_SCOPES.KB_EDITOR)
+  } else if (role === 'USER') {
+    values.push(...DEFAULT_ROLE_SCOPES.USER)
   } else if (values.length === 0 && DEFAULT_ROLE_SCOPES[role]) {
     values.push(...DEFAULT_ROLE_SCOPES[role])
   }
