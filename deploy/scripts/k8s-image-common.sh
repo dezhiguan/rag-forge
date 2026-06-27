@@ -25,12 +25,22 @@ resolve_ragforge_image_tag() {
 }
 
 ragforge_backend_image() {
+  if [[ -n "${RAGFORGE_BACKEND_IMAGE:-}" ]]; then
+    printf '%s\n' "${RAGFORGE_BACKEND_IMAGE}"
+    return 0
+  fi
+
   local tag
   tag="$(resolve_ragforge_image_tag "${1:-}")"
   printf '%s\n' "${RAGFORGE_IMAGE_REPO}:${tag}"
 }
 
 ragforge_frontend_image() {
+  if [[ -n "${RAGFORGE_FRONTEND_IMAGE:-}" ]]; then
+    printf '%s\n' "${RAGFORGE_FRONTEND_IMAGE}"
+    return 0
+  fi
+
   local tag
   tag="$(resolve_ragforge_image_tag "${1:-}")"
   printf '%s\n' "${RAGFORGE_FRONTEND_IMAGE_REPO}:${tag}"

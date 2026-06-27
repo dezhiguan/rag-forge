@@ -51,6 +51,32 @@ wait_rollout() {
   fi
 }
 
+registry_host() {
+  local image_or_registry="$1"
+  printf '%s\n' "${image_or_registry%%/*}"
+}
+
+ensure_image_pull_secret() {
+  if [[ -z "${ACR_USERNAME:-}" || -z "${ACR_PASSWORD:-}" ]]; then
+    echo "Skip imagePullSecret setup (ACR_USERNAME/ACR_PASSWORD not set)"
+    return 0
+  fi
+
+  local registry="${ACR_DOCKER_SERVER:-}"
+  registry="${registry:-${ACR_REGISTRY:-}}"
+  registry="${registry:-${BACKEND_IMAGE}}"
+  registry="$(registry_host "${registry}")"
+
+  echo "Creating/updating imagePullSecret acr-pull-secret for ${registry}"
+  k3s kubectl -n "${NAMESPACE}" create secret docker-registry acr-pull-secret \
+    --docker-server="${registry}" \
+    --docker-username="${ACR_USERNAME}" \
+    --docker-password="${ACR_PASSWORD}" \
+    --dry-run=client -o yaml | k3s kubectl apply -f -
+  k3s kubectl -n "${NAMESPACE}" patch serviceaccount default \
+    -p '{"imagePullSecrets":[{"name":"acr-pull-secret"}]}' >/dev/null
+}
+
 should_run_disk_cleanup() {
   if [[ "${SKIP_DISK_CLEANUP:-0}" == "1" ]]; then
     echo "Skip disk cleanup (SKIP_DISK_CLEANUP=1)"
@@ -114,7 +140,9 @@ bash "${SCRIPT_DIR}/ensure-k3s-sandbox-image.sh"
 step_end
 
 step_start "[3/6] Build and import images"
-if [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
+if [[ "${USE_REMOTE_IMAGES:-0}" == "1" ]]; then
+  echo "Use remote images; skip local docker build/import"
+elif [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
   bash "${SCRIPT_DIR}/build-ragforge-k8s-image.sh"
   if [[ -d frontend/dist ]]; then
     echo "[frontend] docker build (runtime-prebuilt) -> ${FRONTEND_IMAGE}"
@@ -144,6 +172,7 @@ step_end
 
 step_start "[4/6] Create backend secret from /opt/shared/env"
 bash "${SCRIPT_DIR}/create-ragforge-k8s-secret.sh"
+ensure_image_pull_secret
 step_end
 
 step_start "[5/6] Apply manifests (backend=${BACKEND_IMAGE}, frontend=${FRONTEND_IMAGE})"
