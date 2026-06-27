@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>统一认证与权限优化设计方案 V1 · CareerMate × RAGForge × Auth Gateway</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#ffffff; --ink:#1e293b; --sub:#64748b;
+    --line:#e2e8f0; --brand:#2563eb; --brand-soft:#eff6ff;
+    --ok:#16a34a; --warn:#d97706; --warn-soft:#fffbeb; --danger:#dc2626;
+    --code:#0f172a; --code-ink:#e2e8f0; --mark:#fef9c3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#f1f5f9;color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.7;font-size:15px;}
+  .wrap{max-width:980px;margin:0 auto;padding:0 24px 80px;}
+  header.hero{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;
+    padding:46px 24px;margin-bottom:32px;}
+  header.hero .inner{max-width:980px;margin:0 auto;}
+  header.hero h1{margin:0 0 10px;font-size:28px;letter-spacing:.5px;}
+  header.hero .meta{opacity:.9;font-size:13.5px;}
+  header.hero .tag{display:inline-block;background:rgba(255,255,255,.16);
+    border:1px solid rgba(255,255,255,.3);padding:3px 10px;border-radius:99px;
+    font-size:12px;margin-right:8px;margin-top:10px;}
+  h2{margin:42px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--brand);
+    font-size:21px;color:#0f172a;}
+  h2 .n{display:inline-block;min-width:30px;color:var(--brand);font-weight:800;}
+  h3{margin:26px 0 10px;font-size:16.5px;color:#0f172a;}
+  p{margin:10px 0;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:18px 22px;margin:16px 0;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px;}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top;}
+  th{background:#f8fafc;font-weight:700;color:#334155;}
+  tr:nth-child(even) td{background:#fcfdff;}
+  code{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;
+    padding:1px 6px;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13px;color:#be185d;}
+  pre{background:var(--code);color:var(--code-ink);border-radius:10px;padding:16px 18px;
+    overflow:auto;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13px;line-height:1.55;}
+  pre.ascii{background:#fff;color:#334155;border:1px dashed #cbd5e1;}
+  .callout{border-radius:10px;padding:14px 18px;margin:16px 0;border-left:4px solid;}
+  .c-warn{background:var(--warn-soft);border-color:var(--warn);}
+  .c-ok{background:#f0fdf4;border-color:var(--ok);}
+  .c-info{background:var(--brand-soft);border-color:var(--brand);}
+  .c-warn b,.c-warn strong{color:#b45309;}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700;}
+  .p-yes{background:#dcfce7;color:#166534;}
+  .p-no{background:#fee2e2;color:#991b1b;}
+  .p-cond{background:#fef3c7;color:#92400e;}
+  .p-gw{background:#e0e7ff;color:#3730a3;}
+  .p-local{background:#cffafe;color:#155e75;}
+  mark{background:var(--mark);padding:0 3px;border-radius:3px;}
+  ul,ol{margin:10px 0;padding-left:22px;}
+  li{margin:5px 0;}
+  .toc{columns:2;font-size:14px;}
+  .toc a{color:var(--brand);text-decoration:none;}
+  .toc a:hover{text-decoration:underline;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:760px){.grid2,.toc{grid-template-columns:1fr;columns:1;}}
+  .lead{font-size:15.5px;color:#475569;}
+  .scope-tag{font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;}
+  .s-v1{background:#dbeafe;color:#1e40af;}
+  .s-v2{background:#f3e8ff;color:#6b21a8;}
+  footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--sub);font-size:13px;text-align:center;}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="inner">
+    <h1>统一认证与权限优化设计方案 · V1</h1>
+    <div class="meta">范围：CareerMate（业务） × RAGForge（RAG 平台） × Auth Gateway（统一认证网关）</div>
+    <div class="meta">版本 V1 · 2026-06-27 · 架构负责人 @guandezhi</div>
+    <div>
+      <span class="tag">统一身份</span>
+      <span class="tag">GitHub 式账号模型</span>
+      <span class="tag">行级权限</span>
+      <span class="tag">凭证/资料分层</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<div class="panel">
+  <b>本文目录</b>
+  <div class="toc">
+    <a href="#bg">1. 背景与目标</a><br>
+    <a href="#now">2. 现状盘点</a><br>
+    <a href="#principle">3. 核心设计原则</a><br>
+    <a href="#account">4. 账号体系模型</a><br>
+    <a href="#register">5. 注册与账号关联</a><br>
+    <a href="#cred">6. 凭证 / 资料 存储归属</a><br>
+    <a href="#authz">7. 权限模型与默认权限</a><br>
+    <a href="#rowlevel">8. 查询接口行级权限</a><br>
+    <a href="#frontctrl">9. 前端控权（菜单/按钮）</a><br>
+    <a href="#pages">10. 关键页面设计</a><br>
+    <a href="#changes">11. 改造清单与数据库变更</a><br>
+    <a href="#tasks">12. 任务拆分</a><br>
+    <a href="#scope">13. 范围与非目标</a>
+  </div>
+</div>
+
+<!-- ============ 1 ============ -->
+<h2 id="bg"><span class="n">1</span>背景与目标</h2>
+<p class="lead">CareerMate 与 RAGForge 共用一个统一认证网关（Auth Gateway，事实上的 IdP）。当前两侧认证已基本统一，但<b>账号注册体系、凭证/资料归属、权限粒度</b>三方面口径不一致，需要一次收敛。</p>
+<div class="panel">
+  <b>本次目标</b>
+  <ul>
+    <li>用<b>手机号</b>作为全局关联键，让同一自然人在 CareerMate 和 RAGForge 被识别为<b>同一账号</b>。</li>
+    <li>RAGForge 新增<b>自助注册</b>能力，并补齐用户名/邮箱/密码等凭证设置入口。</li>
+    <li>明确<b>凭证（全局，落网关）</b>与<b>资料（应用本地）</b>的边界，杜绝"本地存密码导致登录不认"的隐患。</li>
+    <li>RAGForge 采用 <b>GitHub 式账号模型</b>（个人 / 组织），本期落地<b>个人用户</b>，组织作为后续演进。</li>
+    <li>权限做到<b>前端隐藏（体验）+ 后端拦截（安全）</b>双层，列表接口做<b>行级过滤</b>。</li>
+  </ul>
+</div>
+
+<!-- ============ 2 ============ -->
+<h2 id="now"><span class="n">2</span>现状盘点</h2>
+<h3>2.1 三方拓扑</h3>
+<pre class="ascii">        ┌─────────────── Auth Gateway (IdP) ───────────────┐
+        │  登录/短信/密码重置 · RS256 签发 · JWKS · refresh 轮换 │
+        │  private_key_jwt 客户端认证 · RFC8693 token-exchange  │
+        │  agent consent/delegation · introspect · 事件 outbox  │
+        └───────▲──────────────────────────────▲────────────┘
+       client_assertion                  client_assertion
+                │                                │
+        ┌───────┴───────┐   token-exchange ┌─────┴────────┐
+        │  CareerMate   │ ────(rag:search)─▶│   RAGForge   │
+        │ 业务 / Agent  │                   │  RAG 平台    │
+        └───────────────┘                   └──────────────┘
+            ▲  HMAC event webhook（session.revoked / password.changed）▲</pre>
+
+<h3>2.2 关键现状（经代码核对）</h3>
+<table>
+  <tr><th>维度</th><th>现状</th><th>结论</th></tr>
+  <tr><td>统一认证</td><td>两侧均信任网关 issuer + JWKS，RS256 校验；不再自签 JWT</td><td><span class="pill p-yes">已统一</span></td></tr>
+  <tr><td><code>auth_users</code> 字段</td><td>已含 <code>phone_hash / email_hash / username / password_hash / platform_role / status</code>，<code>password_hash</code> 可空</td><td><span class="pill p-yes">底子够</span></td></tr>
+  <tr><td>唯一约束</td><td><code>phone_hash / email_hash</code> 仅普通索引，<b>非 UNIQUE</b></td><td><span class="pill p-no">需补</span></td></tr>
+  <tr><td>网关注册接口</td><td><b>无显式 register</b>；手机号注册经 <code>/auth/login/mobile</code> 首次自动建号</td><td><span class="pill p-no">需补注册/补全</span></td></tr>
+  <tr><td>RAG 认证代理</td><td>仅 login / login-mobile / sms / reset / refresh / logout / userinfo，<b>无 register、无凭证设置</b></td><td><span class="pill p-no">需补</span></td></tr>
+  <tr><td>RAG 本地用户资料</td><td><b>无</b> profile 表（仅有文档清洗用的 clean_profiles，无关）</td><td><span class="pill p-no">需新增</span></td></tr>
+  <tr><td>KB 资源模型</td><td><code>knowledge_bases</code> 已有 <code>owner_user_id / visibility / kb_type</code>；<code>KbAccessGuard</code> 已有 owner/ACL/SYSTEM 排除</td><td><span class="pill p-yes">可复用</span></td></tr>
+  <tr><td>RAG 权限粒度</td><td>已有 <code>@PreAuthorize</code> 角色 + <code>kb_acl</code> 资源级</td><td><span class="pill p-yes">可复用</span></td></tr>
+</table>
+
+<!-- ============ 3 ============ -->
+<h2 id="principle"><span class="n">3</span>核心设计原则</h2>
+
+<h3>3.1 三层分离：身份 / 准入 / 资料</h3>
+<table>
+  <tr><th>概念</th><th>归谁管</th><th>含义</th></tr>
+  <tr><td><b>身份 Identity</b></td><td>Auth Gateway（一张 <code>auth_users</code>）</td><td>"你是谁" —— 手机号/邮箱/用户名唯一</td></tr>
+  <tr><td><b>准入 Membership</b></td><td>网关 <code>user_app_membership</code></td><td>"你能进哪个 App、以什么角色"，一行一个 App</td></tr>
+  <tr><td><b>资料 Profile</b></td><td>各 App 本地库</td><td>显示名 / 头像 / 简介，App 间互相独立</td></tr>
+</table>
+
+<h3>3.2 凭证 vs 资料（<mark>本方案最关键的一条线</mark>）</h3>
+<div class="callout c-warn">
+  <b>⚠ 凭证不能"本地保存"。</b> "在 RAG 设置密码/邮箱/用户名" 指的是<b>入口/UI 在 RAG</b>，但后端<b>必须调网关写 <code>auth_users</code></b>，本地一个字都不存。否则：本地存的密码 → 登录走网关校验 <code>password_hash</code> → 网关不认 → <b>登不进</b>。
+</div>
+<table>
+  <tr><th>类型</th><th>例子</th><th>存哪</th><th>原因</th></tr>
+  <tr><td><b>凭证 Credential</b></td><td>密码、邮箱、登录用户名、手机号</td><td><span class="pill p-gw">网关 auth_users</span></td><td>登录由网关校验；需全局唯一；两 App 共用</td></tr>
+  <tr><td><b>资料 Profile</b></td><td>显示名、头像、简介</td><td><span class="pill p-local">App 本地</span></td><td>各 App 可不同，网关不关心</td></tr>
+</table>
+<p class="callout c-info">注意区分两个"用户名"：<b>登录用户名 <code>username</code></b>（全局唯一，网关）与<b>显示名 <code>displayName</code></b>（本地，随便改）。</p>
+
+<h3>3.3 安全边界原则</h3>
+<ul>
+  <li><b>前端隐藏 = 体验，后端拦截 = 安全。</b> 每个接口独立鉴权，绕过前端也必须 403。</li>
+  <li><b>列表接口做行级过滤</b>，不是"查全表再前端隐藏"。</li>
+  <li><b>详情/检索/文档接口必须校验资源权限</b>，防止猜 id 越权（IDOR）。</li>
+  <li><b>deny by default</b>：默认拒绝，显式授权才放行。</li>
+</ul>
+
+<!-- ============ 4 ============ -->
+<h2 id="account"><span class="n">4</span>账号体系模型（GitHub 式）</h2>
+<p>RAGForge 定位类似 GitHub：账号有<b>个人</b>与<b>组织</b>两类，二者都是"命名空间（tenant）"，知识库挂在命名空间下。</p>
+<table>
+  <tr><th>GitHub</th><th>本方案</th><th>说明</th><th>本期范围</th></tr>
+  <tr><td>个人账号</td><td>user + 个人命名空间</td><td>注册即拥有自己的命名空间，owner=本人</td><td><span class="scope-tag s-v1">V1</span></td></tr>
+  <tr><td>组织</td><td>org 命名空间 + <code>tenant_members</code></td><td>创建者=OWNER，可邀请成员、建组织库</td><td><span class="scope-tag s-v2">V2 后续</span></td></tr>
+  <tr><td>repo</td><td>knowledge_base</td><td><code>visibility</code> = private / internal / public</td><td><span class="scope-tag s-v1">V1（private/public）</span></td></tr>
+</table>
+<div class="callout c-info"><b>本期（V1）只落地"个人用户 + public 公共库只读 + 自有库全权"。</b> 组织、internal 可见性、团队权限作为 V2 演进，但表结构预留兼容。</div>
+
+<!-- ============ 5 ============ -->
+<h2 id="register"><span class="n">5</span>注册与账号关联</h2>
+
+<h3>5.1 各端注册方式</h3>
+<table>
+  <tr><th>端</th><th>注册方式</th><th>必要校验</th></tr>
+  <tr><td>CareerMate 移动端</td><td>手机号验证码，注册登录一体（<b>现状不动</b>）</td><td>短信验证</td></tr>
+  <tr><td>RAGForge（新增）</td><td>邮箱 / 用户名注册</td><td><b>必须短信验证手机号</b></td></tr>
+</table>
+
+<h3>5.2 手机号为关联键的合并逻辑（核心）</h3>
+<pre class="ascii">RAG 注册：填用户名/邮箱/密码 + 短信验证手机号
+                       │
+              网关按 phone_hash 查 auth_users
+                       │
+         ┌─────────────┴──────────────┐
+   手机号不存在                  手机号已存在（CareerMate 注册过）
+         │                            │
+   新建 auth_users          ★ 走"补全 enrich"而非新建：
+   + RAG membership            在同一行 auth_users 上补 username/email/password
+         │                    + 增加 RAG membership
+         │                    返回前端："该手机号已注册，已为你关联并补全"
+         └─────────────┬──────────────┘
+                 同一个 auth_users.id = 同一用户</pre>
+<div class="callout c-ok"><b>这样就实现了你要的效果：</b>只在 CareerMate 注册过的手机号用户，到 RAG 注册时被识别为同一人，在 RAG 补齐用户名/密码/邮箱，而不是产生重复账号。</div>
+
+<h3>5.3 多标识登录</h3>
+<p>登录支持 <b>用户名 / 手机号 / 邮箱</b> 任一作为 identifier，网关先归一化解析到同一 <code>auth_users.id</code> 再校验密码或验证码。移动端额外支持手机号验证码登录。</p>
+
+<!-- ============ 6 ============ -->
+<h2 id="cred"><span class="n">6</span>凭证 / 资料 存储归属</h2>
+<table>
+  <tr><th>字段</th><th>落库位置</th><th>RAG 后端职责</th><th>CareerMate</th></tr>
+  <tr><td>手机号 <code>phone_hash</code></td><td><span class="pill p-gw">网关</span></td><td>代理换绑（短信验证）</td><td>注册即写</td></tr>
+  <tr><td>邮箱 <code>email_hash</code></td><td><span class="pill p-gw">网关</span></td><td>代理绑定（验证）</td><td>本期不做绑定</td></tr>
+  <tr><td>密码 <code>password_hash</code></td><td><span class="pill p-gw">网关</span></td><td>代理设置/修改</td><td>本期不做</td></tr>
+  <tr><td>登录用户名 <code>username</code></td><td><span class="pill p-gw">网关</span></td><td>代理设置（唯一校验）</td><td>本期不做</td></tr>
+  <tr><td>显示名 displayName</td><td><span class="pill p-local">RAG 本地</span></td><td>本地读写</td><td>各自本地</td></tr>
+  <tr><td>头像 / 简介</td><td><span class="pill p-local">RAG 本地</span></td><td>本地读写</td><td>各自本地</td></tr>
+</table>
+<p>CareerMate 维持现状（手机号注册，暂不做凭证绑定）；所有"补全凭证"动作集中在 RAGForge 的安全中心，<b>统一代理到网关</b>，改完两 App 全局生效。</p>
+
+<!-- ============ 7 ============ -->
+<h2 id="authz"><span class="n">7</span>权限模型与默认权限</h2>
+
+<h3>7.1 三层叠加（deny by default）</h3>
+<ol>
+  <li><b>平台层</b>：仅平台 staff（你）为超级 ADMIN，管运维 / 系统 KB / 成本中心。注册用户在平台层<b>零特权</b>。</li>
+  <li><b>命名空间层</b>（V2）：<code>tenant_members.org_role</code> = OWNER / MEMBER。</li>
+  <li><b>KB 资源层</b>：<code>visibility</code> + <code>kb_acl</code> 协作者授权（read / write / admin）。</li>
+</ol>
+
+<h3>7.2 一次 KB 访问的判定顺序</h3>
+<pre class="ascii">是平台 ADMIN？           → 运维通道（默认不读业务私库，读则留审计）
+是 KB owner？            → admin（全权）
+kb_acl 有显式授权？      → 按 read / write / admin
+（V2）org MEMBER 且 internal？ → read
+visibility = public？    → read（只读）
+否则                     → deny + 记 kb_access_denied</pre>
+
+<h3>7.3 本期普通个人用户的默认权限</h3>
+<table>
+  <tr><th>能力</th><th>普通个人用户</th><th>平台 ADMIN</th></tr>
+  <tr><td>读平台 public 知识库</td><td><span class="pill p-yes">可（只读）</span></td><td>可</td></tr>
+  <tr><td>新建自己的知识库</td><td><span class="pill p-yes">可</span></td><td>可</td></tr>
+  <tr><td>自有库读写/删除（admin）</td><td><span class="pill p-yes">可</span></td><td>可</td></tr>
+  <tr><td>检索 / 应答（自有 + public）</td><td><span class="pill p-yes">可</span></td><td>可</td></tr>
+  <tr><td>他人私有库</td><td><span class="pill p-no">不可见</span></td><td>非 SYSTEM 可见</td></tr>
+  <tr><td>API Key 管理 / 成本中心 / 维护</td><td><span class="pill p-no">禁止</span></td><td>可</td></tr>
+  <tr><td><code>kb_type=SYSTEM</code> 系统库</td><td><span class="pill p-no">禁止</span></td><td>禁止（已挡）</td></tr>
+  <tr><td>性能诊断 / 质量看板 / 全局指标</td><td><span class="pill p-no">禁止</span></td><td>可</td></tr>
+</table>
+
+<!-- ============ 8 ============ -->
+<h2 id="rowlevel"><span class="n">8</span>查询接口行级权限</h2>
+<p><b>同一个接口、不同人返回不同的行</b>，过滤在 SQL/服务层完成，不在前端。</p>
+
+<h3>8.1 <code>GET /api/v1/knowledge-bases</code> 两种 WHERE</h3>
+<div class="grid2">
+  <div>
+    <b>普通个人用户</b>
+<pre>WHERE kb_type != 'SYSTEM'
+  AND (
+       owner_user_id = :me
+    OR visibility = 'public'
+    OR id IN (SELECT kb_id FROM kb_acl
+              WHERE principal_type='user'
+                AND principal_id=:me)
+  )</pre>
+  </div>
+  <div>
+    <b>平台 ADMIN</b>
+<pre>WHERE kb_type != 'SYSTEM'
+  -- 其余全看</pre>
+  </div>
+</div>
+<p>复用 <code>KbAccessGuard.allReadableKbIds() / filterReadable()</code>：先算 readableKbIds，再 <code>WHERE id IN (:ids)</code>。</p>
+
+<h3>8.2 每行附带"我的权限"</h3>
+<pre>[
+  {"id":12,"name":"我的简历库","visibility":"private","myPermission":"admin"},
+  {"id":3, "name":"平台公共法律库","visibility":"public","myPermission":"read"}
+]</pre>
+<p>前端据 <code>myPermission</code> 决定"编辑/删除"按钮是否 disabled。</p>
+
+<h3>8.3 三个不能省的点</h3>
+<ul>
+  <li><b>详情接口必校验</b>：<code>GET /kb/{id}</code> 必须 <code>canRead</code>，防猜 id 越权。</li>
+  <li><b>count / 分页</b>基于过滤后集合，避免泄露"有多少看不到的库"。</li>
+  <li><b>列表 / 详情 / 检索 / 文档</b>四类入口共用同一个 <code>KbAccessGuard</code>，保持一致。</li>
+</ul>
+
+<!-- ============ 9 ============ -->
+<h2 id="frontctrl"><span class="n">9</span>前端控权：菜单与按钮</h2>
+<table>
+  <tr><th>情况</th><th>做法</th><th>理由</th></tr>
+  <tr><td>角色根本无权的功能（API 网关、成本中心…）</td><td><b>直接隐藏</b>菜单</td><td>避免困惑与试探，对齐 GitHub Settings/Billing 的可见性</td></tr>
+  <tr><td>有权但当前状态不可操作（对只读库的编辑按钮）</td><td><b>展示但 disabled</b> + tooltip</td><td>让用户知道功能存在及如何获得权限</td></tr>
+</table>
+
+<h3>9.1 侧边栏菜单 × 普通用户</h3>
+<table>
+  <tr><th>菜单</th><th>普通用户</th><th>处理</th></tr>
+  <tr><td>🏠 驾驶舱</td><td><span class="pill p-yes">展示</span></td><td>仅显示自己范围数据（个人版）</td></tr>
+  <tr><td>📁 知识库管理</td><td><span class="pill p-yes">展示</span></td><td>自有库（全权）+ public（只读）</td></tr>
+  <tr><td>🔍 检索调试台</td><td><span class="pill p-yes">展示</span></td><td>仅有权库可选</td></tr>
+  <tr><td>💬 应答调试台</td><td><span class="pill p-yes">展示</span></td><td>建议加 LLM 调用配额</td></tr>
+  <tr><td>⏱ 性能诊断</td><td><span class="pill p-no">隐藏</span></td><td>平台运维</td></tr>
+  <tr><td>🧪 评测实验室</td><td><span class="pill p-cond">本期隐藏</span></td><td>后续可对自有库开放</td></tr>
+  <tr><td>📈 质量看板</td><td><span class="pill p-no">隐藏</span></td><td>平台级 LLM-judge</td></tr>
+  <tr><td>🧠 模型 &amp; 成本</td><td><span class="pill p-no">隐藏</span></td><td>仅平台 ADMIN</td></tr>
+  <tr><td>🔌 API 网关</td><td><span class="pill p-no">隐藏</span></td><td>仅 ADMIN；个人 Key 另设轻量入口</td></tr>
+</table>
+
+<h3>9.2 普通用户实际侧边栏</h3>
+<pre class="ascii">🏠 驾驶舱
+📁 知识库管理
+🔍 检索调试台
+💬 应答调试台
+─────────────
+（运维/管理项不渲染）</pre>
+
+<h3>9.3 实现方式</h3>
+<ul>
+  <li><code>/me</code> 返回 <code>role</code> + 能力清单（如 <code>["kb:read","kb:own:write","search:run","answer:run"]</code>）。</li>
+  <li>前端菜单每项挂 <code>requires</code>，<code>/me</code> 没有就<b>不渲染</b>（非 disabled）。</li>
+  <li>后端每个 controller 方法 <code>@PreAuthorize(...)</code> + 资源走 <code>KbAccessGuard</code> —— <b>真边界</b>。</li>
+</ul>
+
+<!-- ============ 10 ============ -->
+<h2 id="pages"><span class="n">10</span>关键页面设计</h2>
+
+<h3>10.1 <code>/me</code> 聚合接口</h3>
+<pre>{
+  // 身份层（网关 userinfo）
+  "userId":"...", "username":"wangxx", "phone":"138****8888", "email":"a@b.com",
+  // 资料层（RAG 本地 profile）—— 显示名/头像在这
+  "displayName":"求职小王", "avatar":"...",
+  // 准入/角色
+  "platformAdmin": false,
+  "role":"USER",
+  "capabilities":["kb:read","kb:own:write","search:run","answer:run"]
+  // V2：namespaces[] / currentTenant
+}</pre>
+
+<h3>10.2 用户菜单 → 两个页面</h3>
+<pre class="ascii">个人设置   → 个人资料（RAG 本地表，不调网关）
+安全中心   → 账号凭证（全部调网关 auth_users）
+退出登录   → 网关 /auth/logout
+退出所有设备 → 网关 /auth/logout-all（校验密码）</pre>
+
+<h3>10.3 「个人设置」—— RAG 本地资料</h3>
+<pre class="ascii">┌── 个人设置 ──────────────────────────────┐
+│  头像     [ 🖼 上传 ]                      │
+│  显示名   [ 求职小王            ]  ← 可改  │
+│  用户名   @wangxx     只读·去安全中心改   │
+│  个人简介 [                    ]          │
+│                          [ 保存 ]         │
+└──────────────────────────────────────────┘</pre>
+<p>接口：<code>GET/PUT /api/v1/profile</code>（RAG 本地，<b>不碰网关</b>）。</p>
+
+<h3>10.4 「安全中心」—— 凭证，全部代理到网关</h3>
+<pre class="ascii">┌── 安全中心 ──────────────────────────────┐
+│  手机号    138****8888           [ 更换 ] │ ← 短信验证
+│  邮箱      未绑定                [ 绑定 ] │ ← 邮件/短信验证
+│  登录密码  已设置 / 未设置       [ 设置 ] │
+│  登录用户名 wangxx              [ 修改 ] │ ← 全局唯一校验
+│  登录设备 / 会话            [ 管理 ]      │
+└──────────────────────────────────────────┘</pre>
+<table>
+  <tr><th>项</th><th>数据在</th><th>RAG 后端</th></tr>
+  <tr><td>手机号</td><td><code>auth_users.phone_hash</code></td><td>代理换绑（短信验证）</td></tr>
+  <tr><td>邮箱</td><td><code>auth_users.email_hash</code></td><td>代理绑定（验证）</td></tr>
+  <tr><td>密码</td><td><code>auth_users.password_hash</code></td><td>代理设置/修改</td></tr>
+  <tr><td>登录用户名</td><td><code>auth_users.username</code></td><td>代理设置（唯一校验）</td></tr>
+</table>
+<div class="callout c-warn"><b>显示名兜底：</b> 头像区当前显示 <code>user:2 / tn_admin</code> 是直接渲染了 sub/tenant。应改为 <code>/me.displayName</code>；为空时回退 <code>用户_8888</code> 或脱敏手机号，并引导去「个人设置」补显示名。</div>
+
+<!-- ============ 11 ============ -->
+<h2 id="changes"><span class="n">11</span>改造清单与数据库变更</h2>
+
+<h3>11.1 Auth Gateway（改动最大）</h3>
+<ul>
+  <li>新增<b>注册 / 账号补全</b>接口：按 <code>phone_hash</code> 判断"新建 vs 补全(enrich)"。</li>
+  <li>新增<b>凭证补全</b>接口：设密码 / 绑邮箱 / 设用户名，全部带唯一校验 + 验证。</li>
+  <li>迁移：<code>phone_hash / email_hash / username</code> 加 <b>UNIQUE</b> 约束。</li>
+  <li>新增 <code>user_app_membership(user_id, app, role, status, created_at)</code>，一行一个 App。</li>
+  <li>确认 <code>/auth/login/password</code> 的 <code>account</code> 能解析 用户名/邮箱/手机号。</li>
+  <li>敏感变更（改密码/换手机）触发 <code>password.changed</code> 事件，旧 token 失效（已有 webhook）。</li>
+</ul>
+
+<h3>11.2 RAGForge</h3>
+<ul>
+  <li><code>AuthProxyController</code> 新增：<code>/register</code>、注册场景 <code>/sms/send</code>、<code>/credential/set-password</code>、<code>/credential/bind-email</code>、<code>/credential/set-username</code> —— <b>全部代理网关</b>。</li>
+  <li>新增 RAG <b>本地 profile 表</b>：<code>user_profile(auth_user_id, display_name, avatar, bio, created_at)</code>。</li>
+  <li>新增 <code>GET/PUT /api/v1/profile</code> 与聚合 <code>GET /api/v1/me</code>。</li>
+  <li>默认权限落地：新注册 → membership(rag, USER)；<code>KbAccessGuard</code> 补 <b>public 只读</b> 放行；种一批 public KB。</li>
+  <li>列表/详情/检索接口统一行级过滤；列表行附 <code>myPermission</code>。</li>
+  <li>前端：注册页、菜单按 <code>capabilities</code> 显隐、个人设置页、安全中心页、显示名兜底。</li>
+</ul>
+
+<h3>11.3 CareerMate（按现状不动）</h3>
+<ul>
+  <li>仅确认：注册写入的 <code>auth_users</code> 与 RAG 同网关、同表、同 issuer。</li>
+  <li>依赖网关"手机号已存在则补全"逻辑与 RAG 打通，无需改动 CareerMate 代码。</li>
+</ul>
+
+<h3>11.4 数据库变更汇总</h3>
+<table>
+  <tr><th>库</th><th>变更</th><th>类型</th></tr>
+  <tr><td>网关</td><td><code>auth_users</code> 加 UNIQUE(phone_hash / email_hash / username)</td><td>迁移</td></tr>
+  <tr><td>网关</td><td>新增 <code>user_app_membership</code></td><td>建表</td></tr>
+  <tr><td>RAG</td><td>新增 <code>user_profile</code></td><td>建表</td></tr>
+  <tr><td>RAG</td><td>种子 public 知识库（<code>visibility='public'</code>）</td><td>数据</td></tr>
+</table>
+
+<!-- ============ 12 ============ -->
+<h2 id="tasks"><span class="n">12</span>任务拆分（执行顺序）</h2>
+<ol>
+  <li><b>GW-1</b> 网关：<code>auth_users</code> 唯一约束迁移 + <code>user_app_membership</code> 建表。</li>
+  <li><b>GW-2</b> 网关：注册 / 补全(enrich) 接口（手机号为键的新建 vs 补全）。</li>
+  <li><b>GW-3</b> 网关：凭证补全接口（密码/邮箱/用户名，唯一校验 + 验证）+ 多标识登录确认。</li>
+  <li><b>RAG-1</b> RAG：<code>user_profile</code> 建表 + <code>/api/v1/profile</code> + <code>/api/v1/me</code> 聚合。</li>
+  <li><b>RAG-2</b> RAG：<code>AuthProxyController</code> 注册与凭证代理接口。</li>
+  <li><b>RAG-3</b> RAG：默认权限（membership=USER）+ <code>KbAccessGuard</code> public 只读 + 种子 public KB。</li>
+  <li><b>RAG-4</b> RAG：列表/详情/检索行级过滤 + <code>myPermission</code> 字段。</li>
+  <li><b>RAG-5</b> 前端：注册页 + 菜单显隐（capabilities）+ 个人设置 + 安全中心 + 显示名兜底。</li>
+  <li><b>QA</b> 验收：Playwright 覆盖"CareerMate 手机号用户到 RAG 补全"、"普通用户列表只见自有+public"、"越权 403"、"管理项不渲染"。</li>
+</ol>
+<p class="callout c-info">每个任务交付前需含：禁止项、字段设计、验收标准（Playwright），与既定协作规范一致。</p>
+
+<!-- ============ 13 ============ -->
+<h2 id="scope"><span class="n">13</span>范围与非目标</h2>
+<div class="grid2">
+  <div class="panel">
+    <b>V1 范围</b>
+    <ul>
+      <li>RAG 自助注册 + 手机号关联补全</li>
+      <li>凭证/资料分层落地</li>
+      <li>个人用户默认权限（public 只读 + 自有库全权）</li>
+      <li>行级权限 + 前端菜单/按钮控权</li>
+      <li>个人设置 / 安全中心 / <code>/me</code></li>
+    </ul>
+  </div>
+  <div class="panel">
+    <b>非目标（后续 V2）</b>
+    <ul>
+      <li>组织（org）账号与 <code>tenant_members</code></li>
+      <li><code>internal</code> 可见性与团队权限</li>
+      <li>CareerMate 侧凭证绑定入口</li>
+      <li>Web 托管登录页（OIDC Authorization Code）</li>
+      <li>Agent 委托链（consent/delegation）审计闭环</li>
+    </ul>
+  </div>
+</div>
+
+<h3>13.1 既有能力（本期不改，仅纳入回归）</h3>
+<p>下列已在现有代码中实现，本方案<b>不改其机制</b>，但其安全边界须随本次改造一并回归（详见测试方案 Part C/D/E）：</p>
+<ul>
+  <li><b>MCP / SSE 鉴权</b>：<code>/mcp/**</code>、<code>/sse</code> 经 Bearer JWT 或 <code>X-API-Key</code>，<code>ApiKeyInterceptor</code> 以 <code>allowed_kb_ids</code> 限定服务账号可达 KB。</li>
+  <li><b>CareerMate → RAGForge 跨服务调用</b>：经网关 <code>oauth/token-exchange</code> 换 <code>ragforge-api</code>/<code>rag:search</code> 短 TTL token，不复用自身受众 token。</li>
+  <li><b>Agent 工具权限/风险</b>：<code>AgentToolPermission</code> / <code>AgentToolRiskLevel</code>，高风险写入经 pending-action / 工具卡片承接。</li>
+</ul>
+
+<h3>13.2 待决策项</h3>
+<div class="callout c-warn">
+  <b>会话策略：多会话并存 vs 单点互斥。</b> 当前为<b>多会话并存</b>（A 登录后 B 再登录不挤掉 A，各自独立 session/refresh），仅 <code>logout</code> / <code>logout-all</code> 主动撤销。若需"新登录踢旧登录"，需在登录时按 <code>user_id</code> 撤销其它 active session，或用 <code>session_version</code> 自增使旧 token 失效。
+  对应测试用例 <b>TC-LOG-10</b>：当前断言"多会话并存"，若改单点互斥需反转断言。
+  <br><b>其它待决策</b>：① 邮箱绑定走邮件验证还是短信验证；② 应答/检索的普通用户配额阈值；③ 个人 API Key 轻量入口是否纳入 V1。
+</div>
+
+<footer>
+  统一认证与权限优化设计方案 V1 · CareerMate × RAGForge × Auth Gateway<br>
+  架构负责人 @guandezhi · 2026-06-27 · 执行依据文档
+</footer>
+
+</div>
+</body>
+</html>
