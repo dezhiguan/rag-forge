@@ -9,12 +9,15 @@ import com.ragforge.mapper.EvalExperimentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.mapper.RetrievalLogMapper;
 import com.ragforge.model.entity.Document;
+import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.EvalDataset;
 import com.ragforge.model.entity.EvalExperiment;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.entity.RetrievalLog;
 import com.ragforge.model.vo.DashboardActivityVO;
 import com.ragforge.model.vo.DashboardMetricsVO;
+import com.ragforge.security.RagAuthContext;
+import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.MetricsService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,6 +28,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -41,28 +45,101 @@ public class MetricsServiceImpl implements MetricsService {
   private final RetrievalLogMapper retrievalLogMapper;
   private final EvalExperimentMapper evalExperimentMapper;
   private final EvalDatasetMapper evalDatasetMapper;
-  private volatile DashboardCache dashboardCache;
+  // 缓存按主体分键：管理员看全平台，普通用户看自己的数据，二者不可串用同一份缓存。
+  private final Map<String, DashboardCache> dashboardCacheByPrincipal = new ConcurrentHashMap<>();
 
   @Override
   public DashboardMetricsVO dashboard() {
-    DashboardCache cached = dashboardCache;
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    boolean admin = ctx != null && ctx.isAdmin();
+    Long uid = ctx == null ? null : ctx.userId();
+    String key = admin ? "ADMIN" : ("U:" + uid);
+
     long now = System.currentTimeMillis();
+    DashboardCache cached = dashboardCacheByPrincipal.get(key);
     if (cached != null && now < cached.expiresAtMs()) {
       return cached.value();
     }
     synchronized (this) {
-      cached = dashboardCache;
+      cached = dashboardCacheByPrincipal.get(key);
       now = System.currentTimeMillis();
       if (cached != null && now < cached.expiresAtMs()) {
         return cached.value();
       }
-      DashboardMetricsVO vo = loadDashboard();
-      dashboardCache = new DashboardCache(vo, now + DASHBOARD_CACHE_TTL_MS);
+      DashboardMetricsVO vo = admin ? loadAdminDashboard() : loadUserDashboard(uid);
+      dashboardCacheByPrincipal.put(key, new DashboardCache(vo, now + DASHBOARD_CACHE_TTL_MS));
       return vo;
     }
   }
 
-  private DashboardMetricsVO loadDashboard() {
+  /** 普通用户：仅统计自己拥有的知识库；平台级检索/命中率指标不归属个人，不展示。 */
+  private DashboardMetricsVO loadUserDashboard(Long uid) {
+    DashboardMetricsVO vo = new DashboardMetricsVO();
+    List<Long> ownedIds = uid == null ? List.of() : ownedKbIds(uid);
+    vo.setKbCount(ownedIds.size());
+    if (ownedIds.isEmpty()) {
+      vo.setDocumentCount(0);
+      vo.setChunkCount(0);
+    } else {
+      vo.setDocumentCount(
+          documentMapper.selectCount(
+              new LambdaQueryWrapper<Document>().in(Document::getKbId, ownedIds)));
+      vo.setChunkCount(
+          documentChunkMapper.selectCount(
+              new LambdaQueryWrapper<DocumentChunk>().in(DocumentChunk::getKbId, ownedIds)));
+    }
+    // 检索请求/平均延迟/命中率均为平台级、无法归属到当前用户，普通用户不展示（归零）。
+    vo.setTodayApiCalls(0);
+    vo.setAvgLatencyMs(0);
+    vo.setHitRate(0.0);
+    vo.setRecentActivities(ownedIds.isEmpty() ? List.of() : ownedDocActivities(ownedIds, 10));
+    return vo;
+  }
+
+  private List<Long> ownedKbIds(Long uid) {
+    return knowledgeBaseMapper
+        .selectList(
+            new LambdaQueryWrapper<KnowledgeBase>()
+                .eq(KnowledgeBase::getOwnerUserId, uid)
+                .ne(KnowledgeBase::getStatus, KB_STATUS_DELETED))
+        .stream()
+        .map(KnowledgeBase::getId)
+        .toList();
+  }
+
+  /** 普通用户的"最近操作"只取其自有库内文档的处理动态，不含他人操作、评测与检索日志。 */
+  private List<DashboardActivityVO> ownedDocActivities(List<Long> ownedIds, int limit) {
+    DateTimeFormatter tf = DateTimeFormatter.ofPattern("HH:mm");
+    List<Document> recentDocs =
+        documentMapper.selectList(
+            new LambdaQueryWrapper<Document>()
+                .in(Document::getKbId, ownedIds)
+                .orderByDesc(Document::getCreatedAt)
+                .last("LIMIT " + limit));
+    Map<Long, String> kbNameMap = loadKbNames(recentDocs.stream().map(Document::getKbId).toList());
+    List<DashboardActivityVO> out = new ArrayList<>();
+    for (Document doc : recentDocs) {
+      if (!"completed".equals(doc.getParseStatus()) && !"failed".equals(doc.getParseStatus())) {
+        continue;
+      }
+      DashboardActivityVO vo = new DashboardActivityVO();
+      vo.setTime(doc.getCreatedAt() != null ? doc.getCreatedAt().format(tf) : "--:--");
+      if ("completed".equals(doc.getParseStatus())) {
+        vo.setType("index");
+        String kbName = kbNameMap.getOrDefault(doc.getKbId(), String.valueOf(doc.getKbId()));
+        vo.setMessage(String.format("知识库「%s」文档「%s」处理完成", kbName, doc.getFilename()));
+      } else {
+        vo.setType("error");
+        vo.setMessage(String.format("文档「%s」解析失败", doc.getFilename()));
+        vo.setDocId(doc.getId());
+        vo.setRetryable(true);
+      }
+      out.add(vo);
+    }
+    return out;
+  }
+
+  private DashboardMetricsVO loadAdminDashboard() {
     DashboardMetricsVO vo = new DashboardMetricsVO();
 
     long kbCount =
