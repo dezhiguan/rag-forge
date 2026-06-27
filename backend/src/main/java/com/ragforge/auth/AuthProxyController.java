@@ -216,11 +216,18 @@ public class AuthProxyController {
 
   private Map<String, Object> userProfile(Map<String, Object> claims) {
     Object userId = claims.get("user_id");
+    Long authUserId = userId instanceof Number num ? num.longValue() : null;
     String account = userId == null ? "RAGForge 用户" : "user:" + userId;
+    // 显示名兜底：显示名 > 用户名 > 脱敏手机号 > 用户_{id}，避免把内部标识 user:N 当显示名暴露。
+    String displayName =
+        authUserId == null
+            ? account
+            : userProfileService.resolveDisplayName(
+                userProfileService.getOrCreate(authUserId), authUserId);
     Map<String, Object> user = new LinkedHashMap<>();
     user.put("id", userId);
     user.put("account", account);
-    user.put("displayName", account);
+    user.put("displayName", displayName);
     user.put("tenantId", claims.get("tenant_id"));
     user.put("tenantSlug", claims.get("tenant_id"));
     user.put("platformRole", claims.get("platform_role"));
