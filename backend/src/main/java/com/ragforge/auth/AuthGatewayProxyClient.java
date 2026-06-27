@@ -103,6 +103,48 @@ public class AuthGatewayProxyClient {
         new HttpEntity<>(headers), Object.class).getBody();
   }
 
+  /** 注册/补全（公开）。app 固定为 ragforge。返回 {userId, linked, message}。 */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> register(String phone, String smsCode, String username, String email, String password) {
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("phone", phone);
+    body.put("smsCode", smsCode);
+    body.put("username", username);
+    body.put("email", email);
+    body.put("password", password);
+    body.put("app", "ragforge");
+    return postJson("/auth/register", body, Map.class);
+  }
+
+  public void setPassword(String authorization, String oldPassword, String newPassword) {
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("oldPassword", oldPassword);
+    body.put("newPassword", newPassword);
+    bearerJson("/auth/credential/set-password", authorization, body);
+  }
+
+  public void bindEmail(String authorization, String email, String password) {
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("email", email);
+    body.put("password", password);
+    bearerJson("/auth/credential/bind-email", authorization, body);
+  }
+
+  public void setUsername(String authorization, String username) {
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("username", username);
+    bearerJson("/auth/credential/set-username", authorization, body);
+  }
+
+  private void bearerJson(String path, String authorization, Object body) {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    if (authorization != null && !authorization.isBlank()) {
+      headers.set(HttpHeaders.AUTHORIZATION, authorization);
+    }
+    exchange(path, new HttpEntity<>(body, headers), Map.class);
+  }
+
   private MultiValueMap<String, String> clientForm() {
     MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
     form.add("client_id", properties.getClientId());

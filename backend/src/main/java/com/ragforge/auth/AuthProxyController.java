@@ -37,12 +37,69 @@ public class AuthProxyController {
   private final AuthGatewayProxyClient client;
   private final AuthProxyProperties properties;
   private final ObjectMapper objectMapper;
+  private final UserProfileService userProfileService;
 
   public AuthProxyController(
-      AuthGatewayProxyClient client, AuthProxyProperties properties, ObjectMapper objectMapper) {
+      AuthGatewayProxyClient client,
+      AuthProxyProperties properties,
+      ObjectMapper objectMapper,
+      UserProfileService userProfileService) {
     this.client = client;
     this.properties = properties;
     this.objectMapper = objectMapper;
+    this.userProfileService = userProfileService;
+  }
+
+  @PostMapping("/register")
+  public Result<Map<String, Object>> register(@RequestBody RegisterRequest request) {
+    Map<String, Object> result =
+        client.register(request.phone(), request.smsCode(), request.username(), request.email(), request.password());
+    Object userId = result.get("userId");
+    if (userId instanceof Number num) {
+      userProfileService.syncIdentity(num.longValue(), request.username(), request.email(), request.phone());
+    }
+    return Result.ok(result);
+  }
+
+  @PostMapping("/credential/set-password")
+  public Result<Map<String, Object>> setPassword(
+      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+      @RequestBody SetPasswordRequest request) {
+    client.setPassword(authorization, request.oldPassword(), request.newPassword());
+    return Result.ok(Map.of("success", true));
+  }
+
+  @PostMapping("/credential/bind-email")
+  public Result<Map<String, Object>> bindEmail(
+      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+      @RequestBody BindEmailRequest request) {
+    client.bindEmail(authorization, request.email(), request.password());
+    Long userId = userIdFromAuth(authorization);
+    if (userId != null) {
+      userProfileService.syncIdentity(userId, null, request.email(), null);
+    }
+    return Result.ok(Map.of("success", true));
+  }
+
+  @PostMapping("/credential/set-username")
+  public Result<Map<String, Object>> setUsername(
+      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+      @RequestBody SetUsernameRequest request) {
+    client.setUsername(authorization, request.username());
+    Long userId = userIdFromAuth(authorization);
+    if (userId != null) {
+      userProfileService.syncIdentity(userId, request.username(), null, null);
+    }
+    return Result.ok(Map.of("success", true));
+  }
+
+  private Long userIdFromAuth(String authorization) {
+    if (!StringUtils.hasText(authorization) || !authorization.startsWith("Bearer ")) {
+      return null;
+    }
+    Map<String, Object> claims = parseClaims(authorization.substring("Bearer ".length()).trim());
+    Object userId = claims.get("user_id");
+    return userId instanceof Number num ? num.longValue() : null;
   }
 
   @PostMapping("/login")
@@ -226,4 +283,12 @@ public class AuthProxyController {
       @com.fasterxml.jackson.annotation.JsonProperty("new_password") String newPassword) {}
 
   public record LogoutAllRequest(String password) {}
+
+  public record RegisterRequest(String phone, String smsCode, String username, String email, String password) {}
+
+  public record SetPasswordRequest(String oldPassword, String newPassword) {}
+
+  public record BindEmailRequest(String email, String password) {}
+
+  public record SetUsernameRequest(String username) {}
 }
