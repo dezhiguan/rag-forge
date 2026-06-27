@@ -16,6 +16,7 @@ import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.entity.RetrievalLog;
 import com.ragforge.model.vo.DashboardActivityVO;
 import com.ragforge.model.vo.DashboardMetricsVO;
+import com.ragforge.security.AdminOverrideHolder;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.MetricsService;
@@ -51,9 +52,10 @@ public class MetricsServiceImpl implements MetricsService {
   @Override
   public DashboardMetricsVO dashboard() {
     RagAuthContext ctx = RagAuthContextHolder.get();
-    boolean admin = ctx != null && ctx.isAdmin();
+    // 管理员默认只看自己的范围（与知识库访问一致）；仅在破玻璃(X-Admin-Override)时才看全平台。
+    boolean fullPlatform = ctx != null && ctx.isAdmin() && AdminOverrideHolder.isActive();
     Long uid = ctx == null ? null : ctx.userId();
-    String key = admin ? "ADMIN" : ("U:" + uid);
+    String key = fullPlatform ? "ADMIN" : ("U:" + uid);
 
     long now = System.currentTimeMillis();
     DashboardCache cached = dashboardCacheByPrincipal.get(key);
@@ -66,7 +68,7 @@ public class MetricsServiceImpl implements MetricsService {
       if (cached != null && now < cached.expiresAtMs()) {
         return cached.value();
       }
-      DashboardMetricsVO vo = admin ? loadAdminDashboard() : loadUserDashboard(uid);
+      DashboardMetricsVO vo = fullPlatform ? loadAdminDashboard() : loadUserDashboard(uid);
       dashboardCacheByPrincipal.put(key, new DashboardCache(vo, now + DASHBOARD_CACHE_TTL_MS));
       return vo;
     }

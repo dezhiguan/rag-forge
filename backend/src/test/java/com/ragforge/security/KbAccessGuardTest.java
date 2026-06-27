@@ -41,6 +41,10 @@ class KbAccessGuardTest {
 
   @Test
   void kbViewer_canReadOnlyReadableKbIds() {
+    KnowledgeBase kb1 = new KnowledgeBase();
+    kb1.setId(1L);
+    kb1.setKbType("USER");
+    when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb1);
     RagAuthContextHolder.set(new RagAuthContext(7L, null, "KB_VIEWER", Set.of(1L), Set.of(), Set.of(), "user", "7"));
 
     assertThat(guard.canRead(1L)).isTrue();
@@ -48,10 +52,12 @@ class KbAccessGuardTest {
   }
 
   @Test
-  void admin_canReadAnyNonSystemKb() {
+  void admin_defaultCannotReadOthersPrivateKb_butBreakGlassCanReadNonSystem() {
     KnowledgeBase normal = new KnowledgeBase();
     normal.setId(10L);
     normal.setKbType("USER");
+    normal.setOwnerUserId(99L); // 属于他人
+    normal.setVisibility("PRIVATE");
     KnowledgeBase system = new KnowledgeBase();
     system.setId(11L);
     system.setKbType("SYSTEM");
@@ -59,8 +65,17 @@ class KbAccessGuardTest {
     when(knowledgeBaseMapper.selectById(11L)).thenReturn(system);
     RagAuthContextHolder.set(new RagAuthContext(1L, null, "ADMIN", Set.of(), Set.of(), Set.of(), "user", "1"));
 
-    assertThat(guard.canRead(10L)).isTrue();
-    assertThat(guard.canRead(11L)).isFalse();
+    // 默认：ADMIN 不读他人私有库（对齐多租户隐私边界）
+    assertThat(guard.canRead(10L)).isFalse();
+
+    // 破玻璃后：可读全部非 SYSTEM 库；SYSTEM 仍禁
+    try {
+      AdminOverrideHolder.activate("support-debug");
+      assertThat(guard.canRead(10L)).isTrue();
+      assertThat(guard.canRead(11L)).isFalse();
+    } finally {
+      AdminOverrideHolder.clear();
+    }
   }
 
   @Test
@@ -76,6 +91,10 @@ class KbAccessGuardTest {
 
   @Test
   void serviceAccount_limitedByAllowedKbIds() {
+    KnowledgeBase kb3 = new KnowledgeBase();
+    kb3.setId(3L);
+    kb3.setKbType("USER");
+    when(knowledgeBaseMapper.selectById(3L)).thenReturn(kb3);
     RagAuthContextHolder.set(new RagAuthContext(null, null, "SERVICE_ACCOUNT", Set.of(3L), Set.of(3L), Set.of(), "service_account", "sa"));
 
     assertThat(guard.canRead(3L)).isTrue();
