@@ -19,6 +19,11 @@ public class KnowledgeBaseVO {
   private String answerMode;
   private String answerModel;
   private String imageProcessingMode;
+  private Long ownerUserId;
+  private String visibility;
+  private String kbType;
+  /** 当前主体对该库的权限：admin | write | read。 */
+  private String myPermission;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 
@@ -36,6 +41,9 @@ public class KnowledgeBaseVO {
     vo.setAnswerMode(entity.getAnswerMode());
     vo.setAnswerModel(entity.getAnswerModel());
     vo.setImageProcessingMode(entity.getImageProcessingMode());
+    vo.setOwnerUserId(entity.getOwnerUserId());
+    vo.setVisibility(entity.getVisibility());
+    vo.setKbType(entity.getKbType());
     vo.setCreatedAt(entity.getCreatedAt());
     vo.setUpdatedAt(entity.getUpdatedAt());
     return vo;

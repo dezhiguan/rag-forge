@@ -31,6 +31,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
+  private final com.ragforge.security.KbAccessGuard kbAccessGuard;
+  private final com.ragforge.mapper.KbAclMapper kbAclMapper;
   private volatile ListCache listCache;
 
   @Override
@@ -79,6 +81,58 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
   }
 
+  @Override
+  public List<KnowledgeBaseVO> listVisibleToCurrentUser() {
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    Set<Long> readable = kbAccessGuard.allReadableKbIds();
+    if (readable.isEmpty()) {
+      return List.of();
+    }
+    List<KnowledgeBase> kbs =
+        knowledgeBaseMapper.selectList(
+            new LambdaQueryWrapper<KnowledgeBase>()
+                .in(KnowledgeBase::getId, readable)
+                .ne(KnowledgeBase::getStatus, STATUS_DELETED)
+                .orderByDesc(KnowledgeBase::getCreatedAt));
+
+    boolean admin = ctx != null && ctx.isAdmin();
+    Set<Long> adminIds = Set.of();
+    Set<Long> writableIds = Set.of();
+    if (!admin && ctx != null && ctx.userId() != null) {
+      adminIds = new java.util.HashSet<>(kbAclMapper.findAdminKbIds(ctx.userId()));
+      writableIds = new java.util.HashSet<>(kbAclMapper.findWritableKbIds(ctx.userId()));
+    }
+    final boolean isAdmin = admin;
+    final Set<Long> adminSet = adminIds;
+    final Set<Long> writableSet = writableIds;
+    final Long uid = ctx == null ? null : ctx.userId();
+    return kbs.stream()
+        .map(
+            kb -> {
+              KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
+              vo.setMyPermission(resolvePermission(kb, uid, isAdmin, adminSet, writableSet));
+              return vo;
+            })
+        .toList();
+  }
+
+  private String resolvePermission(
+      KnowledgeBase kb, Long uid, boolean isAdmin, Set<Long> adminSet, Set<Long> writableSet) {
+    if (isAdmin) {
+      return "admin";
+    }
+    if (uid != null && uid.equals(kb.getOwnerUserId())) {
+      return "admin";
+    }
+    if (adminSet.contains(kb.getId())) {
+      return "admin";
+    }
+    if (writableSet.contains(kb.getId())) {
+      return "write";
+    }
+    return "read";
+  }
+
   private List<KnowledgeBaseVO> loadListAll() {
     List<KnowledgeBase> list =
         knowledgeBaseMapper.selectList(
@@ -91,7 +145,17 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   @Override
   public KnowledgeBaseVO getById(Long id) {
     KnowledgeBase kb = requireActiveKb(id);
-    return KnowledgeBaseVO.fromEntity(kb);
+    KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    boolean admin = ctx != null && ctx.isAdmin();
+    Set<Long> adminIds = Set.of();
+    Set<Long> writableIds = Set.of();
+    if (!admin && ctx != null && ctx.userId() != null) {
+      adminIds = new java.util.HashSet<>(kbAclMapper.findAdminKbIds(ctx.userId()));
+      writableIds = new java.util.HashSet<>(kbAclMapper.findWritableKbIds(ctx.userId()));
+    }
+    vo.setMyPermission(resolvePermission(kb, ctx == null ? null : ctx.userId(), admin, adminIds, writableIds));
+    return vo;
   }
 
   @Override

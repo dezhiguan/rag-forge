@@ -12,6 +12,9 @@ public interface KnowledgeBaseService {
 
   List<KnowledgeBaseVO> listAll();
 
+  /** 按当前登录主体做行级过滤的列表，每行附 myPermission。 */
+  List<KnowledgeBaseVO> listVisibleToCurrentUser();
+
   KnowledgeBaseVO getById(Long id);
 
   KnowledgeBase update(Long id, UpdateKbDTO dto);

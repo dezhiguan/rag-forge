@@ -36,7 +36,7 @@ public class KnowledgeBaseController {
   @GetMapping
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER')")
   public Result<List<KnowledgeBaseVO>> listAll() {
-    return Result.ok(knowledgeBaseService.listAll());
+    return Result.ok(knowledgeBaseService.listVisibleToCurrentUser());
   }
 
   @GetMapping("/{id}")
