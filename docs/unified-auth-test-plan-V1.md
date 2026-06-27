@@ -143,7 +143,7 @@ test('TC-LOG-10 多会话并存: B登录不挤掉A', async () => {
 
 | 用例 | 角色 | 步骤 | 期望 |
 |---|---|---|---|
-| TC-LIST-01 普通用户 KB 列表 | U_RAG | `GET /api/v1/knowledge-bases` | 仅返回 KB_OWN + KB_PUBLIC + KB_SHARED；**不含** KB_OTHER、KB_SYSTEM |
+| TC-LIST-01 普通用户 KB 列表 | U_RAG | `GET /api/v1/kb`（普通用户走行级过滤入口；**勿用** `/api/v1/knowledge-bases` 别名，它对 USER 一律 403） | 仅返回 KB_OWN + KB_PUBLIC + KB_SHARED；**不含** KB_OTHER、KB_SYSTEM |
 | TC-LIST-02 管理员 KB 列表 | ADMIN | 同上 | 返回全部 **非 SYSTEM** 库；不含 KB_SYSTEM |
 | TC-LIST-03 myPermission 正确 | U_RAG | 检查列表每行 | KB_OWN=`admin`，KB_PUBLIC=`read`，KB_SHARED=`read` |
 | TC-LIST-04（猎 bug）分页计数不泄露 | U_RAG | 看分页 total | total 仅等于可见集合数，不暴露"有多少看不到的库" |
@@ -222,23 +222,24 @@ export async function asUser(token: string): Promise<APIRequestContext> {
 - **威胁**：普通用户通过猜/枚举 `kbId` 直接访问他人私库（Broken Object Level Authorization）。
 - **前置**：U_RAG 已登录；KB_OTHER 属于 U_OTHER（私有）。
 - **通过判定**：详情 **403**，且 KB_OTHER 不出现在 U_RAG 的列表中。
+- ⚠ **路径要点**：普通用户必须打 `/api/v1/kb/**`（行级过滤入口）才是真正的对象级越权测试；若打 `/api/v1/knowledge-bases/**` 别名，会因"角色不匹配"返回 403 而**假通过**，掩盖 `KbAccessGuard` 是否真生效。
 
 ```ts
 test('SEC-01 IDOR: 普通用户不能读他人私有KB', async () => {
   const token = await login(U_RAG.account, U_RAG.password);
   const api = await asUser(token);
 
-  // 1) 列表里不应出现 KB_OTHER
-  const list = await (await api.get(`${RAG_API}/v1/knowledge-bases`)).json();
+  // 1) 列表里不应出现 KB_OTHER（普通用户入口 /v1/kb，行级过滤）
+  const list = await (await api.get(`${RAG_API}/v1/kb`)).json();
   const ids = (list.data ?? list).map((k: any) => k.id);
   expect(ids).not.toContain(KB_OTHER.id);
 
-  // 2) 直连详情必须 403（即使知道 id）
-  const detail = await api.get(`${RAG_API}/v1/knowledge-bases/${KB_OTHER.id}`);
+  // 2) 直连详情必须 403（即使知道 id）——走 /v1/kb 才能验证对象级授权
+  const detail = await api.get(`${RAG_API}/v1/kb/${KB_OTHER.id}`);
   expect(detail.status()).toBe(403);
 
   // 3) 其下文档同样 403
-  const doc = await api.get(`${RAG_API}/v1/knowledge-bases/${KB_OTHER.id}/documents`);
+  const doc = await api.get(`${RAG_API}/v1/kb/${KB_OTHER.id}/documents`);
   expect([401, 403]).toContain(doc.status());
 });
 ```
@@ -668,3 +669,102 @@ test('SEC-14 Agent高风险写需确认且不可越权', async ({ page }) => {
 - **CareerMate 侧**：本期不改 CareerMate 功能，但 Part C 用例纳入回归，确保统一认证改造未破坏其既有隔离与审计。
 - **MCP 标记串**：为可靠断言"越权 KB 内容未泄露"，各 KB 预置一段**独有标记文本**（如 `KB_OTHER.marker`），检索结果中出现即判定泄露。
 - **profile 依赖**：Part E 的 Agent/委托用例需要后端先落地 token-exchange 与 pending-action；未落地项标记为 V2，先以 `test.fixme` 占位。
+
+---
+
+# Part F · V1.1 增量回归（针对近期改动 + 你点名的薄弱项）
+
+> 本章补充：① **忘记密码/密码重置**（原方案缺失）；② **登出吊销**（已修复，强化为多断言）；③ **登录发码预校验**（新功能）；④ **中文用户名 / 确认密码**（新功能）；⑤ **权限与 A/B 数据隔离 / 搜索隔离**的补强与既有用例勘误。
+> 版本 V1.1 · 2026-06-27
+
+## F0. 既有用例勘误（路由变更导致，务必同步修正）
+
+> 普通用户的 KB 入口是 **`/api/v1/kb/**`**（行级过滤 + 含 USER 角色）；**`/api/v1/knowledge-bases/**` 是仅管理角色的别名**（走未过滤 `listAll`，对 USER 一律 403）。凡"用普通用户验证对象级越权/行级过滤"的用例，**必须打 `/api/v1/kb`**，否则会因角色拦截 403 而**假通过**。
+
+| 受影响用例 | 原路径 | 应改为 |
+|---|---|---|
+| TC-LIST-01（已就地改） | `/api/v1/knowledge-bases` | `/api/v1/kb` |
+| SEC-01（已就地改） | `/v1/knowledge-bases/{id}` | `/v1/kb/{id}` |
+| TC-DET-01/02/03、TC-SE-02 | `/knowledge-bases/{id}` 等 | 普通用户主体统一改 `/api/v1/kb/{id}`（ADMIN 对照仍可用别名）|
+| SEC-08/09 | `/v1/knowledge-bases/{id}` | 普通用户分支改 `/api/v1/kb/{id}`；ADMIN 分支保留别名以验证"连管理员也禁 SYSTEM" |
+
+## F1. 忘记密码 / 密码重置（原方案缺失，补全）
+
+> 流程：RAG `/auth/reset` 页 → `POST /api/auth/password/reset/init {account, phone}` → 短信验证 `/verify {account, phone, code}` 拿 `reset_ticket` → `/confirm {reset_ticket, newPassword}` 落网关并 bump session_version。
+
+| 用例 | 步骤 | 期望 |
+|---|---|---|
+| TC-PWD-01 正常重置闭环 | U_RAG 走 init→短信 `DEV_SMS_CODE`→verify→confirm 设新密码 | 成功；**旧密码登录 401、新密码登录 200**（证明凭证落网关并更新） |
+| TC-PWD-02 重置需 ragforge 准入 | 仅 CareerMate 成员（无 ragforge membership）经 RAG 重置 | 拒绝（`PasswordResetService` 的 membership 门槛），不泄露内部异常 |
+| TC-PWD-03 重置后旧 token 失效 | 重置前持有 token T，完成重置后用 T 调 `/api/v1/me` | **401**（session_version bump / `password.changed` 撤销传播），与 SEC-04 同机制 |
+| TC-PWD-04 错误/过期短信码 | verify 用错误码或超 TTL 码 | 拒绝，明确"验证码错误/已过期"，不发 ticket |
+| TC-PWD-05 重置限流 | 同账号/同手机号高频 init/verify | 触发 `PASSWORD_RESET_LOCKED`，提示稍后再试 |
+| TC-PWD-06 ticket 一次性 & 绑定 | 用已消费的 `reset_ticket` 再次 confirm；或拿 A 的 ticket 给 B 用 | 双双拒绝（ticket 一次性、与账号绑定，不可复用/跨账号） |
+| TC-PWD-07（猎 bug）重置防枚举 | 对**不存在**账号 init vs 存在账号 init | 响应状态码/文案**不可区分**，未通过短信验证前不暴露账号存在性（呼应 SEC-07） |
+
+## F2. 登录发码预校验（新功能：未注册号不白发短信）
+
+> 网关 `sms/send` 在 `scene=login && app=ragforge` 时先校验 membership：未注册返回 **409 `SMS_LOGIN_NOT_REGISTERED`** 且不发短信。
+
+| 用例 | 步骤 | 期望 |
+|---|---|---|
+| TC-SMS-01 未注册号登录发码 | RAG 登录页用未注册手机号点"获取验证码" | **409 `SMS_LOGIN_NOT_REGISTERED`**，不下发短信；前端提示"请先点击立即注册" |
+| TC-SMS-02 已注册号登录发码 | 已注册号点获取验证码 | 200，正常下发 |
+| TC-SMS-03 注册场景不预校验 | 未注册号 `scene=register` 发码 | 200（否则无法注册），不被准入拦截 |
+| TC-SMS-04 CareerMate 不受影响 | `scene=login` 不带 `app`（或 `app=careermate`）的未注册号 | 200 正常发码（登录注册一体语义保留） |
+| TC-SMS-05（安全权衡）枚举被限流兜住 | 对大量手机号高频探测登录发码 | 单点可区分"是否注册"属**有意权衡**，但高频探测须触发 `SmsAuthRateLimiter` 限流（用例需标注此权衡） |
+
+## F3. 中文用户名（新功能）
+
+> 用户名正则放宽为 `^[A-Za-z0-9_一-龥]{2,32}$`（注册 + 安全中心改名一致）。
+
+| 用例 | 步骤 | 期望 |
+|---|---|---|
+| TC-UN-01 中文名注册+登录 | 注册 username=`张三丰`，完成短信验证 | 注册成功；**用 `张三丰`+密码可登录**，`/me.username` 回显中文 |
+| TC-UN-02 两字中文名 | username=`李雷`（2 字） | 通过（下限为 2） |
+| TC-UN-03 非法字符拒绝 | username 含空格 / emoji / `<script>` / 长度>32 | 前后端一致 400 `USERNAME_FORMAT_INVALID` |
+| TC-UN-04 安全中心改中文名 | 已登录用户改名为中文唯一名 | 成功；旧名不可登录、新名可登录 |
+| TC-UN-05 中文名唯一性 | 用已存在中文名注册/改名 | 409 `USERNAME_TAKEN`，含首尾空格归一化后仍判重 |
+
+## F4. 确认密码（新增前端校验）
+
+| 用例 | 步骤 | 期望 |
+|---|---|---|
+| TC-CP-01 两次不一致 | 注册页密码与确认密码不同 | 前端拦截"两次输入的密码不一致"，**不发请求** |
+| TC-CP-02 一致正常提交 | 两次一致 | 正常进入注册请求 |
+| TC-CP-03（猎 bug）确认密码非授权依据 | 直连 `POST /api/auth/register` 不带 confirmPassword | 后端不依赖确认密码字段，仍按密码强度校验（确认密码仅前端体验，不构成后端校验项） |
+
+## F5. 登出吊销（已修复，强化多断言 + 粒度隔离）
+
+> 修复点：登出事件携带 access token `jti`；`session.revoked` 带 `user_id`（登出全部）时按 user 级吊销；并修复 `event_outbox.markDelivered` 绑 `Instant` 致登出事务回滚的连带缺陷。
+
+| 用例 | 步骤 | 期望（每条都要断言） |
+|---|---|---|
+| TC-LOG-08（强化）单会话登出 | 登录持 T → `POST /api/auth/logout` | (a) 接口 **200**（非 500）；(b) 同 T 调 `/me` → **401**；(c) 网关 `auth_sessions.revoked_at` 已写入；(d) `event_outbox` 该事件 `status=DELIVERED`；(e) RAG Redis `revoked:jti:{T.jti}` 命中 |
+| TC-LOG-08b 单会话只杀当前会话 | 同用户两处登录 T1/T2，仅登出 T1 | T1→401，**T2 仍 200**（jti 粒度，不误伤其它会话） |
+| TC-LOG-09（强化）退出所有设备 | T1/T2 两会话，T1 发起 logout-all（校验密码） | T1、T2 **均 401**；Redis `revoked:user:{uid}`（user-revoked-after）命中 |
+| TC-LOG-11（猎 bug）投递失败不回滚登出 | 临时停掉 RAG 后端再登出 | 登出仍 **200** 且网关会话被撤销（`markFailed` 不抛、不回滚）；令牌失效靠下次投递/会话校验兜底——标注为可用性权衡 |
+| TC-LOG-12 改密走同机制 | 改密后查 `event_outbox` + Redis | `user.password.changed` 投递 DELIVERED，user 级吊销键命中，旧 token 全部 401 |
+
+## F6. 权限生效 & A/B 数据隔离 & 搜索隔离（你点名的核心补强）
+
+> 重点回答："权限是否真生效""A 的数据会不会被 B 看见""搜索有没有按用户隔离"。**每条均双跑：A 主体应成功/可见，B 主体应 403/不可见/不串内容。**
+
+| 用例 | 步骤 | 期望 |
+|---|---|---|
+| TC-AUTHZ-01 USER 可检索（修复回归） | U_RAG `POST /api/v1/search`（带 `search:run`） | **200**（修复前为 403）；结果仅来自其可读 KB |
+| TC-AUTHZ-02 别名仅管理角色 | U_RAG `GET /api/v1/knowledge-bases` vs `/api/v1/kb` | 别名 **403**（设计预期）；`/api/v1/kb` **200** |
+| TC-AUTHZ-03 capability 与后端一致 | 对 U_RAG 的 `/me.capabilities` 中**没有**的能力对应接口逐一直连 | 全部 403，前端隐藏与后端拦截结论一致（呼应 SEC-02） |
+| TC-ISO-01 资料隔离 | A 改 displayName 后，查 B 的 `/me` 与头像 | B 完全不受影响；B 任何接口都拿不到 A 的 displayName/邮箱/手机号 |
+| TC-ISO-02 文档隔离 | B `GET /api/v1/kb/{A_私库}/documents` 及其下文档详情 | **403**（文档级回退 KB 权限），B 看不到 A 私库任何文档 |
+| TC-ISO-03 搜索跨用户不串内容 | A、B 各建私有库，各自放入**独有标记串** `A.marker`/`B.marker`；A、B **不传 kbIds** 搜同一通用 query | A 结果含 `A.marker`、**绝不含** `B.marker`；B 反之（搜索按 `allReadableKbIds` 行级隔离） |
+| TC-ISO-04 越权指定他库检索 | A `POST /api/v1/search {kbIds:[B_私库]}` | 该 id 被 `filterReadable` 过滤，记 `kb_access_denied`，结果不含 `B.marker` |
+| TC-ISO-05 建库归属正确 | U_RAG 建库 | owner=自己、`myPermission=admin`、`visibility=private`；**B 列表与详情均不可见**该库 |
+| TC-ISO-06 公共库读写边界 | A 读 KB_PUBLIC 200；A 对其写/删/改可见性 | 写删改一律 **403**（公共库只读，呼应 SEC-09） |
+| TC-ISO-07（猎 bug）分页计数不泄露 | A 的 `/api/v1/kb` 分页 total | 仅等于 A 可见集合数，不暴露存在多少不可见库（呼应 TC-LIST-04） |
+
+## F7. 优先级与门禁补充
+
+- **阻断级新增**：TC-PWD-01/03、TC-LOG-08/08b/09、TC-ISO-02/03 为阻断级（密码重置闭环、登出吊销、A/B 数据与搜索隔离任一失败即高危）。
+- **回归门禁**：F5（登出吊销）+ F6（隔离）建议与 Part B 一并纳入 CI 认证/权限门禁；凭证、会话、KB 权限相关改动必须全绿方可合并。
+- **标记串约定**：F6 复用 Part B 的"各 KB 独有标记串"约定，搜索结果出现对方标记串即判定隔离失效。
