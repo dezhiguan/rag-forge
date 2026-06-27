@@ -15,6 +15,7 @@ public class RetrievalLog {
   @TableId(type = IdType.AUTO)
   private Long id;
 
+  private Long userId;
   private String query;
   private String rewrittenQueries;
   private String strategy;

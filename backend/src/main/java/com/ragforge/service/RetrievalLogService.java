@@ -46,7 +46,22 @@ public class RetrievalLogService {
       int resultCount,
       long latencyMs,
       List<SearchResult> results) {
+    logAsync(query, strategy, kbIds, rewrittenQueries, topK, resultCount, latencyMs, results, null);
+  }
+
+  @Async
+  public void logAsync(
+      String query,
+      String strategy,
+      List<Long> kbIds,
+      List<String> rewrittenQueries,
+      int topK,
+      int resultCount,
+      long latencyMs,
+      List<SearchResult> results,
+      Long userId) {
     RetrievalLog log = new RetrievalLog();
+    log.setUserId(userId);
     log.setQuery(query);
     log.setStrategy(strategy);
     if (kbIds != null && !kbIds.isEmpty()) {
