@@ -20,8 +20,9 @@ Server 3 应用层（8.138.191.228 / 172.25.90.184）
   CareerMate backend Docker :18080 / :18081 / :18082
   │
   ▼
-Server 1 数据层（8.163.30.216 / 172.25.90.183）— 保持不动
+Server 1 数据层（8.163.30.216 / 172.25.90.183）
   PostgreSQL / PgVector / Elasticsearch / Redis / RocketMQ
+  数据层容器按 8C16G 规格调优，详见下方 Server 1 资源配置
   （Reranker 预留，当前不默认启动）
 ```
 
@@ -29,7 +30,7 @@ Server 1 数据层（8.163.30.216 / 172.25.90.183）— 保持不动
 
 | 文件 | 部署目标 | 说明 |
 |------|----------|------|
-| `docker-compose-data.yml` | Server 1 | 数据与检索层，**不改动** |
+| `docker-compose-data.yml` | Server 1 | 数据与检索层，按当前 Server 1 规格维护资源限制 |
 | `docker-compose-ingress.yml` | Server 2 | Nginx + 前端静态资源 |
 | `docker-compose-backend.yml` | Server 3 | RAGForge 后端 |
 | `docker-compose-app.yml` | — | **LEGACY** 单机模式（Nginx + 后端同机） |
@@ -87,6 +88,19 @@ done
 # 4. 首次部署由 deploy.sh 或 CI 完成镜像构建与启动
 ```
 
+### Server 1 资源配置
+
+当前 Server 1 为 `8 vCPU / 16 GiB`，数据层容器资源限制如下：
+
+| 服务 | 容器内存限制 | 关键内存参数 |
+|------|--------------|--------------|
+| PostgreSQL | `4g` | `shared_buffers=1GB`、`effective_cache_size=8GB`、`work_mem=8MB`、`maintenance_work_mem=256MB`、`max_connections=200` |
+| Elasticsearch | `5g` | `ES_JAVA_OPTS=-Xms2g -Xmx2g` |
+| Redis | `512m` | `--maxmemory 384mb --maxmemory-policy allkeys-lru` |
+| RocketMQ NameServer | `768m` | `JAVA_OPT_EXT=-Xms256m -Xmx256m -Xmn128m` |
+| RocketMQ Broker | `2g` | `JAVA_OPT_EXT=-Xms512m -Xmx512m -Xmn256m` |
+| Reranker | `3g` | 预留服务，当前不默认启动 |
+
 ### JVM 内存（Server 3）
 
 | 服务 | 内存 |
@@ -94,7 +108,7 @@ done
 | RAGForge backend | `-Xms512m -Xmx1g` |
 | CareerMate backend | `-Xms512m -Xmx1g` |
 
-总计约 4.5G / 8G，保留系统与未来扩展空间。
+Server 3 当前为 `8 vCPU / 16 GiB`，RAGForge API 和 CareerMate backend 均为 3 副本，保留系统与未来扩展空间。
 
 ### 文件存储
 

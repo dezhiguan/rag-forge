@@ -38,6 +38,40 @@ docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | \
 | RocketMQ NameServer | 9876 |
 | RocketMQ Broker | 10909 / 10911 / 10912 |
 
+### Server 1 数据层资源配置
+
+当前 Server 1 规格为 `8 vCPU / 16 GiB`。数据层容器资源以导入业务数据为目标做过预留，仓库中的 `docker-compose-data.yml` 应与服务器 `/opt/rag-forge/docker-compose-data.yml` 保持一致。
+
+| 组件 | 容器名 | 内存限制 | 关键运行参数 |
+|------|--------|----------|--------------|
+| PostgreSQL + pgvector | `ragforge-postgres` | `4g` | `shared_buffers=1GB`、`effective_cache_size=8GB`、`work_mem=8MB`、`maintenance_work_mem=256MB`、`max_connections=200` |
+| Elasticsearch | `ragforge-elasticsearch` | `5g` | `ES_JAVA_OPTS=-Xms2g -Xmx2g` |
+| Redis | `ragforge-redis` | `512m` | `--maxmemory 384mb --maxmemory-policy allkeys-lru` |
+| RocketMQ NameServer | `ragforge-rocketmq-namesrv` | `768m` | `JAVA_OPT_EXT=-Xms256m -Xmx256m -Xmn128m` |
+| RocketMQ Broker | `ragforge-rocketmq-broker` | `2g` | `JAVA_OPT_EXT=-Xms512m -Xmx512m -Xmn256m` |
+| Reranker | `ragforge-reranker` | `3g` | 预留服务，当前不默认启动 |
+
+PostgreSQL 参数由 `ALTER SYSTEM` 写入数据卷，调整后需要重建或重启 `ragforge-postgres` 生效：
+
+```sql
+ALTER SYSTEM SET max_connections = '200';
+ALTER SYSTEM SET shared_buffers = '1GB';
+ALTER SYSTEM SET effective_cache_size = '8GB';
+ALTER SYSTEM SET work_mem = '8MB';
+ALTER SYSTEM SET maintenance_work_mem = '256MB';
+```
+
+变更后检查：
+
+```bash
+docker compose -f docker-compose-data.yml up -d postgres elasticsearch redis rocketmq-namesrv rocketmq-broker
+docker stats --no-stream
+docker exec ragforge-postgres psql -U ragforge -d postgres -Atc \
+  "select name||'='||setting||coalesce(' '||unit,'') from pg_settings where name in ('max_connections','shared_buffers','effective_cache_size','work_mem','maintenance_work_mem') order by name;"
+curl -fsS http://127.0.0.1:9200/_cluster/health?pretty
+docker exec ragforge-redis redis-cli INFO memory | grep -E 'used_memory_human|maxmemory_human|maxmemory_policy'
+```
+
 ### 安全组 / 防火墙
 
 Server 1 **入方向**仅允许来源 `172.25.90.184/32`（Server 3 应用层）访问上表端口。

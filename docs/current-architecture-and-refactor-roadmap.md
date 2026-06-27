@@ -158,7 +158,7 @@ RetrievalService
 
 | 服务器 | 角色 | 组件 |
 |---|---|---|
-| Server 1 | 数据与检索层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ |
+| Server 1 | 数据与检索层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ；8C16G，数据层容器已按导入业务数据调优 |
 | Server 2 | 入口层 | Nginx、RAGForge 前端、CareerMate 前端 |
 | Server 3 | 应用层 | RAGForge backend 3 副本、CareerMate backend 3 副本 |
 
@@ -166,6 +166,16 @@ RetrievalService
 
 ```text
 当前版本已验证：9,800 文档 / 约 96,000 chunk
+```
+
+当前 Server 1 数据层资源限制：
+
+```text
+PostgreSQL: 4g, shared_buffers=1GB, effective_cache_size=8GB
+Elasticsearch: 5g, heap=2GB
+RocketMQ Broker: 2g, heap=512MB
+RocketMQ NameServer: 768m, heap=256MB
+Redis: 512m, maxmemory=384MB
 ```
 
 不建议当前口径宣称百万级 chunk 已验证。可以说：

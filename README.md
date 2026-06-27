@@ -336,20 +336,20 @@ curl -X POST http://localhost:8080/api/v1/search \
 
 | 服务器 | 角色 | 组件 |
 | --- | --- | --- |
-| Server 1（172.25.90.183） | 数据层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ（Reranker 预留，当前不默认启动） |
+| Server 1（172.25.90.183） | 数据层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ（8C16G，数据层容器已按导入业务数据调优；Reranker 预留，当前不默认启动） |
 | Server 2（8.163.63.222） | 入口层 | Nginx、RAGForge 前端、CareerMate 前端 |
 | Server 3（8.138.191.228） | 应用层 | RAGForge backend 3 副本、CareerMate backend 3 副本、爬虫 |
 
 Compose 文件：
 
-- `docker-compose-data.yml` -> Server 1（保持不动）
+- `docker-compose-data.yml` -> Server 1（数据与检索层资源限制随 Server 1 规格维护）
 - `docker-compose-ingress.yml` -> Server 2
 - `docker-compose-backend.yml` -> Server 3
 - `docker-compose-app.yml` -> LEGACY 单机模式（兼容旧部署）
 
 部署注意事项：
 
-- Server 1 数据层不动；Server 2 只跑 Nginx + 两个前端；Server 3 跑 RAGForge backend `:8080/:8081/:8082` 和 CareerMate backend `:18080/:18081/:18082`。
+- Server 1 跑数据层，当前 PostgreSQL `4g`、Elasticsearch `5g`、RocketMQ Broker `2g`、Redis `512m`；Server 2 只跑 Nginx + 两个前端；Server 3 跑 RAGForge k3s backend 和 CareerMate k3s backend。
 - 三个 RAGForge backend 副本共用 Server 3 宿主机 `/data/files`，后续多机器部署前应切换到 OSS、MinIO、NAS 或 NFS。
 - RAGForge 与 CareerMate 前端共用 Nginx html 根目录：`/opt/rag-forge/frontend/dist/`。CareerMate 前端在子目录 `careermate/`，由 CareerMate CI 单独同步。
 - Server 3 使用 `/opt/shared/env/common.env` 和 `/opt/shared/env/ragforge.env` 注入敏感配置，这些文件不入库、不随 CI 同步。
