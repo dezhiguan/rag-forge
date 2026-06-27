@@ -1,6 +1,9 @@
 <template>
   <div class="page-body quality-page">
-    <p class="quality-subtitle">LLM-as-Judge 评测质量趋势与成本监控</p>
+    <Teleport to="#topbar-left">
+      <span class="topbar-divider" />
+      <span class="topbar-subtitle">LLM-as-Judge 评测质量趋势与成本监控</span>
+    </Teleport>
 
     <div v-if="globalError" class="quality-error-banner">
       {{ globalError }}
@@ -35,8 +38,8 @@
             placeholder="留空为全部"
             @keyup.enter="applyKbFilter"
           />
-          <button class="btn-ghost-small" @click="applyKbFilter">应用</button>
-          <button class="btn-ghost-small" @click="clearKbFilter">清除</button>
+          <button class="btn btn-secondary btn-sm" @click="applyKbFilter">应用</button>
+          <button class="btn btn-secondary btn-sm" @click="clearKbFilter">清除</button>
         </div>
       </div>
 
@@ -363,7 +366,7 @@
             </select>
             <input v-model.number="kbOverrideForm.ratePercent" type="number" min="0" max="10" step="0.5" />
             <label><input v-model="kbOverrideForm.enabled" type="checkbox" /> 启用</label>
-            <button class="btn-ghost-small" :disabled="savingSampling" @click="saveKbOverride">保存覆盖</button>
+            <button class="btn btn-secondary btn-sm" :disabled="savingSampling" @click="saveKbOverride">保存覆盖</button>
           </div>
           <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无知识库单独覆盖</div>
           <div v-else class="override-list">
@@ -437,7 +440,7 @@ const COST_SOURCE_LABELS = {
 }
 const metricOptions = [
   { key: 'overall', label: '总体', color: '#0f766e' },
-  { key: 'faithfulness', label: '忠实度', color: '#2563eb' },
+  { key: 'faithfulness', label: '忠实度', color: 'var(--primary-hover)' },
   { key: 'contextPrecision', label: '上下文精度', color: '#d97706' },
   { key: 'answerRelevance', label: '答案相关性', color: '#8b5cf6' },
 ]
@@ -1065,7 +1068,7 @@ function loadAll() {
 
 const costStacks = computed(() => {
   const sourceMap = {
-    PRODUCTION: '#3b82f6',
+    PRODUCTION: 'var(--primary)',
     GOLDEN_SET: '#06b6d4',
     MANUAL: '#8b5cf6',
   }
@@ -1193,9 +1196,9 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  background: linear-gradient(180deg, var(--primary), var(--primary-hover));
   color: #fff;
-  border: 1px solid #2563eb;
+  border: 1px solid var(--primary-hover);
   border-radius: 8px;
   padding: 7px 16px;
   font-size: 13px;
@@ -1206,7 +1209,7 @@ watch(
 }
 
 .btn-settings:hover {
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
+  background: linear-gradient(180deg, var(--primary-hover), #1d4ed8);
   border-color: #1d4ed8;
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
 }
@@ -1228,7 +1231,7 @@ watch(
 }
 .toolbar-block input:focus {
   outline: none;
-  border-color: var(--blue);
+  border-color: var(--primary);
 }
 
 .quality-kpi-grid {
@@ -1324,7 +1327,7 @@ watch(
 
 .table-wrap { overflow: auto; }
 .clickable-row { cursor: pointer; }
-.clickable-row:hover { background: rgba(59,130,246,0.06); }
+.clickable-row:hover { background: rgba(37, 99, 235,0.06); }
 
 .kb-slice-table {
   width: 100%;
@@ -1532,7 +1535,7 @@ watch(
 .link-button {
   border: none;
   background: transparent;
-  color: var(--blue);
+  color: var(--primary);
   cursor: pointer;
 }
 
@@ -1614,17 +1617,17 @@ watch(
   gap: 8px;
   width: 100%;
   padding: 10px 18px;
-  border: 1px solid #0d9488;
+  border: 1px solid var(--primary-hover);
   border-radius: 10px;
-  background: linear-gradient(180deg, #14b8a6 0%, #0f766e 100%);
+  background: linear-gradient(180deg, var(--primary), var(--primary-hover));
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
   box-shadow:
-    0 1px 2px rgba(15, 118, 110, 0.2),
-    0 4px 14px rgba(15, 118, 110, 0.18),
+    0 1px 2px rgba(37, 99, 235, 0.2),
+    0 4px 14px rgba(37, 99, 235, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
@@ -1633,8 +1636,8 @@ watch(
   filter: brightness(1.04);
   transform: translateY(-1px);
   box-shadow:
-    0 2px 4px rgba(15, 118, 110, 0.22),
-    0 8px 20px rgba(15, 118, 110, 0.24),
+    0 2px 4px rgba(37, 99, 235, 0.22),
+    0 8px 20px rgba(37, 99, 235, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
@@ -1642,7 +1645,7 @@ watch(
   transform: translateY(0);
   filter: brightness(0.98);
   box-shadow:
-    0 1px 2px rgba(15, 118, 110, 0.2),
+    0 1px 2px rgba(37, 99, 235, 0.2),
     inset 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
@@ -1657,14 +1660,14 @@ watch(
 }
 
 .btn-save-config.is-saving {
-  background: linear-gradient(180deg, #5eead4 0%, #14b8a6 100%);
+  background: linear-gradient(180deg, #60a5fa 0%, var(--primary) 100%);
 }
 
 .btn-save-config--secondary {
   width: auto;
   align-self: flex-start;
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
-  border-color: #2563eb;
+  background: linear-gradient(180deg, var(--primary), var(--primary-hover));
+  border-color: var(--primary-hover);
   box-shadow:
     0 1px 2px rgba(37, 99, 235, 0.2),
     0 4px 14px rgba(37, 99, 235, 0.16),
@@ -1737,13 +1740,13 @@ watch(
   line-height: 1.4;
 }
 .btn-ghost-small:hover {
-  border-color: var(--blue);
-  color: var(--blue);
+  border-color: var(--primary);
+  color: var(--primary);
   background: #f0f7ff;
 }
 .btn-ghost-small.active {
-  border-color: var(--blue);
-  color: var(--blue);
+  border-color: var(--primary);
+  color: var(--primary);
   background: #dbeafe;
   font-weight: 600;
 }

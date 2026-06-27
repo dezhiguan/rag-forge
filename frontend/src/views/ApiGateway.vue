@@ -226,13 +226,14 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.api-layout { display: grid; grid-template-columns: 200px 1fr; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; min-height: 400px; }
+.page-body { padding: 20px 24px; }
+.api-layout { display: grid; grid-template-columns: 220px 1fr; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; min-height: calc(100vh - 88px); }
 .api-left { background: #f8fafc; border-right: 1px solid var(--border); padding: 16px; font-size: 10px; }
 .api-right { padding: 18px; font-size: 12px; }
 .api-section-title { font-weight: 700; font-size: 12px; margin-bottom: 10px; }
 .api-nav-item { padding: 7px 8px; border-radius: var(--radius-sm); margin-bottom: 3px; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--text-muted); transition: all 0.1s ease; }
 .api-nav-item:hover { background: rgba(0,0,0,0.03); }
-.api-nav-item.active { background: #eff6ff; color: var(--blue); }
+.api-nav-item.active { background: #eff6ff; color: var(--primary); }
 .api-method { font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: var(--radius-sm); font-family: 'SF Mono', Monaco, monospace; }
 .api-method.POST { background: #dbeafe; color: #1d4ed8; }
 .api-method.GET { background: #d1fae5; color: #065f46; }
@@ -313,7 +314,7 @@ onMounted(() => {
   pointer-events: none;
 }
 .key-del.is-disabled:hover { opacity: 0.45; }
-.key-gen-btn { width: 100%; margin-top: 8px; padding: 5px 0; background: #fff; border: 1px dashed var(--blue); border-radius: var(--radius-sm); font-size: 10px; color: var(--blue); cursor: pointer; transition: background 0.15s; }
+.key-gen-btn { width: 100%; margin-top: 8px; padding: 5px 0; background: #fff; border: 1px dashed var(--primary); border-radius: var(--radius-sm); font-size: 10px; color: var(--primary); cursor: pointer; transition: background 0.15s; }
 .key-gen-btn:hover { background: #eff6ff; }
 .key-gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .api-detail-title { font-weight: 600; font-size: 15px; margin-bottom: 6px; }

@@ -3,8 +3,8 @@
     <div class="page-body">
       <div class="page-head">
         <div class="head-actions">
-          <button class="btn-ghost" type="button" @click="$router.push('/knowledge')">← 返回知识库</button>
-          <button class="btn-ghost" type="button" :disabled="loading" @click="loadDocs(page)">刷新</button>
+          <button class="btn btn-secondary" type="button" @click="$router.push('/knowledge')">← 返回知识库</button>
+          <button class="btn btn-secondary" type="button" :disabled="loading" @click="loadDocs(page)">刷新</button>
         </div>
         <PageBreadcrumb class="page-crumb" :items="breadcrumbItems" />
       </div>
@@ -69,9 +69,9 @@
 
         <div class="pager">
           <span>共 {{ total }} 条</span>
-          <button class="btn-ghost btn-ghost-small" :disabled="page <= 1 || loading" @click="loadDocs(page - 1)">上一页</button>
+          <button class="btn btn-secondary btn-sm" :disabled="page <= 1 || loading" @click="loadDocs(page - 1)">上一页</button>
           <span>第 {{ page }} / {{ totalPages }} 页</span>
-          <button class="btn-ghost btn-ghost-small" :disabled="page >= totalPages || loading" @click="loadDocs(page + 1)">下一页</button>
+          <button class="btn btn-secondary btn-sm" :disabled="page >= totalPages || loading" @click="loadDocs(page + 1)">下一页</button>
         </div>
       </div>
     </div>
@@ -370,7 +370,7 @@ watch(kbId, (nextKbId, prevKbId) => {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: #fff;
-  color: var(--blue);
+  color: var(--primary);
   padding: 6px 9px;
   font-size: 12px;
   cursor: pointer;

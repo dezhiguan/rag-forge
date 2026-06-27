@@ -95,21 +95,24 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 <style scoped>
 .user-menu {
   position: relative;
-  margin-left: auto;
+  width: 100%;
 }
 
 .avatar-btn {
-  height: 34px;
+  width: 100%;
+  height: 42px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff;
-  padding: 0 9px 0 4px;
+  padding: 0 10px 0 5px;
   cursor: pointer;
   font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.avatar-btn:hover { border-color: #cbd5e1; box-shadow: var(--shadow-sm); }
 
 .avatar {
   width: 26px;
@@ -125,11 +128,12 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 }
 
 .user-meta {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
 .user-name,
@@ -151,15 +155,18 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
   font-size: 10px;
 }
 
+.user-name, .tenant { max-width: 100%; }
+
 .menu-panel {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
+  left: 0;
   right: 0;
   z-index: 200;
-  width: 184px;
+  width: auto;
   padding: 6px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
 }
@@ -184,11 +191,5 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
 .menu-item.danger {
   color: #dc2626;
-}
-
-@media (max-width: 560px) {
-  .user-meta {
-    display: none;
-  }
 }
 </style>

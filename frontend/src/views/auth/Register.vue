@@ -29,7 +29,7 @@
       </div>
       <div class="field">
         <label for="r-phone">手机号（必填，需短信验证）</label>
-        <input id="r-phone" v-model.trim="form.phone" type="tel" placeholder="+86 138 0000 0000"
+        <input id="r-phone" v-model.trim="form.phone" type="tel" placeholder="请输入手机号"
           :disabled="loading" @input="errorMsg = ''" />
       </div>
       <div class="field">
@@ -153,7 +153,7 @@ onUnmounted(() => {
   width: 100%; height: 40px; border: 1px solid #e2e8f0; border-radius: 8px;
   padding: 0 12px; font-size: 14px; color: #1e293b; background: #fff; outline: none; font-family: inherit;
 }
-.field input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12); }
+.field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
 .input-with-suffix {
   display: flex; align-items: stretch; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #fff;
 }
@@ -164,7 +164,7 @@ onUnmounted(() => {
 }
 .sms-btn.disabled, .sms-btn:disabled { color: #94a3b8; cursor: not-allowed; }
 .btn-primary {
-  width: 100%; height: 42px; background: linear-gradient(180deg, #3b82f6, #1d4ed8); color: #fff;
+  width: 100%; height: 42px; background: linear-gradient(180deg, var(--primary), #1d4ed8); color: #fff;
   font-weight: 600; font-size: 14px; border: none; border-radius: 8px; cursor: pointer; margin-top: 4px; font-family: inherit;
 }
 .btn-primary:disabled { background: linear-gradient(180deg, #93c5fd, #60a5fa); cursor: not-allowed; }

@@ -168,10 +168,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 
 .confirm-btn-ok {
-  background: #3b82f6;
+  background: var(--primary);
   color: #fff;
 }
-.confirm-btn-ok:hover { background: #2563eb; }
+.confirm-btn-ok:hover { background: var(--primary-hover); }
 
 .confirm-btn-ok.is-danger {
   background: #ef4444;

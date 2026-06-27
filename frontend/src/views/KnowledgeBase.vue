@@ -3,8 +3,8 @@
     <div class="page-body">
       <div class="top-toolbar">
         <div class="toolbar-left">
-          <button class="btn-primary" @click="openCreate">+ 创建知识库</button>
-          <button class="btn-ghost" :disabled="loadingKb" @click="loadKbs">刷新</button>
+          <button class="btn btn-primary" @click="openCreate">+ 创建知识库</button>
+          <button class="btn btn-secondary" :disabled="loadingKb" @click="loadKbs">刷新</button>
         </div>
       </div>
 
@@ -19,12 +19,15 @@
       </div>
 
       <div v-else class="content">
-        <div class="upload-layout">
+        <div v-if="!uploadableKbs.length" class="no-writable-hint">
+          公共知识库为只读，你暂无可写入的知识库。请先「创建知识库」后再上传文档。
+        </div>
+        <div v-else class="upload-layout">
           <div class="upload-settings">
             <label class="select-label">
               上传到知识库
               <select v-model="uploadKbId" class="select">
-                <option v-for="kb in kbList" :key="kb.id" :value="kb.id">
+                <option v-for="kb in uploadableKbs" :key="kb.id" :value="kb.id">
                   {{ kb.name }}
                 </option>
               </select>
@@ -74,22 +77,22 @@
                   <span :style="{ width: `${item.progress}%` }" />
                 </div>
                 <div v-if="item.status === 'failed'" class="upload-retry-actions">
-                  <button class="btn-ghost btn-ghost-small" @click.stop="dismissUploadItem(item)">
+                  <button class="btn btn-secondary btn-sm" @click.stop="dismissUploadItem(item)">
                     取消
                   </button>
-                  <button class="btn-ghost btn-ghost-small" @click.stop="retryUploadItem(item)">
+                  <button class="btn btn-secondary btn-sm" @click.stop="retryUploadItem(item)">
                     重试
                   </button>
                   <button
                     v-if="item.errorCode === 'DOC_IDENTITY_CONFLICT'"
-                    class="btn-ghost btn-ghost-small"
+                    class="btn btn-secondary btn-sm"
                     @click.stop="retryUploadItem(item, 'REPLACE')"
                   >
                     覆盖
                   </button>
                   <button
                     v-if="item.errorCode === 'DOC_IDENTITY_CONFLICT'"
-                    class="btn-ghost btn-ghost-small"
+                    class="btn btn-secondary btn-sm"
                     @click.stop="skipUploadItem(item)"
                   >
                     跳过
@@ -165,8 +168,9 @@
                   </td>
                   <td>{{ formatTime(kb.createdAt) }}</td>
                   <td>
-                    <span class="link-action" @click.stop="openEdit(kb)">编辑</span>
+                    <span v-if="canWriteKb(kb)" class="link-action" @click.stop="openEdit(kb)">编辑</span>
                     <span
+                      v-if="canAdminKb(kb)"
                       class="link-action danger"
                       :class="{ 'is-disabled': !kbDeleteEnabled }"
                       :title="kbDeleteEnabled ? '删除知识库' : '演示环境已禁用删除'"
@@ -174,6 +178,7 @@
                     >
                       删除
                     </span>
+                    <span v-if="!canWriteKb(kb)" class="ro-tag" title="公共知识库，你只有只读权限">只读</span>
                   </td>
                 </tr>
 
@@ -187,13 +192,13 @@
                         </div>
                         <div class="docs-actions">
                           <button
-                            class="btn-ghost btn-ghost-small"
+                            class="btn btn-secondary btn-sm"
                             :disabled="docsLoading[kb.id]"
                             @click.stop="loadDocs(kb.id)"
                           >
                             刷新
                           </button>
-                          <button class="btn-ghost btn-ghost-small" @click.stop="goDocuments(kb.id)">
+                          <button class="btn btn-secondary btn-sm" @click.stop="goDocuments(kb.id)">
                             查看更多文档
                           </button>
                         </div>
@@ -239,8 +244,9 @@
                               >
                                 下载
                               </span>
-                              <span v-if="normalizeDocStatus(doc.parseStatus) === 'failed'" class="link-action" @click.stop="onReprocessDoc(doc)">重试</span>
+                              <span v-if="normalizeDocStatus(doc.parseStatus) === 'failed' && canWriteKb(kb)" class="link-action" @click.stop="onReprocessDoc(doc)">重试</span>
                               <span
+                                v-if="canWriteKb(kb)"
                                 class="link-action danger"
                                 :class="{ 'is-disabled': !deleteEnabled }"
                                 :title="deleteEnabled ? '删除文档' : '演示环境已禁用删除'"
@@ -291,8 +297,8 @@
             </span>
           </label>
           <div class="modal-actions">
-            <button class="btn-ghost" @click="showCreate = false">取消</button>
-            <button class="btn-primary" :disabled="submittingKb" @click="onCreateKb">
+            <button class="btn btn-secondary" @click="showCreate = false">取消</button>
+            <button class="btn btn-primary" :disabled="submittingKb" @click="onCreateKb">
               确定
             </button>
           </div>
@@ -401,8 +407,8 @@
             </span>
           </label>
           <div class="modal-actions">
-            <button class="btn-ghost" @click="showEdit = false">取消</button>
-            <button class="btn-primary" :disabled="submittingKb" @click="onUpdateKb">
+            <button class="btn btn-secondary" @click="showEdit = false">取消</button>
+            <button class="btn btn-primary" :disabled="submittingKb" @click="onUpdateKb">
               {{ submittingKb ? '保存中…' : '保存' }}
             </button>
           </div>
@@ -477,6 +483,18 @@ const pendingTrackQueue = ref([])
 const STATUS_ORDER = ['pending', 'parsing', 'chunking', 'embedding', 'indexing', 'completed']
 const UPLOAD_CONCURRENCY = 3
 
+// 行级权限：以后端返回的 myPermission(admin|write|read) 为准。
+// 公共/平台库对普通用户是 read → 不显示编辑/删除/上传入口（后端也会 403 兜底）。
+function canWriteKb(kb) {
+  const p = kb?.myPermission
+  return p === 'write' || p === 'admin'
+}
+function canAdminKb(kb) {
+  return kb?.myPermission === 'admin'
+}
+// 只能上传到自己有写权限的库
+const uploadableKbs = computed(() => kbList.value.filter(canWriteKb))
+
 const showCreate = ref(false)
 const showEdit = ref(false)
 const submittingKb = ref(false)
@@ -523,8 +541,9 @@ async function loadKbs() {
   try {
     const res = await listKb()
     kbList.value = res.data ?? []
-    if (!uploadKbId.value && kbList.value.length) {
-      uploadKbId.value = kbList.value[0].id
+    // 默认上传目标取第一个「可写」的库（不是第一个可见库，避免默认选到只读公共库）
+    if ((!uploadKbId.value || !uploadableKbs.value.some((kb) => kb.id === uploadKbId.value)) && uploadableKbs.value.length) {
+      uploadKbId.value = uploadableKbs.value[0].id
     }
   } finally {
     loadingKb.value = false
@@ -1071,33 +1090,6 @@ onMounted(async () => {
   gap: 10px;
 }
 
-.btn-primary {
-  background: var(--blue);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.btn-ghost {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 14px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.btn-ghost:disabled { opacity: 0.5; }
-
-.btn-ghost-small {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
 .content {
   display: flex;
   flex-direction: column;
@@ -1145,7 +1137,7 @@ onMounted(async () => {
 }
 
 .upload-zone-drag {
-  border-color: var(--blue);
+  border-color: var(--primary);
   background: #eff6ff;
 }
 
@@ -1238,7 +1230,7 @@ onMounted(async () => {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--blue);
+  background: var(--primary);
   transition: width 0.16s ease;
 }
 
@@ -1278,21 +1270,21 @@ onMounted(async () => {
   transition: color 0.3s;
 }
 .pipe-arrow.done { color: #10b981; }
-.pipe-arrow.active { color: #3b82f6; }
+.pipe-arrow.active { color: var(--primary); }
 .pipe-arrow.failed { color: #ef4444; }
 
 .pipeline-step.done { background: #f0fdf4; border-color: #10b981; }
 .pipeline-step.active {
   background: #eff6ff;
-  border-color: #3b82f6;
+  border-color: var(--primary);
   animation: pulse 1.5s infinite;
 }
 .pipeline-step.next { background: #f8fafc; border-color: #93c5fd; }
 .pipeline-step.failed { background: #fef2f2; border-color: #ef4444; }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(59,130,246,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235,0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(37, 99, 235,0); }
 }
 
 .table-card {
@@ -1390,9 +1382,28 @@ onMounted(async () => {
 .badge-gray { background: #f1f5f9; color: #64748b; border-color: rgba(148,163,184,0.35); }
 .badge-red { background: #fee2e2; color: #991b1b; border-color: rgba(239,68,68,0.25); }
 
-.link-action { cursor: pointer; font-size: 12px; color: var(--blue); margin-right: 10px; }
+.link-action { cursor: pointer; font-size: 12px; color: var(--primary); margin-right: 10px; }
 .link-action.danger { color: var(--red); margin-right: 0; }
 .link-action.is-disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.55; }
+.ro-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 1px 9px;
+}
+.no-writable-hint {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: #fbfdff;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  padding: 14px 16px;
+  text-align: center;
+}
 
 .docs-row td { padding: 0; }
 .docs-panel {
@@ -1558,7 +1569,7 @@ onMounted(async () => {
   margin-bottom: 0 !important;
 }
 .hint-icon:hover,
-.hint-icon:focus { color: var(--blue); }
+.hint-icon:focus { color: var(--primary); }
 
 .hint-popover {
   position: absolute;
@@ -1619,8 +1630,8 @@ onMounted(async () => {
 }
 .field input:focus, .field textarea:focus, .field select:focus {
   outline: none;
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 .field.invalid input {
   border-color: #ef4444;
@@ -1854,8 +1865,7 @@ onMounted(async () => {
     gap: 8px;
   }
 
-  .btn-primary,
-  .btn-ghost,
+  .btn,
   .select {
     min-height: 40px;
   }

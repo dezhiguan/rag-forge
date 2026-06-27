@@ -44,7 +44,7 @@
 
         <div v-if="datasets.length" class="top-toolbar">
           <div class="toolbar-left">
-            <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
+            <button class="btn btn-primary" @click="openCreateDataset">+ 创建数据集</button>
             <button class="btn-ghost btn-sm" :disabled="loadingDatasets" @click="loadDatasets">刷新</button>
           </div>
         </div>
@@ -85,7 +85,7 @@
             </div>
           </div>
           <div class="onboard-actions">
-            <button class="btn-primary" @click="openCreateDataset">+ 创建数据集</button>
+            <button class="btn btn-primary" @click="openCreateDataset">+ 创建数据集</button>
             <button
               class="btn-accent"
               @click="kbList.length ? openQuickStart() : goToKnowledge()"
@@ -204,7 +204,7 @@
                         class="pager"
                       >
                         <button
-                          class="btn-ghost btn-ghost-small"
+                          class="btn btn-secondary btn-sm"
                           :disabled="(questionPage[ds.id] || 1) <= 1"
                           @click.stop="loadQuestions(ds.id, (questionPage[ds.id] || 1) - 1)"
                         >
@@ -215,7 +215,7 @@
                           {{ Math.ceil((questionsMap[ds.id]?.total || 0) / (questionsMap[ds.id]?.size || 20)) }} 页
                         </span>
                         <button
-                          class="btn-ghost btn-ghost-small"
+                          class="btn btn-secondary btn-sm"
                           :disabled="
                             (questionPage[ds.id] || 1) >=
                             Math.ceil((questionsMap[ds.id]?.total || 0) / (questionsMap[ds.id]?.size || 20))
@@ -257,7 +257,7 @@
 
         <div class="top-toolbar">
           <div class="toolbar-left">
-            <button class="btn-primary" @click="openRunExperiment">+ 运行新实验</button>
+            <button class="btn btn-primary" @click="openRunExperiment">+ 运行新实验</button>
             <button class="btn-ghost btn-sm" :disabled="loadingExperiments" @click="loadExperiments">刷新</button>
           </div>
         </div>
@@ -338,7 +338,7 @@
                 <input v-model.number="chunkerAbForm.params.simThreshold" type="number" min="0.1" max="0.95" step="0.05" />
               </label>
             </div>
-            <button class="btn-primary" :disabled="runningChunkerAb" @click="onRunChunkerAb">
+            <button class="btn btn-primary" :disabled="runningChunkerAb" @click="onRunChunkerAb">
               {{ runningChunkerAb ? '运行中…' : '运行分块 A/B' }}
             </button>
           </div>
@@ -391,8 +391,8 @@
             </select>
           </label>
           <div class="modal-actions">
-            <button class="btn-ghost" @click="showCreateDataset = false">取消</button>
-            <button class="btn-primary" :disabled="submittingDataset" @click="onCreateDataset">
+            <button class="btn btn-secondary" @click="showCreateDataset = false">取消</button>
+            <button class="btn btn-primary" :disabled="submittingDataset" @click="onCreateDataset">
               确定
             </button>
           </div>
@@ -412,8 +412,8 @@
               <textarea v-model="expectedTextSnippetsInput" rows="3" placeholder="用于硬覆盖后稳定评测，例如文档中的关键原文片段" />
             </label>
             <div class="modal-actions">
-              <button class="btn-ghost" @click="showAddQuestion = false">取消</button>
-              <button class="btn-primary" :disabled="searchingCandidates" @click="onSearchCandidates">
+              <button class="btn btn-secondary" @click="showAddQuestion = false">取消</button>
+              <button class="btn btn-primary" :disabled="searchingCandidates" @click="onSearchCandidates">
                 {{ searchingCandidates ? '检索中…' : '🔍 检索候选 Chunk' }}
               </button>
             </div>
@@ -451,8 +451,8 @@
               </label>
             </div>
             <div class="modal-actions">
-              <button class="btn-ghost" @click="addQuestionStep = 1">上一步</button>
-              <button class="btn-primary" :disabled="submittingQuestion" @click="onAddQuestion">
+              <button class="btn btn-secondary" @click="addQuestionStep = 1">上一步</button>
+              <button class="btn btn-primary" :disabled="submittingQuestion" @click="onAddQuestion">
                 {{ submittingQuestion ? '保存中…' : editingQuestionId ? '保存标注' : '确认保存' }}
               </button>
             </div>
@@ -510,8 +510,8 @@
           </template>
 
           <div class="modal-actions">
-            <button class="btn-ghost" @click="showRunExperiment = false">取消</button>
-            <button class="btn-primary" :disabled="runningExperiment" @click="onRunExperiment">
+            <button class="btn btn-secondary" @click="showRunExperiment = false">取消</button>
+            <button class="btn btn-primary" :disabled="runningExperiment" @click="onRunExperiment">
               {{ runningExperiment ? '运行中…' : '开始运行' }}
             </button>
           </div>
@@ -765,7 +765,7 @@
             </span>
           </div>
           <div class="modal-actions">
-            <button class="btn-ghost" @click="showQuickStart = false">取消</button>
+            <button class="btn btn-secondary" @click="showQuickStart = false">取消</button>
             <button class="btn-accent" :disabled="creatingQuickStart || quickStartLoading || !quickStartReady" @click="onCreateQuickStart">
               {{ creatingQuickStart ? '创建中…' : '一键创建数据集和题目' }}
             </button>
@@ -798,8 +798,8 @@
             <textarea v-model="batchText" rows="8" placeholder="2026年后端开发需要掌握哪些AI技能？&#10;分布式系统面试一般怎么问？" />
           </label>
           <div class="modal-actions">
-            <button class="btn-ghost" @click="showBatchImport = false">取消</button>
-            <button class="btn-primary" :disabled="submittingBatch" @click="onBatchImport">
+            <button class="btn btn-secondary" @click="showBatchImport = false">取消</button>
+            <button class="btn btn-primary" :disabled="submittingBatch" @click="onBatchImport">
               导入
             </button>
           </div>
@@ -1607,7 +1607,7 @@ onMounted(async () => {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--blue);
+  background: var(--primary);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
@@ -1782,7 +1782,7 @@ onMounted(async () => {
   font-family: 'SF Mono', Monaco, monospace;
 }
 .chunk-preview-id {
-  color: var(--blue);
+  color: var(--primary);
   font-weight: 700;
 }
 .chunk-preview-meta {
@@ -1942,46 +1942,20 @@ onMounted(async () => {
 }
 .tab-btn:hover { color: var(--slate); }
 .tab-btn.active {
-  color: var(--blue);
-  border-bottom-color: var(--blue);
+  color: var(--primary);
+  border-bottom-color: var(--primary);
 }
 
 .top-toolbar { margin-bottom: 12px; }
 .toolbar-left { display: flex; gap: 10px; align-items: center; }
 
-.btn-primary {
-  background: var(--blue);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.btn-ghost {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 14px;
-  font-size: 13px;
-  cursor: pointer;
-  color: var(--text);
-}
-.btn-ghost:disabled { opacity: 0.5; }
-
-.btn-sm { padding: 6px 10px; font-size: 12px; }
-.btn-ghost-small { padding: 6px 10px; font-size: 12px; }
-
 .btn-outline-sm {
   display: inline-block;
   padding: 4px 10px;
-  border: 1px solid var(--blue);
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
   background: #fff;
-  color: var(--blue);
+  color: var(--primary);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -2056,7 +2030,7 @@ onMounted(async () => {
   margin-bottom: 12px;
   transition: border-color 0.2s;
 }
-.ablation-toggle:hover { border-color: var(--blue); }
+.ablation-toggle:hover { border-color: var(--primary); }
 .toggle-track {
   width: 40px;
   height: 22px;
@@ -2066,7 +2040,7 @@ onMounted(async () => {
   transition: background 0.2s;
   flex-shrink: 0;
 }
-.toggle-track.on { background: var(--blue); }
+.toggle-track.on { background: var(--primary); }
 .toggle-thumb {
   position: absolute;
   top: 2px;
@@ -2090,7 +2064,7 @@ onMounted(async () => {
   padding: 8px 0;
   user-select: none;
 }
-.advanced-toggle:hover { color: var(--blue); }
+.advanced-toggle:hover { color: var(--primary); }
 
 
 .table-card {
@@ -2153,7 +2127,7 @@ onMounted(async () => {
 }
 .expander { font-size: 16px; color: var(--text-muted); }
 
-.link-action { cursor: pointer; font-size: 12px; color: var(--blue); margin-right: 10px; }
+.link-action { cursor: pointer; font-size: 12px; color: var(--primary); margin-right: 10px; }
 .link-action.danger { color: var(--red); margin-right: 0; }
 .link-action.muted { color: var(--text-muted); cursor: default; }
 
@@ -2237,7 +2211,7 @@ onMounted(async () => {
   transition: height 0.4s ease;
   min-height: 12px;
 }
-.bar.bar-best { background: var(--blue); }
+.bar.bar-best { background: var(--primary); }
 .bar-label {
   font-size: 11px;
   font-weight: 600;
@@ -2245,7 +2219,7 @@ onMounted(async () => {
   margin-top: 8px;
   white-space: nowrap;
 }
-.bar-pct { font-size: 10px; color: var(--blue); font-weight: 600; }
+.bar-pct { font-size: 10px; color: var(--primary); font-weight: 600; }
 
 .bar-ref-line {
   position: absolute;

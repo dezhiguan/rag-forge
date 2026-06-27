@@ -1,10 +1,9 @@
 <template>
   <div class="page-body model-center">
-    <div class="page-head">
-      <div>
-        <div class="sub">统一管理检索链路使用的大模型，监控 Token 消耗与费用</div>
-      </div>
-    </div>
+    <Teleport to="#topbar-left">
+      <span class="topbar-divider" />
+      <span class="topbar-subtitle">统一管理检索链路使用的大模型，监控 Token 消耗与费用</span>
+    </Teleport>
 
     <div class="tabs">
       <div class="tab" :class="{ active: activeTab === 0 }" @click="activeTab = 0">模型管理</div>
@@ -110,7 +109,7 @@
           <div v-for="r in ranking" :key="r.modelCode" class="rank-item">
             <div class="rank-nm">
               <div class="rank-t">{{ r.modelCode }}</div>
-              <div class="bar-mini"><i :style="{ width: r.pct + '%', background: 'var(--blue)' }"></i></div>
+              <div class="bar-mini"><i :style="{ width: r.pct + '%', background: 'var(--primary)' }"></i></div>
             </div>
             <div style="text-align:right">
               <div class="rank-amt">{{ formatMoney(r.cost) }}</div>
@@ -184,7 +183,7 @@ const ranking = computed(() => stats.ranking || [])
 const PURPOSE_META = {
   EMBEDDING: { label: '向量化', cls: 'badge-embed', color: '#06b6d4' },
   JUDGE: { label: '评测/Judge', cls: 'badge-purpose', color: '#8b5cf6' },
-  REWRITE: { label: 'Query 改写', cls: 'badge-purpose', color: '#3b82f6' },
+  REWRITE: { label: 'Query 改写', cls: 'badge-purpose', color: 'var(--primary)' },
   ANSWER: { label: '答案生成', cls: 'badge-purpose', color: '#6366f1' },
   RERANK: { label: '精排', cls: 'badge-rerank', color: '#10b981' },
   OCR: { label: '图片 OCR', cls: 'badge-ocr', color: '#f59e0b' },
@@ -298,7 +297,7 @@ onMounted(load)
 
 .tabs { display: flex; gap: 4px; margin: 16px 0 18px; border-bottom: 1px solid var(--border); }
 .tab { padding: 9px 16px; font-size: 14px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
 .tab-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); margin-left: 5px; vertical-align: middle; }
 
 .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
@@ -359,7 +358,7 @@ tr.off td { opacity: .5; }
 .note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 13px 18px; font-size: 12.5px; color: #92400e; margin-bottom: 20px; }
 .roadmap { background: #fff; border: 1.5px dashed #cbd5e1; border-radius: 14px; padding: 40px; text-align: center; }
 .roadmap-ico { font-size: 38px; opacity: .8; margin-bottom: 12px; }
-.roadmap .pill { display: inline-block; background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; border-radius: 20px; padding: 5px 14px; font-size: 12px; font-weight: 600; margin-bottom: 20px; }
+.roadmap .pill { display: inline-block; background: #eff6ff; color: var(--primary); border: 1px solid #bfdbfe; border-radius: 20px; padding: 5px 14px; font-size: 12px; font-weight: 600; margin-bottom: 20px; }
 .roadmap h3 { font-size: 18px; color: var(--slate); margin-bottom: 8px; }
 .roadmap p { color: var(--text-muted); max-width: 560px; margin: 0 auto 22px; font-size: 13.5px; }
 .feat-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; max-width: 680px; margin: 0 auto; text-align: left; }

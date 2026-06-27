@@ -67,7 +67,7 @@ function iconFor(type) {
 .toast-success { border-left-color: #10b981; }
 .toast-error { border-left-color: #ef4444; }
 .toast-warning { border-left-color: #f59e0b; }
-.toast-info { border-left-color: #3b82f6; }
+.toast-info { border-left-color: var(--primary); }
 
 .toast-icon {
   flex: 0 0 auto;
@@ -84,7 +84,7 @@ function iconFor(type) {
 .toast-success .toast-icon { background: #10b981; }
 .toast-error .toast-icon { background: #ef4444; }
 .toast-warning .toast-icon { background: #f59e0b; }
-.toast-info .toast-icon { background: #3b82f6; }
+.toast-info .toast-icon { background: var(--primary); }
 
 .toast-body {
   flex: 1 1 auto;

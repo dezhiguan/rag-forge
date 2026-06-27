@@ -184,7 +184,7 @@ onMounted(async () => {
 }
 
 .eyebrow {
-  color: var(--blue);
+  color: var(--primary);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
@@ -271,7 +271,7 @@ h1 {
 .retry-button {
   border: none;
   border-radius: var(--radius-sm);
-  background: var(--blue);
+  background: var(--primary);
   color: #fff;
   cursor: pointer;
   font-weight: 800;
@@ -322,7 +322,7 @@ h1 {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--blue);
+  background: var(--primary);
   transition: width 0.16s ease;
 }
 

@@ -318,7 +318,7 @@ onMounted(loadCaseDetail)
   border: 1px solid var(--border);
   border-radius: 16px;
   background:
-    linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(59, 130, 246, 0.05)),
+    linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(37, 99, 235, 0.05)),
     #fff;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }

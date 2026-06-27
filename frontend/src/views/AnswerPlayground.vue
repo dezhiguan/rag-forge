@@ -1,6 +1,9 @@
 <template>
   <div class="answer-page">
-    <p class="page-subtitle">Answer-as-LLM 基于知识库的带引用应答生成与检索链路诊断</p>
+    <Teleport to="#topbar-left">
+      <span class="topbar-divider" />
+      <span class="topbar-subtitle">Answer-as-LLM 基于知识库的带引用应答生成与检索链路诊断</span>
+    </Teleport>
     <section class="workbench">
       <aside class="answer-controls">
         <div class="control-title">应答参数</div>
@@ -38,7 +41,7 @@
           <span>最大 Token 数</span>
           <input v-model.number="form.maxTokens" type="number" min="64" max="4000">
         </label>
-        <button class="run-btn" :disabled="running || !form.kbId || !query.trim()" @click="runAnswer">
+        <button class="btn btn-primary btn-block" :disabled="running || !form.kbId || !query.trim()" @click="runAnswer">
           {{ running ? '生成中...' : '生成应答' }}
         </button>
         <div v-if="error" class="error-box">{{ error }}</div>
@@ -111,7 +114,7 @@ const toast = useToast()
 
 const ANSWER_DISABLED_HINT = '该知识库没有开启应答模式，请先到知识库开启应答模式'
 const kbList = ref([])
-const query = ref('广州 Java 25-30k 技术栈')
+const query = ref('')
 const answer = ref('')
 const citations = ref([])
 const events = ref([])
@@ -263,7 +266,16 @@ function isAnswerDisabledPayload(text) {
 
 <style scoped>
 .answer-page { padding: 18px; }
-.page-subtitle { color: var(--text-muted); margin: 0 0 12px 0; font-size: 13px; }
+.topbar-divider { width: 1px; height: 16px; background: var(--border); flex-shrink: 0; }
+.topbar-subtitle {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 768px) { .topbar-divider, .topbar-subtitle { display: none; } }
 .workbench {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -273,8 +285,9 @@ function isAnswerDisabledPayload(text) {
 .answer-panel,
 .event-strip {
   background: #fff;
-  border: 1px solid #dbe3ee;
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 .answer-controls { padding: 14px; align-self: start; }
 .control-title,
@@ -287,30 +300,27 @@ function isAnswerDisabledPayload(text) {
   margin-bottom: 12px;
 }
 .panel-head small { color: #64748b; font-weight: 500; }
-.field { display: grid; gap: 6px; margin-bottom: 12px; font-size: 12px; font-weight: 700; color: #475569; }
+.field { display: grid; gap: 6px; margin-bottom: 12px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .field select,
 .field input,
 .query-box {
   width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   padding: 9px 10px;
-  background: #f8fafc;
-  color: #172033;
+  background: #fff;
+  color: var(--text);
   font: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.field select:focus,
+.field input:focus,
+.query-box:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 .field.compact input { max-width: 120px; }
-.run-btn {
-  width: 100%;
-  border: 0;
-  border-radius: 7px;
-  padding: 10px 12px;
-  background: #0f766e;
-  color: #fff;
-  font-weight: 700;
-  cursor: pointer;
-}
-.run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .error-box {
   margin-top: 12px;
   padding: 10px;
@@ -349,7 +359,7 @@ function isAnswerDisabledPayload(text) {
   height: 64px;
   object-fit: cover;
   border-radius: 6px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--border);
   background: #f8fafc;
 }
 .citation-meta {
@@ -360,7 +370,7 @@ function isAnswerDisabledPayload(text) {
   font-size: 12px;
   margin-bottom: 4px;
 }
-.citation-meta b { color: #0f766e; }
+.citation-meta b { color: var(--primary); }
 .citation-body p { color: #334155; font-size: 13px; line-height: 1.6; }
 .citation-snippet {
   display: -webkit-box;
@@ -375,7 +385,7 @@ function isAnswerDisabledPayload(text) {
 .panel-head > span { display: inline-flex; align-items: baseline; gap: 2px; }
 .events { max-height: 190px; overflow: auto; display: grid; gap: 6px; }
 .event-line { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; font-size: 12px; }
-.event-line span { color: #0f766e; font-weight: 700; }
+.event-line span { color: var(--primary); font-weight: 700; }
 .event-line code {
   overflow: hidden;
   text-overflow: ellipsis;

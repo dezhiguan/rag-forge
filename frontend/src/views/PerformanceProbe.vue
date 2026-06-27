@@ -270,7 +270,7 @@ const stageBreakdown = computed(() => {
   return [
     { key: 'total', label: '全链路', value: row.latencyMs, color: '#334155' },
     { key: 'rewrite', label: 'Rewrite', value: row.rewriteLatencyMs, color: '#dc2626' },
-    { key: 'vector', label: 'Vector', value: row.vectorLatencyMs, color: '#2563eb' },
+    { key: 'vector', label: 'Vector', value: row.vectorLatencyMs, color: 'var(--primary-hover)' },
     { key: 'keyword', label: 'Keyword', value: row.keywordLatencyMs, color: '#059669' },
     { key: 'rerank', label: 'Rerank', value: row.rerankLatencyMs, color: '#7c3aed' },
     { key: 'other', label: '未拆分', value: row.otherLatencyMs, color: '#f59e0b' },
@@ -430,8 +430,9 @@ onMounted(async () => {
 .probe-main {
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: #fff;
+  box-shadow: var(--shadow-sm);
 }
 
 .probe-controls {
@@ -440,7 +441,7 @@ onMounted(async () => {
 }
 
 .panel-kicker {
-  color: var(--blue);
+  color: var(--primary);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -501,8 +502,8 @@ onMounted(async () => {
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.10);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
 }
 
 .field-grid {
@@ -549,7 +550,7 @@ onMounted(async () => {
 }
 
 .run-btn {
-  background: var(--blue);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -609,7 +610,7 @@ onMounted(async () => {
 .status-pill.active {
   border-color: #bfdbfe;
   background: #eff6ff;
-  color: var(--blue);
+  color: var(--primary);
 }
 
 .metric-grid {

@@ -94,7 +94,7 @@
               v-model.trim="form.phone"
               type="tel"
               autocomplete="tel"
-              placeholder="+86 138 0000 0000"
+              placeholder="请输入手机号"
               :disabled="loading"
               @input="errorMsg = ''"
             />
@@ -135,7 +135,7 @@
           </button>
         </form>
 
-        <p class="footer-mini">所有管理员操作会进入审计日志</p>
+        <p class="footer-mini">登录即代表同意服务条款与隐私政策</p>
   </div>
 </template>
 
@@ -356,7 +356,7 @@ onUnmounted(() => {
 .tab:hover { color: #1e293b; }
 .tab.active {
   color: #1d4ed8;
-  border-bottom-color: #3b82f6;
+  border-bottom-color: var(--primary);
   font-weight: 600;
 }
 
@@ -381,8 +381,8 @@ onUnmounted(() => {
   font-family: inherit;
 }
 .field input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 .field input::placeholder { color: #94a3b8; }
 .field input:disabled { background: #f8fafc; color: #94a3b8; cursor: not-allowed; }
@@ -397,8 +397,8 @@ onUnmounted(() => {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .input-with-suffix:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 .input-with-suffix input {
   flex: 1;
@@ -485,8 +485,8 @@ onUnmounted(() => {
   transition: background 0.15s, border-color 0.15s;
 }
 .check.on .box-tick {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--primary);
+  border-color: var(--primary);
 }
 .link {
   color: #1d4ed8;
@@ -501,7 +501,7 @@ onUnmounted(() => {
 .btn-primary {
   width: 100%;
   height: 42px;
-  background: linear-gradient(180deg, #3b82f6, #1d4ed8);
+  background: linear-gradient(180deg, var(--primary), #1d4ed8);
   color: #fff;
   font-weight: 600;
   font-size: 14px;

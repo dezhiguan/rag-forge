@@ -1,11 +1,7 @@
 <template>
   <nav class="sidebar" :class="{ collapsed: collapsed && !isMobile, 'mobile-open': isMobile && mobileOpen }">
-    <div class="sidebar-brand" @click="$router.push('/')">
-      <div class="brand-icon">⚡</div>
-      <div class="brand-text" v-show="!collapsed || isMobile">
-        <span class="brand-name">RAGForge</span>
-        <span class="brand-ver">v1.0</span>
-      </div>
+    <div class="sidebar-user" v-show="!collapsed || isMobile">
+      <UserMenu />
     </div>
     <div class="sidebar-nav">
       <router-link
@@ -36,6 +32,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { canAccessRoute } from '../router/guards'
+import UserMenu from './UserMenu.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -106,19 +103,10 @@ const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(it
 }
 .sidebar.collapsed { width: 56px; }
 
-.sidebar-brand {
-  padding: 18px 14px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
+.sidebar-user {
+  padding: 14px 10px 10px;
   border-bottom: 1px solid var(--border);
-  min-height: 56px;
 }
-.brand-icon { font-size: 20px; flex-shrink: 0; }
-.brand-text { overflow: hidden; white-space: nowrap; }
-.brand-name { display: block; font-weight: 700; font-size: 14px; color: var(--navy); }
-.brand-ver { font-size: 10px; color: var(--text-muted); }
 
 .sidebar-nav {
   flex: 1;
@@ -143,7 +131,7 @@ const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(it
   overflow: hidden;
 }
 .nav-item:hover { color: var(--navy); background: rgba(0,0,0,0.04); }
-.nav-item.active { color: var(--blue); background: #dbeafe; font-weight: 600; }
+.nav-item.active { color: var(--primary); background: var(--primary-soft); font-weight: 600; }
 .nav-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
 .nav-label { flex: 1; }
 
@@ -193,8 +181,8 @@ const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(it
     box-shadow: 4px 0 20px rgba(0,0,0,0.15);
   }
 
-  .sidebar-brand {
-    padding-top: calc(18px + env(safe-area-inset-top));
+  .sidebar-user {
+    padding-top: calc(14px + env(safe-area-inset-top));
   }
 
   .nav-item {

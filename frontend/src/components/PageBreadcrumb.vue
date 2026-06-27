@@ -45,7 +45,7 @@ defineProps({
 }
 
 .crumb.link {
-  color: var(--blue);
+  color: var(--primary);
   text-decoration: none;
   font-weight: 500;
 }

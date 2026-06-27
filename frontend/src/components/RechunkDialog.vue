@@ -460,7 +460,7 @@ function submit() {
 .strategy-tag {
   margin-left: 6px;
   font-size: 11px;
-  color: #2563eb;
+  color: var(--primary-hover);
 }
 
 .strategy-warning {

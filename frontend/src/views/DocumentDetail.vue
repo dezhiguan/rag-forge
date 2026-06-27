@@ -2,7 +2,7 @@
   <div>
     <div class="page-body">
       <div class="detail-nav">
-        <button class="btn-ghost" type="button" @click="onBack">← 返回上一页</button>
+        <button class="btn btn-secondary" type="button" @click="onBack">← 返回上一页</button>
       </div>
 
       <PageBreadcrumb :items="breadcrumbItems" />
@@ -764,7 +764,7 @@ function piiLabel(key) {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: #fff;
-  color: var(--blue);
+  color: var(--primary);
   padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
@@ -879,7 +879,7 @@ function piiLabel(key) {
 .chunk-heading {
   margin-bottom: 6px;
   font-size: 11px;
-  color: var(--blue);
+  color: var(--primary);
   word-break: break-word;
 }
 
@@ -911,7 +911,7 @@ function piiLabel(key) {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: #fff;
-  color: var(--blue);
+  color: var(--primary);
   padding: 8px 12px;
   font-size: 12px;
   cursor: pointer;
@@ -951,7 +951,7 @@ function piiLabel(key) {
 }
 
 .meta-val a {
-  color: var(--blue);
+  color: var(--primary);
 }
 
 .meta-val code {
@@ -1020,10 +1020,10 @@ function piiLabel(key) {
 
 .search-action {
   padding: 10px;
-  border: 1px solid var(--blue);
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
   text-align: center;
-  color: var(--blue);
+  color: var(--primary);
   font-size: 12px;
   cursor: pointer;
   font-weight: 500;
@@ -1311,7 +1311,7 @@ function piiLabel(key) {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  background: var(--blue);
+  background: var(--primary);
   color: #fff;
 }
 
