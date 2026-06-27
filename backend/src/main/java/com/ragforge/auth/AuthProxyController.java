@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.auth.AuthGatewayProxyClient.AuthProxyException;
 import com.ragforge.auth.AuthGatewayProxyClient.TokenResponse;
 import com.ragforge.common.Result;
+import com.ragforge.events.AuthEventService;
+import com.ragforge.security.JwtClaims;
+import com.ragforge.security.JwtVerifier;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
@@ -38,16 +41,22 @@ public class AuthProxyController {
   private final AuthProxyProperties properties;
   private final ObjectMapper objectMapper;
   private final UserProfileService userProfileService;
+  private final JwtVerifier jwtVerifier;
+  private final AuthEventService authEventService;
 
   public AuthProxyController(
       AuthGatewayProxyClient client,
       AuthProxyProperties properties,
       ObjectMapper objectMapper,
-      UserProfileService userProfileService) {
+      UserProfileService userProfileService,
+      JwtVerifier jwtVerifier,
+      AuthEventService authEventService) {
     this.client = client;
     this.properties = properties;
     this.objectMapper = objectMapper;
     this.userProfileService = userProfileService;
+    this.jwtVerifier = jwtVerifier;
+    this.authEventService = authEventService;
   }
 
   @PostMapping("/register")
@@ -91,6 +100,25 @@ public class AuthProxyController {
       userProfileService.syncIdentity(userId, request.username(), null, null);
     }
     return Result.ok(Map.of("success", true));
+  }
+
+  private void revokeBearerAccessToken(String authorization) {
+    if (!StringUtils.hasText(authorization) || !authorization.startsWith("Bearer ")) {
+      return;
+    }
+    String token = authorization.substring("Bearer ".length()).trim();
+    try {
+      JwtClaims claims = jwtVerifier.verify(token);
+      authEventService.revokeAccessTokenJti(claims.string("jti"), claims.longValue("exp"));
+    } catch (RuntimeException ex) {
+      Map<String, Object> claims = parseClaims(token);
+      Object jti = claims.get("jti");
+      Object exp = claims.get("exp");
+      if (jti != null) {
+        Long expEpoch = exp instanceof Number number ? number.longValue() : null;
+        authEventService.revokeAccessTokenJti(String.valueOf(jti), expEpoch);
+      }
+    }
   }
 
   private Long userIdFromAuth(String authorization) {
@@ -146,6 +174,7 @@ public class AuthProxyController {
   public ResponseEntity<Result<Map<String, Object>>> logout(
       @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
     if (StringUtils.hasText(authorization)) {
+      revokeBearerAccessToken(authorization);
       client.logout(authorization);
     }
     return ResponseEntity.ok()

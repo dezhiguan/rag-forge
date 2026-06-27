@@ -74,7 +74,7 @@ public class SearchController {
     Set<Long> readableKbIds =
         requestedSpecificKbs ? kbAccessGuard.filterReadable(req.getKbIds()) : kbAccessGuard.allReadableKbIds();
     if (readableKbIds.isEmpty()) {
-      throw new BizException(403, "KB_ACCESS_DENIED");
+      return Result.ok(emptySearchResponse(req));
     }
     req.setKbIds(new ArrayList<>(readableKbIds));
 
@@ -96,6 +96,9 @@ public class SearchController {
         output.getStrategy(),
         output.getResults() == null ? 0 : output.getResults().size(),
         output.getLatencyMs());
+    // 在请求线程内取当前用户（@Async 日志线程拿不到 ThreadLocal 上下文）
+    com.ragforge.security.RagAuthContext authCtx = com.ragforge.security.RagAuthContextHolder.get();
+    Long principalUserId = authCtx == null ? null : authCtx.userId();
     retrievalLogService.logAsync(
         req.getQuery(),
         output.getStrategy(),
@@ -104,7 +107,8 @@ public class SearchController {
         req.getTopK(),
         output.getResults() == null ? 0 : output.getResults().size(),
         output.getLatencyMs(),
-        output.getResults());
+        output.getResults(),
+        principalUserId);
 
     enrichImageUrls(output.getResults());
     return Result.ok(
@@ -129,7 +133,7 @@ public class SearchController {
     Set<Long> readableKbIds =
         requestedSpecificKbs ? kbAccessGuard.filterReadable(req.getKbIds()) : kbAccessGuard.allReadableKbIds();
     if (readableKbIds.isEmpty()) {
-      throw new BizException(403, "KB_ACCESS_DENIED");
+      return Result.ok(new SearchResponse(List.of(), 0L, "image-vector", null, null, 0L, null, null));
     }
     long start = System.currentTimeMillis();
     List<SearchResult> results =
@@ -143,5 +147,17 @@ public class SearchController {
     long latencyMs = System.currentTimeMillis() - start;
     enrichImageUrls(results);
     return Result.ok(new SearchResponse(results, latencyMs, "image-vector", null, null, latencyMs, null, null));
+  }
+
+  private SearchResponse emptySearchResponse(SearchRequest req) {
+    return new SearchResponse(
+        List.of(),
+        0L,
+        req.getStrategy(),
+        List.of(),
+        0L,
+        0L,
+        0L,
+        0L);
   }
 }

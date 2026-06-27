@@ -1,6 +1,7 @@
 package com.ragforge.events;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.mapper.RevokedJtiMapper;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -29,6 +30,7 @@ public class AuthEventService {
   private final AuthEventProperties properties;
   private final ObjectMapper objectMapper;
   private final StringRedisTemplate redisTemplate;
+  private final RevokedJtiMapper revokedJtiMapper;
 
   public AuthEventResult handle(String expectedType, String rawBody, HttpHeaders headers) {
     if (!verifyTimestamp(headers)) {
@@ -62,10 +64,20 @@ public class AuthEventService {
     return AuthEventResult.accepted(payload.eventId(), revokedCount);
   }
 
+  /** Synchronously blacklist a JWT jti (e.g. RAG proxy logout) without waiting for auth-gateway webhook. */
+  public void revokeAccessTokenJti(String jti, Long expEpochSeconds) {
+    if (!StringUtils.hasText(jti)) {
+      return;
+    }
+    revokeJti(jti, expEpochSeconds, "logout");
+  }
+
   public boolean isJwtRevoked(AuthJwtToken token) {
     if (StringUtils.hasText(token.jti())) {
-      Boolean jtiRevoked = redisTemplate.hasKey(REVOKED_JTI_PREFIX + token.jti());
-      if (Boolean.TRUE.equals(jtiRevoked)) {
+      if (isJtiRevokedInRedis(token.jti())) {
+        return true;
+      }
+      if (isJtiRevokedInDatabase(token.jti())) {
         return true;
       }
     }
@@ -89,9 +101,40 @@ public class AuthEventService {
   private int revokeTokens(AuthEventPayload payload) {
     Set<String> jtis = jtis(payload);
     for (String jti : jtis) {
-      redisTemplate.opsForValue().set(REVOKED_JTI_PREFIX + jti, payload.eventId(), ttlFor(payload));
+      revokeJti(jti, payload.exp(), payload.eventId());
     }
     return jtis.size();
+  }
+
+  private void revokeJti(String jti, Long expEpochSeconds, String source) {
+    try {
+      redisTemplate
+          .opsForValue()
+          .set(REVOKED_JTI_PREFIX + jti, source, ttlForExp(expEpochSeconds));
+    } catch (RuntimeException ex) {
+      // Redis may be unreachable in some prod topologies; PostgreSQL is the durable fallback.
+    }
+    Instant expiresAt =
+        expEpochSeconds == null
+            ? Instant.now().plus(properties.getRevokedJtiTtl())
+            : Instant.ofEpochSecond(expEpochSeconds);
+    revokedJtiMapper.revoke(jti, expiresAt, source);
+  }
+
+  private boolean isJtiRevokedInRedis(String jti) {
+    try {
+      return Boolean.TRUE.equals(redisTemplate.hasKey(REVOKED_JTI_PREFIX + jti));
+    } catch (RuntimeException ex) {
+      return false;
+    }
+  }
+
+  private boolean isJtiRevokedInDatabase(String jti) {
+    try {
+      return revokedJtiMapper.isRevoked(jti);
+    } catch (RuntimeException ex) {
+      return false;
+    }
   }
 
   private Set<String> jtis(AuthEventPayload payload) {
@@ -165,10 +208,14 @@ public class AuthEventService {
   }
 
   private Duration ttlFor(AuthEventPayload payload) {
-    if (payload.exp() == null) {
+    return ttlForExp(payload.exp());
+  }
+
+  private Duration ttlForExp(Long expEpochSeconds) {
+    if (expEpochSeconds == null) {
       return properties.getRevokedJtiTtl();
     }
-    long seconds = payload.exp() - Instant.now().getEpochSecond();
+    long seconds = expEpochSeconds - Instant.now().getEpochSecond();
     return seconds > 0 ? Duration.ofSeconds(seconds) : Duration.ofSeconds(1);
   }
 
