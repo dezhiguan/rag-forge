@@ -254,7 +254,7 @@ visibility = public？    → read（只读）
   <tr><td>新建自己的知识库</td><td><span class="pill p-yes">可</span></td><td>可</td></tr>
   <tr><td>自有库读写/删除（admin）</td><td><span class="pill p-yes">可</span></td><td>可</td></tr>
   <tr><td>检索 / 应答（自有 + public）</td><td><span class="pill p-yes">可</span></td><td>可</td></tr>
-  <tr><td>他人私有库</td><td><span class="pill p-no">不可见</span></td><td>非 SYSTEM 可见</td></tr>
+  <tr><td>他人私有库</td><td><span class="pill p-no">不可见</span></td><td>默认<b>不可见</b>；需破玻璃（<code>X-Admin-Override</code> + 原因）方可读，且<b>留审计</b></td></tr>
   <tr><td>API Key 管理 / 成本中心 / 维护</td><td><span class="pill p-no">禁止</span></td><td>可</td></tr>
   <tr><td><code>kb_type=SYSTEM</code> 系统库</td><td><span class="pill p-no">禁止</span></td><td>禁止（已挡）</td></tr>
   <tr><td>性能诊断 / 质量看板 / 全局指标</td><td><span class="pill p-no">禁止</span></td><td>可</td></tr>

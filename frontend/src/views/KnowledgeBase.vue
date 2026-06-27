@@ -5,6 +5,15 @@
         <div class="toolbar-left">
           <button class="btn btn-primary" @click="openCreate">+ 创建知识库</button>
           <button class="btn btn-secondary" :disabled="loadingKb" @click="loadKbs">刷新</button>
+          <button
+            v-if="isAdmin"
+            class="btn btn-sm"
+            :class="adminViewAll ? 'btn-primary' : 'btn-secondary'"
+            :title="adminViewAll ? '正在以管理员身份查看全部知识库（已留审计）' : '管理员破玻璃：查看全部用户的知识库（将被审计）'"
+            @click="toggleAdminViewAll"
+          >
+            {{ adminViewAll ? '✓ 查看全部·已留痕' : '查看全部(管理员)' }}
+          </button>
         </div>
       </div>
 
@@ -435,6 +444,7 @@ import { useDocumentPolling } from '../composables/useDocumentPolling'
 import { documentDetailRoute } from '../composables/useDocumentNav'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import { useAuth } from '../composables/useAuth'
 import {
   CHUNK_OVERLAP_MAX,
   CHUNK_OVERLAP_MIN,
@@ -463,6 +473,11 @@ import {
 const router = useRouter()
 const route = useRoute()
 const { start: startDocPolling, stop: stopDocPolling } = useDocumentPolling()
+
+const { ragRole } = useAuth()
+const isAdmin = computed(() => ragRole.value === 'ADMIN')
+const adminViewAll = ref(false)
+const adminOverrideReason = ref('')
 
 const kbList = ref([])
 const loadingKb = ref(false)
@@ -536,10 +551,23 @@ function onEditChunkOverlapBlur() {
   editForm.value.chunkOverlap = normalizeChunkOverlap(editForm.value.chunkOverlap)
 }
 
+async function toggleAdminViewAll() {
+  if (!adminViewAll.value) {
+    const reason = window.prompt('「查看全部知识库」属管理员越权操作，将被审计留痕。请填写访问原因：', '')
+    if (!reason || !reason.trim()) return
+    adminOverrideReason.value = reason.trim()
+    adminViewAll.value = true
+  } else {
+    adminViewAll.value = false
+    adminOverrideReason.value = ''
+  }
+  await loadKbs()
+}
+
 async function loadKbs() {
   loadingKb.value = true
   try {
-    const res = await listKb()
+    const res = await listKb(adminViewAll.value ? adminOverrideReason.value : undefined)
     kbList.value = res.data ?? []
     // 默认上传目标取第一个「可写」的库（不是第一个可见库，避免默认选到只读公共库）
     if ((!uploadKbId.value || !uploadableKbs.value.some((kb) => kb.id === uploadKbId.value)) && uploadableKbs.value.length) {

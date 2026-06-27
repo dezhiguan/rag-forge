@@ -38,7 +38,7 @@ public class KbAccessGuard {
     if (context == null) {
       return false;
     }
-    if (context.isAdmin()) {
+    if (context.isAdmin() && AdminOverrideHolder.isActive()) {
       return isNonSystemKb(kbId);
     }
     KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
@@ -59,7 +59,7 @@ public class KbAccessGuard {
     if (context == null) {
       return false;
     }
-    if (context.isAdmin()) {
+    if (context.isAdmin() && AdminOverrideHolder.isActive()) {
       return isNonSystemKb(kbId);
     }
     KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
@@ -84,7 +84,7 @@ public class KbAccessGuard {
     if (context == null) {
       return false;
     }
-    if (context.isAdmin()) {
+    if (context.isAdmin() && AdminOverrideHolder.isActive()) {
       return isNonSystemKb(kbId);
     }
     KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
@@ -127,7 +127,7 @@ public class KbAccessGuard {
     if (context == null) {
       return Set.of();
     }
-    if (context.isAdmin()) {
+    if (context.isAdmin() && AdminOverrideHolder.isActive()) {
       return new LinkedHashSet<>(
           knowledgeBaseMapper.selectList(
                   new LambdaQueryWrapper<KnowledgeBase>()
@@ -138,7 +138,7 @@ public class KbAccessGuard {
               .map(KnowledgeBase::getId)
               .toList());
     }
-    // 普通用户：自有库 ∪ public 库 ∪ (claims/acl 授权库)
+    // 默认（含未破玻璃的 ADMIN）：自有库 ∪ public 库 ∪ (claims/acl 授权库)
     Set<Long> ids = new LinkedHashSet<>(readableKbIds(context));
     ids.addAll(ownedKbIds(context));
     ids.addAll(publicKbIds());

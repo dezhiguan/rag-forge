@@ -29,9 +29,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+  private static final String ADMIN_OVERRIDE_HEADER = "X-Admin-Override";
+  private static final String ADMIN_OVERRIDE_REASON_HEADER = "X-Admin-Override-Reason";
+
   private final JwtVerifier jwtVerifier;
   private final ObjectMapper objectMapper;
   private final AuthEventService authEventService;
+  private final AdminAccessAuditService adminAccessAuditService;
 
   @Override
   protected void doFilterInternal(
@@ -62,6 +66,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
           return;
         }
         RagAuthContextHolder.set(context);
+        maybeActivateAdminOverride(context, request);
         UsernamePasswordAuthenticationToken authentication =
             new UsernamePasswordAuthenticationToken(
                 context,
@@ -72,8 +77,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       filterChain.doFilter(request, response);
     } finally {
       RagAuthContextHolder.clear();
+      AdminOverrideHolder.clear();
       SecurityContextHolder.clearContext();
     }
+  }
+
+  /** 仅 ADMIN 显式携带 X-Admin-Override 头时才提权，并写审计；其它情况一律按默认口径。 */
+  private void maybeActivateAdminOverride(RagAuthContext context, HttpServletRequest request) {
+    if (context == null || !context.isAdmin()) {
+      return;
+    }
+    String flag = request.getHeader(ADMIN_OVERRIDE_HEADER);
+    if (!StringUtils.hasText(flag) || !("true".equalsIgnoreCase(flag) || "1".equals(flag))) {
+      return;
+    }
+    String reason = request.getHeader(ADMIN_OVERRIDE_REASON_HEADER);
+    AdminOverrideHolder.activate(reason);
+    adminAccessAuditService.recordKbBreakGlass(context.userId(), reason);
   }
 
   private boolean isJwtRevoked(JwtClaims claims) {
