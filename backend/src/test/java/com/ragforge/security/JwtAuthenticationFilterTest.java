@@ -29,7 +29,9 @@ class JwtAuthenticationFilterTest {
     SecurityContextHolder.clearContext();
     jwtVerifier = mock(JwtVerifier.class);
     authEventService = mock(AuthEventService.class);
-    filter = new JwtAuthenticationFilter(jwtVerifier, new ObjectMapper(), authEventService);
+    filter =
+        new JwtAuthenticationFilter(
+            jwtVerifier, new ObjectMapper(), authEventService, mock(AdminAccessAuditService.class));
   }
 
   @Test
