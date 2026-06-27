@@ -39,11 +39,13 @@ public class DocumentController {
   private final DocumentUploadApplicationService uploadApplicationService;
 
   @PostMapping("/uploads/presign")
+  @PreAuthorize("@kbAccessGuard.canWrite(#request.kbId)")
   public ResponseEntity<?> presignUpload(@RequestBody PresignUploadRequest request) {
     return ResponseEntity.ok(uploadApplicationService.presignUpload(request));
   }
 
   @PostMapping("/documents/register")
+  @PreAuthorize("@kbAccessGuard.canWrite(#request.kbId)")
   public ResponseEntity<?> registerUploadedDocument(@RequestBody RegisterUploadRequest request) {
     return ResponseEntity.ok(uploadApplicationService.registerUploadedDocument(request));
   }

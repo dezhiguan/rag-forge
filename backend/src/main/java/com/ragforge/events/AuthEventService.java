@@ -44,9 +44,10 @@ public class AuthEventService {
     if (!StringUtils.hasText(payload.eventId())) {
       return AuthEventResult.badRequest("event_id required");
     }
-    if (StringUtils.hasText(payload.type()) && !expectedType.equals(payload.type())) {
-      return AuthEventResult.badRequest("event type mismatch");
-    }
+    // 单个订阅 endpoint 会收到多种事件类型（如 session.revoked 与 user.password.changed
+    // 都投到同一 URL），按 payload 自带的真实 type 分发，不因 URL 与 type 不一致而拒收，
+    // 否则 user.password.changed 会被 session-revoked 端点误判 mismatch，改密吊销失效（SEC-04）。
+    String effectiveType = StringUtils.hasText(payload.type()) ? payload.type() : expectedType;
 
     String eventKey = EVENT_ID_PREFIX + payload.eventId();
     if (Boolean.TRUE.equals(redisTemplate.hasKey(eventKey))) {
@@ -56,10 +57,10 @@ public class AuthEventService {
     int revokedCount = revokeTokens(payload);
     // 改密强制吊销该用户全部令牌；登出全部设备（session.revoked 携带 user_id 而非单个 jti）同理。
     // 单会话登出只带 jti（不带 user_id），由上面的 revokeTokens 按 jti 精确吊销，不会误伤其它会话。
-    if ("user.password.changed".equals(expectedType) || StringUtils.hasText(userKey(payload))) {
+    if ("user.password.changed".equals(effectiveType) || StringUtils.hasText(userKey(payload))) {
       revokeUser(payload);
     }
-    redisTemplate.opsForValue().set(eventKey, expectedType, properties.getIdempotencyTtl());
+    redisTemplate.opsForValue().set(eventKey, effectiveType, properties.getIdempotencyTtl());
 
     return AuthEventResult.accepted(payload.eventId(), revokedCount);
   }
