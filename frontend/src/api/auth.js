@@ -116,6 +116,7 @@ function friendlyAuthMessage(code, message) {
   ) {
     return '验证码发送过于频繁，请稍后再试'
   }
+  if (text.includes('SMS_LOGIN_NOT_REGISTERED')) return '该手机号尚未注册 RAGForge，请先点击「立即注册」'
   if (text.includes('SMS_CODE_INVALID')) return '验证码错误或已过期，请重新获取'
   if (text.includes('BAD_CREDENTIALS')) return '账号或密码不正确'
   if (text.includes('PLATFORM_ROLE_DENIED')) return '当前账号没有 RAGForge 管理权限，请联系管理员开通'

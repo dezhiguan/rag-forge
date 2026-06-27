@@ -47,7 +47,8 @@ public class AuthGatewayProxyClient {
   }
 
   public void sendSms(String phone, String scene) {
-    postJson("/auth/sms/send", Map.of("phone", phone, "scene", scene), Map.class);
+    // 透传 app=ragforge：网关据此在登录场景下对未注册手机号拦截发码（避免白发短信）。
+    postJson("/auth/sms/send", Map.of("phone", phone, "scene", scene, "app", "ragforge"), Map.class);
   }
 
   public Object resetInit(String account, String phone) {
