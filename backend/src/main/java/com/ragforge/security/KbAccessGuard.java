@@ -28,6 +28,8 @@ public class KbAccessGuard {
   private final DocumentMapper documentMapper;
   private final RagforgeMetrics metrics;
 
+  private static final String PUBLIC_VISIBILITY = "PUBLIC";
+
   public boolean canRead(Long kbId) {
     if (kbId == null) {
       return false;
@@ -38,6 +40,13 @@ public class KbAccessGuard {
     }
     if (context.isAdmin()) {
       return isNonSystemKb(kbId);
+    }
+    KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+    if (kb == null || isSystem(kb)) {
+      return false;
+    }
+    if (isOwner(kb, context) || isPublic(kb)) {
+      return true;
     }
     return readableKbIds(context).contains(kbId);
   }
@@ -52,6 +61,13 @@ public class KbAccessGuard {
     }
     if (context.isAdmin()) {
       return isNonSystemKb(kbId);
+    }
+    KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+    if (kb == null || isSystem(kb)) {
+      return false;
+    }
+    if (isOwner(kb, context)) {
+      return true;
     }
     Set<Long> writable = context.writableKbIds();
     if (writable != null && !writable.isEmpty()) {
@@ -70,6 +86,13 @@ public class KbAccessGuard {
     }
     if (context.isAdmin()) {
       return isNonSystemKb(kbId);
+    }
+    KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+    if (kb == null || isSystem(kb)) {
+      return false;
+    }
+    if (isOwner(kb, context)) {
+      return true;
     }
     return context.userId() != null && kbAclMapper.findAdminKbIds(context.userId()).contains(kbId);
   }
@@ -115,7 +138,50 @@ public class KbAccessGuard {
               .map(KnowledgeBase::getId)
               .toList());
     }
-    return readableKbIds(context);
+    // 普通用户：自有库 ∪ public 库 ∪ (claims/acl 授权库)
+    Set<Long> ids = new LinkedHashSet<>(readableKbIds(context));
+    ids.addAll(ownedKbIds(context));
+    ids.addAll(publicKbIds());
+    return ids;
+  }
+
+  private Set<Long> ownedKbIds(RagAuthContext context) {
+    if (context.userId() == null) {
+      return Set.of();
+    }
+    return new LinkedHashSet<>(
+        knowledgeBaseMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBase>()
+                    .eq(KnowledgeBase::getOwnerUserId, context.userId())
+                    .ne(KnowledgeBase::getKbType, SYSTEM_KB_TYPE))
+            .stream()
+            .map(KnowledgeBase::getId)
+            .toList());
+  }
+
+  private Set<Long> publicKbIds() {
+    return new LinkedHashSet<>(
+        knowledgeBaseMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBase>()
+                    .eq(KnowledgeBase::getVisibility, PUBLIC_VISIBILITY)
+                    .ne(KnowledgeBase::getKbType, SYSTEM_KB_TYPE))
+            .stream()
+            .map(KnowledgeBase::getId)
+            .toList());
+  }
+
+  private boolean isOwner(KnowledgeBase kb, RagAuthContext context) {
+    return kb.getOwnerUserId() != null
+        && context.userId() != null
+        && kb.getOwnerUserId().equals(context.userId());
+  }
+
+  private boolean isPublic(KnowledgeBase kb) {
+    return PUBLIC_VISIBILITY.equalsIgnoreCase(kb.getVisibility());
+  }
+
+  private boolean isSystem(KnowledgeBase kb) {
+    return SYSTEM_KB_TYPE.equalsIgnoreCase(kb.getKbType());
   }
 
   private Set<Long> readableKbIds(RagAuthContext context) {
