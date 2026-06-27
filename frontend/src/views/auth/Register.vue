@@ -8,6 +8,26 @@
 
     <form @submit.prevent="handleRegister" novalidate>
       <div class="field">
+        <label for="r-username">用户名</label>
+        <input id="r-username" v-model.trim="form.username" type="text" autocomplete="username"
+          placeholder="2-32 位中文、字母、数字或下划线" :disabled="loading" @input="errorMsg = ''" />
+      </div>
+      <div class="field">
+        <label for="r-email">邮箱（选填）</label>
+        <input id="r-email" v-model.trim="form.email" type="email" autocomplete="email"
+          placeholder="you@example.com" :disabled="loading" @input="errorMsg = ''" />
+      </div>
+      <div class="field">
+        <label for="r-password">密码</label>
+        <input id="r-password" v-model="form.password" type="password" autocomplete="new-password"
+          placeholder="至少 8 位，含字母与数字" :disabled="loading" @input="errorMsg = ''" />
+      </div>
+      <div class="field">
+        <label for="r-password2">确认密码</label>
+        <input id="r-password2" v-model="form.confirmPassword" type="password" autocomplete="new-password"
+          placeholder="请再次输入密码" :disabled="loading" @input="errorMsg = ''" />
+      </div>
+      <div class="field">
         <label for="r-phone">手机号（必填，需短信验证）</label>
         <input id="r-phone" v-model.trim="form.phone" type="tel" placeholder="+86 138 0000 0000"
           :disabled="loading" @input="errorMsg = ''" />
@@ -20,21 +40,6 @@
           <button type="button" class="sms-btn" :class="{ disabled: smsCountdown > 0 || sendingSms }"
             :disabled="smsCountdown > 0 || sendingSms" @click="handleSendSms">{{ smsBtnLabel }}</button>
         </div>
-      </div>
-      <div class="field">
-        <label for="r-username">用户名</label>
-        <input id="r-username" v-model.trim="form.username" type="text" autocomplete="username"
-          placeholder="3-32 位字母、数字或下划线" :disabled="loading" @input="errorMsg = ''" />
-      </div>
-      <div class="field">
-        <label for="r-email">邮箱（选填）</label>
-        <input id="r-email" v-model.trim="form.email" type="email" autocomplete="email"
-          placeholder="you@example.com" :disabled="loading" @input="errorMsg = ''" />
-      </div>
-      <div class="field">
-        <label for="r-password">密码</label>
-        <input id="r-password" v-model="form.password" type="password" autocomplete="new-password"
-          placeholder="至少 8 位，含字母与数字" :disabled="loading" @input="errorMsg = ''" />
       </div>
       <button type="submit" class="btn-primary" :disabled="loading">{{ loading ? '提交中…' : '注 册' }}</button>
     </form>
@@ -55,7 +60,7 @@ const sendingSms = ref(false)
 const smsCountdown = ref(0)
 let countdownTimer = null
 
-const form = reactive({ phone: '', smsCode: '', username: '', email: '', password: '' })
+const form = reactive({ phone: '', smsCode: '', username: '', email: '', password: '', confirmPassword: '' })
 
 const smsBtnLabel = computed(() => {
   if (sendingSms.value) return '发送中…'
@@ -89,6 +94,12 @@ async function handleRegister() {
   if (!form.username && !form.email) {
     errorMsg.value = '请至少填写用户名或邮箱'
     return
+  }
+  if (form.password || form.confirmPassword) {
+    if (form.password !== form.confirmPassword) {
+      errorMsg.value = '两次输入的密码不一致'
+      return
+    }
   }
   loading.value = true
   errorMsg.value = ''

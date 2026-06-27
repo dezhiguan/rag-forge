@@ -45,7 +45,7 @@
 
       <div class="cred-block">
         <h3>设置登录用户名</h3>
-        <input v-model.trim="usernameInput" type="text" placeholder="3-32 位字母、数字或下划线" />
+        <input v-model.trim="usernameInput" type="text" placeholder="2-32 位中文、字母、数字或下划线" />
         <button class="btn-outline" :disabled="busy.username" @click="doSetUsername">提交</button>
       </div>
 
