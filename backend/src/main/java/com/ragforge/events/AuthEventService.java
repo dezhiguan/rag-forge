@@ -52,7 +52,9 @@ public class AuthEventService {
     }
 
     int revokedCount = revokeTokens(payload);
-    if ("user.password.changed".equals(expectedType)) {
+    // 改密强制吊销该用户全部令牌；登出全部设备（session.revoked 携带 user_id 而非单个 jti）同理。
+    // 单会话登出只带 jti（不带 user_id），由上面的 revokeTokens 按 jti 精确吊销，不会误伤其它会话。
+    if ("user.password.changed".equals(expectedType) || StringUtils.hasText(userKey(payload))) {
       revokeUser(payload);
     }
     redisTemplate.opsForValue().set(eventKey, expectedType, properties.getIdempotencyTtl());

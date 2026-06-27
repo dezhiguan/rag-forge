@@ -53,7 +53,7 @@ public class SearchController {
   }
 
   @PostMapping("/search")
-  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','SERVICE_ACCOUNT')")
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER','SERVICE_ACCOUNT')")
   public Result<SearchResponse> search(@Valid @RequestBody SearchRequest req) {
     int queryLen = req.getQuery() == null ? 0 : req.getQuery().length();
     boolean hasQuery = req.getQuery() != null && !req.getQuery().isBlank();
@@ -120,7 +120,7 @@ public class SearchController {
   }
 
   @PostMapping("/search/by-image")
-  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','SERVICE_ACCOUNT')")
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER','SERVICE_ACCOUNT')")
   public Result<SearchResponse> searchByImage(@Valid @RequestBody ImageSearchRequest req) {
     if (req.getQueryImageBase64() == null || req.getQueryImageBase64().isBlank()) {
       throw new BizException(400, "IMAGE_QUERY_REQUIRED");
