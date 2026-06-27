@@ -10,6 +10,6 @@ CREATE TABLE user_profile (
     username     VARCHAR(64),
     email        VARCHAR(255),
     masked_phone VARCHAR(32),
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
