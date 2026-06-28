@@ -163,7 +163,12 @@
                     <div class="kb-cell">
                       <span class="expander">{{ expandedKbId === kb.id ? '▾' : '▸' }}</span>
                       <div class="kb-title">
-                        <strong>{{ kb.name }}</strong>
+                        <span class="kb-name-row">
+                          <strong>{{ kb.name }}</strong>
+                          <span v-if="kb.orgId" class="kb-tag kb-tag-org" title="组织库">🏢 {{ kb.orgName || '组织库' }}</span>
+                          <span v-if="kb.visibility === 'ORG'" class="kb-tag kb-tag-orgvis">组织可见</span>
+                          <span v-else-if="kb.visibility === 'PUBLIC'" class="kb-tag kb-tag-pub">公开</span>
+                        </span>
                         <div v-if="kb.description" class="desc">{{ kb.description }}</div>
                       </div>
                     </div>
@@ -1474,6 +1479,18 @@ onMounted(async () => {
   border-radius: var(--radius-full);
   padding: 1px 9px;
 }
+.kb-name-row { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kb-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  padding: 1px 9px;
+  line-height: 1.7;
+}
+.kb-tag-org { background: #ede9fe; color: #5b21b6; }
+.kb-tag-orgvis { background: #dbeafe; color: #1e40af; }
+.kb-tag-pub { background: #dcfce7; color: #166534; }
 .no-writable-hint {
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);

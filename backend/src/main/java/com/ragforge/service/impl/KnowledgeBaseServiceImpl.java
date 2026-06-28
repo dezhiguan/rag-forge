@@ -34,6 +34,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   private final com.ragforge.security.KbAccessGuard kbAccessGuard;
   private final com.ragforge.mapper.KbAclMapper kbAclMapper;
   private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
+  private final com.ragforge.mapper.OrganizationMapper organizationMapper;
   private volatile ListCache listCache;
 
   @Override
@@ -129,14 +130,41 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     final Set<Long> adminSet = adminIds;
     final Set<Long> writableSet = writableIds;
     final Long uid = ctx == null ? null : ctx.userId();
-    return kbs.stream()
-        .map(
-            kb -> {
-              KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
-              vo.setMyPermission(resolvePermission(kb, uid, isAdmin, adminSet, writableSet));
-              return vo;
-            })
-        .toList();
+    List<KnowledgeBaseVO> vos =
+        kbs.stream()
+            .map(
+                kb -> {
+                  KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
+                  vo.setMyPermission(resolvePermission(kb, uid, isAdmin, adminSet, writableSet));
+                  return vo;
+                })
+            .toList();
+    enrichOrgNames(vos);
+    return vos;
+  }
+
+  /** 批量回填组织库的组织名（个人库不受影响）。 */
+  private void enrichOrgNames(List<KnowledgeBaseVO> vos) {
+    java.util.Set<Long> orgIds =
+        vos.stream()
+            .map(KnowledgeBaseVO::getOrgId)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+    if (orgIds.isEmpty()) {
+      return;
+    }
+    java.util.Map<Long, String> names =
+        organizationMapper.selectBatchIds(orgIds).stream()
+            .collect(
+                java.util.stream.Collectors.toMap(
+                    com.ragforge.model.entity.Organization::getId,
+                    com.ragforge.model.entity.Organization::getName));
+    vos.forEach(
+        vo -> {
+          if (vo.getOrgId() != null) {
+            vo.setOrgName(names.get(vo.getOrgId()));
+          }
+        });
   }
 
   private String resolvePermission(
@@ -162,7 +190,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             new LambdaQueryWrapper<KnowledgeBase>()
                 .ne(KnowledgeBase::getStatus, STATUS_DELETED)
                 .orderByDesc(KnowledgeBase::getCreatedAt));
-    return list.stream().map(KnowledgeBaseVO::fromEntity).toList();
+    List<KnowledgeBaseVO> vos = list.stream().map(KnowledgeBaseVO::fromEntity).toList();
+    enrichOrgNames(vos);
+    return vos;
   }
 
   @Override
@@ -178,6 +208,10 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
       writableIds = new java.util.HashSet<>(kbAclMapper.findWritableKbIds(ctx.userId()));
     }
     vo.setMyPermission(resolvePermission(kb, ctx == null ? null : ctx.userId(), admin, adminIds, writableIds));
+    if (kb.getOrgId() != null) {
+      com.ragforge.model.entity.Organization org = organizationMapper.selectById(kb.getOrgId());
+      vo.setOrgName(org == null ? null : org.getName());
+    }
     return vo;
   }
 

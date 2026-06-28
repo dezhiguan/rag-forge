@@ -21,6 +21,8 @@ public class KnowledgeBaseVO {
   private String imageProcessingMode;
   private Long ownerUserId;
   private Long orgId;
+  /** 组织库归属的组织名（个人库为 null）；由 service 层填充。 */
+  private String orgName;
   private String visibility;
   private String kbType;
   /** 当前主体对该库的权限：admin | write | read。 */
