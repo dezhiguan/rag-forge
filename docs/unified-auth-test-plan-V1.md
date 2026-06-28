@@ -768,3 +768,106 @@ test('SEC-14 Agent高风险写需确认且不可越权', async ({ page }) => {
 - **阻断级新增**：TC-PWD-01/03、TC-LOG-08/08b/09、TC-ISO-02/03 为阻断级（密码重置闭环、登出吊销、A/B 数据与搜索隔离任一失败即高危）。
 - **回归门禁**：F5（登出吊销）+ F6（隔离）建议与 Part B 一并纳入 CI 认证/权限门禁；凭证、会话、KB 权限相关改动必须全绿方可合并。
 - **标记串约定**：F6 复用 Part B 的"各 KB 独有标记串"约定，搜索结果出现对方标记串即判定隔离失效。
+
+---
+
+# Part G · V1.2 增量：近期新增功能 + 超级管理员破玻璃权限（Playwright，可交付 codex 执行）
+
+> 本章针对近期改动新增 **20 个用例**：**G1 新增功能（10）** + **G2 超级管理员 / 破玻璃（10）**。
+> 版本 V1.2 · 2026-06-28
+
+## G0. 关键约定与公共辅助
+
+- **破玻璃（break-glass）**：平台 ADMIN 默认按普通用户口径（自有 + public + acl），**不读他人私有库**；仅当请求显式携带头 `X-Admin-Override: true`（可加 `X-Admin-Override-Reason: <原因>`）时才提权到"全部非 SYSTEM 库"，且**每次写审计**：日志 `AUDIT admin_kb_break_glass adminUserId=.. reason=.. traceId=..` + 数据表 `admin_access_audit(action='kb_break_glass')`。**SYSTEM 库（kb_type=SYSTEM）即使破玻璃也禁**。
+- **补充账号/资源**（复用 Part A 命名）：`ADMIN`（平台超管）、`U_RAG`/`U_OTHER`（两个不同手机号的普通用户）、`KB_OWN`（U_RAG 私有）、`KB_OTHER`（U_OTHER 私有）、`KB_PUBLIC`（public）、`KB_SYSTEM`（kb_type=SYSTEM）。
+- **前端入口**：普通用户 KB 走 `/api/v1/kb`（行级过滤）；`/api/v1/knowledge-bases` 是仅管理角色的别名。
+
+```ts
+// fixtures：带破玻璃头的 ADMIN context
+export async function asAdminBreakGlass(token: string, reason = 'qa-break-glass') {
+  return request.newContext({ extraHTTPHeaders: {
+    Authorization: `Bearer ${token}`,
+    'X-Admin-Override': 'true',
+    'X-Admin-Override-Reason': reason,
+  }});
+}
+// 断言审计落库（需后端 DB 或一个只读审计查询端点；无端点时退化为校验后端日志）
+```
+
+## G1. 近期新增功能（10）
+
+| 用例 | 步骤 | 期望 |
+|---|---|---|
+| TC-NEW-01 建库默认私有归属 | U_RAG `POST /api/v1/kb` 建库 | 返回 `visibility=PRIVATE`、`ownerUserId=U_RAG`、`myPermission=admin`；U_OTHER 列表/详情均不可见该库 |
+| TC-NEW-02 公共库前端只读收口（UI） | U_RAG 打开知识库管理 | 公共库行**不渲染**"编辑/删除"，显示灰色「只读」标签；自有库行有"编辑/删除" |
+| TC-NEW-03 上传目标仅可写库（UI） | U_RAG 看上传下拉 | 只列其**可写**库（不含 public）；无可写库时隐藏上传区并提示"先创建知识库" |
+| TC-NEW-04 SEC-09 直连上传拦截 | U_RAG 对 KB_PUBLIC 直连 `POST /api/v1/documents/register`、`POST /api/v1/uploads/presign` | **均 403**（非 500）；与 DELETE/PUT 同口径 |
+| TC-NEW-05 显示名兜底（API 层） | U_RAG 登录响应 + `GET /api/v1/me` 的 `displayName` | **不匹配** `^user:\d+$`；为脱敏手机号（`138****0934`）或 `用户_{id}`，不暴露内部标识 |
+| TC-NEW-06 检索次数按本人统计 | U_RAG 连发 N 次 `/api/v1/search`，再查 `/api/v1/metrics/dashboard` | "今日检索请求"= N（仅本人）；U_OTHER 的 dashboard 不受影响（其计数不含 U_RAG 的检索） |
+| TC-NEW-07 仪表盘按用户隔离 | U_RAG `GET /api/v1/metrics/dashboard` | 知识库数 = **自有库数**（非全平台）；"最近操作"仅含自有库文档动态 + 本人检索，**不含**他人操作/评测 |
+| TC-NEW-08 改密吊销（SEC-04 复测） | U_RAG 登录持 T → `POST /api/auth/credential/set-password` | 旧 T 调 `/api/v1/me` → **401**；`revoked:user:{uid}` 命中；新密码可登 |
+| TC-NEW-09 登录发码预校验 | 未注册手机号在 RAG 登录页发码（`scene=login` 经 RAG 代理带 `app=ragforge`） | **409 `SMS_LOGIN_NOT_REGISTERED`**，不下发；`scene=register` 或不带 app 的 CareerMate 路径不受影响 |
+| TC-NEW-10 文案去"企业级" | 登录页文案、侧边栏、浏览器 `<title>` | 均**不含**"企业级 RAG 知识引擎"；`<title>` 为 `RAGForge · 知识检索引擎` |
+
+## G2. 超级管理员 / 破玻璃权限（10）
+
+| 用例 | 步骤 | 期望 |
+|---|---|---|
+| TC-ADM-01 默认不见他人私库（列表） | ADMIN `GET /api/v1/kb`（**不带**破玻璃头） | 仅自有 + public，**不含** KB_OTHER |
+| TC-ADM-02 默认不可读他人私库（详情） | ADMIN `GET /api/v1/kb/{KB_OTHER}`（无头） | **403** |
+| TC-ADM-03 破玻璃可见全部 | ADMIN 带 `X-Admin-Override` 调列表/详情 | 列表**含** KB_OTHER；`GET /api/v1/kb/{KB_OTHER}` → **200** |
+| TC-ADM-04 破玻璃必留审计 | ADMIN 每次带破玻璃头请求 | 后端日志出现 `AUDIT admin_kb_break_glass adminUserId={ADMIN} reason=..`；`admin_access_audit` 表新增 1 行（`action='kb_break_glass'`、含 trace_id） |
+| TC-ADM-05 SYSTEM 始终禁 | ADMIN **即使破玻璃**，读/写 `/api/v1/kb/{KB_SYSTEM}` | **403**；列表中也不出现 KB_SYSTEM |
+| TC-ADM-06 默认不可写他人私库 | ADMIN 无头对 KB_OTHER：`PUT` 改配置 / 删除 / 上传文档 | **均 403**；带破玻璃头后可写（且每次留审计） |
+| TC-ADM-07 检索范围随破玻璃 | ADMIN 不传 kbIds 调 `/api/v1/search`，对比无头 vs 破玻璃头 | 无头 → 仅自有 + public；破玻璃 → 含全部非 SYSTEM（结果可触达 KB_OTHER 内容） |
+| TC-ADM-08 仪表盘随破玻璃切换 | ADMIN `GET /api/v1/metrics/dashboard` 无头 vs 破玻璃头 | 无头 = **自有范围**计数；破玻璃 = **全平台**计数（缓存按主体分键 `U:{uid}` / `ADMIN`，两者不串） |
+| TC-ADM-09 提权仅本请求生效 | ADMIN 先带破玻璃头请求一次，**紧接着不带头**再请求列表 | 第二次又回到默认（不见 KB_OTHER）——提权不跨请求泄漏（请求级 ThreadLocal 清除） |
+| TC-ADM-10 非管理员伪造头无效 | U_RAG（普通用户）带 `X-Admin-Override: true` 调 `/api/v1/kb` | 头被忽略，仍按普通用户口径（不提权、不写审计） |
+
+**关键骨架（破玻璃 + 分请求隔离 + 审计）：**
+
+```ts
+test('TC-ADM-01/03/09 破玻璃前后可见性 + 仅本请求生效', async () => {
+  const adminTok = await login(ADMIN.account, ADMIN.password);
+
+  // 默认：看不到他人私库
+  const normal = await asUser(adminTok);
+  let ids = idsOf(await (await normal.get(`${RAG_API}/v1/kb`)).json());
+  expect(ids).not.toContain(KB_OTHER.id);
+  expect((await normal.get(`${RAG_API}/v1/kb/${KB_OTHER.id}`)).status()).toBe(403);
+
+  // 破玻璃：看得到
+  const bg = await asAdminBreakGlass(adminTok, 'qa-TC-ADM-03');
+  ids = idsOf(await (await bg.get(`${RAG_API}/v1/kb`)).json());
+  expect(ids).toContain(KB_OTHER.id);
+  expect((await bg.get(`${RAG_API}/v1/kb/${KB_OTHER.id}`)).status()).toBe(200);
+
+  // 紧接着不带头：又回到默认（提权不跨请求）
+  ids = idsOf(await (await normal.get(`${RAG_API}/v1/kb`)).json());
+  expect(ids).not.toContain(KB_OTHER.id);
+});
+
+test('TC-ADM-05 SYSTEM 即使破玻璃也禁', async () => {
+  const bg = await asAdminBreakGlass(await login(ADMIN.account, ADMIN.password));
+  expect((await bg.get(`${RAG_API}/v1/kb/${KB_SYSTEM.id}`)).status()).toBe(403);
+  const ids = idsOf(await (await bg.get(`${RAG_API}/v1/kb`)).json());
+  expect(ids).not.toContain(KB_SYSTEM.id);
+});
+```
+
+## G3. 优先级与门禁
+
+- **阻断级**：TC-ADM-01/02/05/09/10（管理员默认隔离 + SYSTEM 禁 + 提权不泄漏 + 伪造头无效）、TC-NEW-04/08（上传 403、改密吊销）——任一失败即为权限/认证高危。
+- **审计可观测性**：TC-ADM-04 若无只读审计查询端点，退化为校验后端日志中的 `AUDIT admin_kb_break_glass` 与 `admin_access_audit` 表行数（直连 DB）。
+- 建议 G1+G2 一并纳入 CI 认证/权限回归门禁；KbAccessGuard、MetricsService、凭证/会话相关改动必须全绿方可合并。
+
+## G4. 本轮执行勘误（区分"产品缺陷"与"测试期望/数据"）
+
+> 一轮回归后确认：部分"未通过"并非产品缺陷，而是测试 token/数据/期望问题。以下为修正后的判定口径。
+
+- **SEC-04 / TC-NEW-08 改密吊销**：✅ 产品**已修复并复测**（全新账号：改密后旧 token 调 `/me` 立即 **401**、`revoked:user:{uid}` 命中）。此前个别账号"仍 200"是**测试时服务未重启到修复**或**复用了缓存的旧 token**。harness 须在登出/改密用例后**清 token 缓存**再断言。
+- **TC-MENU-04 隐藏菜单 API**：✅ 用**有效** USER token 打 `/api/v1/admin/api-keys` = **403**（SecurityConfig 已配 accessDeniedHandler）。返回 **401 的前提是 token 失效/缺失**（走 401 入口）——属测试 token 问题，不是 401/403 口径 bug。期望维持 403，但前置须用有效非管理员 token。
+- **TC-CM-01 CareerMate 匿名白名单**：`/api/v1/events/**` 在认证白名单（**匿名可达**），但 webhook handler **强制 HMAC 验签**，无签名返回 **401 invalid signature 是正确的**。用例期望应改为：「匿名可达 handler，但缺签名 → 401」，而非"放行"。
+- **TC-DET-01 / SEC-01 / TC-LIST-01·05 / TC-ISO-02·04 双普通用户隔离**：需要**两个不同手机号**注册的普通用户。`15813320829` 与 `qa_u_rag` 因**手机号为关联键**合并到同一 `auth_users.id=5`，无法构成 A/B。fixtures 须改为**两个独立手机号**各自注册的 U_RAG / U_OTHER。
+- **TC-CM-04 无效 token 自动登出不彻底**：✅ 产品**已修复**（CareerMate `router.beforeEach` 未认证跳登录时显式 `authStore.clearAuth()`，清掉残留/注入的失效 token）。
+- **CareerMate 短信类用例（TC-CM-06/07/08/09/12、TC-PWD-01/03、SEC-13/14、TC-X-*）**：失败因 CareerMate 短信接口返回"短信服务暂时不可用"，属**环境**问题；需 dev 固定验证码或可用短信通道后重跑。
