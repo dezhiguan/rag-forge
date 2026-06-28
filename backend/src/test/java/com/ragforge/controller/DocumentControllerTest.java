@@ -609,13 +609,12 @@ class DocumentControllerTest {
 
   private static RagAuthContext authContext(String tenantId, Set<Long> writableKbIds) {
     return new RagAuthContext(
-        100L, tenantId, "USER", Set.of(), writableKbIds, Set.of(), "user", "100");
+        100L, "USER", Set.of(), writableKbIds, Set.of(), "user", "100");
   }
 
   private static TokenPayload tokenPayload(String tenantId, Long kbId, Long declaredSize) {
     TokenPayload payload = new TokenPayload();
     payload.setUploadToken("uplt_signed-token");
-    payload.setTenantId(tenantId);
     payload.setKbId(kbId);
     payload.setStorageBucket("test-bucket");
     payload.setStorageKey("tn_test/kb_16/uplt_a/big.pdf");

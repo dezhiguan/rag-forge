@@ -82,7 +82,7 @@ class GoldenSetControllerTest {
   @Test
   void replayNow_无datasetId_KB_EDITOR_返回403() throws Exception {
     RagAuthContextHolder.set(
-        new RagAuthContext(42L, "tn_1", "KB_EDITOR", Set.of(99L), Set.of(99L), Set.of(), "USER", "42"));
+        new RagAuthContext(42L, "KB_EDITOR", Set.of(99L), Set.of(99L), Set.of(), "USER", "42"));
 
     mockMvc
         .perform(post("/api/v1/evaluation/golden-set/replay?limit=5"))

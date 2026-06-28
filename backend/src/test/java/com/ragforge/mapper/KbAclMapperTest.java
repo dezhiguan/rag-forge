@@ -83,7 +83,6 @@ class KbAclMapperTest {
     kb.setDocCount(0);
     kb.setChunkCount(0);
     kb.setStatus("active");
-    kb.setTenantId("tn_test_acl");
     kb.setOwnerUserId(26000L);
     kb.setVisibility("PRIVATE");
     kb.setKbType("GENERAL");

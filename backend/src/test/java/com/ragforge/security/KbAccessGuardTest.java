@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KbAclMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.mapper.OrgMemberMapper;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.entity.KnowledgeBase;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -24,6 +25,7 @@ class KbAccessGuardTest {
   @Mock private KbAclMapper kbAclMapper;
   @Mock private DocumentMapper documentMapper;
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
+  @Mock private OrgMemberMapper orgMemberMapper;
 
   private SimpleMeterRegistry meterRegistry;
   private KbAccessGuard guard;
@@ -31,7 +33,13 @@ class KbAccessGuardTest {
   @BeforeEach
   void setUp() {
     meterRegistry = new SimpleMeterRegistry();
-    guard = new KbAccessGuard(kbAclMapper, knowledgeBaseMapper, documentMapper, new RagforgeMetrics(meterRegistry));
+    guard =
+        new KbAccessGuard(
+            kbAclMapper,
+            knowledgeBaseMapper,
+            documentMapper,
+            orgMemberMapper,
+            new RagforgeMetrics(meterRegistry));
   }
 
   @AfterEach
@@ -45,7 +53,7 @@ class KbAccessGuardTest {
     kb1.setId(1L);
     kb1.setKbType("USER");
     when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb1);
-    RagAuthContextHolder.set(new RagAuthContext(7L, null, "KB_VIEWER", Set.of(1L), Set.of(), Set.of(), "user", "7"));
+    RagAuthContextHolder.set(new RagAuthContext(7L, "KB_VIEWER", Set.of(1L), Set.of(), Set.of(), "user", "7"));
 
     assertThat(guard.canRead(1L)).isTrue();
     assertThat(guard.canRead(2L)).isFalse();
@@ -63,7 +71,7 @@ class KbAccessGuardTest {
     system.setKbType("SYSTEM");
     when(knowledgeBaseMapper.selectById(10L)).thenReturn(normal);
     when(knowledgeBaseMapper.selectById(11L)).thenReturn(system);
-    RagAuthContextHolder.set(new RagAuthContext(1L, null, "ADMIN", Set.of(), Set.of(), Set.of(), "user", "1"));
+    RagAuthContextHolder.set(new RagAuthContext(1L, "ADMIN", Set.of(), Set.of(), Set.of(), "user", "1"));
 
     // 默认：ADMIN 不读他人私有库（对齐多租户隐私边界）
     assertThat(guard.canRead(10L)).isFalse();
@@ -80,7 +88,7 @@ class KbAccessGuardTest {
 
   @Test
   void filterReadable_recordsAuditMetricForDeniedDiff() {
-    RagAuthContextHolder.set(new RagAuthContext(7L, null, "KB_VIEWER", Set.of(1L), Set.of(), Set.of(), "user", "7"));
+    RagAuthContextHolder.set(new RagAuthContext(7L, "KB_VIEWER", Set.of(1L), Set.of(), Set.of(), "user", "7"));
 
     assertThat(guard.filterReadable(List.of(1L, 2L))).containsExactly(1L);
     assertThat(meterRegistry.counter("ragforge.authz.kb_access_denied", "operation", "filter_readable").count())
@@ -95,7 +103,7 @@ class KbAccessGuardTest {
     kb3.setId(3L);
     kb3.setKbType("USER");
     when(knowledgeBaseMapper.selectById(3L)).thenReturn(kb3);
-    RagAuthContextHolder.set(new RagAuthContext(null, null, "SERVICE_ACCOUNT", Set.of(3L), Set.of(3L), Set.of(), "service_account", "sa"));
+    RagAuthContextHolder.set(new RagAuthContext(null, "SERVICE_ACCOUNT", Set.of(3L), Set.of(3L), Set.of(), "service_account", "sa"));
 
     assertThat(guard.canRead(3L)).isTrue();
     assertThat(guard.canRead(4L)).isFalse();

@@ -58,7 +58,6 @@ class UploadTokenServiceTest {
 
     assertThat(tokenCaptor.getValue()).isEqualTo("ragforge:upload:token:" + token);
     assertThat(consumed.getKbId()).isEqualTo(16L);
-    assertThat(consumed.getTenantId()).isEqualTo("tn_test");
   }
 
   @Test
@@ -84,7 +83,6 @@ class UploadTokenServiceTest {
 
   private TokenPayload payload() {
     TokenPayload payload = new TokenPayload();
-    payload.setTenantId("tn_test");
     payload.setKbId(16L);
     payload.setStorageBucket("ragforge-dev");
     payload.setStorageKey("tn_test/kb_16/uplt_a/big.pdf");

@@ -66,7 +66,7 @@ class JwtAuthenticationFilterTest {
     JwtClaims claims = new JwtClaims(Map.of("jti", "jti-1", "sub", "42", "iat", 100));
     when(jwtVerifier.verify(token)).thenReturn(claims);
     when(jwtVerifier.toContext(claims))
-        .thenReturn(new RagAuthContext(42L, "tn_1", "ADMIN", Set.of(), Set.of(), Set.of(), "USER", "user:42"));
+        .thenReturn(new RagAuthContext(42L, "ADMIN", Set.of(), Set.of(), Set.of(), "USER", "user:42"));
     when(authEventService.isJwtRevoked(org.mockito.ArgumentMatchers.any())).thenThrow(new RuntimeException("redis down"));
 
     MockHttpServletRequest request = new MockHttpServletRequest();
