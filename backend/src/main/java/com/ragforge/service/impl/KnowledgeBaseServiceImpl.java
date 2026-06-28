@@ -1,12 +1,14 @@
 package com.ragforge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.dto.CreateKbDTO;
 import com.ragforge.model.dto.UpdateKbDTO;
 import com.ragforge.model.entity.Document;
+import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.vo.KnowledgeBaseVO;
 import com.ragforge.security.RagAuthContext;
@@ -31,6 +33,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
+  private final com.ragforge.mapper.DocumentChunkMapper documentChunkMapper;
   private final com.ragforge.security.KbAccessGuard kbAccessGuard;
   private final com.ragforge.mapper.KbAclMapper kbAclMapper;
   private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
@@ -140,6 +143,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 })
             .toList();
     enrichOrgNames(vos);
+    applyRealCounts(vos);
     return vos;
   }
 
@@ -184,6 +188,55 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     return "read";
   }
 
+  /**
+   * 用实时聚合的文档/分片数覆盖 VO 上来自实体的冗余计数器，避免计数器漂移（文档失败/删除/replace
+   * 等非常规路径会导致 knowledge_bases.doc_count 与实际不一致）导致列表展示错误。批量 group by，避免 N+1。
+   */
+  private void applyRealCounts(List<KnowledgeBaseVO> vos) {
+    if (vos == null || vos.isEmpty()) {
+      return;
+    }
+    List<Long> kbIds =
+        vos.stream().map(KnowledgeBaseVO::getId).filter(java.util.Objects::nonNull).toList();
+    if (kbIds.isEmpty()) {
+      return;
+    }
+    java.util.Map<Long, Integer> docCounts =
+        countByKb(
+            documentMapper.selectMaps(
+                new QueryWrapper<Document>()
+                    .select("kb_id", "count(*) AS cnt")
+                    .in("kb_id", kbIds)
+                    .groupBy("kb_id")));
+    java.util.Map<Long, Integer> chunkCounts =
+        countByKb(
+            documentChunkMapper.selectMaps(
+                new QueryWrapper<DocumentChunk>()
+                    .select("kb_id", "count(*) AS cnt")
+                    .in("kb_id", kbIds)
+                    .groupBy("kb_id")));
+    for (KnowledgeBaseVO vo : vos) {
+      vo.setDocCount(docCounts.getOrDefault(vo.getId(), 0));
+      vo.setChunkCount(chunkCounts.getOrDefault(vo.getId(), 0));
+    }
+  }
+
+  private java.util.Map<Long, Integer> countByKb(List<java.util.Map<String, Object>> rows) {
+    java.util.Map<Long, Integer> result = new java.util.HashMap<>();
+    if (rows == null) {
+      return result;
+    }
+    for (java.util.Map<String, Object> row : rows) {
+      Object kb = row.get("kb_id");
+      Object cnt = row.get("cnt");
+      if (kb instanceof Number) {
+        result.put(
+            ((Number) kb).longValue(), cnt instanceof Number ? ((Number) cnt).intValue() : 0);
+      }
+    }
+    return result;
+  }
+
   private List<KnowledgeBaseVO> loadListAll() {
     List<KnowledgeBase> list =
         knowledgeBaseMapper.selectList(
@@ -192,6 +245,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .orderByDesc(KnowledgeBase::getCreatedAt));
     List<KnowledgeBaseVO> vos = list.stream().map(KnowledgeBaseVO::fromEntity).toList();
     enrichOrgNames(vos);
+    applyRealCounts(vos);
     return vos;
   }
 
@@ -199,6 +253,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   public KnowledgeBaseVO getById(Long id) {
     KnowledgeBase kb = requireActiveKb(id);
     KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
+    applyRealCounts(java.util.List.of(vo));
     RagAuthContext ctx = RagAuthContextHolder.get();
     boolean admin = ctx != null && ctx.isAdmin();
     Set<Long> adminIds = Set.of();
