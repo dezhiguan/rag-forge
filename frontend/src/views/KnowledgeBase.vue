@@ -165,9 +165,22 @@
                       <div class="kb-title">
                         <span class="kb-name-row">
                           <strong>{{ kb.name }}</strong>
-                          <span v-if="kb.orgId" class="kb-tag kb-tag-org" title="组织库">🏢 {{ kb.orgName || '组织库' }}</span>
-                          <span v-if="kb.visibility === 'ORG'" class="kb-tag kb-tag-orgvis">组织可见</span>
-                          <span v-else-if="kb.visibility === 'PUBLIC'" class="kb-tag kb-tag-pub">公开</span>
+                          <span
+                            v-if="kb.orgId"
+                            class="kb-tag kb-tag-org"
+                            title="组织库"
+                            data-test="kb-org-badge"
+                          >🏢 组织·{{ kb.orgName || '组织库' }}</span>
+                          <span
+                            v-if="kb.visibility === 'ORG'"
+                            class="kb-tag kb-tag-orgvis"
+                            data-test="kb-orgvis-badge"
+                          >组织可见</span>
+                          <span
+                            v-else-if="kb.visibility === 'PUBLIC'"
+                            class="kb-tag kb-tag-pub"
+                            data-test="kb-public-badge"
+                          >公开</span>
                         </span>
                         <div v-if="kb.description" class="desc">{{ kb.description }}</div>
                       </div>
@@ -294,16 +307,21 @@
           </label>
           <label class="field">
             <span>归属</span>
-            <select v-model="kbForm.orgId" @change="onOwnerChange">
-              <option :value="null">个人（我自己）</option>
-              <option v-for="org in manageableOrgs" :key="org.id" :value="org.id">
+            <select v-model="kbForm.orgId" @change="onOwnerChange" data-test="kb-form-owner">
+              <option :value="null" data-test="kb-form-owner-personal">个人（我自己）</option>
+              <option
+                v-for="org in manageableOrgs"
+                :key="org.id"
+                :value="org.id"
+                data-test="kb-form-owner-org"
+              >
                 组织：{{ org.name }}
               </option>
             </select>
           </label>
           <label class="field">
             <span>可见性</span>
-            <select v-model="kbForm.visibility">
+            <select v-model="kbForm.visibility" data-test="kb-form-visibility">
               <option v-for="opt in visibilityOptions" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>

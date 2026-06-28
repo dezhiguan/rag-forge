@@ -38,8 +38,9 @@ public class DocumentController {
   private final DocumentService documentService;
   private final DocumentUploadApplicationService uploadApplicationService;
 
+  // 写权限校验下沉到 service：presignUpload 内部对 canWrite 失败抛 403 KB_WRITE_FORBIDDEN，
+  // 这样错误码语义明确，而不是被 @PreAuthorize 拦成通用 "Forbidden"。
   @PostMapping("/uploads/presign")
-  @PreAuthorize("@kbAccessGuard.canWrite(#request.kbId)")
   public ResponseEntity<?> presignUpload(@RequestBody PresignUploadRequest request) {
     return ResponseEntity.ok(uploadApplicationService.presignUpload(request));
   }

@@ -30,7 +30,9 @@ public class KnowledgeBaseController {
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','USER')")
   public Result<KnowledgeBaseVO> create(@Valid @RequestBody CreateKbDTO dto) {
     KnowledgeBase kb = knowledgeBaseService.create(dto);
-    return Result.ok(KnowledgeBaseVO.fromEntity(kb));
+    // 用 getById 回填 myPermission（创建者=admin）与组织库的 orgName，
+    // 保持创建响应与详情/列表的字段口径一致。
+    return Result.ok(knowledgeBaseService.getById(kb.getId()));
   }
 
   @GetMapping

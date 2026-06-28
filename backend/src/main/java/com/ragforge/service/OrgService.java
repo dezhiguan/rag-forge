@@ -42,7 +42,9 @@ public class OrgService {
   /** 创建组织，创建者成为 OWNER。 */
   @Transactional
   public Map<String, Object> createOrganization(String slug, String name) {
-    String normalizedSlug = slug == null ? "" : slug.trim().toLowerCase();
+    // 按原样校验（不预先 toLowerCase）：slug 必须本身就是小写 GitHub 式标识，
+    // 大写如 'UPPER' 应直接判非法，而不是被悄悄转小写后建库。
+    String normalizedSlug = slug == null ? "" : slug.trim();
     if (!SLUG.matcher(normalizedSlug).matches()) {
       throw new BizException(400, "ORG_SLUG_INVALID");
     }

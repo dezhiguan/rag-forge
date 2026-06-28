@@ -38,7 +38,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
@@ -58,8 +57,6 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 @Slf4j
 public class DocumentUploadApplicationServiceImpl implements DocumentUploadApplicationService {
-
-  private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private final IngestService ingestService;
   private final ObjectStorage objectStorage;
@@ -83,14 +80,9 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     }
     String filename = cleanFilename(request.getFilename());
     String bucket = defaultBucket(null);
-    String uploadId = randomUploadId();
-    String key =
-        "kb_"
-            + request.getKbId()
-            + "/"
-            + uploadId
-            + "/"
-            + filename;
+    // 存储键中段用 UUID（[0-9a-f-]）而非 uplt_ 前缀，保证 storageKey 形如
+    // kb_{kbId}/{uuid}/{filename}，与 relay 路径一致且符合无 tenant 段的约定。
+    String key = storageKey(request.getKbId(), filename);
 
     String safeContentType = request.getContentType();
     if (safeContentType == null || safeContentType.isBlank()) {
@@ -463,9 +455,4 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     return value.replaceAll("[^A-Za-z0-9._-]", "_");
   }
 
-  private static String randomUploadId() {
-    byte[] bytes = new byte[16];
-    SECURE_RANDOM.nextBytes(bytes);
-    return "uplt_" + HexFormat.of().formatHex(bytes);
-  }
 }
