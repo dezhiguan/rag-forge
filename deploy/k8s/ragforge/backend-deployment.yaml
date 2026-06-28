@@ -47,6 +47,10 @@ spec:
                 name: ragforge-backend-config
             - secretRef:
                 name: ragforge-backend-env
+            # 接收网关 webhook 的 HMAC 验签密钥（RAGFORGE_AUTH_EVENT_HMAC_SECRET）。
+            # 仅 api 需要（worker/judge 不收 webhook）。secret 值不入 git：见 deploy 文档。
+            - secretRef:
+                name: ragforge-event-hmac
           env:
             - name: RAGFORGE_ROLE
               value: api
