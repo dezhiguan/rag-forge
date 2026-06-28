@@ -34,6 +34,7 @@ class KnowledgeBaseServiceImplTest {
 
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private DocumentMapper documentMapper;
+  @Mock private com.ragforge.mapper.DocumentChunkMapper documentChunkMapper;
 
   @InjectMocks private KnowledgeBaseServiceImpl knowledgeBaseService;
 
