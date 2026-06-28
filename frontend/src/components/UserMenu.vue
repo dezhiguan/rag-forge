@@ -11,6 +11,7 @@
     <div v-if="open" class="menu-panel" role="menu">
       <button type="button" role="menuitem" class="menu-item" @click="goAccount('profile')">个人设置</button>
       <button type="button" role="menuitem" class="menu-item" @click="goAccount('security')">安全中心</button>
+      <button type="button" role="menuitem" class="menu-item" @click="goOrgs">组织</button>
       <button type="button" role="menuitem" class="menu-item danger" @click="handleLogout">退出登录</button>
       <button type="button" role="menuitem" class="menu-item danger" @click="showLogoutAll = true">退出所有设备</button>
     </div>
@@ -51,6 +52,11 @@ const initials = computed(() => displayName.value.slice(0, 1).toUpperCase())
 function goAccount(tab) {
   open.value = false
   router.push({ path: '/account', query: { tab } })
+}
+
+function goOrgs() {
+  open.value = false
+  router.push('/orgs')
 }
 
 async function handleLogout() {

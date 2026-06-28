@@ -20,8 +20,8 @@
         <div id="topbar-right" class="top-bar-right"></div>
       </div>
       <router-view v-slot="{ Component, route: matchedRoute }">
-        <transition name="page-fade" mode="out-in">
-          <component :is="Component" :key="matchedRoute.fullPath" />
+        <transition name="page-fade">
+          <component v-if="topbarReady" :is="Component" :key="matchedRoute.fullPath" />
         </transition>
       </router-view>
     </main>
@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/Sidebar.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -42,6 +42,25 @@ const mobileMenuOpen = ref(false)
 const route = useRoute()
 
 const isAuthLayout = computed(() => route.meta?.layout === 'auth')
+
+// 顶栏 teleport 目标(#topbar-left/#topbar-right)必须先于页面进入实时 DOM，
+// 否则页面里的 <Teleport to="#topbar-right"> 在挂载时拿到 null，会连环打坏 Vue 渲染树
+// （表现为登录后点击/卡片失效，刷新才好）。这里把页面渲染推迟一拍，确保顶栏已就绪。
+const topbarReady = ref(false)
+watch(
+  isAuthLayout,
+  (auth) => {
+    if (auth) {
+      topbarReady.value = false
+    } else {
+      topbarReady.value = false
+      nextTick(() => {
+        topbarReady.value = true
+      })
+    }
+  },
+  { immediate: true }
+)
 
 const currentPage = computed(() => ({
   icon: route.meta?.icon || '',
