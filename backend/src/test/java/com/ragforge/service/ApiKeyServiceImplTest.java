@@ -53,6 +53,26 @@ class ApiKeyServiceImplTest {
         .satisfies(
             ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
     verify(apiKeyMapper, never()).updateById(org.mockito.ArgumentMatchers.<ApiKey>any());
+    verify(apiKeyMapper, never()).update(any(), any());
+    verify(apiKeyInterceptor, never()).resetKeyCache();
+  }
+
+  @Test
+  void enable_existingKey_updatesOnlyEnabledAndResetsCache() {
+    ApiKey existing = new ApiKey();
+    existing.setId(8L);
+    existing.setApiKey("sk-rf-abc");
+    existing.setEnabled(false);
+    existing.setScopes("[\"rag:search\"]");
+    existing.setAllowedKbIds("[16]");
+    when(apiKeyMapper.selectById(8L)).thenReturn(existing);
+
+    ApiKey updated = apiKeyService.enable(8L, true);
+
+    assertThat(updated.getEnabled()).isTrue();
+    verify(apiKeyMapper, never()).updateById(org.mockito.ArgumentMatchers.<ApiKey>any());
+    verify(apiKeyMapper).update(any(), any());
+    verify(apiKeyInterceptor).resetKeyCache();
   }
 
   @Test

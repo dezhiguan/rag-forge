@@ -1,5 +1,6 @@
 package com.ragforge.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.ragforge.common.BizException;
 import com.ragforge.security.ApiKeyInterceptor;
 import com.ragforge.mapper.ApiKeyMapper;
@@ -55,7 +56,12 @@ public class ApiKeyServiceImpl implements ApiKeyService {
       throw new BizException(404, "API Key 不存在");
     }
     apiKey.setEnabled(enabled);
-    apiKeyMapper.updateById(apiKey);
+    apiKeyMapper.update(
+        null,
+        new UpdateWrapper<ApiKey>()
+            .eq("id", id)
+            .set("enabled", enabled));
+    apiKeyInterceptor.resetKeyCache();
     return apiKey;
   }
 

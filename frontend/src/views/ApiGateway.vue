@@ -20,7 +20,9 @@
             <div v-for="key in apiKeys" :key="key.id" class="key-row">
               <div class="key-info">
                 <div class="key-name">{{ key.keyName }}</div>
-                <div class="key-value" :title="key.apiKey">{{ key.apiKey }}</div>
+                <div class="key-value" :title="key.apiKey || '创建后仅显示一次'">
+                  {{ key.apiKey || '创建后仅显示一次' }}
+                </div>
               </div>
               <div class="key-actions">
                 <span class="key-action-wrap">
@@ -143,8 +145,13 @@ async function onCreateKey() {
   const name = prompt('请输入 Key 名称（例如：CareerMate-Prod）：')
   if (!name?.trim()) return
   try {
-    await createApiKey(name.trim())
-    await loadKeys()
+    const res = await createApiKey(name.trim())
+    if (res.data) {
+      apiKeys.value = [res.data, ...apiKeys.value]
+      showKeyTip(res.data.id, '已生成，可复制', 'copy')
+    } else {
+      await loadKeys()
+    }
   } catch {
     // error handled by interceptor
   }
@@ -209,7 +216,7 @@ async function copyTextToClipboard(text) {
 async function onCopyKey(key) {
   const text = key?.apiKey
   if (!text) {
-    showKeyTip(key.id, '无内容', 'copy')
+    showKeyTip(key.id, '仅创建后可复制', 'copy')
     return
   }
   try {
