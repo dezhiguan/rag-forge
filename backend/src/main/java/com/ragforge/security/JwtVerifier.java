@@ -77,7 +77,6 @@ public class JwtVerifier {
     }
     return new RagAuthContext(
         userId,
-        claims.string("tenant_id"),
         defaultString(claims.string("rag_role"), "KB_VIEWER"),
         longSet(claims.values().get("rag_readable_kb_ids")),
         longSet(claims.values().get("rag_writable_kb_ids")),

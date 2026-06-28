@@ -24,4 +24,11 @@ public class CreateKbDTO {
   // 多模态开关：创建时默认 OFF，用户在表单里勾选才置 ON。
   @Pattern(regexp = "ON|OFF|", message = "imageProcessingMode 只能是 ON / OFF")
   private String imageProcessingMode;
+
+  // 归属组织 id（为空=个人库）。非空时需当前用户为该组织 OWNER/ADMIN。
+  private Long orgId;
+
+  // 可见性：个人库 PRIVATE/PUBLIC；组织库 PRIVATE/ORG。为空默认 PRIVATE。
+  @Pattern(regexp = "PRIVATE|ORG|PUBLIC|", message = "visibility 只能是 PRIVATE / ORG / PUBLIC")
+  private String visibility;
 }

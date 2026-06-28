@@ -23,8 +23,8 @@ public class KnowledgeBase {
   private Integer docCount;
   private Integer chunkCount;
   private String status;
-  private String tenantId;
   private Long ownerUserId;
+  private Long orgId;
   private String visibility;
   private String kbType;
 

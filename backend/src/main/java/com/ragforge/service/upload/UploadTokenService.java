@@ -106,8 +106,7 @@ public class UploadTokenService {
   }
 
   private static boolean sameSignedPayload(TokenPayload signed, TokenPayload stored) {
-    return Objects.equals(signed.getTenantId(), stored.getTenantId())
-        && Objects.equals(signed.getKbId(), stored.getKbId())
+    return Objects.equals(signed.getKbId(), stored.getKbId())
         && Objects.equals(signed.getStorageBucket(), stored.getStorageBucket())
         && Objects.equals(signed.getStorageKey(), stored.getStorageKey())
         && Objects.equals(signed.getFilename(), stored.getFilename())
@@ -145,7 +144,6 @@ public class UploadTokenService {
   @Data
   public static class TokenPayload {
     private String uploadToken;
-    private String tenantId;
     private Long kbId;
     private String storageBucket;
     private String storageKey;

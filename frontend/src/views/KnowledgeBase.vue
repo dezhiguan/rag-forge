@@ -288,6 +288,23 @@
             <textarea v-model="kbForm.description" rows="3" placeholder="可选" />
           </label>
           <label class="field">
+            <span>归属</span>
+            <select v-model="kbForm.orgId" @change="onOwnerChange">
+              <option :value="null">个人（我自己）</option>
+              <option v-for="org in manageableOrgs" :key="org.id" :value="org.id">
+                组织：{{ org.name }}
+              </option>
+            </select>
+          </label>
+          <label class="field">
+            <span>可见性</span>
+            <select v-model="kbForm.visibility">
+              <option v-for="opt in visibilityOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </label>
+          <label class="field">
             <span>应答模型（可选）</span>
             <select v-model="kbForm.answerModel">
               <option value="">使用默认模型</option>
@@ -432,6 +449,7 @@ import { onMounted, reactive, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KB_DOCUMENT_DELETE_ENABLED, KNOWLEDGE_BASE_DELETE_ENABLED } from '../config/uiPolicy'
 import { createKb, deleteKb, listKb, updateKb } from '../api/kb'
+import { listOrgs } from '../api/org'
 import {
   deleteDocument,
   downloadDocument,
@@ -515,6 +533,34 @@ const showEdit = ref(false)
 const submittingKb = ref(false)
 const openHint = ref(null)
 
+// 我作为 OWNER/ADMIN 的组织（可在其下建组织库）
+const manageableOrgs = ref([])
+async function loadManageableOrgs() {
+  try {
+    const res = await listOrgs()
+    const orgs = res?.data || res || []
+    manageableOrgs.value = orgs.filter((o) => o.myRole === 'OWNER' || o.myRole === 'ADMIN')
+  } catch (e) {
+    manageableOrgs.value = []
+  }
+}
+// 可见性选项随归属变化：个人库 PRIVATE/PUBLIC；组织库 PRIVATE/ORG
+const visibilityOptions = computed(() =>
+  kbForm.value.orgId
+    ? [
+        { value: 'PRIVATE', label: '私有（仅组织管理员）' },
+        { value: 'ORG', label: '组织可见（全体成员可读）' },
+      ]
+    : [
+        { value: 'PRIVATE', label: '私有（仅自己）' },
+        { value: 'PUBLIC', label: '公开（全平台只读）' },
+      ]
+)
+function onOwnerChange() {
+  // 切换归属后，把可见性回退到该归属下的默认值
+  kbForm.value.visibility = 'PRIVATE'
+}
+
 function toggleHint(key) {
   openHint.value = openHint.value === key ? null : key
 }
@@ -524,7 +570,7 @@ function closeHint(key) {
     if (openHint.value === key) openHint.value = null
   }, 150)
 }
-const kbForm = ref({ name: '', description: '', answerModel: '', imageModeOn: false })
+const kbForm = ref({ name: '', description: '', answerModel: '', imageModeOn: false, orgId: null, visibility: 'PRIVATE' })
 const editForm = ref({
   id: null,
   name: '',
@@ -709,7 +755,10 @@ function openCreate() {
     description: '',
     answerModel: '',
     imageModeOn: false,
+    orgId: null,
+    visibility: 'PRIVATE',
   }
+  loadManageableOrgs()
   showCreate.value = true
 }
 
@@ -725,6 +774,8 @@ async function onCreateKb() {
       description: kbForm.value.description || undefined,
       answerModel: kbForm.value.answerModel || undefined,
       imageProcessingMode: kbForm.value.imageModeOn ? 'ON' : 'OFF',
+      orgId: kbForm.value.orgId || undefined,
+      visibility: kbForm.value.visibility || undefined,
     })
     showCreate.value = false
     await loadKbs()

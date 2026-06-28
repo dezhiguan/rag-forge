@@ -76,6 +76,7 @@ function isNavActive(itemPath) {
 const ALL_NAV_ITEMS = [
   { path: '/', icon: '🏠', label: '驾驶舱', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'], scope: 'rag:dashboard:read' } },
   { path: '/knowledge', icon: '📁', label: '知识库管理', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'], scope: 'rag:kb:read' } },
+  { path: '/orgs', icon: '🏢', label: '组织', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'] } },
   { path: '/debug', icon: '🔍', label: '检索调试台', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'], scope: 'rag:debug:run' } },
   { path: '/answer', icon: '💬', label: '应答调试台', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'], scope: 'rag:debug:run' } },
   { path: '/perf-probe', icon: '⏱', label: '性能诊断', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },

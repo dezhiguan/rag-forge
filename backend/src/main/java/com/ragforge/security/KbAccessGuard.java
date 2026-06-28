@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KbAclMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.mapper.OrgMemberMapper;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.KnowledgeBase;
@@ -26,9 +27,11 @@ public class KbAccessGuard {
   private final KbAclMapper kbAclMapper;
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
+  private final OrgMemberMapper orgMemberMapper;
   private final RagforgeMetrics metrics;
 
   private static final String PUBLIC_VISIBILITY = "PUBLIC";
+  private static final String ORG_VISIBILITY = "ORG";
 
   public boolean canRead(Long kbId) {
     if (kbId == null) {
@@ -46,6 +49,9 @@ public class KbAccessGuard {
       return false;
     }
     if (isOwner(kb, context) || isPublic(kb)) {
+      return true;
+    }
+    if (canReadOrgKb(kb, context)) {
       return true;
     }
     return readableKbIds(context).contains(kbId);
@@ -67,6 +73,9 @@ public class KbAccessGuard {
       return false;
     }
     if (isOwner(kb, context)) {
+      return true;
+    }
+    if (canManageOrgKb(kb, context)) {
       return true;
     }
     Set<Long> writable = context.writableKbIds();
@@ -92,6 +101,9 @@ public class KbAccessGuard {
       return false;
     }
     if (isOwner(kb, context)) {
+      return true;
+    }
+    if (canManageOrgKb(kb, context)) {
       return true;
     }
     return context.userId() != null && kbAclMapper.findAdminKbIds(context.userId()).contains(kbId);
@@ -138,10 +150,62 @@ public class KbAccessGuard {
               .map(KnowledgeBase::getId)
               .toList());
     }
-    // 默认（含未破玻璃的 ADMIN）：自有库 ∪ public 库 ∪ (claims/acl 授权库)
+    // 默认（含未破玻璃的 ADMIN）：自有库 ∪ public 库 ∪ 组织可见库 ∪ (claims/acl 授权库)
     Set<Long> ids = new LinkedHashSet<>(readableKbIds(context));
     ids.addAll(ownedKbIds(context));
     ids.addAll(publicKbIds());
+    ids.addAll(orgReadableKbIds(context));
+    return ids;
+  }
+
+  /** 组织库读权限：管理者(OWNER/ADMIN)可读本组织任意库；普通成员可读 ORG 可见库。 */
+  private boolean canReadOrgKb(KnowledgeBase kb, RagAuthContext context) {
+    if (kb.getOrgId() == null || context.userId() == null) {
+      return false;
+    }
+    if (orgMemberMapper.isOrgAdmin(kb.getOrgId(), context.userId())) {
+      return true;
+    }
+    return ORG_VISIBILITY.equalsIgnoreCase(kb.getVisibility())
+        && orgMemberMapper.isMember(kb.getOrgId(), context.userId());
+  }
+
+  /** 组织库写/管理权限：仅本组织 OWNER/ADMIN。 */
+  private boolean canManageOrgKb(KnowledgeBase kb, RagAuthContext context) {
+    return kb.getOrgId() != null
+        && context.userId() != null
+        && orgMemberMapper.isOrgAdmin(kb.getOrgId(), context.userId());
+  }
+
+  /** 我可见的组织库集合：所属组织的 ORG 库 ∪ 我作为管理者组织的任意库。 */
+  private Set<Long> orgReadableKbIds(RagAuthContext context) {
+    if (context.userId() == null) {
+      return Set.of();
+    }
+    Set<Long> ids = new LinkedHashSet<>();
+    List<Long> memberOrgIds = orgMemberMapper.findMemberOrgIds(context.userId());
+    if (memberOrgIds != null && !memberOrgIds.isEmpty()) {
+      ids.addAll(
+          knowledgeBaseMapper.selectList(
+                  new LambdaQueryWrapper<KnowledgeBase>()
+                      .in(KnowledgeBase::getOrgId, memberOrgIds)
+                      .eq(KnowledgeBase::getVisibility, ORG_VISIBILITY)
+                      .ne(KnowledgeBase::getKbType, SYSTEM_KB_TYPE))
+              .stream()
+              .map(KnowledgeBase::getId)
+              .toList());
+    }
+    List<Long> adminOrgIds = orgMemberMapper.findAdminOrgIds(context.userId());
+    if (adminOrgIds != null && !adminOrgIds.isEmpty()) {
+      ids.addAll(
+          knowledgeBaseMapper.selectList(
+                  new LambdaQueryWrapper<KnowledgeBase>()
+                      .in(KnowledgeBase::getOrgId, adminOrgIds)
+                      .ne(KnowledgeBase::getKbType, SYSTEM_KB_TYPE))
+              .stream()
+              .map(KnowledgeBase::getId)
+              .toList());
+    }
     return ids;
   }
 

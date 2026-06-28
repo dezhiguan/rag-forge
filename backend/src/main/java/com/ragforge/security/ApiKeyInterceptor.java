@@ -119,7 +119,6 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     Set<Long> allowedKbIds = longSet(apiKey.getAllowedKbIds());
     return new RagAuthContext(
         null,
-        null,
         "SERVICE_ACCOUNT",
         allowedKbIds,
         allowedKbIds,

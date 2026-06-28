@@ -20,6 +20,7 @@ public class KnowledgeBaseVO {
   private String answerModel;
   private String imageProcessingMode;
   private Long ownerUserId;
+  private Long orgId;
   private String visibility;
   private String kbType;
   /** 当前主体对该库的权限：admin | write | read。 */
@@ -42,6 +43,7 @@ public class KnowledgeBaseVO {
     vo.setAnswerModel(entity.getAnswerModel());
     vo.setImageProcessingMode(entity.getImageProcessingMode());
     vo.setOwnerUserId(entity.getOwnerUserId());
+    vo.setOrgId(entity.getOrgId());
     vo.setVisibility(entity.getVisibility());
     vo.setKbType(entity.getKbType());
     vo.setCreatedAt(entity.getCreatedAt());

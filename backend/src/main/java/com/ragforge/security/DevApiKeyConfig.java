@@ -17,7 +17,6 @@ public class DevApiKeyConfig {
   RagAuthContext context() {
     return new RagAuthContext(
         null,
-        "dev",
         "SERVICE_ACCOUNT",
         Set.of(),
         Set.of(),

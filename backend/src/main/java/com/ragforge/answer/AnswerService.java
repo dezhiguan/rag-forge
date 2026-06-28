@@ -257,7 +257,7 @@ public class AnswerService {
     try {
       RagAuthContext auth = RagAuthContextHolder.get();
       AnswerLog log = new AnswerLog();
-      log.setTenantId(auth == null || auth.tenantId() == null ? "default" : auth.tenantId());
+      log.setTenantId("default"); // 租户模型已移除，保留列写默认值（待迁移删列）
       log.setPrincipalId(auth == null ? null : auth.principalId());
       log.setKbIdsCsv(String.join(",", kbIds.stream().map(String::valueOf).toList()));
       log.setQuery(request.getQuery());
@@ -303,8 +303,7 @@ public class AnswerService {
   }
 
   private String tenantIdOrDefault() {
-    RagAuthContext auth = RagAuthContextHolder.get();
-    return auth == null || auth.tenantId() == null ? "default" : auth.tenantId();
+    return "default"; // 租户模型已移除，judge 采样维度统一 default（待迁移删列）
   }
 
   private String toJson(Object value) throws JsonProcessingException {

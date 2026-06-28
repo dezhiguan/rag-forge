@@ -83,11 +83,9 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     }
     String filename = cleanFilename(request.getFilename());
     String bucket = defaultBucket(null);
-    String tokenTenantId = currentTenantId();
     String uploadId = randomUploadId();
     String key =
-        cleanPathPart(tokenTenantId)
-            + "/kb_"
+        "kb_"
             + request.getKbId()
             + "/"
             + uploadId
@@ -100,7 +98,6 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     }
 
     TokenPayload payload = new TokenPayload();
-    payload.setTenantId(tokenTenantId);
     payload.setKbId(request.getKbId());
     payload.setStorageBucket(bucket);
     payload.setStorageKey(key);
@@ -112,7 +109,7 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     ObjectMeta meta = new ObjectMeta();
     meta.setContentType(safeContentType);
     meta.setSizeBytes(request.getDeclaredSize());
-    meta.setUserMeta(Map.of("kb-id", String.valueOf(request.getKbId()), "tenant-id", tokenTenantId));
+    meta.setUserMeta(Map.of("kb-id", String.valueOf(request.getKbId())));
     String presignedPutUrl =
         objectStorage.presignedPut(bucket, key, uploadTokenService.tokenTtl(), meta);
 
@@ -137,9 +134,10 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     TokenPayload payload = uploadTokenService.consume(request.getUploadToken());
     long t1 = System.currentTimeMillis();
     RagAuthContext context = RagAuthContextHolder.get();
-    if (context == null || !payload.getTenantId().equals(currentTenantId())) {
-      throw new BizException(403, "UPLOAD_TOKEN_TENANT_FORBIDDEN");
+    if (context == null) {
+      throw new BizException(403, "UPLOAD_TOKEN_FORBIDDEN");
     }
+    // 归属校验：token 绑定的 kbId 必须与请求一致，防止持 A 库 token 写 B 库（写权限已由 @PreAuthorize canWrite 拦截）
     if (!payload.getKbId().equals(request.getKbId())) {
       throw new BizException(403, "UPLOAD_TOKEN_KB_FORBIDDEN");
     }
@@ -430,13 +428,7 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
   }
 
   private String storageKey(Long kbId, String filename) {
-    String tenantId = currentTenantId();
-    return cleanPathPart(tenantId) + "/" + kbId + "/" + UUID.randomUUID() + "/" + filename;
-  }
-
-  private String currentTenantId() {
-    RagAuthContext context = RagAuthContextHolder.get();
-    return context == null || context.tenantId() == null ? "default" : context.tenantId();
+    return "kb_" + kbId + "/" + UUID.randomUUID() + "/" + filename;
   }
 
   private String defaultBucket(String requestedBucket) {

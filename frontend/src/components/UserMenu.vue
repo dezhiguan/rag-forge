@@ -4,7 +4,7 @@
       <span class="avatar">{{ initials }}</span>
       <span class="user-meta">
         <span class="user-name">{{ displayName }}</span>
-        <span class="tenant">{{ tenantSlug }}</span>
+        <span class="tenant">{{ accountLabel }}</span>
       </span>
     </button>
 
@@ -42,8 +42,9 @@ const menuRef = ref(null)
 const displayName = computed(
   () => state.me?.displayName || state.user?.displayName || state.user?.account || 'RAGForge 用户'
 )
-const tenantSlug = computed(
-  () => state.me?.tenantId || state.user?.tenantSlug || state.user?.tenant_slug || 'personal'
+// 租户模型已移除：副标题展示账号/用户名，无则回退“个人账号”
+const accountLabel = computed(
+  () => state.me?.username || state.user?.account || state.me?.email || '个人账号'
 )
 const initials = computed(() => displayName.value.slice(0, 1).toUpperCase())
 

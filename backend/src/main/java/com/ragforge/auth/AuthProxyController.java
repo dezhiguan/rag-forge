@@ -228,8 +228,6 @@ public class AuthProxyController {
     user.put("id", userId);
     user.put("account", account);
     user.put("displayName", displayName);
-    user.put("tenantId", claims.get("tenant_id"));
-    user.put("tenantSlug", claims.get("tenant_id"));
     user.put("platformRole", claims.get("platform_role"));
     user.put("ragRole", claims.get("rag_role"));
     user.put("scopes", claims.get("scopes"));

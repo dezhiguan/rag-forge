@@ -33,7 +33,6 @@ public class MeController {
 
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("userId", userId);
-    data.put("tenantId", context.tenantId());
     data.put("ragRole", context.ragRole());
     data.put("platformAdmin", capabilityResolver.isAdmin(context.ragRole()));
     data.put("displayName", userProfileService.resolveDisplayName(profile, userId));

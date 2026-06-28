@@ -4,7 +4,6 @@ import java.util.Set;
 
 public record RagAuthContext(
     Long userId,
-    String tenantId,
     String ragRole,
     Set<Long> readableKbIds,
     Set<Long> writableKbIds,

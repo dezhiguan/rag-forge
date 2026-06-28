@@ -33,6 +33,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   private final DocumentMapper documentMapper;
   private final com.ragforge.security.KbAccessGuard kbAccessGuard;
   private final com.ragforge.mapper.KbAclMapper kbAclMapper;
+  private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
   private volatile ListCache listCache;
 
   @Override
@@ -48,9 +49,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     kb.setChunkCount(0);
     kb.setStatus(STATUS_ACTIVE);
     RagAuthContext auth = RagAuthContextHolder.get();
-    kb.setTenantId(auth == null || !StringUtils.hasText(auth.tenantId()) ? "tn_default" : auth.tenantId());
-    kb.setOwnerUserId(auth == null || auth.userId() == null ? 0L : auth.userId());
-    kb.setVisibility("PRIVATE");
+    Long creatorId = auth == null || auth.userId() == null ? 0L : auth.userId();
+    kb.setOwnerUserId(creatorId);
+    applyOwnership(kb, dto.getOrgId(), dto.getVisibility(), creatorId);
     kb.setKbType("GENERAL");
     kb.setImageProcessingMode(normalizeImageMode(dto.getImageProcessingMode(), "OFF"));
     applyAnswerConfig(kb, dto.getAnswerMode(), dto.getAnswerModel());
@@ -60,6 +61,28 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     knowledgeBaseMapper.insert(kb);
     invalidateListCache();
     return kb;
+  }
+
+  /** 设定知识库归属与可见性：个人库(PRIVATE/PUBLIC) 或 组织库(PRIVATE/ORG，需 OWNER/ADMIN)。 */
+  private void applyOwnership(KnowledgeBase kb, Long orgId, String visibility, Long creatorId) {
+    String v = StringUtils.hasText(visibility) ? visibility.trim().toUpperCase() : "PRIVATE";
+    if (orgId != null) {
+      if (creatorId == null || creatorId == 0L || !orgMemberMapper.isOrgAdmin(orgId, creatorId)) {
+        throw new BizException(403, "NOT_ORG_ADMIN");
+      }
+      if (!"PRIVATE".equals(v) && !"ORG".equals(v)) {
+        // 组织库不允许直接 PUBLIC，避免误把企业资料公开
+        throw new BizException(400, "ORG_KB_VISIBILITY_INVALID");
+      }
+      kb.setOrgId(orgId);
+      kb.setVisibility(v);
+    } else {
+      if (!"PRIVATE".equals(v) && !"PUBLIC".equals(v)) {
+        throw new BizException(400, "KB_VISIBILITY_INVALID");
+      }
+      kb.setOrgId(null);
+      kb.setVisibility(v);
+    }
   }
 
   @Override
