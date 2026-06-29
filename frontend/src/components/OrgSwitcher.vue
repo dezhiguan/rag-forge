@@ -62,10 +62,12 @@ function nameOf(o) {
 const PALETTE = ['#2563eb', '#15803d', '#7c3aed', '#db2777', '#0ea5e9', '#f59e0b']
 function avatarColor(o) {
   if (o.personal) return '#2563eb'
-  const key = (o.id ?? 0) % PALETTE.length
+  if (o.platform) return '#1e293b'
+  const key = (Number(o.id) || 0) % PALETTE.length
   return PALETTE[key]
 }
 function initial(o) {
+  if (o && o.platform) return '∞'
   return (nameOf(o) || '?').trim().charAt(0).toUpperCase()
 }
 function roleLabel(role) {
