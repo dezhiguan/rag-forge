@@ -15,29 +15,24 @@
     <!-- scope 提示 -->
     <div class="scope-note" :class="{ gov: isPlatform }">
       <template v-if="isPlatform">
-        🛡 <span><b>全平台治理视图（破玻璃）</b> —— 跨组织只读查看所有 API key，仅可<b>吊销</b>疑似泄露/违规的 key；无法替组织创建或编辑。操作记审计。</span>
+        🛡 <span><b>全平台定向治理（破玻璃）</b> —— 出于最小权限，平台<b>不浏览全量 key</b>；按 key 名称/前缀定向查询要吊销的 key，吊销须填原因并记审计，不替组织创建或编辑。</span>
       </template>
       <template v-else>
-        🛡 <span>当前展示 <b>{{ orgName }}</b> 的接入凭证与接口。密钥仅在本组织内有效；调用自动绑定 <b>X-Org-Id={{ orgIdText }}</b>，只能访问本组织（及公开）知识库。</span>
+        🛡 <span>当前展示 <b>{{ orgName }}</b> 的 API key。在此创建的密钥<b>自动绑定本组织</b>，调用时只能访问本组织（及公开）知识库，无需手动传组织。</span>
       </template>
     </div>
 
     <!-- ============ API keys ============ -->
     <div v-show="tab === 'keys'" class="card card-pad">
-      <div class="desc">
-        <template v-if="isPlatform">下表是<b>全平台所有组织</b>的 API key（只读）。发现疑似泄露可一键吊销；不能在此为某组织新建 key，请下钻到对应组织。</template>
-        <template v-else>下表是<b>本组织</b>的全部 API key。Key 仅在创建时可见可复制，请妥善保存，不要暴露在前端代码中。</template>
-      </div>
-
-      <table>
-        <thead v-if="!isPlatform"><tr><th>名称</th><th>Key</th><th>创建日期</th><th>最近使用</th><th></th></tr></thead>
-        <thead v-else><tr><th>名称</th><th>所属组织</th><th>Key</th><th>最近使用</th><th>状态</th><th></th></tr></thead>
-        <tbody>
-          <tr v-if="!keys.length"><td :colspan="6" class="empty">{{ loading ? '加载中…' : '暂无 API key' }}</td></tr>
-          <!-- 组织态 -->
-          <template v-if="!isPlatform">
+      <!-- 组织态：管自己组织的 key -->
+      <template v-if="!isPlatform">
+        <div class="desc">下表是<b>本组织</b>的全部 API key。Key 仅在创建时可见可复制，请妥善保存，不要暴露在前端代码中。</div>
+        <table>
+          <thead><tr><th>名称</th><th>Key</th><th>创建日期</th><th>最近使用</th><th></th></tr></thead>
+          <tbody>
+            <tr v-if="!keys.length"><td colspan="5" class="empty">{{ loading ? '加载中…' : '暂无 API key' }}</td></tr>
             <tr v-for="k in keys" :key="k.id">
-              <td class="kname">{{ k.keyName }}</td>
+              <td class="kname">{{ k.keyName }} <span v-if="!k.enabled" class="tag t-off">已吊销</span></td>
               <td class="kcode">{{ k.keyMasked }}</td>
               <td>{{ fmt(k.createdAt) }}</td>
               <td>{{ fmt(k.lastUsedAt) || '—' }}</td>
@@ -46,25 +41,34 @@
                 <span class="ic" title="删除" @click="onDelete(k)">🗑️</span>
               </div><span v-else class="muted">只读</span></td>
             </tr>
-          </template>
-          <!-- 治理态 -->
-          <template v-else>
-            <tr v-for="k in keys" :key="k.id">
+          </tbody>
+        </table>
+        <div v-if="canManage" class="mt16"><button class="btn-primary" :disabled="creating" @click="onCreate">＋ 创建 API key</button></div>
+      </template>
+
+      <!-- 治理态：定向查询 + 吊销 -->
+      <template v-else>
+        <div class="desc">出于最小权限，平台<b>不浏览全量 key</b>。请按 <b>key 名称或前缀</b>（≥3 字符）定向查询要吊销的 key。</div>
+        <div class="gov-search">
+          <input v-model="govQuery" class="gov-input" placeholder="输入 key 名称或前缀，如 sk-rf-1d 或 招聘" @keyup.enter="onGovSearch" />
+          <button class="btn-primary" :disabled="govLoading" @click="onGovSearch">查询</button>
+        </div>
+        <table v-if="govSearched">
+          <thead><tr><th>名称</th><th>所属组织</th><th>Key</th><th>最近使用</th><th>状态</th><th></th></tr></thead>
+          <tbody>
+            <tr v-if="!govResults.length"><td colspan="6" class="empty">未匹配到 key</td></tr>
+            <tr v-for="k in govResults" :key="k.id">
               <td class="kname">{{ k.keyName }}</td>
-              <td>{{ k.orgName || ('org#' + k.orgId) }}</td>
+              <td>{{ k.orgName || (k.orgId ? 'org#' + k.orgId : '无组织') }}</td>
               <td class="kcode">{{ k.keyMasked }}</td>
               <td>{{ fmt(k.lastUsedAt) || '—' }}</td>
               <td><span class="tag" :class="k.enabled ? 't-on' : 't-off'">{{ k.enabled ? '正常' : '已吊销' }}</span></td>
-              <td><div class="row-act">
-                <span v-if="k.enabled" class="del" @click="onRevoke(k)">吊销</span>
-                <span v-else class="muted">—</span>
-              </div></td>
+              <td><div class="row-act"><span v-if="k.enabled" class="del" @click="onGovRevoke(k)">吊销</span><span v-else class="muted">—</span></div></td>
             </tr>
-          </template>
-        </tbody>
-      </table>
-
-      <div v-if="canManage" class="mt16"><button class="btn-primary" :disabled="creating" @click="onCreate">＋ 创建 API key</button></div>
+          </tbody>
+        </table>
+        <div v-else class="gov-hint">🔍 输入检索词后点「查询」；为最小权限，平台不提供全量浏览。</div>
+      </template>
     </div>
 
     <!-- ============ 接口文档 ============ -->
@@ -75,7 +79,7 @@
           <div class="sec-hint">把以下信息配置到你的客户端 / 服务端。</div>
           <div class="kv"><span class="k">Base URL</span><span class="v">{{ baseUrl }}<span class="copy" @click="copy($event, baseUrl)">复制</span></span></div>
           <div class="kv"><span class="k">认证方式</span><span class="v">Authorization: Bearer &lt;API key&gt;</span></div>
-          <div class="kv"><span class="k">组织上下文</span><span class="v">X-Org-Id: {{ orgIdText }}（随密钥绑定）</span></div>
+          <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定，无需传 X-Org-Id</span></div>
         </div>
         <div class="card card-pad">
           <div class="sec-title">🔗 核心接口</div>
@@ -101,7 +105,7 @@
           <div class="kv"><span class="k">协议</span><span class="v">MCP (streamable HTTP)</span></div>
           <div class="kv"><span class="k">Server URL</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
           <div class="kv"><span class="k">认证</span><span class="v">Authorization: Bearer &lt;API key&gt;</span></div>
-          <div class="kv"><span class="k">组织上下文</span><span class="v">X-Org-Id: {{ orgIdText }}</span></div>
+          <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定</span></div>
         </div>
         <div class="card card-pad">
           <div class="sec-title">🤝 适用客户端</div>
@@ -145,7 +149,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useOrg } from '../composables/useOrg'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
-import { listApiKeys, createApiKey, renameApiKey, enableApiKey, deleteApiKey } from '../api/apikey'
+import { listApiKeys, createApiKey, renameApiKey, deleteApiKey, governanceSearchKeys, revokeApiKey } from '../api/apikey'
 
 const { current, isPlatform, currentOrgId } = useOrg()
 const toast = useToast()
@@ -156,6 +160,11 @@ const loading = ref(false)
 const creating = ref(false)
 const newKey = ref('')
 const showReveal = ref(false)
+// 定向治理（平台破玻璃）
+const govQuery = ref('')
+const govResults = ref([])
+const govSearched = ref(false)
+const govLoading = ref(false)
 
 // 仅当前组织 OWNER/ADMIN 可管理 key（员工只读，与后端一致）。
 const canManage = computed(() => {
@@ -163,24 +172,19 @@ const canManage = computed(() => {
   return !isPlatform.value && (r === 'OWNER' || r === 'ADMIN')
 })
 const orgName = computed(() => current.value?.name || '当前组织')
-const orgIdText = computed(() => (isPlatform.value ? '—' : (currentOrgId.value ?? '—')))
-// 对外公开的线上域名（开发者按此接入，非本地 dev 地址）
+// 对外公开的线上域名（开发者按此接入，非本地 dev 地址）。接口/MCP 文档全平台一致，
+// 组织由 API key 自动绑定，调用方无需传 X-Org-Id —— 故文档为静态、不随组织变。
 const PUBLIC_BASE = 'https://api.ragforge.net'
-const baseUrl = computed(() => `${PUBLIC_BASE}/api/v1`)
-const mcpUrl = computed(() => `${PUBLIC_BASE}/mcp`)
-const curlText = computed(
-  () =>
-    `curl ${baseUrl.value}/search \\\n` +
-    `  -H "Authorization: Bearer <API key>" \\\n` +
-    `  -H "X-Org-Id: ${orgIdText.value}" \\\n` +
-    `  -H "Content-Type: application/json" \\\n` +
-    `  -d '{ "query": "Java 高并发经验", "strategy": "hybrid", "topK": 5 }'`,
-)
-const mcpText = computed(
-  () =>
-    `{\n  "mcpServers": {\n    "ragforge": {\n      "url": "${mcpUrl.value}",\n` +
-    `      "headers": {\n        "Authorization": "Bearer <API key>",\n        "X-Org-Id": "${orgIdText.value}"\n      }\n    }\n  }\n}`,
-)
+const baseUrl = `${PUBLIC_BASE}/api/v1`
+const mcpUrl = `${PUBLIC_BASE}/mcp`
+const curlText =
+  `curl ${baseUrl}/search \\\n` +
+  `  -H "Authorization: Bearer <API key>" \\\n` +
+  `  -H "Content-Type: application/json" \\\n` +
+  `  -d '{ "query": "Java 高并发经验", "strategy": "hybrid", "topK": 5 }'`
+const mcpText =
+  `{\n  "mcpServers": {\n    "ragforge": {\n      "url": "${mcpUrl}",\n` +
+  `      "headers": {\n        "Authorization": "Bearer <API key>"\n      }\n    }\n  }\n}`
 const mcpTools = [
   { ico: '🔍', name: 'search_knowledge', desc: '在本组织知识库内混合检索，返回带引用的片段' },
   { ico: '📚', name: 'list_knowledge_bases', desc: '列出本组织可访问的知识库' },
@@ -250,15 +254,36 @@ async function onRename(k) {
   toast.success('已修改名称')
 }
 
-async function onRevoke(k) {
-  const ok = await confirmDialog({
+async function onGovSearch() {
+  const q = govQuery.value.trim()
+  if (q.length < 3) {
+    toast.error('请输入至少 3 个字符的 key 名称或前缀')
+    return
+  }
+  govLoading.value = true
+  try {
+    const res = await governanceSearchKeys(q)
+    govResults.value = Array.isArray(res?.data) ? res.data : []
+    govSearched.value = true
+  } catch (e) {
+    /* 全局拦截提示 */
+  } finally {
+    govLoading.value = false
+  }
+}
+
+async function onGovRevoke(k) {
+  const reason = await confirmDialog({
     title: '吊销 API key',
-    message: `确认吊销「${k.keyName}」（${k.orgName || ''}）？吊销后该 key 立即失效。`,
+    message: `确认吊销「${k.keyName}」（${k.orgName || '无组织'}）？吊销后该 key 立即失效。请填写吊销原因（将记入审计）。`,
+    icon: '',
+    input: true,
+    inputPlaceholder: '吊销原因，如：疑似泄露 / 违规使用',
     confirmText: '吊销',
   })
-  if (!ok) return
-  await enableApiKey(k.id, false)
-  await reload()
+  if (!reason) return
+  await revokeApiKey(k.id, String(reason).trim())
+  await onGovSearch()
   toast.success('已吊销')
 }
 
@@ -321,6 +346,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
 .btn { height: 30px; padding: 0 12px; border: 1px solid var(--border); background: #fff; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .mt16 { margin-top: 16px; }
+.gov-search { display: flex; gap: 10px; margin: 4px 0 18px; }
+.gov-input { flex: 1; max-width: 460px; height: 38px; padding: 0 14px; border: 1px solid var(--border); border-radius: 9px; font-size: 13px; outline: none; }
+.gov-input:focus { border-color: var(--primary); }
+.gov-hint { padding: 28px 0; text-align: center; color: var(--text-muted); font-size: 13px; }
 
 .newkey { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
 .nk-h { font-size: 12.5px; font-weight: 700; color: #15803d; margin-bottom: 8px; }
