@@ -65,17 +65,17 @@
             <div class="panel-head">
               <div>
                 <div class="panel-title">通用设置</div>
-                <div class="panel-desc">仅 OWNER / ADMIN 可修改 · 编辑保存 <i class="wip-badge">待开发</i></div>
+                <div class="panel-desc">仅 OWNER / ADMIN 可修改</div>
               </div>
             </div>
             <div class="panel-body">
               <div class="form-row">
                 <span class="form-label">组织名称</span>
-                <input class="form-input" :value="org.name" disabled />
+                <input class="form-input" v-model="generalForm.name" :disabled="!canManage" />
               </div>
               <div class="form-row">
                 <span class="form-label">slug（短标识）</span>
-                <input class="form-input" :value="org.slug" disabled />
+                <input class="form-input" v-model="generalForm.slug" :disabled="!canManage" />
               </div>
               <div class="form-row">
                 <span class="form-label">组织 ID</span>
@@ -90,8 +90,12 @@
                 <span class="form-static">{{ org.createdAt ? fmtDate(org.createdAt) : '—' }}</span>
               </div>
               <div class="form-actions">
-                <button class="btn-primary" disabled>保存修改</button>
-                <span class="wip-note">组织信息编辑接口待开发</span>
+                <button
+                  class="btn-primary"
+                  :disabled="!canManage || !generalDirty || savingGeneral"
+                  @click="onSaveGeneral"
+                >{{ savingGeneral ? '保存中…' : '保存修改' }}</button>
+                <span v-if="!canManage" class="wip-note">仅 OWNER / ADMIN 可修改</span>
               </div>
             </div>
           </section>
@@ -251,30 +255,41 @@
             </div>
           </section>
 
-          <!-- 危险区（待开发） -->
+          <!-- 危险区 -->
           <section v-show="tab === 'danger'">
             <div class="danger-zone">
               <div class="dz-head">
-                <div class="dz-title">危险区 <i class="wip-badge wip-danger">待开发</i></div>
-                <div class="dz-desc">高危操作，仅 OWNER 可执行，需二次确认；平台超管代为执行须破玻璃 + 审计</div>
+                <div class="dz-title">危险区</div>
+                <div class="dz-desc">高危操作，仅 OWNER 可执行，需二次确认</div>
               </div>
               <div class="dz-row">
                 <div class="dz-info">
                   <div class="dz-r-t">转移所有权（OWNER）</div>
                   <div class="dz-r-s">将 OWNER 移交给另一名成员，自己降为 ADMIN</div>
                 </div>
-                <button class="btn-danger" disabled>转移</button>
+                <div class="dz-action">
+                  <select v-model="transferTarget" class="role-filter" :disabled="!isOwner || !otherMembers.length">
+                    <option :value="null" disabled>选择成员</option>
+                    <option v-for="m in otherMembers" :key="m.userId" :value="m.userId">
+                      {{ m.displayName || ('用户 ' + m.userId) }}
+                    </option>
+                  </select>
+                  <button class="btn-danger" :disabled="!isOwner || !transferTarget" @click="onTransferOwner">转移</button>
+                </div>
               </div>
               <div class="dz-row">
                 <div class="dz-info">
                   <div class="dz-r-t">删除组织</div>
-                  <div class="dz-r-s">需先清空成员与组织库归属；删除后不可恢复</div>
+                  <div class="dz-r-s">
+                    需先清空组织名下知识库；删除后不可恢复
+                    <span v-if="orgKbs.length" class="dz-warn">· 当前还有 {{ orgKbs.length }} 个组织库</span>
+                  </div>
                 </div>
-                <button class="btn-danger" disabled>删除组织</button>
+                <button class="btn-danger" :disabled="!isOwner || orgKbs.length > 0" @click="onDeleteOrg">删除组织</button>
               </div>
             </div>
             <div class="hint-box">
-              ⚠️ 转移 / 删除会触发二次确认 + 写审计，平台超管也不能静默执行。相关后端端点<b>待开发</b>。
+              ⚠️ 仅 OWNER 可执行，转移 / 删除均需二次确认。删除组织前请先把名下知识库转出或删除。
             </div>
           </section>
         </div>
@@ -343,6 +358,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   createOrg,
+  updateOrg,
+  transferOwner,
+  deleteOrg,
   listMembers as listMembersApi,
   updateMember as updateMemberApi,
   removeMember as removeMemberApi,
@@ -363,6 +381,7 @@ const { current, orgs, isPersonal, isPlatform, load: loadOrgs, setCurrent } = us
 const org = computed(() => current.value)
 const isTeamOrg = computed(() => !isPersonal.value && !isPlatform.value && org.value?.id != null)
 const canManage = computed(() => org.value?.myRole === 'OWNER' || org.value?.myRole === 'ADMIN')
+const isOwner = computed(() => org.value?.myRole === 'OWNER')
 const myUserId = computed(() => authState.me?.userId ?? null)
 const manageableOrgs = computed(() => orgs.value.filter((o) => o.id != null))
 
@@ -372,6 +391,10 @@ const invites = ref([])
 const orgKbs = ref([])
 const memberSearch = ref('')
 const roleFilter = ref('')
+const generalForm = ref({ name: '', slug: '' })
+const savingGeneral = ref(false)
+const transferTarget = ref(null)
+const otherMembers = computed(() => members.value.filter((m) => m.userId !== myUserId.value))
 
 const navItems = computed(() => [
   { key: 'general', ico: '⚙️', label: '通用' },
@@ -379,7 +402,7 @@ const navItems = computed(() => [
   { key: 'invites', ico: '✉️', label: '邀请', count: invites.value.length, warn: invites.value.length > 0 },
   { key: 'kb', ico: '📚', label: '知识库归属' },
   { key: 'plan', ico: '⬆️', label: '套餐与升级', wip: true },
-  { key: 'danger', ico: '⚠️', label: '危险区', danger: true, wip: true },
+  { key: 'danger', ico: '⚠️', label: '危险区', danger: true },
 ])
 
 const filteredMembers = computed(() => {
@@ -433,9 +456,65 @@ watch(
   () => org.value?.id,
   () => {
     tab.value = 'general'
+    generalForm.value = { name: org.value?.name || '', slug: org.value?.slug || '' }
+    transferTarget.value = null
     loadAll()
   },
+  { immediate: true },
 )
+
+const generalDirty = computed(
+  () =>
+    (generalForm.value.name || '') !== (org.value?.name || '') ||
+    (generalForm.value.slug || '') !== (org.value?.slug || ''),
+)
+
+async function onSaveGeneral() {
+  if (!canManage.value || !generalDirty.value || savingGeneral.value) return
+  savingGeneral.value = true
+  try {
+    await updateOrg(org.value.id, { name: generalForm.value.name.trim(), slug: generalForm.value.slug.trim() })
+    await loadOrgs()
+    toast.success('组织信息已保存')
+  } catch (e) {
+    /* 错误由全局拦截提示 */
+  } finally {
+    savingGeneral.value = false
+  }
+}
+
+async function onTransferOwner() {
+  if (!isOwner.value || !transferTarget.value) return
+  const target = members.value.find((m) => m.userId === transferTarget.value)
+  const ok = await confirmDialog({
+    title: '转移所有权',
+    message: `确认把 OWNER 移交给 ${target?.displayName || '用户 ' + transferTarget.value}？你将降为 ADMIN，此操作立即生效。`,
+    confirmText: '确认转移',
+  })
+  if (!ok) return
+  await transferOwner(org.value.id, transferTarget.value)
+  await Promise.all([loadOrgs(), loadMembers(org.value.id)])
+  transferTarget.value = null
+  toast.success('所有权已转移')
+}
+
+async function onDeleteOrg() {
+  if (!isOwner.value) return
+  if (orgKbs.value.length > 0) {
+    toast.error('请先把组织名下知识库转出或删除，再删除组织')
+    return
+  }
+  const ok = await confirmDialog({
+    title: '删除组织',
+    message: `确认删除组织「${org.value.name}」？成员关系将一并清除，删除后不可恢复。`,
+    confirmText: '删除组织',
+  })
+  if (!ok) return
+  await deleteOrg(org.value.id)
+  setCurrent(null)
+  await loadOrgs()
+  toast.success('组织已删除')
+}
 
 async function onChangeRole(member, role) {
   if (role === member.role) return
@@ -688,7 +767,11 @@ onMounted(async () => {
 .dz-row:first-child { border-top: none; }
 .dz-r-t { font-size: 13.5px; font-weight: 600; color: var(--slate); }
 .dz-r-s { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.btn-danger { background: #fff; color: var(--red); border: 1px solid #fecaca; border-radius: 9px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: not-allowed; opacity: 0.65; }
+.dz-warn { color: var(--red); font-weight: 600; }
+.dz-action { display: flex; align-items: center; gap: 8px; }
+.btn-danger { background: #fff; color: var(--red); border: 1px solid #fecaca; border-radius: 9px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn-danger:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; }
+.btn-danger:disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* 弹窗 */
 .modal-mask { position: fixed; inset: 0; background: rgba(15, 31, 61, 0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }

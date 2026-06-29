@@ -3,6 +3,10 @@ import request from './request'
 // 组织与成员管理 API（GitHub 式个人/组织权限）
 export const listOrgs = () => request.get('/orgs')
 export const createOrg = (data) => request.post('/orgs', data)
+export const updateOrg = (orgId, data) => request.patch(`/orgs/${orgId}`, data)
+export const transferOwner = (orgId, userId) =>
+  request.post(`/orgs/${orgId}/transfer-owner`, { userId })
+export const deleteOrg = (orgId) => request.delete(`/orgs/${orgId}`)
 export const getOrg = (orgId) => request.get(`/orgs/${orgId}`)
 export const listMembers = (orgId) => request.get(`/orgs/${orgId}/members`)
 export const searchMemberCandidates = (orgId, q) =>

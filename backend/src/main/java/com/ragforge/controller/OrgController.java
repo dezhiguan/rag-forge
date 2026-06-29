@@ -41,6 +41,28 @@ public class OrgController {
     return Result.ok(orgService.getOrganization(orgId));
   }
 
+  /** 更新组织名称/slug（仅 OWNER/ADMIN）。 */
+  @PatchMapping("/{orgId}")
+  public Result<Map<String, Object>> update(
+      @PathVariable Long orgId, @RequestBody OrgUpdateRequest req) {
+    return Result.ok(orgService.updateOrganization(orgId, req.getName(), req.getSlug()));
+  }
+
+  /** 转移所有权（仅 OWNER）。 */
+  @PostMapping("/{orgId}/transfer-owner")
+  public Result<Void> transferOwner(
+      @PathVariable Long orgId, @RequestBody MemberRequest req) {
+    orgService.transferOwnership(orgId, req.getUserId());
+    return Result.ok();
+  }
+
+  /** 删除组织（仅 OWNER，须先清空组织知识库）。 */
+  @DeleteMapping("/{orgId}")
+  public Result<Void> deleteOrg(@PathVariable Long orgId) {
+    orgService.deleteOrganization(orgId);
+    return Result.ok();
+  }
+
   @GetMapping("/{orgId}/members")
   public Result<List<Map<String, Object>>> members(@PathVariable Long orgId) {
     return Result.ok(orgService.listMembers(orgId));
@@ -104,6 +126,12 @@ public class OrgController {
   public static class OrgCreateRequest {
     private String slug;
     private String name;
+  }
+
+  @Data
+  public static class OrgUpdateRequest {
+    private String name;
+    private String slug;
   }
 
   @Data

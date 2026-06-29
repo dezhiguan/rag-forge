@@ -37,6 +37,7 @@ public class OrgService {
   private final OrgMemberMapper orgMemberMapper;
   private final UserProfileMapper userProfileMapper;
   private final UserProfileService userProfileService;
+  private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
   private Long currentUserId() {
     RagAuthContext ctx = RagAuthContextHolder.get();
@@ -207,7 +208,76 @@ public class OrgService {
     orgMemberMapper.deleteById(target.getId());
   }
 
+  /** 更新组织名称/slug（仅 OWNER/ADMIN）。slug 需合法且全局唯一（排除自身）。 */
+  @Transactional
+  public Map<String, Object> updateOrganization(Long orgId, String name, String slug) {
+    Long uid = currentUserId();
+    requireOrgAdmin(orgId, uid);
+    Organization org = requireOrg(orgId);
+    if (StringUtils.hasText(name)) {
+      org.setName(name.trim());
+    }
+    if (StringUtils.hasText(slug)) {
+      String normalizedSlug = slug.trim();
+      if (!SLUG.matcher(normalizedSlug).matches()) {
+        throw new BizException(400, "ORG_SLUG_INVALID");
+      }
+      if (!normalizedSlug.equals(org.getSlug())) {
+        Long taken =
+            organizationMapper.selectCount(
+                new LambdaQueryWrapper<Organization>()
+                    .eq(Organization::getSlug, normalizedSlug)
+                    .ne(Organization::getId, orgId));
+        if (taken != null && taken > 0) {
+          throw new BizException(409, "ORG_SLUG_TAKEN");
+        }
+        org.setSlug(normalizedSlug);
+      }
+    }
+    org.setUpdatedAt(LocalDateTime.now());
+    organizationMapper.updateById(org);
+    return toView(org, orgMemberMapper.findRole(orgId, uid));
+  }
+
+  /** 转移所有权（仅 OWNER）：目标须为本组织成员；原 OWNER 降为 ADMIN，目标升为 OWNER。 */
+  @Transactional
+  public void transferOwnership(Long orgId, Long targetUserId) {
+    Long uid = currentUserId();
+    requireOwner(orgId, uid);
+    if (uid.equals(targetUserId)) {
+      throw new BizException(400, "ALREADY_OWNER");
+    }
+    OrgMember target = findMember(orgId, targetUserId);
+    OrgMember me = findMember(orgId, uid);
+    target.setRole(OWNER);
+    orgMemberMapper.updateById(target);
+    me.setRole(ADMIN);
+    orgMemberMapper.updateById(me);
+  }
+
+  /** 删除组织（仅 OWNER）：须先清空组织名下知识库（避免悬挂归属）。级联删除成员与邀请。 */
+  @Transactional
+  public void deleteOrganization(Long orgId) {
+    Long uid = currentUserId();
+    requireOwner(orgId, uid);
+    Long kbCount =
+        knowledgeBaseMapper.selectCount(
+            new LambdaQueryWrapper<com.ragforge.model.entity.KnowledgeBase>()
+                .eq(com.ragforge.model.entity.KnowledgeBase::getOrgId, orgId)
+                .ne(com.ragforge.model.entity.KnowledgeBase::getStatus, "deleted"));
+    if (kbCount != null && kbCount > 0) {
+      throw new BizException(409, "ORG_HAS_KBS");
+    }
+    organizationMapper.deleteById(orgId); // org_members / org_invitations 由外键 ON DELETE CASCADE 清理
+  }
+
   // ---- helpers ----
+
+  private void requireOwner(Long orgId, Long uid) {
+    if (!OWNER.equals(orgMemberMapper.findRole(orgId, uid))) {
+      throw new BizException(403, "ONLY_OWNER");
+    }
+  }
 
   private Organization requireOrg(Long orgId) {
     Organization org = orgId == null ? null : organizationMapper.selectById(orgId);
