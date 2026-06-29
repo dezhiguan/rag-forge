@@ -12,7 +12,7 @@
     <div class="personal-bar">
       <span class="pb-ava">{{ initial(personalName) }}</span>
       <div class="pb-meta">
-        <div class="pb-name">{{ personalName }} 的个人组织 <span class="pb-tag">个人空间</span></div>
+        <div class="pb-name">{{ personalName }} 的个人组织</div>
         <div class="pb-sub">仅你可见 · 不可删除 · 个人库归属此处</div>
       </div>
       <button class="btn" @click="enterPersonal">进入</button>
