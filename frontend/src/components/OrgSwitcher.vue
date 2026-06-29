@@ -91,8 +91,8 @@ function onDocClick() {
   open.value = false
 }
 
-// 等鉴权就绪再拉组织列表，避免刷新时早于路由守卫恢复会话而触发 401。
-watch(isAuthenticated, (ok) => { if (ok) load() }, { immediate: true })
+// 等鉴权就绪再拉组织列表（避免早于会话恢复触发 401）；传 isAdmin 以清除非超管的残留 platform 选择。
+watch(isAuthenticated, (ok) => { if (ok) load({ isAdmin: isAdmin.value }) }, { immediate: true })
 onMounted(() => document.addEventListener('click', onDocClick))
 onUnmounted(() => document.removeEventListener('click', onDocClick))
 </script>

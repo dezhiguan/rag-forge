@@ -46,17 +46,25 @@ export function useOrg() {
     currentOrgId: computed(() => state.currentId),
     isPersonal: computed(() => state.currentId === null),
     isPlatform: computed(() => state.currentId === PLATFORM_ID),
-    /** 拉取我的组织并合成个人条目；当前选中已失效则回退个人。 */
-    async load() {
+    /**
+     * 拉取我的组织并合成个人条目；校验当前选中并在失效时回退个人。
+     * @param {{isAdmin?: boolean}} opts isAdmin=false 时清除残留的 platform 选择（防跨用户串台）。
+     */
+    async load(opts = {}) {
       try {
         const res = await listOrgs()
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
         state.orgs = [PERSONAL, ...list]
-        if (
+        // 全平台仅超管可用：非超管残留的 platform 选择回退个人。
+        if (state.currentId === PLATFORM_ID && !opts.isAdmin) {
+          state.currentId = null
+          persist(null)
+        } else if (
           state.currentId !== null &&
           state.currentId !== PLATFORM_ID &&
           !list.some((o) => o.id === state.currentId)
         ) {
+          // 选中的组织已不在我的组织列表（如换了用户）→ 回退个人。
           state.currentId = null
           persist(null)
         }
