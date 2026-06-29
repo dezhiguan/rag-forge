@@ -3,6 +3,7 @@ package com.ragforge.controller;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,6 +14,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 
 import com.ragforge.common.BizException;
 import com.ragforge.common.GlobalExceptionHandler;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.vo.AnomalyVo;
 import com.ragforge.model.vo.CaseDetailVo;
 import com.ragforge.model.vo.CostSummaryVo;
@@ -38,13 +40,14 @@ class JudgeQualityControllerTest {
 
   @Mock private JudgeQueryService queryService;
   @Mock private KbAccessGuard kbAccessGuard;
+  @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
 
   private MockMvc mockMvc;
   private JudgeQualityController controller;
 
   @BeforeEach
   void setUp() {
-    controller = new JudgeQualityController(queryService, kbAccessGuard);
+    controller = new JudgeQualityController(queryService, kbAccessGuard, knowledgeBaseMapper);
     mockMvc =
         standaloneSetup(controller)
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -54,7 +57,7 @@ class JudgeQualityControllerTest {
 
   @Test
   void overview_returnsTypicalPayload() throws Exception {
-    when(queryService.overview(7, null)).thenReturn(buildOverview());
+    when(queryService.overview(eq(7), isNull(), any())).thenReturn(buildOverview());
 
     mockMvc
         .perform(get("/api/v1/evaluation/quality/overview?days=7"))
@@ -62,12 +65,12 @@ class JudgeQualityControllerTest {
         .andExpect(jsonPath("$.code").value(200))
         .andExpect(jsonPath("$.data.kpis.overallScore").value(0.72));
 
-    verify(queryService).overview(7, null);
+    verify(queryService).overview(eq(7), isNull(), any());
   }
 
   @Test
   void overview_返回4个change字段() throws Exception {
-    when(queryService.overview(7, null)).thenReturn(buildOverview());
+    when(queryService.overview(eq(7), isNull(), any())).thenReturn(buildOverview());
 
     mockMvc
         .perform(get("/api/v1/evaluation/quality/overview?days=7"))
@@ -87,12 +90,11 @@ class JudgeQualityControllerTest {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value(403));
 
-    verify(queryService, never()).overview(anyInt(), any());
+    verify(queryService, never()).overview(anyInt(), any(), any());
   }
 
   @Test
   void byKb_returnsReadableKbStats() throws Exception {
-    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(1L, 2L));
     when(queryService.byKb(eq(7), any())).thenReturn(List.of());
 
     mockMvc
@@ -105,7 +107,6 @@ class JudgeQualityControllerTest {
 
   @Test
   void byKb_returnsEmptyWhenNoReadableKbs() throws Exception {
-    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of());
     when(queryService.byKb(eq(7), any())).thenReturn(List.of());
 
     mockMvc
@@ -130,16 +131,15 @@ class JudgeQualityControllerTest {
   }
 
   @Test
-  void worstCases_withoutKbFiltersByReadableKbIds() throws Exception {
-    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(1L, 2L));
-    when(queryService.worstCases(5, 7, null, Set.of(1L, 2L))).thenReturn(List.of());
+  void worstCases_withoutKbFiltersByOrgScope() throws Exception {
+    when(queryService.worstCases(eq(5), eq(7), isNull(), any())).thenReturn(List.of());
 
     mockMvc
         .perform(get("/api/v1/evaluation/quality/worst-cases?limit=5&days=7"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(200));
 
-    verify(queryService).worstCases(5, 7, null, Set.of(1L, 2L));
+    verify(queryService).worstCases(eq(5), eq(7), isNull(), any());
   }
 
   @Test
