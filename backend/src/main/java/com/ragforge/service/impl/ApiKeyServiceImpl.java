@@ -49,11 +49,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
 
   @Override
   public List<ApiKey> listForCurrentOrg() {
-    if (isPlatformGovernance()) {
-      // 全平台治理：跨组织只读全部。
-      return apiKeyMapper.selectList(
-          new LambdaQueryWrapper<ApiKey>().orderByDesc(ApiKey::getCreatedAt));
-    }
+    // 方案 B 定向治理：超管全平台视图下不再浏览所有 key（返回空），治理走 governanceSearch。
     Long orgId = OrgContextHolder.get();
     if (orgId == null) {
       return List.of();
@@ -62,6 +58,50 @@ public class ApiKeyServiceImpl implements ApiKeyService {
         new LambdaQueryWrapper<ApiKey>()
             .eq(ApiKey::getOrgId, orgId)
             .orderByDesc(ApiKey::getCreatedAt));
+  }
+
+  /** 定向治理查询（仅超管破玻璃）：按 key 名称或 key 前缀精确定位，不浏览全量。 */
+  @Override
+  public List<ApiKey> governanceSearch(String q) {
+    if (!isPlatformGovernance()) {
+      throw new BizException(403, "GOVERNANCE_REQUIRES_BREAKGLASS");
+    }
+    if (q == null || q.trim().length() < 3) {
+      // 必须给出足够精确的检索词，避免变相浏览全量。
+      throw new BizException(400, "GOVERNANCE_QUERY_TOO_SHORT");
+    }
+    String term = q.trim();
+    return apiKeyMapper.selectList(
+        new LambdaQueryWrapper<ApiKey>()
+            .and(w -> w.like(ApiKey::getKeyName, term).or().likeRight(ApiKey::getApiKey, term))
+            .orderByDesc(ApiKey::getCreatedAt)
+            .last("LIMIT 50"));
+  }
+
+  /** 定向吊销（仅超管破玻璃，强制原因 + 审计）。 */
+  @Override
+  @Transactional
+  public ApiKey revokeWithReason(Long id, String reason) {
+    if (!isPlatformGovernance()) {
+      throw new BizException(403, "GOVERNANCE_REQUIRES_BREAKGLASS");
+    }
+    if (reason == null || reason.isBlank()) {
+      throw new BizException(400, "REVOKE_REASON_REQUIRED");
+    }
+    ApiKey apiKey = apiKeyMapper.selectById(id);
+    if (apiKey == null) {
+      throw new BizException(404, "API Key 不存在");
+    }
+    apiKeyMapper.update(null, new UpdateWrapper<ApiKey>().eq("id", id).set("enabled", false));
+    apiKeyInterceptor.resetKeyCache();
+    org.slf4j.LoggerFactory.getLogger(ApiKeyServiceImpl.class)
+        .warn(
+            "ragforge.audit api_key_breakglass_revoke keyId={} orgId={} byUser={} reason={}",
+            id,
+            apiKey.getOrgId(),
+            currentUserId(),
+            reason.trim());
+    return apiKey;
   }
 
   @Override

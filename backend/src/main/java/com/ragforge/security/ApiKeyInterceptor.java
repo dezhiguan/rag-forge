@@ -68,6 +68,10 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
         return false;
       }
       installContext(request, contextFrom(keyRecord), apiKey);
+      // key 绑定组织：以 key 的 org_id 作为组织上下文（权威，外部调用无需也不应传 X-Org-Id）。
+      if (keyRecord.getOrgId() != null) {
+        OrgContextHolder.set(keyRecord.getOrgId());
+      }
       return true;
     }
 
@@ -148,6 +152,7 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
             || (authentication != null && CONTEXT_SET_ATTR.equals(authentication.getDetails()));
     if (apiKeyContext) {
       RagAuthContextHolder.clear();
+      OrgContextHolder.clear();
       SecurityContextHolder.clearContext();
     }
   }

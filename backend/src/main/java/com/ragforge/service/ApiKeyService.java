@@ -5,8 +5,14 @@ import java.util.List;
 
 public interface ApiKeyService {
 
-  /** 当前组织的 key；超管破玻璃(全平台视图)时返回全部（治理）。 */
+  /** 当前组织的 key（方案 B：平台视图不再浏览全量，返回空）。 */
   List<ApiKey> listForCurrentOrg();
+
+  /** 定向治理查询（仅超管破玻璃，按名称/前缀精确定位）。 */
+  List<ApiKey> governanceSearch(String q);
+
+  /** 定向吊销（仅超管破玻璃，强制原因 + 审计）。 */
+  ApiKey revokeWithReason(Long id, String reason);
 
   ApiKey create(String keyName);
 

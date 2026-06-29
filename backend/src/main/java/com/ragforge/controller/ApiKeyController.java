@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -59,6 +60,21 @@ public class ApiKeyController {
     return Result.ok(ApiKeyView.from(k, loadOrgNames(List.of(k))));
   }
 
+  /** 定向治理查询（仅超管破玻璃，按名称/前缀精确定位，不浏览全量）。 */
+  @GetMapping("/governance")
+  public Result<List<ApiKeyView>> governanceSearch(@RequestParam("q") String q) {
+    List<ApiKey> keys = apiKeyService.governanceSearch(q);
+    Map<Long, String> orgNames = loadOrgNames(keys);
+    return Result.ok(keys.stream().map(k -> ApiKeyView.from(k, orgNames)).toList());
+  }
+
+  /** 定向吊销（仅超管破玻璃，强制原因 + 审计）。 */
+  @PostMapping("/{id}/revoke")
+  public Result<Void> revoke(@PathVariable Long id, @RequestBody RevokeRequest req) {
+    apiKeyService.revokeWithReason(id, req.getReason());
+    return Result.ok();
+  }
+
   @DeleteMapping("/{id}")
   public Result<Void> delete(@PathVariable Long id) {
     apiKeyService.delete(id);
@@ -85,6 +101,11 @@ public class ApiKeyController {
   @lombok.Data
   public static class EnableRequest {
     private boolean enabled;
+  }
+
+  @lombok.Data
+  public static class RevokeRequest {
+    private String reason;
   }
 
   public record ApiKeyView(

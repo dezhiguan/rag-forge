@@ -39,6 +39,7 @@ public class OrgService {
   private final UserProfileMapper userProfileMapper;
   private final UserProfileService userProfileService;
   private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
+  private final com.ragforge.mapper.ApiKeyMapper apiKeyMapper;
 
   private Long currentUserId() {
     RagAuthContext ctx = RagAuthContextHolder.get();
@@ -345,6 +346,11 @@ public class OrgService {
     if (kbCount != null && kbCount > 0) {
       throw new BizException(409, "ORG_HAS_KBS");
     }
+    // 级联清理该组织的 API key（无外键约束，显式删除，避免治理视图残留孤儿 key）。
+    apiKeyMapper.delete(
+        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<
+                com.ragforge.model.entity.ApiKey>()
+            .eq(com.ragforge.model.entity.ApiKey::getOrgId, orgId));
     organizationMapper.deleteById(orgId); // org_members / org_invitations 由外键 ON DELETE CASCADE 清理
   }
 
