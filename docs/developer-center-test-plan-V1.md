@@ -2,14 +2,16 @@
 
 | 项 | 内容 |
 |---|---|
-| **文档版本** | **V1.0** |
+| **文档版本** | **V1.1** |
 | **生成日期** | 2026-06-30 |
 | **状态** | 现行（配合 `frontend/developer-center.html` 设计稿） |
 | **被测对象** | 开发者中心原型 `frontend/developer-center.html`（静态原型，`file://` 加载，不依赖后端） |
 | **执行方式** | Playwright：`frontend/tests/e2e/developer-center.spec.ts`（编号 D*-* 一一对应） |
 | **关联** | `permission-plan.html`（权限设计）、`org-permission-test-plan-V2.md`（后端多视角权限） |
 
-> 设计要点：tab「API 网关」更名「开发者中心」，三个子 tab：**API keys / 接口文档 / MCP 接入**；与组织切换强绑定（密钥归当前组织、接口/MCP 示例自动带 `X-Org-Id`）；**全平台视图（破玻璃）= 只读治理**（跨组织看 key、仅可吊销、隐藏创建）。
+> 设计要点：tab「API 网关」更名「开发者中心」，三个子 tab：**API keys / 接口文档 / MCP 接入**；**API keys 归当前组织**（随组织切换变）；**接口文档 / MCP 为静态全局文档**——key 创建时已绑定组织，调用方**无需传 `X-Org-Id`**（后端 `ApiKeyInterceptor` 用 key 的 org_id 设上下文），故接口/MCP 不随组织变、不展示 X-Org-Id；**全平台视图（破玻璃）= 定向治理**（按 key 名称/前缀查询 + 填原因吊销，不浏览全量）。
+
+> ⚠️ V1.1 口径变更：早期 V1.0 期望接口/MCP/提示条显式展示 `X-Org-Id`；现设计为「key 自动绑定组织、无需传 X-Org-Id」。受影响用例（D2-05/06/07、D3-10、D5-06、D6-05）已据此更新。
 
 ---
 
@@ -17,8 +19,8 @@
 
 | 代号 | 视角 | 表现 |
 |---|---|---|
-| **团队** | TEAM 组织 OWNER/ADMIN | 管本团队的 key；接口/MCP 示例带 `X-Org-Id=7` |
-| **个人** | INDIVIDUAL 个人组织 | 管自己个人组织的 key；`X-Org-Id=15` |
+| **团队** | TEAM 组织 OWNER/ADMIN | 管本团队的 key（接口/MCP 文档为静态全局，不带 X-Org-Id） |
+| **个人** | INDIVIDUAL 个人组织 | 管自己个人组织的 key（同上） |
 | **全平台** | 超管 · 破玻璃 | 只读治理：跨组织看 key、仅可吊销、隐藏创建、记审计 |
 
 **切换方式**：右上角组织 chip 循环 `团队 → 个人 → 全平台 → 团队`。
@@ -49,10 +51,10 @@
 | D2-02 | 切个人 | 名称含个人组织，类型含 INDIVIDUAL |
 | D2-03 | 切全平台 | 名称=全平台视图，类型含破玻璃 |
 | D2-04 | 三档循环 | team→personal→platform→team 正确轮转 |
-| D2-05 | 接口 X-Org-Id（团队） | `ak-org` = 7 |
-| D2-06 | 接口 X-Org-Id（个人） | `ak-org` = 15 |
-| D2-07 | MCP 与接口一致 | 个人下 `mcp-org` = 15 |
-| D2-08 | 全平台无组织 id | `ak-org` = — |
+| D2-05 | 接口文档「组织归属」文案 | 含「由 API key 自动绑定」「无需传 X-Org-Id」 |
+| D2-06 | MCP「组织归属」文案 | 含「由 API key 自动绑定」 |
+| D2-07 | 接口/MCP 为静态：切组织内容不变 | 切组织前后接口文档/MCP 配置文本一致 |
+| D2-08 | keys 仍随组织变（与静态文档区分） | 团队 keys ≠ 个人 keys |
 | D2-09 | 头像底色随组织 | 团队 vs 全平台底色不同（隐藏样式回归） |
 | D2-10 | 往返一致 | team→platform→team 后 key 列表复原 |
 
@@ -69,7 +71,7 @@
 | D3-07 | 标签 | 带权限范围 + 可访问库标签 |
 | D3-08 | 切组织换列表 | 团队 ≠ 个人 key 列表 |
 | D3-09 | 描述 | 强调「本组织」「仅创建时可见」 |
-| D3-10 | 提示条 | 含 `X-Org-Id` 绑定说明 |
+| D3-10 | 提示条 | 含「密钥自动绑定本组织」（不再显式展示 X-Org-Id） |
 
 ## 模块 D4：API keys — 全平台治理态
 
@@ -95,7 +97,7 @@
 | D5-03 | 接口数 | 核心接口 4 条 |
 | D5-04 | 检索接口 | POST `/search` 带 POST 徽章 |
 | D5-05 | 知识库接口 | GET `/kb` 带 GET 徽章 |
-| D5-06 | cURL | 示例含 `X-Org-Id` 与 `/search` |
+| D5-06 | cURL | 示例含 `/search` 与 Bearer，**不含** `X-Org-Id`（key 自动绑定组织） |
 | D5-07 | 复制 | 复制按钮点击变「已复制」 |
 | D5-08 | 数据范围（团队） | 含「广州日不落」 |
 | D5-09 | 数据范围（个人） | 含「个人组织」 |
@@ -109,7 +111,7 @@
 | D6-02 | 协议 | 标注 MCP |
 | D6-03 | 客户端数 | 适用客户端 3 项 |
 | D6-04 | 客户端 | 含 Claude、CareerMate |
-| D6-05 | 配置 | mcpServers 配置含 `X-Org-Id` |
+| D6-05 | 配置 | mcpServers 配置含 url 与 Authorization，**不含** `X-Org-Id` |
 | D6-06 | 工具数 | 可用 MCP 工具 4 个 |
 | D6-07 | 工具 1 | 含 `search_knowledge` |
 | D6-08 | 工具 2 | 含 `list_knowledge_bases` |
@@ -134,3 +136,4 @@ npx playwright test tests/e2e/developer-center.spec.ts --reporter=line
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | V1.0 | 2026-06-30 | 首版：配合开发者中心设计稿，6 模块 × 10 例多视角用例 |
+| V1.1 | 2026-06-30 | 口径对齐云端实现：接口/MCP 改静态（key 自动绑定组织、无需传 X-Org-Id），更新 D2-05/06/07/08、D3-10、D5-06、D6-05 |
