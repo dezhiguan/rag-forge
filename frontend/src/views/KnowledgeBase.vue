@@ -157,7 +157,7 @@
               </tr>
             </thead>
             <tbody>
-              <template v-for="kb in kbList" :key="kb.id">
+              <template v-for="kb in pagedKbList" :key="kb.id">
                 <tr class="kb-row" @click="toggleKb(kb.id)">
                   <td>
                     <div class="kb-cell">
@@ -291,6 +291,13 @@
               </template>
             </tbody>
           </table>
+          <div v-if="kbTotalPages > 1" class="kb-pager">
+            <span class="kb-pager-info">共 {{ kbList.length }} 个 · 第 {{ kbPage }}/{{ kbTotalPages }} 页</span>
+            <div class="kb-pager-btns">
+              <button class="pager-btn" :disabled="kbPage <= 1" @click="kbPage--">上一页</button>
+              <button class="pager-btn" :disabled="kbPage >= kbTotalPages" @click="kbPage++">下一页</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -468,7 +475,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref, computed } from 'vue'
+import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KB_DOCUMENT_DELETE_ENABLED, KNOWLEDGE_BASE_DELETE_ENABLED } from '../config/uiPolicy'
 import { createKb, deleteKb, listKb, updateKb } from '../api/kb'
@@ -525,6 +532,17 @@ const adminViewAll = ref(false)
 const adminOverrideReason = ref('')
 
 const kbList = ref([])
+// 知识库列表分页（默认 10 条/页，客户端分页）
+const KB_PAGE_SIZE = 10
+const kbPage = ref(1)
+const kbTotalPages = computed(() => Math.max(1, Math.ceil(kbList.value.length / KB_PAGE_SIZE)))
+const pagedKbList = computed(() => {
+  const start = (kbPage.value - 1) * KB_PAGE_SIZE
+  return kbList.value.slice(start, start + KB_PAGE_SIZE)
+})
+watch(kbTotalPages, (n) => {
+  if (kbPage.value > n) kbPage.value = n
+})
 const loadingKb = ref(false)
 const expandedKbId = ref(null)
 
@@ -649,6 +667,7 @@ async function loadKbs() {
   try {
     const res = await listKb(adminViewAll.value ? adminOverrideReason.value : undefined)
     kbList.value = res.data ?? []
+    kbPage.value = 1
     // 默认上传目标取第一个「可写」的库（不是第一个可见库，避免默认选到只读公共库）
     if ((!uploadKbId.value || !uploadableKbs.value.some((kb) => kb.id === uploadKbId.value)) && uploadableKbs.value.length) {
       uploadKbId.value = uploadableKbs.value[0].id
@@ -1423,6 +1442,28 @@ onMounted(async () => {
   background: #fff;
   box-shadow: var(--shadow-sm);
 }
+.kb-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+.kb-pager-info { font-size: 12.5px; color: var(--text-muted); }
+.kb-pager-btns { display: flex; gap: 8px; }
+.pager-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--slate);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pager-btn:hover:not(:disabled) { border-color: var(--primary-border); color: var(--primary); }
+.pager-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .data-table {
   width: 100%;
