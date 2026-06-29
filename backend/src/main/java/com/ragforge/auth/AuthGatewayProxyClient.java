@@ -137,6 +137,17 @@ public class AuthGatewayProxyClient {
     bearerJson("/auth/credential/set-username", authorization, body);
   }
 
+  /**
+   * 按手机号精确解析用户（client 鉴权，内部接口）。 返回 {found, registered, authUserId, username,
+   * maskedPhone}；未注册 found=false。
+   */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> resolveByPhone(String phone) {
+    MultiValueMap<String, String> form = clientForm();
+    form.add("phone", phone);
+    return postForm("/internal/users/resolve-by-phone", form, Map.class);
+  }
+
   private void bearerJson(String path, String authorization, Object body) {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);

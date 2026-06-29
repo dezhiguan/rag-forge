@@ -1,6 +1,7 @@
 package com.ragforge.controller;
 
 import com.ragforge.common.Result;
+import com.ragforge.service.InvitationService;
 import com.ragforge.service.OrgService;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrgController {
 
   private final OrgService orgService;
+  private final InvitationService invitationService;
 
   @PostMapping
   public Result<Map<String, Object>> create(@RequestBody OrgCreateRequest req) {
@@ -69,6 +71,33 @@ public class OrgController {
   public Result<Void> removeMember(@PathVariable Long orgId, @PathVariable Long userId) {
     orgService.removeMember(orgId, userId);
     return Result.ok();
+  }
+
+  /** 按手机号邀请成员（仅 OWNER/ADMIN）。 */
+  @PostMapping("/{orgId}/invitations")
+  public Result<Map<String, Object>> invite(
+      @PathVariable Long orgId, @RequestBody InviteRequest req) {
+    return Result.ok(invitationService.invite(orgId, req.getPhone(), req.getRole()));
+  }
+
+  /** 组织内待处理邀请（仅 OWNER/ADMIN）。 */
+  @GetMapping("/{orgId}/invitations")
+  public Result<List<Map<String, Object>>> orgInvitations(@PathVariable Long orgId) {
+    return Result.ok(invitationService.orgPending(orgId));
+  }
+
+  /** 撤销邀请（仅 OWNER/ADMIN）。 */
+  @DeleteMapping("/{orgId}/invitations/{invitationId}")
+  public Result<Void> revokeInvitation(
+      @PathVariable Long orgId, @PathVariable Long invitationId) {
+    invitationService.revoke(orgId, invitationId);
+    return Result.ok();
+  }
+
+  @Data
+  public static class InviteRequest {
+    private String phone;
+    private String role;
   }
 
   @Data
