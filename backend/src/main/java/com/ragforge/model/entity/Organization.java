@@ -16,6 +16,8 @@ public class Organization {
 
   private String slug;
   private String name;
+  /** 组织类型：INDIVIDUAL（个人组织，单人）/ TEAM（团队组织）。 */
+  private String type;
   private Long createdByUserId;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;

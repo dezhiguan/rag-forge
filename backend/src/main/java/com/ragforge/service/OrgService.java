@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -69,6 +70,7 @@ public class OrgService {
     Organization org = new Organization();
     org.setSlug(normalizedSlug);
     org.setName(name.trim());
+    org.setType("TEAM"); // 用户显式创建的都是团队组织
     org.setCreatedByUserId(uid);
     LocalDateTime now = LocalDateTime.now();
     org.setCreatedAt(now);
@@ -85,9 +87,57 @@ public class OrgService {
     return toView(org, OWNER);
   }
 
+  /**
+   * 确保当前用户有一个个人组织（INDIVIDUAL）；没有则懒创建并设其为 OWNER。 注册/首次访问时调用，替代旧的
+   * org_id=null 个人空间。
+   */
+  @Transactional
+  public Organization ensureIndividualOrg(Long userId) {
+    Organization existing =
+        organizationMapper.selectOne(
+            new LambdaQueryWrapper<Organization>()
+                .eq(Organization::getType, "INDIVIDUAL")
+                .eq(Organization::getCreatedByUserId, userId)
+                .last("LIMIT 1"));
+    if (existing != null) {
+      return existing;
+    }
+    LocalDateTime now = LocalDateTime.now();
+    Organization org = new Organization();
+    org.setSlug("u-" + userId + "-" + UUID.randomUUID().toString().substring(0, 6));
+    org.setName("个人组织");
+    org.setType("INDIVIDUAL");
+    org.setCreatedByUserId(userId);
+    org.setCreatedAt(now);
+    org.setUpdatedAt(now);
+    organizationMapper.insert(org);
+    OrgMember owner = new OrgMember();
+    owner.setOrgId(org.getId());
+    owner.setUserId(userId);
+    owner.setRole(OWNER);
+    owner.setCreatedAt(now);
+    orgMemberMapper.insert(owner);
+    return org;
+  }
+
+  /** 升级个人组织为团队组织（仅 OWNER，仅 INDIVIDUAL）：type 翻转，org_id 不变、知识库零迁移。 */
+  @Transactional
+  public void upgradeToTeam(Long orgId) {
+    Long uid = currentUserId();
+    requireOwner(orgId, uid);
+    Organization org = requireOrg(orgId);
+    if (!"INDIVIDUAL".equals(org.getType())) {
+      throw new BizException(409, "NOT_INDIVIDUAL_ORG");
+    }
+    org.setType("TEAM");
+    org.setUpdatedAt(LocalDateTime.now());
+    organizationMapper.updateById(org);
+  }
+
   /** 我所属的组织列表（含我的角色）。 */
   public List<Map<String, Object>> listMyOrganizations() {
     Long uid = currentUserId();
+    ensureIndividualOrg(uid); // 保证有个人组织（Claude Code 式：一切皆组织）
     List<Long> orgIds = orgMemberMapper.findMemberOrgIds(uid);
     if (orgIds == null || orgIds.isEmpty()) {
       return List.of();
@@ -366,6 +416,8 @@ public class OrgService {
     v.put("id", org.getId());
     v.put("slug", org.getSlug());
     v.put("name", org.getName());
+    v.put("type", org.getType());
+    v.put("personal", "INDIVIDUAL".equals(org.getType()));
     v.put("myRole", myRole);
     v.put("createdAt", org.getCreatedAt());
     return v;

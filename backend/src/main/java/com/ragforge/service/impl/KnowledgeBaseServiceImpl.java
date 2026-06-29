@@ -38,6 +38,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   private final com.ragforge.mapper.KbAclMapper kbAclMapper;
   private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
   private final com.ragforge.mapper.OrganizationMapper organizationMapper;
+  private final com.ragforge.service.OrgService orgService;
   private volatile ListCache listCache;
 
   @Override
@@ -70,23 +71,34 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   /** 设定知识库归属与可见性：个人库(PRIVATE/PUBLIC) 或 组织库(PRIVATE/ORG，需 OWNER/ADMIN)。 */
   private void applyOwnership(KnowledgeBase kb, Long orgId, String visibility, Long creatorId) {
     String v = StringUtils.hasText(visibility) ? visibility.trim().toUpperCase() : "PRIVATE";
-    if (orgId != null) {
+    // Claude Code 式：个人库进创建者的个人组织（INDIVIDUAL），不再 org_id=null。
+    if (orgId == null) {
+      orgId = orgService.ensureIndividualOrg(creatorId).getId();
+    }
+    com.ragforge.model.entity.Organization org = organizationMapper.selectById(orgId);
+    if (org == null) {
+      throw new BizException(404, "ORG_NOT_FOUND");
+    }
+    boolean individual = "INDIVIDUAL".equals(org.getType());
+    if (individual) {
+      // 个人组织：仅本人；保留"个人库可公开"的语义（PRIVATE/PUBLIC）。
+      if (creatorId == null || !creatorId.equals(org.getCreatedByUserId())) {
+        throw new BizException(403, "NOT_ORG_OWNER");
+      }
+      if (!"PRIVATE".equals(v) && !"PUBLIC".equals(v)) {
+        throw new BizException(400, "KB_VISIBILITY_INVALID");
+      }
+    } else {
+      // 团队组织：仅 OWNER/ADMIN；不允许直接 PUBLIC，避免误把企业资料公开。
       if (creatorId == null || creatorId == 0L || !orgMemberMapper.isOrgAdmin(orgId, creatorId)) {
         throw new BizException(403, "NOT_ORG_ADMIN");
       }
       if (!"PRIVATE".equals(v) && !"ORG".equals(v)) {
-        // 组织库不允许直接 PUBLIC，避免误把企业资料公开
         throw new BizException(400, "ORG_KB_VISIBILITY_INVALID");
       }
-      kb.setOrgId(orgId);
-      kb.setVisibility(v);
-    } else {
-      if (!"PRIVATE".equals(v) && !"PUBLIC".equals(v)) {
-        throw new BizException(400, "KB_VISIBILITY_INVALID");
-      }
-      kb.setOrgId(null);
-      kb.setVisibility(v);
     }
+    kb.setOrgId(orgId);
+    kb.setVisibility(v);
   }
 
   @Override

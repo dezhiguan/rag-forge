@@ -48,6 +48,13 @@ public class OrgController {
     return Result.ok(orgService.updateOrganization(orgId, req.getName(), req.getSlug()));
   }
 
+  /** 升级个人组织为团队组织（仅 OWNER，仅 INDIVIDUAL）。type 翻转、零迁移。 */
+  @PostMapping("/{orgId}/upgrade")
+  public Result<Void> upgrade(@PathVariable Long orgId) {
+    orgService.upgradeToTeam(orgId);
+    return Result.ok();
+  }
+
   /** 转移所有权（仅 OWNER）。 */
   @PostMapping("/{orgId}/transfer-owner")
   public Result<Void> transferOwner(
