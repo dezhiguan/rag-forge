@@ -480,10 +480,10 @@ public class MetricsServiceImpl implements MetricsService {
           vo.setMessage(String.format("知识库「%s」文档「%s」处理完成", kbName, doc.getFilename()));
         }
         case "failed" -> {
+          // 全平台视图=只读总览：失败文档不提供重试入口（重试归该组织 admin 处理）。
           vo.setType("error");
-          vo.setMessage(String.format("文档「%s」解析失败", doc.getFilename()));
-          vo.setDocId(doc.getId());
-          vo.setRetryable(true);
+          vo.setMessage(String.format("文档「%s」解析失败（需该组织管理员处理）", doc.getFilename()));
+          vo.setRetryable(false);
         }
         default -> {
           vo.setType("upload");
