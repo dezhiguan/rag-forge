@@ -118,7 +118,7 @@
         <div class="sec-title">🧠 MCP 配置</div>
         <div class="sec-hint">把以下配置加入客户端。Server 暴露的工具仅作用于<b>当前组织</b>。</div>
         <pre><button class="pre-copy" @click="copy($event, mcpText)">复制</button>{{ mcpText }}</pre>
-        <div class="sec-title mt16" style="margin-bottom:6px;">可用 MCP 工具</div>
+        <div class="sec-title" style="margin:24px 0 6px;">可用 MCP 工具</div>
         <div class="mcp-tool" v-for="t in mcpTools" :key="t.name">
           <span class="mcp-ico">{{ t.ico }}</span><span class="mcp-name">{{ t.name }}</span><span class="mcp-d">{{ t.desc }}</span>
         </div>
