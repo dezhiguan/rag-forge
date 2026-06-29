@@ -7,12 +7,12 @@
           <button class="btn btn-secondary" :disabled="loadingKb" @click="loadKbs">刷新</button>
           <button
             v-if="showAdminViewAll"
-            class="btn btn-sm"
-            :class="adminViewAll ? 'btn-primary' : 'btn-secondary'"
-            :title="adminViewAll ? '正在以管理员身份查看全部知识库（已留审计）' : '管理员破玻璃：查看全部用户的知识库（将被审计）'"
+            class="btn btn-sm bg-breakglass"
+            :class="{ on: adminViewAll }"
+            :title="adminViewAll ? '正在以平台管理员身份查看全部知识库（已留审计）' : '平台管理员破玻璃：查看全部用户的知识库（将被审计）'"
             @click="toggleAdminViewAll"
           >
-            {{ adminViewAll ? '✓ 查看全部·已留痕' : '查看全部(管理员)' }}
+            {{ adminViewAll ? '✓ 查看全部·已留痕' : '查看全部(平台管理员)' }}
           </button>
         </div>
       </div>
@@ -1200,6 +1200,12 @@ onMounted(async () => {
   display: flex;
   gap: 10px;
 }
+
+/* 平台管理员「查看全部」破玻璃按钮：红色警示，激活后填充红 */
+.bg-breakglass { color: var(--red); border-color: #fecaca; background: #fff; }
+.bg-breakglass:hover { background: #fef2f2; border-color: #fca5a5; }
+.bg-breakglass.on { background: var(--red); border-color: var(--red); color: #fff; }
+.bg-breakglass.on:hover { background: #dc2626; }
 
 .content {
   display: flex;
