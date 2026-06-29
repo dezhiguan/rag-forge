@@ -152,7 +152,7 @@ body {
   justify-content: flex-start;
   gap: 8px;
   padding: 0 28px;
-  height: 44px;
+  height: 56px;
   background: #fff;
   border-bottom: 1px solid var(--border);
 }
