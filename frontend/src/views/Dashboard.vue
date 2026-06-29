@@ -10,39 +10,50 @@
     </Teleport>
 
     <div class="metrics-grid">
+      <!-- 资产规模 -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-label">知识库</span>
+          <span class="metric-label">资产规模</span>
           <span class="metric-chip chip-blue">📚</span>
         </div>
-        <div class="metric-value">{{ metrics.kbCount ?? 0 }}</div>
-        <div class="metric-desc">
-          {{ formatNumber(metrics.documentCount ?? 0) }} 文档 · {{ formatChunkCount(metrics.chunkCount ?? 0) }} Chunk
+        <div class="metric-value">{{ formatNumber(metrics.chunkCount) }} <span class="metric-unit">Chunk</span></div>
+        <div class="metric-subs">
+          <div class="metric-sub"><span>文档</span><b>{{ formatNumber(metrics.documentCount) }}</b></div>
+          <div class="metric-sub"><span>知识库</span><b>{{ metrics.kbCount }}</b></div>
         </div>
       </div>
+      <!-- 检索质量 -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-label">最优 Top3 命中率</span>
+          <span class="metric-label">检索质量</span>
           <span class="metric-chip chip-green">🎯</span>
         </div>
-        <div class="metric-value metric-value--hit">{{ formatHitRate(metrics.hitRate) }}</div>
-        <div class="metric-desc">当前数据集中最佳策略</div>
+        <div class="metric-value metric-value--hit">{{ formatPercent(metrics.zeroResultRate) }}<span class="metric-unit"> 零结果</span></div>
+        <div class="metric-subs">
+          <div class="metric-sub"><span>平均召回条数</span><b>{{ formatDecimal(metrics.avgRecallCount) }}</b></div>
+          <div class="metric-sub"><span>Query 改写率</span><b>{{ formatPercent(metrics.rewriteRate) }}</b></div>
+        </div>
       </div>
+      <!-- 运行健康 -->
       <div class="metric-card">
         <div class="metric-top">
-          <span class="metric-label">今日平均延迟</span>
+          <span class="metric-label">运行健康</span>
           <span class="metric-chip chip-amber">⚡</span>
         </div>
-        <div class="metric-value">{{ formatLatency(metrics.avgLatencyMs) }}</div>
-        <div class="metric-desc">所有检索请求均值</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-top">
-          <span class="metric-label">今日检索请求</span>
-          <span class="metric-chip chip-cyan">📈</span>
+        <div class="metric-value">{{ formatLatency(metrics.p95LatencyMs) }} <span class="metric-unit">P95</span></div>
+        <div class="metric-subs">
+          <div class="metric-sub"><span>平均延迟</span><b>{{ formatLatency(metrics.avgLatencyMs) }}</b></div>
+          <div class="metric-sub"><span>今日检索请求</span><b>{{ formatNumber(metrics.todayApiCalls) }}</b></div>
         </div>
-        <div class="metric-value">{{ formatNumber(metrics.todayApiCalls ?? 0) }}</div>
-        <div class="metric-desc">/api/v1/search 调用次数</div>
+      </div>
+      <!-- 成本消耗（明细见模型&成本中心） -->
+      <div class="metric-card metric-card--link" @click="$router.push('/models')">
+        <div class="metric-top">
+          <span class="metric-label">成本消耗</span>
+          <span class="metric-chip chip-violet">💰</span>
+        </div>
+        <div class="metric-value metric-value--muted">查看明细</div>
+        <div class="metric-desc">模型 &amp; 成本中心 →</div>
       </div>
     </div>
 
@@ -106,6 +117,10 @@ const metrics = reactive({
   todayApiCalls: 0,
   avgLatencyMs: 0,
   hitRate: 0,
+  zeroResultRate: 0,
+  avgRecallCount: 0,
+  p95LatencyMs: 0,
+  rewriteRate: 0,
   recentActivities: [],
 })
 
@@ -120,6 +135,10 @@ async function loadMetrics() {
     metrics.todayApiCalls = data.todayApiCalls ?? 0
     metrics.avgLatencyMs = data.avgLatencyMs ?? 0
     metrics.hitRate = data.hitRate ?? 0
+    metrics.zeroResultRate = data.zeroResultRate ?? 0
+    metrics.avgRecallCount = data.avgRecallCount ?? 0
+    metrics.p95LatencyMs = data.p95LatencyMs ?? 0
+    metrics.rewriteRate = data.rewriteRate ?? 0
     metrics.recentActivities = data.recentActivities ?? []
     lastUpdated.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
   } finally {
@@ -163,6 +182,18 @@ function formatHitRate(rate) {
   const num = Number(rate)
   if (Number.isNaN(num) || num <= 0) return '—'
   return `${(num * 100).toFixed(1)}%`
+}
+
+function formatPercent(rate) {
+  const num = Number(rate)
+  if (Number.isNaN(num) || num < 0) return '—'
+  return `${(num * 100).toFixed(1)}%`
+}
+
+function formatDecimal(n) {
+  const num = Number(n)
+  if (Number.isNaN(num) || num <= 0) return '—'
+  return num.toFixed(1)
 }
 
 onMounted(loadMetrics)
@@ -246,6 +277,15 @@ onMounted(loadMetrics)
 .chip-green { background: #ecfdf5; box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.12); }
 .chip-amber { background: #fffbeb; box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.14); }
 .chip-cyan { background: #ecfeff; box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.14); }
+.chip-violet { background: #f5f3ff; box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.14); }
+
+/* 四象限：主数值单位 + 次级统计行 */
+.metric-unit { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.metric-value--muted { color: var(--text-muted); font-size: 22px; }
+.metric-subs { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 7px; }
+.metric-sub { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
+.metric-sub b { color: var(--slate); font-weight: 600; font-variant-numeric: tabular-nums; }
+.metric-card--link { cursor: pointer; }
 
 .metric-value {
   font-size: 34px;

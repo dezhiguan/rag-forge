@@ -103,6 +103,7 @@ public class MetricsServiceImpl implements MetricsService {
                   .ge(RetrievalLog::getCreatedAt, startOfDay)));
       vo.setAvgLatencyMs(calcAvgLatencyMs(startOfDay, uid));
     }
+    applyRetrievalQuality(vo, startOfDay, uid);
     // 命中率源自评测实验（管理员/编辑功能），普通用户无评测，不展示。
     vo.setHitRate(0.0);
     vo.setRecentActivities(uid == null ? List.of() : userRecentActivities(uid, ownedIds, 10));
@@ -198,8 +199,59 @@ public class MetricsServiceImpl implements MetricsService {
     vo.setTodayApiCalls(todayApiCalls);
     vo.setAvgLatencyMs(avgLatencyMs);
     vo.setHitRate(hitRate);
+    applyRetrievalQuality(vo, startOfDay, null);
     vo.setRecentActivities(getRecentActivities(10));
     return vo;
+  }
+
+  /**
+   * 检索质量/健康指标：全部由 retrieval_logs 现有列直接聚合，无需改表。 uid=null 表示全平台（管理员破玻璃）。
+   * 零结果率 = result_count=0 占比；平均召回 = avg(result_count)；P95 = percentile_cont；改写率 =
+   * rewritten_queries 非空占比。
+   */
+  private void applyRetrievalQuality(DashboardMetricsVO vo, LocalDateTime startOfDay, Long uid) {
+    QueryWrapper<RetrievalLog> wrapper = new QueryWrapper<>();
+    wrapper.select(
+        "count(*) as total",
+        "count(*) filter (where result_count = 0) as zero_cnt",
+        "avg(result_count) as avg_recall",
+        "percentile_cont(0.95) within group (order by latency_ms) as p95",
+        "count(*) filter (where rewritten_queries is not null and rewritten_queries <> '') as rewrite_cnt");
+    wrapper.ge("created_at", startOfDay);
+    if (uid != null) {
+      wrapper.eq("user_id", uid);
+    }
+    List<Map<String, Object>> rows = retrievalLogMapper.selectMaps(wrapper);
+    if (rows == null || rows.isEmpty() || rows.get(0) == null) {
+      return;
+    }
+    Map<String, Object> r = rows.get(0);
+    long total = asLong(r.get("total"));
+    if (total <= 0) {
+      return;
+    }
+    vo.setZeroResultRate(asDouble(r.get("zero_cnt")) / total);
+    vo.setAvgRecallCount(asDouble(r.get("avg_recall")));
+    vo.setP95LatencyMs(Math.round(asDouble(r.get("p95"))));
+    vo.setRewriteRate(asDouble(r.get("rewrite_cnt")) / total);
+  }
+
+  private static long asLong(Object o) {
+    if (o instanceof Number n) return n.longValue();
+    try {
+      return o == null ? 0L : Math.round(Double.parseDouble(o.toString()));
+    } catch (NumberFormatException e) {
+      return 0L;
+    }
+  }
+
+  private static double asDouble(Object o) {
+    if (o instanceof Number n) return n.doubleValue();
+    try {
+      return o == null ? 0d : Double.parseDouble(o.toString());
+    } catch (NumberFormatException e) {
+      return 0d;
+    }
   }
 
   private long calcAvgLatencyMs(LocalDateTime startOfDay) {
