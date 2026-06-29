@@ -85,23 +85,6 @@
       </div>
     </div>
 
-    <div class="quick-actions">
-      <div class="action-card primary" @click="$router.push({ path: '/knowledge', query: { create: 1 } })">
-        <span class="action-chip">＋</span>
-        <span class="action-text">新建知识库</span>
-        <span class="action-arrow">→</span>
-      </div>
-      <div class="action-card" @click="$router.push('/uploads/wizard')">
-        <span class="action-chip">⬆</span>
-        <span class="action-text">上传文档</span>
-        <span class="action-arrow">→</span>
-      </div>
-      <div class="action-card" @click="$router.push('/debug')">
-        <span class="action-chip">▷</span>
-        <span class="action-text">发起检索测试</span>
-        <span class="action-arrow">→</span>
-      </div>
-    </div>
 
     <div class="dash-row2">
       <!-- 检索趋势 · 近 7 天 -->
@@ -612,49 +595,6 @@ onMounted(() => {
 .ingest-cta.fail:hover { text-decoration: underline; }
 .ingest-cta.ok { color: var(--green); }
 
-/* ===== 快捷入口 ===== */
-.quick-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.action-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 15px 16px;
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-}
-.action-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--primary-border);
-}
-.action-card:hover .action-arrow { color: var(--primary); transform: translateX(2px); }
-
-.action-chip {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  background: var(--primary-soft);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-.action-card.primary { border-color: var(--primary-border); background: linear-gradient(180deg, #fff, #f7faff); }
-.action-card.primary .action-chip { background: var(--primary); }
-
-.action-text { font-size: 14px; font-weight: 600; color: var(--slate); flex: 1; }
-.action-arrow { color: #cbd5e1; font-size: 16px; transition: color 0.15s ease, transform 0.15s ease; }
 
 /* ===== 升档横幅（个人空间） ===== */
 .upgrade-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-radius: 14px; padding: 12px 16px; background: linear-gradient(95deg, #eef4ff, #f7faff); border: 1px solid var(--primary-border); }
@@ -714,7 +654,6 @@ onMounted(() => {
 @media (max-width: 768px) {
   .metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .metric-value { font-size: 24px; }
-  .quick-actions { grid-template-columns: 1fr; gap: 10px; }
   .dash-row2 { grid-template-columns: 1fr; }
 }
 
