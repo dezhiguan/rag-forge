@@ -4,6 +4,7 @@
     <div class="sidebar-user" v-show="!collapsed || isMobile">
       <UserMenu />
     </div>
+    <NotificationBell :collapsed="collapsed && !isMobile" />
     <div class="sidebar-nav">
       <router-link
         v-for="item in navItems"
@@ -35,6 +36,7 @@ import { useAuth } from '../composables/useAuth'
 import { canAccessRoute } from '../router/guards'
 import UserMenu from './UserMenu.vue'
 import OrgSwitcher from './OrgSwitcher.vue'
+import NotificationBell from './NotificationBell.vue'
 
 const router = useRouter()
 const route = useRoute()

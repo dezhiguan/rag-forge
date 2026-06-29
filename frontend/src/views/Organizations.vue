@@ -136,6 +136,26 @@
               </button>
             </div>
 
+            <div class="add-member invite-by-phone">
+              <input
+                v-model="invitePhone"
+                type="tel"
+                placeholder="按手机号邀请（对方需接受）"
+                class="mini-input"
+              />
+              <select v-model="inviteRole" class="mini-input">
+                <option value="MEMBER">成员</option>
+                <option value="ADMIN">管理员</option>
+              </select>
+              <button
+                class="btn btn-secondary btn-sm"
+                :disabled="submitting || !invitePhone.trim()"
+                @click="onInviteByPhone"
+              >
+                发送邀请
+              </button>
+            </div>
+
             <div class="member-list">
               <div v-for="m in members" :key="m.userId" class="member-row">
                 <div class="member-avatar">{{ (m.displayName || ('U' + m.userId)).trim().slice(0, 2) }}</div>
@@ -178,6 +198,7 @@ import {
   updateMember as updateMemberApi,
   removeMember as removeMemberApi,
   searchMemberCandidates as searchMemberCandidatesApi,
+  inviteByPhone as inviteByPhoneApi,
 } from '../api/org'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
@@ -195,6 +216,8 @@ const showMembers = ref(false)
 const activeOrg = ref(null)
 const members = ref([])
 const memberForm = ref({ userId: null, role: 'MEMBER' })
+const invitePhone = ref('')
+const inviteRole = ref('MEMBER')
 
 // 成员搜索：输入关键词 → 防抖查后端候选 → 选中后才落 userId
 const memberQuery = ref('')
@@ -326,6 +349,26 @@ async function onAddMember() {
     resetMemberSearch()
     memberForm.value = { userId: null, role }
     await loadMembers()
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function onInviteByPhone() {
+  const phone = invitePhone.value.trim()
+  if (!phone) return
+  submitting.value = true
+  try {
+    const res = await inviteByPhoneApi(activeOrg.value.id, phone, inviteRole.value)
+    const d = res?.data || {}
+    invitePhone.value = ''
+    if (d.registered) {
+      toast.success(`已发送站内邀请（${d.maskedPhone || phone}），待对方接受`)
+    } else {
+      toast.success('该手机号未注册，邀请已暂存；对方注册后可在通知中接受')
+    }
+  } catch (e) {
+    toast.error(e?.message || '邀请失败')
   } finally {
     submitting.value = false
   }
