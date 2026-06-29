@@ -75,6 +75,32 @@
       </div>
     </div>
 
+    <div v-if="!isPersonal" class="card member-panel">
+      <div class="card-header">
+        <span class="card-title">组织成员</span>
+        <button class="btn btn-secondary btn-sm" @click="$router.push('/orgs')">管理成员 →</button>
+      </div>
+      <div class="member-overview">
+        <div class="ava-pile">
+          <span
+            v-for="m in members.slice(0, 6)"
+            :key="m.userId"
+            class="m-ava"
+            :style="{ background: avaColor(m.userId) }"
+            :title="m.displayName"
+          >{{ initial(m.displayName) }}</span>
+          <span v-if="memberStats.total > 6" class="m-ava ava-more">+{{ memberStats.total - 6 }}</span>
+        </div>
+        <div class="member-stats">
+          <span>共 <b>{{ memberStats.total }}</b> 人</span>
+          <span class="sep">·</span>
+          <span>{{ memberStats.owner }} OWNER</span>
+          <span>{{ memberStats.admin }} ADMIN</span>
+          <span>{{ memberStats.member }} MEMBER</span>
+        </div>
+      </div>
+    </div>
+
     <div class="card activity-panel">
       <div class="card-header">
         <span class="card-title">最近操作</span>
@@ -104,12 +130,46 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { getDashboardMetrics } from '../api/metrics'
 import { reprocessDocument } from '../api/document'
+import { useOrg } from '../composables/useOrg'
+import { listMembers } from '../api/org'
 
+const { current, isPersonal } = useOrg()
 const loading = ref(false)
 const lastUpdated = ref('')
+
+// ===== 组织成员概览（仅团队组织展示，复用 /orgs/{id}/members） =====
+const members = ref([])
+const memberStats = computed(() => {
+  const s = { total: members.value.length, owner: 0, admin: 0, member: 0 }
+  for (const m of members.value) {
+    if (m.role === 'OWNER') s.owner += 1
+    else if (m.role === 'ADMIN') s.admin += 1
+    else s.member += 1
+  }
+  return s
+})
+const MEMBER_PALETTE = ['#0f1f3d', '#2563eb', '#15803d', '#7c3aed', '#db2777', '#0ea5e9', '#f59e0b']
+function avaColor(id) {
+  return MEMBER_PALETTE[Math.abs(Number(id) || 0) % MEMBER_PALETTE.length]
+}
+function initial(name) {
+  return (name || '?').trim().charAt(0).toUpperCase()
+}
+async function loadMembers() {
+  if (isPersonal.value || !current.value.id) {
+    members.value = []
+    return
+  }
+  try {
+    const res = await listMembers(current.value.id)
+    members.value = Array.isArray(res?.data) ? res.data : []
+  } catch {
+    members.value = []
+  }
+}
 const metrics = reactive({
   kbCount: 0,
   documentCount: 0,
@@ -196,7 +256,10 @@ function formatDecimal(n) {
   return num.toFixed(1)
 }
 
-onMounted(loadMetrics)
+onMounted(() => {
+  loadMetrics()
+  loadMembers()
+})
 </script>
 
 <style scoped>
@@ -343,6 +406,18 @@ onMounted(loadMetrics)
 
 .action-text { font-size: 14px; font-weight: 600; color: var(--slate); flex: 1; }
 .action-arrow { color: #cbd5e1; font-size: 16px; transition: color 0.15s ease, transform 0.15s ease; }
+
+/* ===== 组织成员概览（定高，不随人数变长） ===== */
+.member-panel .card-header { display: flex; align-items: center; justify-content: space-between; }
+.member-overview { padding: 12px 16px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.ava-pile { display: flex; }
+.ava-pile .m-ava { margin-left: -10px; border: 2px solid #fff; }
+.ava-pile .m-ava:first-child { margin-left: 0; }
+.m-ava { width: 34px; height: 34px; border-radius: 9px; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+.ava-more { background: #e2e8f0; color: var(--gray); font-size: 12px; }
+.member-stats { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.member-stats b { color: var(--navy); font-weight: 700; }
+.member-stats .sep { color: #dbe2ea; }
 
 /* ===== 最近操作 ===== */
 .activity-list { padding: 6px 8px 10px; }
