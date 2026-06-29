@@ -25,17 +25,33 @@
         </span>
         <span class="check">{{ o.id === current.id ? '✓' : '' }}</span>
       </button>
+
+      <template v-if="isAdmin">
+        <div class="menu-sep"></div>
+        <div class="menu-label">平台管理</div>
+        <button class="org-opt" :class="{ active: current.platform }" @click="selectPlatform">
+          <span class="org-ava sm" style="background:#1e293b">∞</span>
+          <span class="org-meta">
+            <span class="org-name">全平台视图</span>
+            <span class="org-sub">超管 · 破玻璃(留审计)</span>
+          </span>
+          <span class="check">{{ current.platform ? '✓' : '' }}</span>
+        </button>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useOrg } from '../composables/useOrg'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useOrg, PLATFORM_ID } from '../composables/useOrg'
+import { useAuth } from '../composables/useAuth'
 
 defineProps({ collapsed: { type: Boolean, default: false } })
 
 const { orgs, current, load, setCurrent } = useOrg()
+const { ragRole } = useAuth()
+const isAdmin = computed(() => ragRole.value === 'ADMIN')
 const open = ref(false)
 
 const PALETTE = ['#2563eb', '#15803d', '#7c3aed', '#db2777', '#0ea5e9', '#f59e0b']
@@ -56,6 +72,13 @@ function select(o) {
   if (o.id === current.value.id) return
   setCurrent(o.id ?? null)
   // 切换组织是全局上下文变更：整页重载，确保所有页面带新的 X-Org-Id 重新取数。
+  window.location.reload()
+}
+
+function selectPlatform() {
+  open.value = false
+  if (current.value.platform) return
+  setCurrent(PLATFORM_ID)
   window.location.reload()
 }
 
@@ -179,5 +202,10 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   color: var(--primary);
   font-weight: 700;
   font-size: 12px;
+}
+.menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 5px 4px;
 }
 </style>

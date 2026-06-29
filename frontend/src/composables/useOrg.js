@@ -6,10 +6,14 @@ import { listOrgs } from '../api/org'
 // 当前组织 id 持久化到 localStorage，并由 api/request.js 注入 X-Org-Id 请求头。
 const STORAGE_KEY = 'ragforge.currentOrgId'
 const PERSONAL = { id: null, name: '个人', slug: 'personal', myRole: 'OWNER', personal: true }
+// 平台超管「全平台视图」哨兵：选中时走破玻璃(X-Admin-Override)，由后端返回全平台聚合。
+export const PLATFORM_ID = 'platform'
+const PLATFORM = { id: PLATFORM_ID, name: '全平台视图', slug: 'platform', myRole: 'ADMIN', platform: true }
 
 function readStored() {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
+    if (v === PLATFORM_ID) return PLATFORM_ID
     return v === null || v === 'null' || v === '' ? null : Number(v)
   } catch {
     return null
@@ -31,20 +35,28 @@ const state = reactive({
 })
 
 export function useOrg() {
-  const current = computed(() => state.orgs.find((o) => o.id === state.currentId) || PERSONAL)
+  const current = computed(() => {
+    if (state.currentId === PLATFORM_ID) return PLATFORM
+    return state.orgs.find((o) => o.id === state.currentId) || PERSONAL
+  })
   return {
     state: readonly(state),
     orgs: computed(() => state.orgs),
     current,
     currentOrgId: computed(() => state.currentId),
     isPersonal: computed(() => state.currentId === null),
+    isPlatform: computed(() => state.currentId === PLATFORM_ID),
     /** 拉取我的组织并合成个人条目；当前选中已失效则回退个人。 */
     async load() {
       try {
         const res = await listOrgs()
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
         state.orgs = [PERSONAL, ...list]
-        if (state.currentId !== null && !list.some((o) => o.id === state.currentId)) {
+        if (
+          state.currentId !== null &&
+          state.currentId !== PLATFORM_ID &&
+          !list.some((o) => o.id === state.currentId)
+        ) {
           state.currentId = null
           persist(null)
         }

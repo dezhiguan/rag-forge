@@ -88,10 +88,14 @@ request.interceptors.request.use((config) => {
   if (state.accessToken) {
     config.headers.Authorization = `Bearer ${state.accessToken}`
   }
-  // 注入当前组织上下文（null = 个人，不带头）。从 localStorage 读，避免与 api 层循环依赖。
+  // 注入当前组织上下文。从 localStorage 读，避免与 api 层循环依赖。
+  // platform = 超管全平台视图 → 破玻璃头(X-Admin-Override)；其余 = X-Org-Id；个人(null)不带头。
   try {
     const orgId = localStorage.getItem('ragforge.currentOrgId')
-    if (orgId && orgId !== 'null' && orgId !== '') {
+    if (orgId === 'platform') {
+      config.headers['X-Admin-Override'] = 'true'
+      config.headers['X-Admin-Override-Reason'] = 'platform-dashboard-view'
+    } else if (orgId && orgId !== 'null' && orgId !== '') {
       config.headers['X-Org-Id'] = orgId
     }
   } catch {

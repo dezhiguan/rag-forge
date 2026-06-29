@@ -9,6 +9,13 @@
       </button>
     </Teleport>
 
+    <div v-if="isPlatform" class="breakglass-banner">
+      <span class="bg-ico">🛡</span>
+      <span class="bg-txt">
+        <b>破玻璃提权已激活（X-Admin-Override）</b> —— 全平台聚合视图，本次访问全程审计留痕；SYSTEM 库与明文凭证不可得。
+      </span>
+    </div>
+
     <div class="metrics-grid">
       <!-- 资产规模 -->
       <div class="metric-card">
@@ -75,7 +82,7 @@
       </div>
     </div>
 
-    <div v-if="!isPersonal" class="card member-panel">
+    <div v-if="!isPersonal && !isPlatform" class="card member-panel">
       <div class="card-header">
         <span class="card-title">组织成员</span>
         <button class="btn btn-secondary btn-sm" @click="$router.push('/orgs')">管理成员 →</button>
@@ -99,6 +106,24 @@
           <span>{{ memberStats.member }} MEMBER</span>
         </div>
       </div>
+    </div>
+
+    <div v-if="isPlatform" class="card perm-panel">
+      <div class="card-header">
+        <span class="card-title">平台管理员权限模型</span>
+        <span class="card-sub">最小权限 + 破玻璃 + 强制审计</span>
+      </div>
+      <table class="perm-table">
+        <thead><tr><th>能力</th><th>默认 ADMIN</th><th>破玻璃后</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>看自己的库/数据</td><td class="yes">✓</td><td class="yes">✓</td><td>同普通用户</td></tr>
+          <tr><td>全平台聚合指标</td><td class="no">✗</td><td class="yes">✓</td><td>默认只看自己</td></tr>
+          <tr><td>跨组织读他人私库内容</td><td class="no">✗</td><td class="yes">✓</td><td>写审计留痕</td></tr>
+          <tr><td>SYSTEM 库</td><td class="no">✗</td><td class="no">✗</td><td>永不暴露</td></tr>
+          <tr><td>危险操作（删组织/转 OWNER/封号）</td><td class="no">✗</td><td class="cond">破玻璃+二次确认</td><td>建议补</td></tr>
+          <tr><td>明文手机号 / 凭证</td><td class="no">✗</td><td class="no">✗</td><td>网关只存哈希</td></tr>
+        </tbody>
+      </table>
     </div>
 
     <div class="card activity-panel">
@@ -136,7 +161,7 @@ import { reprocessDocument } from '../api/document'
 import { useOrg } from '../composables/useOrg'
 import { listMembers } from '../api/org'
 
-const { current, isPersonal } = useOrg()
+const { current, isPersonal, isPlatform } = useOrg()
 const loading = ref(false)
 const lastUpdated = ref('')
 
@@ -159,7 +184,7 @@ function initial(name) {
   return (name || '?').trim().charAt(0).toUpperCase()
 }
 async function loadMembers() {
-  if (isPersonal.value || !current.value.id) {
+  if (isPersonal.value || isPlatform.value || !current.value.id) {
     members.value = []
     return
   }
@@ -406,6 +431,19 @@ onMounted(() => {
 
 .action-text { font-size: 14px; font-weight: 600; color: var(--slate); flex: 1; }
 .action-arrow { color: #cbd5e1; font-size: 16px; transition: color 0.15s ease, transform 0.15s ease; }
+
+/* ===== 破玻璃横幅 + 权限矩阵（全平台视图） ===== */
+.breakglass-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-radius: 14px; padding: 12px 16px; background: linear-gradient(95deg, #fff7ed, #fffbeb); border: 1px solid #fed7aa; }
+.breakglass-banner .bg-ico { width: 34px; height: 34px; border-radius: 10px; background: var(--amber, #f59e0b); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+.breakglass-banner .bg-txt { font-size: 13px; color: var(--slate); } .breakglass-banner .bg-txt b { color: var(--navy); }
+.card-sub { font-size: 12px; color: var(--text-muted); }
+.perm-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.perm-table th, .perm-table td { text-align: left; padding: 9px 16px; border-top: 1px solid var(--border); }
+.perm-table th { color: var(--text-muted); font-weight: 600; font-size: 11.5px; }
+.perm-table td { color: var(--slate); }
+.perm-table .yes { color: #10b981; font-weight: 700; }
+.perm-table .no { color: #cbd5e1; font-weight: 700; }
+.perm-table .cond { color: #f59e0b; font-weight: 600; font-size: 11.5px; }
 
 /* ===== 组织成员概览（定高，不随人数变长） ===== */
 .member-panel .card-header { display: flex; align-items: center; justify-content: space-between; }
