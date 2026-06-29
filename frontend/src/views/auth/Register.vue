@@ -8,7 +8,7 @@
 
     <form @submit.prevent="handleRegister" novalidate>
       <div class="field">
-        <label for="r-username">用户名</label>
+        <label for="r-username">用户名<span class="required" aria-hidden="true">*</span></label>
         <input id="r-username" v-model.trim="form.username" type="text" autocomplete="username"
           placeholder="2-32 位中文、字母、数字或下划线" :disabled="loading" @input="errorMsg = ''" />
       </div>
@@ -18,22 +18,22 @@
           placeholder="you@example.com" :disabled="loading" @input="errorMsg = ''" />
       </div>
       <div class="field">
-        <label for="r-password">密码</label>
+        <label for="r-password">密码<span class="required" aria-hidden="true">*</span></label>
         <input id="r-password" v-model="form.password" type="password" autocomplete="new-password"
           placeholder="至少 8 位，含字母与数字" :disabled="loading" @input="errorMsg = ''" />
       </div>
       <div class="field">
-        <label for="r-password2">确认密码</label>
+        <label for="r-password2">确认密码<span class="required" aria-hidden="true">*</span></label>
         <input id="r-password2" v-model="form.confirmPassword" type="password" autocomplete="new-password"
           placeholder="请再次输入密码" :disabled="loading" @input="errorMsg = ''" />
       </div>
       <div class="field">
-        <label for="r-phone">手机号（必填，需短信验证）</label>
+        <label for="r-phone">手机号<span class="required" aria-hidden="true">*</span><span class="label-note">需短信验证</span></label>
         <input id="r-phone" v-model.trim="form.phone" type="tel" placeholder="请输入手机号"
           :disabled="loading" @input="errorMsg = ''" />
       </div>
       <div class="field">
-        <label for="r-code">短信验证码</label>
+        <label for="r-code">短信验证码<span class="required" aria-hidden="true">*</span></label>
         <div class="input-with-suffix">
           <input id="r-code" v-model.trim="form.smsCode" type="text" inputmode="numeric" maxlength="6"
             placeholder="6 位验证码" :disabled="loading" @input="errorMsg = ''" />
@@ -61,6 +61,10 @@ const smsCountdown = ref(0)
 let countdownTimer = null
 
 const form = reactive({ phone: '', smsCode: '', username: '', email: '', password: '', confirmPassword: '' })
+const usernamePattern = /^[\u4e00-\u9fa5A-Za-z0-9_]{2,32}$/
+const phonePattern = /^1[3-9]\d{9}$/
+const smsCodePattern = /^\d{6}$/
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const smsBtnLabel = computed(() => {
   if (sendingSms.value) return '发送中…'
@@ -70,8 +74,9 @@ const smsBtnLabel = computed(() => {
 
 async function handleSendSms() {
   if (sendingSms.value || smsCountdown.value > 0) return
-  if (!form.phone) {
-    errorMsg.value = '请先输入手机号'
+  const phoneError = validatePhone()
+  if (phoneError) {
+    errorMsg.value = phoneError
     return
   }
   sendingSms.value = true
@@ -87,19 +92,10 @@ async function handleSendSms() {
 
 async function handleRegister() {
   if (loading.value) return
-  if (!form.phone || !form.smsCode) {
-    errorMsg.value = '请填写手机号与验证码'
+  const validationError = validateRegisterForm()
+  if (validationError) {
+    errorMsg.value = validationError
     return
-  }
-  if (!form.username && !form.email) {
-    errorMsg.value = '请至少填写用户名或邮箱'
-    return
-  }
-  if (form.password || form.confirmPassword) {
-    if (form.password !== form.confirmPassword) {
-      errorMsg.value = '两次输入的密码不一致'
-      return
-    }
   }
   loading.value = true
   errorMsg.value = ''
@@ -121,6 +117,31 @@ async function handleRegister() {
   } finally {
     loading.value = false
   }
+}
+
+function validateRegisterForm() {
+  if (!form.username) return '请输入用户名'
+  if (!usernamePattern.test(form.username)) return '用户名需为 2-32 位中文、字母、数字或下划线'
+  if (form.email && !emailPattern.test(form.email)) return '请输入正确的邮箱地址'
+  if (!form.password) return '请输入密码'
+  if (!isValidPassword(form.password)) return '密码至少 8 位，并且同时包含字母与数字'
+  if (!form.confirmPassword) return '请再次输入密码'
+  if (form.password !== form.confirmPassword) return '两次输入的密码不一致'
+  const phoneError = validatePhone()
+  if (phoneError) return phoneError
+  if (!form.smsCode) return '请输入短信验证码'
+  if (!smsCodePattern.test(form.smsCode)) return '短信验证码需为 6 位数字'
+  return ''
+}
+
+function validatePhone() {
+  if (!form.phone) return '请输入手机号'
+  if (!phonePattern.test(form.phone)) return '请输入正确的手机号'
+  return ''
+}
+
+function isValidPassword(password) {
+  return password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password)
 }
 
 function startCountdown(seconds) {
@@ -149,6 +170,8 @@ onUnmounted(() => {
 .form-sub { font-size: 13px; color: #64748b; margin: 6px 0 18px; }
 .field { margin-bottom: 14px; }
 .field label { font-size: 12px; color: #475569; display: block; margin-bottom: 6px; }
+.required { color: #dc2626; margin-left: 3px; font-weight: 700; }
+.label-note { color: #64748b; margin-left: 6px; }
 .field input {
   width: 100%; height: 40px; border: 1px solid #e2e8f0; border-radius: 8px;
   padding: 0 12px; font-size: 14px; color: #1e293b; background: #fff; outline: none; font-family: inherit;
