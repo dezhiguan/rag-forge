@@ -10,6 +10,9 @@ public interface ApiKeyService {
 
   ApiKey create(String keyName);
 
+  /** 重命名 key（仅所属组织 admin）。 */
+  ApiKey rename(Long id, String keyName);
+
   ApiKey enable(Long id, boolean enabled);
 
   void delete(Long id);

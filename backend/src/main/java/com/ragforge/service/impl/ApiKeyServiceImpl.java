@@ -92,6 +92,23 @@ public class ApiKeyServiceImpl implements ApiKeyService {
 
   @Override
   @Transactional
+  public ApiKey rename(Long id, String keyName) {
+    ApiKey apiKey = apiKeyMapper.selectById(id);
+    if (apiKey == null) {
+      throw new BizException(404, "API Key 不存在");
+    }
+    requireOrgAdmin(apiKey.getOrgId());
+    if (keyName == null || keyName.isBlank()) {
+      throw new BizException(400, "KEY_NAME_REQUIRED");
+    }
+    apiKey.setKeyName(keyName.trim());
+    apiKeyMapper.update(
+        null, new UpdateWrapper<ApiKey>().eq("id", id).set("key_name", keyName.trim()));
+    return apiKey;
+  }
+
+  @Override
+  @Transactional
   public ApiKey enable(Long id, boolean enabled) {
     ApiKey apiKey = apiKeyMapper.selectById(id);
     if (apiKey == null) {

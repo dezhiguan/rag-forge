@@ -27,7 +27,7 @@
       </div>
 
       <table>
-        <thead v-if="!isPlatform"><tr><th>名称</th><th>Key</th><th>状态</th><th>创建日期</th><th>最近使用</th><th></th></tr></thead>
+        <thead v-if="!isPlatform"><tr><th>名称</th><th>Key</th><th>创建日期</th><th>最近使用</th><th></th></tr></thead>
         <thead v-else><tr><th>名称</th><th>所属组织</th><th>Key</th><th>最近使用</th><th>状态</th><th></th></tr></thead>
         <tbody>
           <tr v-if="!keys.length"><td :colspan="6" class="empty">{{ loading ? '加载中…' : '暂无 API key' }}</td></tr>
@@ -36,12 +36,11 @@
             <tr v-for="k in keys" :key="k.id">
               <td class="kname">{{ k.keyName }}</td>
               <td class="kcode">{{ k.keyMasked }}</td>
-              <td><span class="tag" :class="k.enabled ? 't-on' : 't-off'">{{ k.enabled ? '启用' : '已停用' }}</span></td>
               <td>{{ fmt(k.createdAt) }}</td>
               <td>{{ fmt(k.lastUsedAt) || '—' }}</td>
-              <td><div class="row-act" v-if="canManage">
-                <span @click="onToggle(k)">{{ k.enabled ? '停用' : '启用' }}</span>
-                <span class="del" @click="onDelete(k)">删除</span>
+              <td><div class="row-act icons" v-if="canManage">
+                <span class="ic" title="修改名称" @click="onRename(k)">✏️</span>
+                <span class="ic" title="删除" @click="onDelete(k)">🗑️</span>
               </div><span v-else class="muted">只读</span></td>
             </tr>
           </template>
@@ -143,7 +142,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useOrg } from '../composables/useOrg'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
-import { listApiKeys, createApiKey, enableApiKey, deleteApiKey } from '../api/apikey'
+import { listApiKeys, createApiKey, renameApiKey, enableApiKey, deleteApiKey } from '../api/apikey'
 
 const { current, isPlatform, currentOrgId } = useOrg()
 const toast = useToast()
@@ -230,10 +229,19 @@ function closeReveal() {
   newKey.value = ''
 }
 
-async function onToggle(k) {
-  await enableApiKey(k.id, !k.enabled)
+async function onRename(k) {
+  const name = await confirmDialog({
+    title: '修改 API key 名称',
+    message: '为该 key 设置一个新的名称。',
+    input: true,
+    inputValue: k.keyName,
+    inputPlaceholder: 'key 名称',
+    confirmText: '保存',
+  })
+  if (!name || String(name).trim() === k.keyName) return
+  await renameApiKey(k.id, String(name).trim())
   await reload()
-  toast.success(k.enabled ? '已停用' : '已启用')
+  toast.success('已修改名称')
 }
 
 async function onRevoke(k) {
@@ -300,6 +308,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .t-on { background: #e8f6ee; color: #15803d; } .t-off { background: #fee2e2; color: #dc2626; }
 .row-act { display: flex; gap: 14px; } .row-act span { cursor: pointer; color: var(--primary); font-weight: 600; }
 .row-act .del { color: var(--red, #dc2626); } .row-act .muted { color: var(--text-muted); cursor: default; }
+.row-act.icons { gap: 16px; } .row-act.icons .ic { font-size: 16px; line-height: 1; opacity: .85; cursor: pointer; }
+.row-act.icons .ic:hover { opacity: 1; }
 
 .btn-primary { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px; border: none; border-radius: 9px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
 .btn-primary:disabled { opacity: .6; cursor: not-allowed; }

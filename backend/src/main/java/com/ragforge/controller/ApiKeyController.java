@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -49,6 +50,12 @@ public class ApiKeyController {
   @PutMapping("/{id}/enable")
   public Result<ApiKeyView> enable(@PathVariable Long id, @RequestBody EnableRequest req) {
     ApiKey k = apiKeyService.enable(id, req.isEnabled());
+    return Result.ok(ApiKeyView.from(k, loadOrgNames(List.of(k))));
+  }
+
+  @PatchMapping("/{id}")
+  public Result<ApiKeyView> rename(@PathVariable Long id, @RequestBody CreateApiKeyRequest req) {
+    ApiKey k = apiKeyService.rename(id, req.getKeyName());
     return Result.ok(ApiKeyView.from(k, loadOrgNames(List.of(k))));
   }
 
