@@ -21,12 +21,6 @@
 
     <!-- ============ API keys ============ -->
     <div v-show="tab === 'keys'" class="card card-pad">
-      <div v-if="newKey" class="newkey">
-        <div class="nk-h">🔑 API key 创建成功 —— 明文<b>仅显示这一次</b>，请立即复制并妥善保管</div>
-        <div class="nk-row"><code>{{ newKey }}</code><button class="btn" @click="copy($event, newKey)">复制</button></div>
-        <div class="nk-tip">⚠️ 离开本页或刷新后将<b>无法再次查看</b>完整 key；如遗失只能删除后重建。请勿暴露在前端代码或公开仓库。</div>
-      </div>
-
       <div class="desc">
         <template v-if="isPlatform">下表是<b>全平台所有组织</b>的 API key（只读）。发现疑似泄露可一键吊销；不能在此为某组织新建 key，请下钻到对应组织。</template>
         <template v-else>下表是<b>本组织</b>的全部 API key。Key 仅在创建时可见可复制，请妥善保存，不要暴露在前端代码中。</template>
@@ -125,6 +119,22 @@
         </div>
       </div>
     </div>
+
+    <!-- 创建成功：一次性展示明文 key -->
+    <div v-if="showReveal" class="mask" @click.self="closeReveal">
+      <div class="reveal">
+        <div class="rv-head">
+          <h3>创建 API key</h3>
+          <span class="rv-x" @click="closeReveal">×</span>
+        </div>
+        <p class="rv-msg">请将此 API key 保存在安全且易于访问的地方。出于安全原因，你将<b>无法通过 API keys 管理界面再次查看它</b>。如果你丢失了这个 key，将需要重新创建。</p>
+        <div class="rv-key"><code>{{ newKey }}</code></div>
+        <div class="rv-foot">
+          <button class="btn" @click="closeReveal">关闭</button>
+          <button class="btn-primary" @click="copy($event, newKey)">复制</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -143,6 +153,7 @@ const keys = ref([])
 const loading = ref(false)
 const creating = ref(false)
 const newKey = ref('')
+const showReveal = ref(false)
 
 // 仅当前组织 OWNER/ADMIN 可管理 key（员工只读，与后端一致）。
 const canManage = computed(() => {
@@ -179,7 +190,6 @@ function fmt(s) {
 
 async function reload() {
   loading.value = true
-  newKey.value = ''
   try {
     const res = await listApiKeys()
     keys.value = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
@@ -206,13 +216,18 @@ async function onCreate() {
     const res = await createApiKey(String(name).trim())
     const created = res?.data ?? res
     newKey.value = created?.apiKey || ''
+    showReveal.value = true
     await reload()
-    toast.success('API key 已创建')
   } catch (e) {
     /* 全局拦截提示 */
   } finally {
     creating.value = false
   }
+}
+
+function closeReveal() {
+  showReveal.value = false
+  newKey.value = ''
 }
 
 async function onToggle(k) {
@@ -296,6 +311,20 @@ tbody tr:last-child td { border-bottom: 0; }
 .nk-row { display: flex; align-items: center; gap: 10px; }
 .nk-row code { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--navy); word-break: break-all; }
 .nk-tip { margin-top: 8px; font-size: 11.5px; color: #b45309; line-height: 1.6; } .nk-tip b { color: #b45309; }
+
+/* 创建成功 reveal 弹窗 */
+.mask { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.reveal { width: 480px; max-width: calc(100vw - 40px); background: #fff; border-radius: 16px; box-shadow: 0 20px 50px rgba(15, 31, 61, .25); padding: 22px 24px; }
+.rv-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.rv-head h3 { margin: 0; font-size: 17px; font-weight: 700; color: var(--navy); }
+.rv-x { font-size: 22px; color: var(--text-muted); cursor: pointer; line-height: 1; }
+.rv-msg { font-size: 13px; color: var(--gray); line-height: 1.7; margin: 0 0 16px; }
+.rv-msg b { color: var(--slate); }
+.rv-key { background: #f5f7fa; border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; margin-bottom: 18px; }
+.rv-key code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--navy); word-break: break-all; }
+.rv-foot { display: flex; justify-content: flex-end; gap: 10px; }
+.rv-foot .btn { height: 38px; padding: 0 18px; }
+.rv-foot .btn-primary { height: 38px; background: #0f1726; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .sec-title { font-size: 13px; font-weight: 700; color: var(--navy); margin: 0 0 4px; }
