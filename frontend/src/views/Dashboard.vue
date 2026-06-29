@@ -607,6 +607,9 @@ onMounted(() => {
 .breakglass-banner .bg-txt { font-size: 13px; color: var(--slate); } .breakglass-banner .bg-txt b { color: var(--navy); }
 .card-sub { font-size: 12px; color: var(--text-muted); }
 
+/* 卡片区块统一上间距，与四象限/趋势区一致 */
+.member-panel, .activity-panel { margin-top: 16px; }
+
 /* ===== 组织成员概览（定高，不随人数变长） ===== */
 .member-panel .card-header { display: flex; align-items: center; justify-content: space-between; }
 .member-overview { padding: 12px 16px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
