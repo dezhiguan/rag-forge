@@ -203,10 +203,9 @@ async function onCreate() {
   if (creating.value) return
   const name = await confirmDialog({
     title: '创建 API key',
-    message:
-      '为该 key 取一个便于识别的名称（如：招聘 Agent 接入）。\n\n⚠️ 创建后完整明文 key 仅显示这一次，请立即复制并妥善保管；遗失只能删除重建。',
+    message: '名称',
     input: true,
-    inputPlaceholder: 'key 名称',
+    inputPlaceholder: '输入 API key 的名称',
     confirmText: '创建',
   })
   if (!name) return
