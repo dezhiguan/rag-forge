@@ -18,10 +18,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 模型 & 成本中心。仅 ADMIN 可访问（与 API 网关一致）。 */
+/**
+ * 模型 & 成本中心。 模型列表/成本看板对登录用户开放（成本按当前组织、模型只读）； 模型启停仅平台
+ * ADMIN 可操作。
+ */
 @RestController
 @RequestMapping("/api/v1/models")
-@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 public class ModelCenterController {
 
@@ -45,8 +47,9 @@ public class ModelCenterController {
     return Result.ok(modelCenterService.costDetail());
   }
 
-  /** 启用/停用模型。停用后该用途无可用模型时返回 409。 */
+  /** 启用/停用模型（仅平台 ADMIN）。停用后该用途无可用模型时返回 409。 */
   @PutMapping("/{code}/toggle")
+  @PreAuthorize("hasRole('ADMIN')")
   public Result<Map<String, Object>> toggle(
       @PathVariable String code, @RequestBody Map<String, Object> body) {
     Object enabledRaw = body == null ? null : body.get("enabled");

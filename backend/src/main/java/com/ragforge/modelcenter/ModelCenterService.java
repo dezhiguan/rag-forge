@@ -204,10 +204,22 @@ public class ModelCenterService {
   }
 
   private List<ModelUsageDaily> loadUsageBetween(LocalDate from, LocalDate to) {
-    return usageMapper.selectList(
+    LambdaQueryWrapper<ModelUsageDaily> w =
         new LambdaQueryWrapper<ModelUsageDaily>()
             .ge(ModelUsageDaily::getStatDate, from)
-            .le(ModelUsageDaily::getStatDate, to));
+            .le(ModelUsageDaily::getStatDate, to);
+    applyOrgScope(w);
+    return usageMapper.selectList(w);
+  }
+
+  /** 成本按当前组织：破玻璃(全平台视图)不过滤；否则限当前组织(无组织上下文→空，不泄漏全平台)。 */
+  private void applyOrgScope(LambdaQueryWrapper<ModelUsageDaily> w) {
+    com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
+    if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
+      return;
+    }
+    Long orgId = com.ragforge.security.OrgContextHolder.get();
+    w.eq(ModelUsageDaily::getOrgId, orgId == null ? -1L : orgId);
   }
 
   private Map<String, BigDecimal> sumCostByModel(List<ModelUsageDaily> usage) {

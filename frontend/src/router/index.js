@@ -41,7 +41,7 @@ const routes = [
   { path: '/eval', name: 'EvaluationLab', component: () => import('../views/EvaluationLab.vue'), meta: { icon: '🧪', label: '评测实验室', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/evaluation/quality', name: 'EvaluationQuality', component: () => import('../views/EvaluationQuality.vue'), meta: { icon: '📈', label: '质量看板', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/evaluation/quality/case/:id', name: 'EvaluationQualityCase', component: () => import('../views/EvaluationQualityCase.vue'), meta: { icon: '🧪', label: '案例详情', roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
-  { path: '/models', name: 'ModelCostCenter', component: () => import('../views/ModelCostCenter.vue'), meta: { icon: '🧠', label: '模型 & 成本', role: 'ADMIN' } },
+  { path: '/models', name: 'ModelCostCenter', component: () => import('../views/ModelCostCenter.vue'), meta: { icon: '🧠', label: '模型 & 成本', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'] } },
   { path: '/api', name: 'DeveloperCenter', component: () => import('../views/DeveloperCenter.vue'), meta: { icon: '🔌', label: '开发者中心', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'] } },
   { path: '/api-gateway', redirect: '/api' },
 ]

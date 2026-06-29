@@ -13,6 +13,12 @@
       </div>
     </div>
 
+    <div class="org-scope-note" :class="{ gov: isPlatform }">
+      🛡
+      <span v-if="isPlatform"><b>全平台视图（破玻璃）</b> —— 成本看板为全平台聚合（含未归属组织的评测成本）；模型管理 / 用户配额可配置。</span>
+      <span v-else>成本看板按<b>当前组织（{{ orgName }}）</b>统计，切换组织即切换；模型与定价为平台统一维护，<b>模型启停仅平台管理员可操作</b>。</span>
+    </div>
+
     <!-- ============ 模型管理 ============ -->
     <section v-show="activeTab === 0">
       <div class="kpi-row">
@@ -66,9 +72,9 @@
                 </span>
               </td>
               <td style="text-align:center">
-                <label class="sw" :class="{ disabled: toggling === m.code }">
+                <label class="sw" :class="{ disabled: toggling === m.code || !canManageModels }">
                   <input type="checkbox" :key="m.code + '-' + m.enabled + '-' + uiRev"
-                         :checked="m.enabled" :disabled="toggling === m.code"
+                         :checked="m.enabled" :disabled="toggling === m.code || !canManageModels"
                          @change="onToggle(m, $event.target.checked)" />
                   <span class="track"></span><span class="thumb"></span>
                 </label>
@@ -160,11 +166,18 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { getModelList, toggleModel, getModelCostStats, getModelCostDetail } from '../api/model'
 import { useToast } from '../composables/useToast'
+import { useAuth } from '../composables/useAuth'
+import { useOrg } from '../composables/useOrg'
 
 const toast = useToast()
+const { ragRole } = useAuth()
+const { current, currentOrgId, isPlatform } = useOrg()
+// 模型启停仅平台管理员可操作；企业用户只读。
+const canManageModels = computed(() => ragRole.value === 'ADMIN')
+const orgName = computed(() => current.value?.name || '当前组织')
 
 const activeTab = ref(0)
 const models = ref([])
@@ -259,6 +272,7 @@ async function load() {
 }
 
 async function onToggle(model, nextEnabled) {
+  if (!canManageModels.value) return // 企业用户只读，不可操作
   if (toggling.value) return
   toggling.value = model.code
   try {
@@ -288,6 +302,8 @@ async function refreshStats() {
 }
 
 onMounted(load)
+// 切组织 → 成本按新组织重新拉取
+watch(currentOrgId, () => load())
 </script>
 
 <style scoped>
@@ -295,6 +311,9 @@ onMounted(load)
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 4px; }
 .page-head .sub { color: var(--text-muted); font-size: 13px; }
 
+.org-scope-note { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--gray); background: var(--primary-soft, #eff4ff); border: 1px solid var(--primary-border, #c7d7fe); border-radius: 12px; padding: 10px 14px; margin: 0 0 18px; }
+.org-scope-note.gov { background: #fff5f5; border-color: #fecaca; }
+.org-scope-note b { color: var(--navy, #0f1f3d); }
 .tabs { display: flex; gap: 4px; margin: 16px 0 18px; border-bottom: 1px solid var(--border); }
 .tab { padding: 9px 16px; font-size: 14px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
