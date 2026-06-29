@@ -4,12 +4,27 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.ragforge.model.entity.ModelUsageDaily;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 @Mapper
 public interface ModelUsageDailyMapper extends BaseMapper<ModelUsageDaily> {
+
+  /** 按用途聚合自 {@code since}（含）起的 token 与成本，供驾驶舱成本卡使用。 */
+  @Select(
+      """
+      SELECT lower(purpose) AS purpose,
+             COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens,
+             COALESCE(SUM(cost), 0) AS cost
+      FROM model_usage_daily
+      WHERE stat_date >= #{since}
+      GROUP BY lower(purpose)
+      """)
+  List<Map<String, Object>> aggregateCostSince(@Param("since") LocalDate since);
 
   /** 按 (model_code, stat_date) 累加写入；冲突即累加，用于计量批量落库。 */
   @Insert(

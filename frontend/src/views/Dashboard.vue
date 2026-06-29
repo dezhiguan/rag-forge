@@ -24,9 +24,16 @@
       </span>
     </div>
 
+    <div class="scope-line">
+      <span class="scope-ico">📊</span>
+      <span>统计范围：{{ scopeText }} · 口径：近 7 天</span>
+    </div>
+
+    <div class="section-title">核心指标 · 近 7 天</div>
+
     <div class="metrics-grid">
       <!-- 资产规模 -->
-      <div class="metric-card">
+      <div class="metric-card accent-blue">
         <div class="metric-top">
           <span class="metric-label">资产规模</span>
           <span class="metric-chip chip-blue">📚</span>
@@ -35,10 +42,11 @@
         <div class="metric-subs">
           <div class="metric-sub"><span>文档</span><b>{{ formatNumber(metrics.documentCount) }}</b></div>
           <div class="metric-sub"><span>知识库</span><b>{{ metrics.kbCount }}</b></div>
+          <div class="metric-sub" v-if="ingestTotal > 0"><span>入库成功率</span><b class="pos">{{ formatPercent(metrics.ingestSuccessRate) }}</b></div>
         </div>
       </div>
       <!-- 检索质量 -->
-      <div class="metric-card">
+      <div class="metric-card accent-green">
         <div class="metric-top">
           <span class="metric-label">检索质量</span>
           <span class="metric-chip chip-green">🎯</span>
@@ -46,29 +54,37 @@
         <div class="metric-value metric-value--hit">{{ formatPercent(metrics.zeroResultRate) }}<span class="metric-unit"> 零结果</span></div>
         <div class="metric-subs">
           <div class="metric-sub"><span>平均召回条数</span><b>{{ formatDecimal(metrics.avgRecallCount) }}</b></div>
+          <div class="metric-sub" v-if="metrics.avgRerankScore > 0">
+            <span>平均 rerank 分 <i class="tag-mini">仅精排</i></span><b>{{ formatDecimal2(metrics.avgRerankScore) }}</b>
+          </div>
           <div class="metric-sub"><span>Query 改写率</span><b>{{ formatPercent(metrics.rewriteRate) }}</b></div>
         </div>
       </div>
       <!-- 运行健康 -->
-      <div class="metric-card">
+      <div class="metric-card accent-amber">
         <div class="metric-top">
           <span class="metric-label">运行健康</span>
           <span class="metric-chip chip-amber">⚡</span>
         </div>
         <div class="metric-value">{{ formatLatency(metrics.p95LatencyMs) }} <span class="metric-unit">P95</span></div>
         <div class="metric-subs">
-          <div class="metric-sub"><span>平均延迟</span><b>{{ formatLatency(metrics.avgLatencyMs) }}</b></div>
-          <div class="metric-sub"><span>今日检索请求</span><b>{{ formatNumber(metrics.todayApiCalls) }}</b></div>
+          <div class="metric-sub"><span>P50 延迟</span><b>{{ formatLatency(metrics.p50LatencyMs) }}</b></div>
+          <div class="metric-sub" v-if="metrics.searchSuccessRate > 0"><span>检索成功率</span><b class="pos">{{ formatPercent(metrics.searchSuccessRate) }}</b></div>
+          <div class="metric-sub"><span>检索请求数</span><b>{{ formatNumber(metrics.periodApiCalls) }}</b></div>
         </div>
       </div>
-      <!-- 成本消耗（明细见模型&成本中心） -->
-      <div class="metric-card metric-card--link" @click="$router.push('/models')">
+      <!-- 成本消耗 -->
+      <div class="metric-card accent-violet metric-card--link" @click="$router.push('/models')">
         <div class="metric-top">
           <span class="metric-label">成本消耗</span>
           <span class="metric-chip chip-violet">💰</span>
         </div>
-        <div class="metric-value metric-value--muted">查看明细</div>
-        <div class="metric-desc">模型 &amp; 成本中心 →</div>
+        <div class="metric-value">{{ formatYuan(metrics.totalCost) }}</div>
+        <div class="metric-subs">
+          <div class="metric-sub"><span>Token 总量</span><b>{{ formatTokens(metrics.tokenTotal) }}</b></div>
+          <div class="metric-sub"><span>embedding / rerank</span><b>{{ formatYuan(metrics.embeddingCost) }} / {{ formatYuan(metrics.rerankCost) }}</b></div>
+          <div class="metric-sub"><span>LLM(改写+评测)</span><b>{{ formatYuan(metrics.llmCost) }}</b></div>
+        </div>
       </div>
     </div>
 
@@ -87,6 +103,64 @@
         <span class="action-chip">▷</span>
         <span class="action-text">发起检索测试</span>
         <span class="action-arrow">→</span>
+      </div>
+    </div>
+
+    <div class="dash-row2">
+      <!-- 检索趋势 · 近 7 天 -->
+      <div class="card trend-panel">
+        <div class="card-header">
+          <span class="card-title">检索趋势 · 近 7 天</span>
+          <span class="card-sub">请求数 / P95 延迟</span>
+        </div>
+        <div v-if="trendStats.hasData" class="trend-summary">
+          请求峰值 <b>{{ trendStats.peak }}/日</b>
+          <span class="sep">·</span>
+          P95 区间 <b>{{ trendStats.p95Min }} ~ {{ trendStats.p95Max }}ms</b>
+        </div>
+        <div v-if="trendStats.hasData" class="trend-chart">
+          <div
+            v-for="(p, i) in metrics.retrievalTrend"
+            :key="i"
+            class="trend-bar-wrap"
+            :title="`${p.date}：${p.count} 次 · P95 ${p.p95LatencyMs}ms`"
+          >
+            <div class="trend-bar" :style="{ height: trendBarHeight(p.count) }"></div>
+            <span class="trend-x">{{ p.date }}</span>
+          </div>
+        </div>
+        <div v-else class="panel-empty">近 7 天暂无检索记录</div>
+      </div>
+
+      <!-- 入库处理健康度 -->
+      <div class="card ingest-panel">
+        <div class="card-header">
+          <span class="card-title">入库处理健康度</span>
+          <span class="card-sub">{{ formatNumber(ingestTotal) }} 文档</span>
+        </div>
+        <template v-if="ingestTotal > 0">
+          <div class="ingest-bar">
+            <span class="seg seg-done" :style="{ width: ingestPct.completed }"></span>
+            <span class="seg seg-proc" :style="{ width: ingestPct.processing }"></span>
+            <span class="seg seg-queue" :style="{ width: ingestPct.queued }"></span>
+            <span class="seg seg-fail" :style="{ width: ingestPct.failed }"></span>
+          </div>
+          <div class="ingest-legend">
+            <span><i class="dot dot-done"></i>已完成 {{ metrics.ingestCompleted }}</span>
+            <span><i class="dot dot-proc"></i>处理中 {{ metrics.ingestProcessing }}</span>
+            <span><i class="dot dot-queue"></i>排队 {{ metrics.ingestQueued }}</span>
+            <span><i class="dot dot-fail"></i>失败 {{ metrics.ingestFailed }}</span>
+          </div>
+          <div
+            v-if="metrics.ingestFailed > 0"
+            class="ingest-cta fail"
+            @click="$router.push({ path: '/knowledge', query: { parseStatus: 'failed' } })"
+          >
+            ⚠️ {{ metrics.ingestFailed }} 个文档解析失败 · 一键重试 →
+          </div>
+          <div v-else class="ingest-cta ok">✓ 入库链路健康，无失败文档</div>
+        </template>
+        <div v-else class="panel-empty">当前范围内暂无文档</div>
       </div>
     </div>
 
@@ -214,8 +288,65 @@ const metrics = reactive({
   avgRecallCount: 0,
   p95LatencyMs: 0,
   rewriteRate: 0,
+  ingestSuccessRate: 0,
+  p50LatencyMs: 0,
+  periodApiCalls: 0,
+  searchSuccessRate: 0,
+  avgRerankScore: 0,
+  totalCost: 0,
+  tokenTotal: 0,
+  embeddingCost: 0,
+  rerankCost: 0,
+  llmCost: 0,
+  ingestCompleted: 0,
+  ingestProcessing: 0,
+  ingestQueued: 0,
+  ingestFailed: 0,
+  retrievalTrend: [],
   recentActivities: [],
 })
+
+const scopeText = computed(() => {
+  if (isPlatform.value) return '全平台所有组织（仅超级管理员，破玻璃生效中）'
+  if (isPersonal.value) return '仅你个人组织内的库与检索'
+  return '本组织全部库 + 全体成员检索'
+})
+
+const ingestTotal = computed(
+  () =>
+    metrics.ingestCompleted +
+    metrics.ingestProcessing +
+    metrics.ingestQueued +
+    metrics.ingestFailed,
+)
+const ingestPct = computed(() => {
+  const t = ingestTotal.value || 1
+  const pct = (n) => `${(n / t) * 100}%`
+  return {
+    completed: pct(metrics.ingestCompleted),
+    processing: pct(metrics.ingestProcessing),
+    queued: pct(metrics.ingestQueued),
+    failed: pct(metrics.ingestFailed),
+  }
+})
+
+const trendStats = computed(() => {
+  const t = metrics.retrievalTrend || []
+  if (!t.length) return { hasData: false }
+  const counts = t.map((p) => Number(p.count) || 0)
+  const p95s = t.map((p) => Number(p.p95LatencyMs) || 0).filter((v) => v > 0)
+  return {
+    hasData: true,
+    peak: Math.max(...counts),
+    p95Min: p95s.length ? Math.min(...p95s) : 0,
+    p95Max: p95s.length ? Math.max(...p95s) : 0,
+  }
+})
+function trendBarHeight(count) {
+  const peak = trendStats.value.peak || 1
+  const ratio = Math.min(1, (Number(count) || 0) / peak)
+  return `${Math.max(6, ratio * 100)}%`
+}
 
 async function loadMetrics() {
   loading.value = true
@@ -232,6 +363,21 @@ async function loadMetrics() {
     metrics.avgRecallCount = data.avgRecallCount ?? 0
     metrics.p95LatencyMs = data.p95LatencyMs ?? 0
     metrics.rewriteRate = data.rewriteRate ?? 0
+    metrics.ingestSuccessRate = data.ingestSuccessRate ?? 0
+    metrics.p50LatencyMs = data.p50LatencyMs ?? 0
+    metrics.periodApiCalls = data.periodApiCalls ?? 0
+    metrics.searchSuccessRate = data.searchSuccessRate ?? 0
+    metrics.avgRerankScore = data.avgRerankScore ?? 0
+    metrics.totalCost = data.totalCost ?? 0
+    metrics.tokenTotal = data.tokenTotal ?? 0
+    metrics.embeddingCost = data.embeddingCost ?? 0
+    metrics.rerankCost = data.rerankCost ?? 0
+    metrics.llmCost = data.llmCost ?? 0
+    metrics.ingestCompleted = data.ingestCompleted ?? 0
+    metrics.ingestProcessing = data.ingestProcessing ?? 0
+    metrics.ingestQueued = data.ingestQueued ?? 0
+    metrics.ingestFailed = data.ingestFailed ?? 0
+    metrics.retrievalTrend = data.retrievalTrend ?? []
     metrics.recentActivities = data.recentActivities ?? []
     lastUpdated.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
   } finally {
@@ -287,6 +433,26 @@ function formatDecimal(n) {
   const num = Number(n)
   if (Number.isNaN(num) || num <= 0) return '—'
   return num.toFixed(1)
+}
+
+function formatDecimal2(n) {
+  const num = Number(n)
+  if (Number.isNaN(num) || num <= 0) return '—'
+  return num.toFixed(2)
+}
+
+function formatYuan(n) {
+  const num = Number(n)
+  if (Number.isNaN(num)) return '¥0.00'
+  return `¥${num.toFixed(2)}`
+}
+
+function formatTokens(n) {
+  const num = Number(n)
+  if (Number.isNaN(num) || num <= 0) return '0'
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`
+  if (num >= 1000) return `${Math.round(num / 1000)}K`
+  return `${num}`
 }
 
 onMounted(() => {
@@ -395,6 +561,74 @@ onMounted(() => {
 .metric-value--hit { color: var(--green); }
 
 .metric-desc { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+
+/* ===== 口径行 + 区块标题 ===== */
+.scope-line {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--text-muted); margin-bottom: 6px;
+}
+.scope-ico { font-size: 13px; }
+.section-title { font-size: 14px; font-weight: 700; color: var(--navy); margin: 4px 0 12px; }
+
+/* 卡片左侧彩色强调边 */
+.metric-card.accent-blue::before,
+.metric-card.accent-green::before,
+.metric-card.accent-amber::before,
+.metric-card.accent-violet::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+}
+.metric-card.accent-blue::before { background: var(--primary); }
+.metric-card.accent-green::before { background: #10b981; }
+.metric-card.accent-amber::before { background: #f59e0b; }
+.metric-card.accent-violet::before { background: #7c3aed; }
+
+.metric-sub b.pos { color: var(--green); }
+.tag-mini {
+  font-style: normal; font-size: 10px; color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; margin-left: 4px;
+}
+
+/* ===== 第二行：检索趋势 + 入库健康度 ===== */
+.dash-row2 {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
+}
+.panel-empty { padding: 28px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+.trend-summary { font-size: 12.5px; color: var(--text-muted); margin: 4px 0 14px; }
+.trend-summary b { color: var(--slate); font-variant-numeric: tabular-nums; }
+.trend-summary .sep { margin: 0 8px; color: var(--border); }
+.trend-chart {
+  display: flex; align-items: flex-end; gap: 10px; height: 120px; padding-top: 6px;
+}
+.trend-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+.trend-bar {
+  width: 60%; max-width: 30px; min-height: 6px;
+  background: linear-gradient(180deg, var(--primary), #93c5fd);
+  border-radius: 6px 6px 0 0; transition: height 0.25s ease;
+}
+.trend-x { font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.ingest-bar {
+  display: flex; height: 12px; border-radius: 999px; overflow: hidden;
+  background: var(--light); margin: 6px 0 14px;
+}
+.ingest-bar .seg { height: 100%; transition: width 0.25s ease; }
+.seg-done { background: #10b981; }
+.seg-proc { background: #06b6d4; }
+.seg-queue { background: #f59e0b; }
+.seg-fail { background: #ef4444; }
+.ingest-legend {
+  display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-muted);
+}
+.ingest-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.dot-done { background: #10b981; }
+.dot-proc { background: #06b6d4; }
+.dot-queue { background: #f59e0b; }
+.dot-fail { background: #ef4444; }
+.ingest-cta { margin-top: 16px; font-size: 13px; font-weight: 600; }
+.ingest-cta.fail { color: #dc2626; cursor: pointer; }
+.ingest-cta.fail:hover { text-decoration: underline; }
+.ingest-cta.ok { color: var(--green); }
 
 /* ===== 快捷入口 ===== */
 .quick-actions {
@@ -506,6 +740,7 @@ onMounted(() => {
   .metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .metric-value { font-size: 24px; }
   .quick-actions { grid-template-columns: 1fr; gap: 10px; }
+  .dash-row2 { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 420px) {

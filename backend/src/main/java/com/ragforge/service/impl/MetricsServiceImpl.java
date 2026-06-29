@@ -7,6 +7,7 @@ import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.EvalDatasetMapper;
 import com.ragforge.mapper.EvalExperimentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.mapper.ModelUsageDailyMapper;
 import com.ragforge.mapper.RetrievalLogMapper;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
@@ -16,6 +17,7 @@ import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.entity.RetrievalLog;
 import com.ragforge.model.vo.DashboardActivityVO;
 import com.ragforge.model.vo.DashboardMetricsVO;
+import com.ragforge.model.vo.DashboardTrendPointVO;
 import com.ragforge.security.AdminOverrideHolder;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
@@ -39,11 +41,14 @@ public class MetricsServiceImpl implements MetricsService {
 
   private static final String KB_STATUS_DELETED = "deleted";
   private static final long DASHBOARD_CACHE_TTL_MS = 10_000L;
+  /** 核心指标统计窗口：近 7 天（含今天，共 7 个自然日）。 */
+  private static final int WINDOW_DAYS = 7;
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper documentChunkMapper;
   private final RetrievalLogMapper retrievalLogMapper;
+  private final ModelUsageDailyMapper modelUsageDailyMapper;
   private final EvalExperimentMapper evalExperimentMapper;
   private final EvalDatasetMapper evalDatasetMapper;
   // 缓存按主体分键：管理员看全平台，普通用户看自己的数据，二者不可串用同一份缓存。
@@ -92,6 +97,7 @@ public class MetricsServiceImpl implements MetricsService {
     }
 
     LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+    LocalDateTime windowStart = windowStart();
     if (uid == null) {
       vo.setTodayApiCalls(0);
       vo.setAvgLatencyMs(0);
@@ -101,9 +107,12 @@ public class MetricsServiceImpl implements MetricsService {
               new LambdaQueryWrapper<RetrievalLog>()
                   .eq(RetrievalLog::getUserId, uid)
                   .ge(RetrievalLog::getCreatedAt, startOfDay)));
-      vo.setAvgLatencyMs(calcAvgLatencyMs(startOfDay, uid));
+      vo.setAvgLatencyMs(calcAvgLatencyMs(windowStart, uid));
     }
-    applyRetrievalQuality(vo, startOfDay, uid);
+    applyRetrievalQuality(vo, windowStart, uid);
+    applyIngestHealth(vo, ownedIds, false);
+    applyCost(vo);
+    vo.setRetrievalTrend(loadRetrievalTrend(windowStart, uid));
     // 命中率源自评测实验（管理员/编辑功能），普通用户无评测，不展示。
     vo.setHitRate(0.0);
     vo.setRecentActivities(uid == null ? List.of() : userRecentActivities(uid, ownedIds, 10));
@@ -186,11 +195,12 @@ public class MetricsServiceImpl implements MetricsService {
     long chunkCount = documentChunkMapper.selectCount(null);
 
     LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+    LocalDateTime windowStart = windowStart();
     long todayApiCalls =
         retrievalLogMapper.selectCount(
             new LambdaQueryWrapper<RetrievalLog>().ge(RetrievalLog::getCreatedAt, startOfDay));
 
-    long avgLatencyMs = calcAvgLatencyMs(startOfDay);
+    long avgLatencyMs = calcAvgLatencyMs(windowStart);
     double hitRate = latestTop3HitRate();
 
     vo.setKbCount(kbCount);
@@ -199,7 +209,10 @@ public class MetricsServiceImpl implements MetricsService {
     vo.setTodayApiCalls(todayApiCalls);
     vo.setAvgLatencyMs(avgLatencyMs);
     vo.setHitRate(hitRate);
-    applyRetrievalQuality(vo, startOfDay, null);
+    applyRetrievalQuality(vo, windowStart, null);
+    applyIngestHealth(vo, List.of(), true);
+    applyCost(vo);
+    vo.setRetrievalTrend(loadRetrievalTrend(windowStart, null));
     vo.setRecentActivities(getRecentActivities(10));
     return vo;
   }
@@ -215,6 +228,7 @@ public class MetricsServiceImpl implements MetricsService {
         "count(*) as total",
         "count(*) filter (where result_count = 0) as zero_cnt",
         "avg(result_count) as avg_recall",
+        "percentile_cont(0.5) within group (order by latency_ms) as p50",
         "percentile_cont(0.95) within group (order by latency_ms) as p95",
         "count(*) filter (where rewritten_queries is not null and rewritten_queries <> '') as rewrite_cnt");
     wrapper.ge("created_at", startOfDay);
@@ -227,13 +241,131 @@ public class MetricsServiceImpl implements MetricsService {
     }
     Map<String, Object> r = rows.get(0);
     long total = asLong(r.get("total"));
+    vo.setPeriodApiCalls(total);
     if (total <= 0) {
       return;
     }
     vo.setZeroResultRate(asDouble(r.get("zero_cnt")) / total);
     vo.setAvgRecallCount(asDouble(r.get("avg_recall")));
+    vo.setP50LatencyMs(Math.round(asDouble(r.get("p50"))));
     vo.setP95LatencyMs(Math.round(asDouble(r.get("p95"))));
     vo.setRewriteRate(asDouble(r.get("rewrite_cnt")) / total);
+  }
+
+  /** 近 7 天窗口起点（含今天，共 WINDOW_DAYS 个自然日）。 */
+  private LocalDateTime windowStart() {
+    return LocalDate.now().minusDays(WINDOW_DAYS - 1L).atStartOfDay();
+  }
+
+  /**
+   * 入库处理健康度：按 documents.parse_status 分桶（completed/processing/queued/failed）。
+   * parse_status 历史大小写混用，统一 lower() 归一；allScope=true 统计全平台，否则限定 kbScope。
+   */
+  private void applyIngestHealth(DashboardMetricsVO vo, List<Long> kbScope, boolean allScope) {
+    QueryWrapper<Document> w = new QueryWrapper<>();
+    w.select("lower(parse_status) as st", "count(*) as cnt");
+    if (!allScope) {
+      if (kbScope == null || kbScope.isEmpty()) {
+        return;
+      }
+      w.in("kb_id", kbScope);
+    }
+    w.groupBy("lower(parse_status)");
+    List<Map<String, Object>> rows = documentMapper.selectMaps(w);
+    if (rows == null) {
+      return;
+    }
+    long completed = 0;
+    long processing = 0;
+    long queued = 0;
+    long failed = 0;
+    for (Map<String, Object> row : rows) {
+      String st = row.get("st") == null ? "" : row.get("st").toString();
+      long cnt = asLong(row.get("cnt"));
+      switch (st) {
+        case "completed" -> completed += cnt;
+        case "failed" -> failed += cnt;
+        case "processing", "reprocessing" -> processing += cnt;
+        case "pending", "queued" -> queued += cnt;
+        default -> {
+          // 未知状态忽略，不计入任何桶。
+        }
+      }
+    }
+    vo.setIngestCompleted(completed);
+    vo.setIngestProcessing(processing);
+    vo.setIngestQueued(queued);
+    vo.setIngestFailed(failed);
+    long terminal = completed + failed;
+    vo.setIngestSuccessRate(terminal > 0 ? (double) completed / terminal : 0.0);
+  }
+
+  /** 近 7 天成本：按用途聚合 model_usage_daily（计量未按用户归属，故全平台口径）。 */
+  private void applyCost(DashboardMetricsVO vo) {
+    List<Map<String, Object>> rows =
+        modelUsageDailyMapper.aggregateCostSince(LocalDate.now().minusDays(WINDOW_DAYS - 1L));
+    BigDecimal total = BigDecimal.ZERO;
+    BigDecimal embedding = BigDecimal.ZERO;
+    BigDecimal rerank = BigDecimal.ZERO;
+    BigDecimal llm = BigDecimal.ZERO;
+    long tokens = 0;
+    if (rows != null) {
+      for (Map<String, Object> row : rows) {
+        String purpose = row.get("purpose") == null ? "" : row.get("purpose").toString();
+        BigDecimal cost = asBigDecimal(row.get("cost"));
+        tokens += asLong(row.get("tokens"));
+        total = total.add(cost);
+        switch (purpose) {
+          case "embedding" -> embedding = embedding.add(cost);
+          case "rerank" -> rerank = rerank.add(cost);
+          // OCR/REWRITE/ANSWER/JUDGE 归入 LLM 大类，保证 total = embedding + rerank + llm。
+          default -> llm = llm.add(cost);
+        }
+      }
+    }
+    vo.setTotalCost(total);
+    vo.setTokenTotal(tokens);
+    vo.setEmbeddingCost(embedding);
+    vo.setRerankCost(rerank);
+    vo.setLlmCost(llm);
+  }
+
+  /** 近 7 天检索趋势：按自然日聚合请求数与 P95；无数据的日子不补零，由前端按返回点渲染。 */
+  private List<DashboardTrendPointVO> loadRetrievalTrend(LocalDateTime windowStart, Long uid) {
+    QueryWrapper<RetrievalLog> w = new QueryWrapper<>();
+    w.select(
+        "to_char(created_at, 'MM-DD') as d",
+        "count(*) as cnt",
+        "percentile_cont(0.95) within group (order by latency_ms) as p95");
+    w.ge("created_at", windowStart);
+    if (uid != null) {
+      w.eq("user_id", uid);
+    }
+    w.groupBy("to_char(created_at, 'MM-DD'), date(created_at)");
+    w.last("ORDER BY date(created_at)");
+    List<Map<String, Object>> rows = retrievalLogMapper.selectMaps(w);
+    if (rows == null) {
+      return List.of();
+    }
+    List<DashboardTrendPointVO> trend = new ArrayList<>();
+    for (Map<String, Object> row : rows) {
+      DashboardTrendPointVO p = new DashboardTrendPointVO();
+      p.setDate(row.get("d") == null ? "" : row.get("d").toString());
+      p.setCount(asLong(row.get("cnt")));
+      p.setP95LatencyMs(Math.round(asDouble(row.get("p95"))));
+      trend.add(p);
+    }
+    return trend;
+  }
+
+  private static BigDecimal asBigDecimal(Object o) {
+    if (o instanceof BigDecimal b) return b;
+    if (o instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+    try {
+      return o == null ? BigDecimal.ZERO : new BigDecimal(o.toString());
+    } catch (NumberFormatException e) {
+      return BigDecimal.ZERO;
+    }
   }
 
   private static long asLong(Object o) {
