@@ -28,6 +28,7 @@ public class DocumentProcessConsumer implements RocketMQListener<Long> {
   private final DocumentPipelineService pipelineService;
   private final ImagePipelineService imagePipelineService;
   private final RagforgeMetrics metrics;
+  private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
   @Override
   public void onMessage(Long documentId) {
@@ -38,11 +39,28 @@ public class DocumentProcessConsumer implements RocketMQListener<Long> {
       return;
     }
     Document doc = documentMapper.selectById(documentId);
-    if (doc != null && normalizeContentType(doc.getFileType()).startsWith("image/")) {
-      processWithMetrics("image", documentId, () -> imagePipelineService.processImageDocument(documentId));
-    } else {
-      processWithMetrics("text", documentId, () -> pipelineService.processDocument(documentId));
+    // 入库链路无请求上下文：按文档所属库的组织设上下文，使 embedding/OCR 成本归该组织。
+    Long orgId = resolveOrgId(doc);
+    try {
+      if (orgId != null) {
+        com.ragforge.security.OrgContextHolder.set(orgId);
+      }
+      if (doc != null && normalizeContentType(doc.getFileType()).startsWith("image/")) {
+        processWithMetrics("image", documentId, () -> imagePipelineService.processImageDocument(documentId));
+      } else {
+        processWithMetrics("text", documentId, () -> pipelineService.processDocument(documentId));
+      }
+    } finally {
+      com.ragforge.security.OrgContextHolder.clear();
     }
+  }
+
+  private Long resolveOrgId(Document doc) {
+    if (doc == null || doc.getKbId() == null) {
+      return null;
+    }
+    com.ragforge.model.entity.KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
+    return kb == null ? null : kb.getOrgId();
   }
 
   private void processWithMetrics(String modality, Long documentId, Runnable action) {

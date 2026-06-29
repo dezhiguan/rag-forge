@@ -111,7 +111,7 @@ public class MetricsServiceImpl implements MetricsService {
     }
     applyRetrievalQuality(vo, windowStart, orgId);
     applyIngestHealth(vo, kbIds, false);
-    applyCost(vo);
+    applyCost(vo, orgId);
     vo.setRetrievalTrend(loadRetrievalTrend(windowStart, orgId));
     // 命中率源自评测实验（管理员/编辑功能），普通用户无评测，不展示。
     vo.setHitRate(0.0);
@@ -211,7 +211,7 @@ public class MetricsServiceImpl implements MetricsService {
     vo.setHitRate(hitRate);
     applyRetrievalQuality(vo, windowStart, null);
     applyIngestHealth(vo, List.of(), true);
-    applyCost(vo);
+    applyCost(vo, null);
     vo.setRetrievalTrend(loadRetrievalTrend(windowStart, null));
     vo.setRecentActivities(getRecentActivities(10));
     return vo;
@@ -312,10 +312,10 @@ public class MetricsServiceImpl implements MetricsService {
     vo.setIngestSuccessRate(terminal > 0 ? (double) completed / terminal : 0.0);
   }
 
-  /** 近 7 天成本：按用途聚合 model_usage_daily（计量未按用户归属，故全平台口径）。 */
-  private void applyCost(DashboardMetricsVO vo) {
+  /** 近 7 天成本：按用途聚合 model_usage_daily。orgId=null 为全平台（管理员破玻璃），否则限定本组织。 */
+  private void applyCost(DashboardMetricsVO vo, Long orgId) {
     List<Map<String, Object>> rows =
-        modelUsageDailyMapper.aggregateCostSince(LocalDate.now().minusDays(WINDOW_DAYS - 1L));
+        modelUsageDailyMapper.aggregateCostSince(LocalDate.now().minusDays(WINDOW_DAYS - 1L), orgId);
     BigDecimal total = BigDecimal.ZERO;
     BigDecimal embedding = BigDecimal.ZERO;
     BigDecimal rerank = BigDecimal.ZERO;

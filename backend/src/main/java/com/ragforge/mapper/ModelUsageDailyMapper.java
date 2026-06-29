@@ -14,7 +14,10 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface ModelUsageDailyMapper extends BaseMapper<ModelUsageDaily> {
 
-  /** 按用途聚合自 {@code since}（含）起的 token 与成本，供驾驶舱成本卡使用。 */
+  /**
+   * 按用途聚合自 {@code since}（含）起的 token 与成本，供驾驶舱成本卡使用。 orgId 为 null 时统计全平台（管理员破玻璃），
+   * 否则只统计该组织。
+   */
   @Select(
       """
       SELECT lower(purpose) AS purpose,
@@ -22,20 +25,22 @@ public interface ModelUsageDailyMapper extends BaseMapper<ModelUsageDaily> {
              COALESCE(SUM(cost), 0) AS cost
       FROM model_usage_daily
       WHERE stat_date >= #{since}
+        AND (#{orgId} IS NULL OR org_id = #{orgId})
       GROUP BY lower(purpose)
       """)
-  List<Map<String, Object>> aggregateCostSince(@Param("since") LocalDate since);
+  List<Map<String, Object>> aggregateCostSince(
+      @Param("since") LocalDate since, @Param("orgId") Long orgId);
 
   /** 按 (model_code, stat_date) 累加写入；冲突即累加，用于计量批量落库。 */
   @Insert(
       """
       INSERT INTO model_usage_daily
-        (model_code, purpose, stat_date, call_count, input_tokens, output_tokens,
+        (model_code, purpose, stat_date, org_id, call_count, input_tokens, output_tokens,
          cost, success_count, fail_count, total_latency_ms, updated_at)
       VALUES
-        (#{modelCode}, #{purpose}, #{statDate}, #{callCount}, #{inputTokens}, #{outputTokens},
+        (#{modelCode}, #{purpose}, #{statDate}, #{orgId}, #{callCount}, #{inputTokens}, #{outputTokens},
          #{cost}, #{successCount}, #{failCount}, #{totalLatencyMs}, NOW())
-      ON CONFLICT (model_code, stat_date) DO UPDATE SET
+      ON CONFLICT (model_code, stat_date, org_id) DO UPDATE SET
         call_count       = model_usage_daily.call_count       + EXCLUDED.call_count,
         input_tokens     = model_usage_daily.input_tokens     + EXCLUDED.input_tokens,
         output_tokens    = model_usage_daily.output_tokens    + EXCLUDED.output_tokens,
@@ -49,6 +54,7 @@ public interface ModelUsageDailyMapper extends BaseMapper<ModelUsageDaily> {
       @Param("modelCode") String modelCode,
       @Param("purpose") String purpose,
       @Param("statDate") LocalDate statDate,
+      @Param("orgId") long orgId,
       @Param("callCount") long callCount,
       @Param("inputTokens") long inputTokens,
       @Param("outputTokens") long outputTokens,
