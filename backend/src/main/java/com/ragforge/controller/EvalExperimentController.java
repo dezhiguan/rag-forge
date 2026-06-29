@@ -7,7 +7,6 @@ import com.ragforge.service.EvalExperimentService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,7 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/eval/experiments")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR')")
+// 下放到组织：登录用户即可访问，数据按所属 KB 的组织逐条隔离(见 EvalExperimentServiceImpl)；
+// 可见性由前端 nav 按组织角色(OWNER/ADMIN)控制。
 public class EvalExperimentController {
 
   private final EvalExperimentService evalExperimentService;

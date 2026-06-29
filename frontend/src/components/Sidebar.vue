@@ -29,12 +29,14 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import { useOrg } from '../composables/useOrg'
 import { canAccessRoute } from '../router/guards'
 import OrgSwitcher from './OrgSwitcher.vue'
 
 const router = useRouter()
 const route = useRoute()
 const { ragRole, scopes } = useAuth()
+const { current } = useOrg()
 const collapsed = ref(false)
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
@@ -77,13 +79,15 @@ const ALL_NAV_ITEMS = [
   { path: '/debug', icon: '🔍', label: '检索调试台', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'], scope: 'rag:debug:run' } },
   { path: '/answer', icon: '💬', label: '应答调试台', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'], scope: 'rag:debug:run' } },
   { path: '/perf-probe', icon: '⏱', label: '性能诊断', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
-  { path: '/eval', icon: '🧪', label: '评测实验室', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
+  { path: '/eval', icon: '🧪', label: '评测实验室', meta: { orgRoles: ['OWNER', 'ADMIN'] } },
   { path: '/evaluation/quality', icon: '📈', label: '质量看板', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/models', icon: '🧠', label: '模型 & 成本', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'] } },
   { path: '/api', icon: '🔌', label: '开发者中心', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'] } },
 ]
 
-const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(item.meta, ragRole.value, scopes.value)))
+const navItems = computed(() =>
+  ALL_NAV_ITEMS.filter((item) => canAccessRoute(item.meta, ragRole.value, scopes.value, current.value?.myRole)),
+)
 </script>
 
 <style scoped>
