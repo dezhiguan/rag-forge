@@ -3,9 +3,9 @@
     <div v-if="isPersonal" class="upgrade-banner">
       <span class="ub-ico">⬆</span>
       <span class="ub-txt">
-        <b>当前为个人空间</b> —— 需要和同事协作？创建团队组织即可共享知识库、邀请成员，按组织聚合指标。
+        <b>当前为个人组织</b> —— 需要和同事协作？升级为团队组织即可邀请成员、共享知识库，<b>组织 ID 不变、知识库零迁移</b>。
       </span>
-      <button class="btn btn-primary btn-sm" @click="$router.push({ path: '/orgs', query: { create: 1 } })">升级到团队组织</button>
+      <button class="btn btn-primary btn-sm" :disabled="upgrading" @click="onUpgrade">升级到团队组织</button>
     </div>
 
     <div v-if="isPlatform" class="breakglass-banner">
@@ -205,11 +205,35 @@ import { onMounted, reactive, ref, computed } from 'vue'
 import { getDashboardMetrics } from '../api/metrics'
 import { reprocessDocument } from '../api/document'
 import { useOrg } from '../composables/useOrg'
-import { listMembers } from '../api/org'
+import { listMembers, upgradeOrg } from '../api/org'
+import { useToast } from '../composables/useToast'
+import { confirm as confirmDialog } from '../composables/useConfirm'
 
-const { current, isPersonal, isPlatform } = useOrg()
+const { current, isPersonal, isPlatform, load: loadOrgs } = useOrg()
+const toast = useToast()
 const loading = ref(false)
+const upgrading = ref(false)
 const lastUpdated = ref('')
+
+async function onUpgrade() {
+  if (upgrading.value || !current.value.id) return
+  const ok = await confirmDialog({
+    title: '升级为团队组织',
+    message: '升级后可邀请成员、共享知识库；组织 ID 不变、知识库零迁移。确认升级？',
+    confirmText: '升级',
+  })
+  if (!ok) return
+  upgrading.value = true
+  try {
+    await upgradeOrg(current.value.id)
+    await loadOrgs()
+    toast.success('已升级为团队组织')
+  } catch (e) {
+    /* 错误由全局拦截提示 */
+  } finally {
+    upgrading.value = false
+  }
+}
 
 // ===== 组织成员概览（仅团队组织展示，复用 /orgs/{id}/members） =====
 const members = ref([])

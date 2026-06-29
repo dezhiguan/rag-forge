@@ -8,16 +8,6 @@
       <button class="btn-primary" @click="openCreate = true">＋ 创建组织</button>
     </div>
 
-    <!-- 个人空间（始终存在，不可删除） -->
-    <div class="personal-bar">
-      <span class="pb-ava">{{ initial(personalName) }}</span>
-      <div class="pb-meta">
-        <div class="pb-name">{{ personalName }} 的个人组织</div>
-        <div class="pb-sub">仅你可见 · 不可删除 · 个人库归属此处</div>
-      </div>
-      <button class="btn" @click="enterPersonal">进入</button>
-    </div>
-
     <div class="sec-label">团队组织（{{ teamOrgs.length }}）</div>
 
     <div v-if="teamOrgs.length" class="grid">
@@ -77,10 +67,10 @@ import { confirm as confirmDialog } from '../composables/useConfirm'
 const router = useRouter()
 const toast = useToast()
 const { orgs, load, setCurrent } = useOrg()
-const { ragRole, userDisplayName } = useAuth()
+const { ragRole } = useAuth()
 
-const personalName = computed(() => userDisplayName.value)
-const teamOrgs = computed(() => orgs.value.filter((o) => o.id != null))
+// 个人组织(personal)不在"团队组织"列表里展示，通过左上切换器进入。
+const teamOrgs = computed(() => orgs.value.filter((o) => o.id != null && !o.personal))
 
 const openCreate = ref(false)
 const creating = ref(false)
@@ -111,10 +101,6 @@ async function reload() {
 function enter(o) {
   setCurrent(o.id)
   router.push('/orgs/manage')
-}
-function enterPersonal() {
-  setCurrent(null)
-  router.push('/')
 }
 
 async function onCreate() {
@@ -178,10 +164,6 @@ reload()
 .btn-danger { color: var(--red); border-color: #fecaca; }
 .btn-danger:hover { background: #fef2f2; }
 
-.personal-bar { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-sm); padding: 14px 18px; margin-bottom: 16px; }
-.pb-ava { width: 40px; height: 40px; border-radius: 11px; background: var(--primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; }
-.pb-meta { flex: 1; } .pb-name { font-size: 14px; font-weight: 700; } .pb-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.pb-tag { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); }
 
 .sec-label { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .4px; margin: 6px 2px 12px; }
 

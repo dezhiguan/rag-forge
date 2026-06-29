@@ -390,7 +390,7 @@ const isTeamOrg = computed(() => !isPersonal.value && !isPlatform.value && org.v
 const canManage = computed(() => org.value?.myRole === 'OWNER' || org.value?.myRole === 'ADMIN')
 const isOwner = computed(() => org.value?.myRole === 'OWNER')
 const myUserId = computed(() => authState.me?.userId ?? null)
-const manageableOrgs = computed(() => orgs.value.filter((o) => o.id != null))
+const manageableOrgs = computed(() => orgs.value.filter((o) => o.id != null && !o.personal))
 
 const tab = ref('general')
 const members = ref([])
@@ -518,8 +518,9 @@ async function onDeleteOrg() {
   })
   if (!ok) return
   await deleteOrg(org.value.id)
-  setCurrent(null)
+  // 删除后当前组织已失效，loadOrgs 会把当前上下文回退到个人组织
   await loadOrgs()
+  router.push('/orgs')
   toast.success('组织已删除')
 }
 
