@@ -6,7 +6,7 @@
           <button class="btn btn-primary" @click="openCreate">+ 创建知识库</button>
           <button class="btn btn-secondary" :disabled="loadingKb" @click="loadKbs">刷新</button>
           <button
-            v-if="isAdmin"
+            v-if="showAdminViewAll"
             class="btn btn-sm"
             :class="adminViewAll ? 'btn-primary' : 'btn-secondary'"
             :title="adminViewAll ? '正在以管理员身份查看全部知识库（已留审计）' : '管理员破玻璃：查看全部用户的知识库（将被审计）'"
@@ -486,6 +486,7 @@ import { documentDetailRoute } from '../composables/useDocumentNav'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { useAuth } from '../composables/useAuth'
+import { useOrg } from '../composables/useOrg'
 import {
   CHUNK_OVERLAP_MAX,
   CHUNK_OVERLAP_MIN,
@@ -516,7 +517,10 @@ const route = useRoute()
 const { start: startDocPolling, stop: stopDocPolling } = useDocumentPolling()
 
 const { ragRole } = useAuth()
-const isAdmin = computed(() => ragRole.value === 'ADMIN')
+const { isPlatform } = useOrg()
+// 「查看全部知识库」是平台级越权：仅在「全平台视图」(破玻璃)下出现，与驾驶舱口径一致；
+// 个人/团队组织上下文下不显示。
+const showAdminViewAll = computed(() => ragRole.value === 'ADMIN' && isPlatform.value)
 const adminViewAll = ref(false)
 const adminOverrideReason = ref('')
 
