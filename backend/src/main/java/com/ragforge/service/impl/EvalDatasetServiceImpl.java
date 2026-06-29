@@ -39,7 +39,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
     return evalDatasetMapper.selectList(w).stream().map(EvalDatasetVO::fromEntity).toList();
   }
 
-  /** 当前组织的 KB ids；破玻璃(全平台)或无组织上下文返回 null（表示不按组织过滤）。 */
+  /** 当前组织可访问的 KB ids = 本组织的库 + 公开库；破玻璃/无组织上下文返回 null（不过滤）。 */
   private List<Long> currentOrgKbIdsOrNull() {
     com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
     if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
@@ -52,8 +52,12 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
     return knowledgeBaseMapper
         .selectList(
             new LambdaQueryWrapper<KnowledgeBase>()
-                .eq(KnowledgeBase::getOrgId, orgId)
-                .ne(KnowledgeBase::getStatus, KB_STATUS_DELETED))
+                .ne(KnowledgeBase::getStatus, KB_STATUS_DELETED)
+                .and(
+                    w ->
+                        w.eq(KnowledgeBase::getOrgId, orgId)
+                            .or()
+                            .eq(KnowledgeBase::getVisibility, "PUBLIC")))
         .stream()
         .map(KnowledgeBase::getId)
         .toList();
@@ -95,6 +99,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
     if (dataset == null) {
       throw new BizException(404, "评测数据集不存在");
     }
+    requireKbInCurrentOrg(dataset.getKbId()); // 逐条组织隔离：数据集所属 KB 必须在当前组织
     return dataset;
   }
 
@@ -102,6 +107,18 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
     KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
     if (kb == null || KB_STATUS_DELETED.equals(kb.getStatus())) {
       throw new BizException(404, "知识库不存在");
+    }
+    requireKbInCurrentOrg(kbId); // 创建评测集只能用本组织的 KB
+  }
+
+  /** 资源所属 KB 必须在当前组织；破玻璃(全平台)不限制。 */
+  private void requireKbInCurrentOrg(Long kbId) {
+    List<Long> scope = currentOrgKbIdsOrNull();
+    if (scope == null) {
+      return;
+    }
+    if (kbId == null || !scope.contains(kbId)) {
+      throw new BizException(403, "EVAL_RESOURCE_NOT_IN_ORG");
     }
   }
 }

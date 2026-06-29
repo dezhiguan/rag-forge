@@ -170,11 +170,26 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     return knowledgeBaseMapper
         .selectList(
             new LambdaQueryWrapper<KnowledgeBase>()
-                .eq(KnowledgeBase::getOrgId, orgId)
-                .ne(KnowledgeBase::getStatus, "deleted"))
+                .ne(KnowledgeBase::getStatus, "deleted")
+                .and(
+                    w ->
+                        w.eq(KnowledgeBase::getOrgId, orgId)
+                            .or()
+                            .eq(KnowledgeBase::getVisibility, "PUBLIC")))
         .stream()
         .map(KnowledgeBase::getId)
         .toList();
+  }
+
+  /** 资源所属 KB 必须在当前组织(或公开)；破玻璃不限制。 */
+  private void requireKbInCurrentOrg(Long kbId) {
+    List<Long> scope = currentOrgKbIdsOrNull();
+    if (scope == null) {
+      return;
+    }
+    if (kbId == null || !scope.contains(kbId)) {
+      throw new BizException(403, "EVAL_RESOURCE_NOT_IN_ORG");
+    }
   }
 
   @Override
@@ -658,6 +673,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     if (dataset == null) {
       throw new BizException(404, "评测数据集不存在");
     }
+    requireKbInCurrentOrg(dataset.getKbId()); // 逐条组织隔离：实验所属数据集的 KB 必须在当前组织
     return dataset;
   }
 
