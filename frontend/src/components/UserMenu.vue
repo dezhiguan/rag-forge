@@ -167,7 +167,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
   right: 0;
   left: auto;
   z-index: 200;
-  min-width: 180px;
+  min-width: 140px;
   padding: 6px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
