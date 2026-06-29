@@ -1,9 +1,6 @@
 <template>
   <nav class="sidebar" :class="{ collapsed: collapsed && !isMobile, 'mobile-open': isMobile && mobileOpen }">
     <OrgSwitcher :collapsed="collapsed && !isMobile" />
-    <div class="sidebar-user" v-show="!collapsed || isMobile">
-      <UserMenu />
-    </div>
     <NotificationBell :collapsed="collapsed && !isMobile" />
     <div class="sidebar-nav">
       <router-link
@@ -18,6 +15,9 @@
         <span class="nav-icon">{{ item.icon }}</span>
         <span class="nav-label" v-show="!collapsed || isMobile">{{ item.label }}</span>
       </router-link>
+    </div>
+    <div class="sidebar-user" v-show="!collapsed || isMobile">
+      <UserMenu />
     </div>
     <div class="sidebar-footer" v-show="!collapsed || isMobile">
       <div class="status-dot"></div>
@@ -108,8 +108,8 @@ const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(it
 .sidebar.collapsed { width: 56px; }
 
 .sidebar-user {
-  padding: 14px 10px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .sidebar-nav {
@@ -183,10 +183,6 @@ const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(it
     overflow-y: auto;
     padding-bottom: env(safe-area-inset-bottom);
     box-shadow: 4px 0 20px rgba(0,0,0,0.15);
-  }
-
-  .sidebar-user {
-    padding-top: calc(14px + env(safe-area-inset-top));
   }
 
   .nav-item {
