@@ -712,8 +712,30 @@ onMounted(async () => {
 .form-input:disabled { background: #f8fafc; color: var(--text-muted); }
 .form-static { flex: 1; font-size: 13px; color: var(--slate); }
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
-.form-actions .btn-primary[disabled] { opacity: 0.6; cursor: not-allowed; }
 .wip-note { font-size: 12px; color: var(--text-muted); }
+
+/* 组件内按钮统一样式（这页按钮只带 btn-primary，未带基础 .btn 类） */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 9px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.28);
+  transition: background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+.btn-primary.btn-sm { height: 30px; padding: 0 12px; font-size: 12px; border-radius: 8px; }
 
 /* 成员/列表 */
 .member-tools { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
