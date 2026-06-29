@@ -63,6 +63,13 @@ public class OrgController {
     return Result.ok();
   }
 
+  /** 退出组织（成员退出自己；唯一 OWNER 需先转移所有权）。 */
+  @PostMapping("/{orgId}/leave")
+  public Result<Void> leave(@PathVariable Long orgId) {
+    orgService.leaveOrganization(orgId);
+    return Result.ok();
+  }
+
   @GetMapping("/{orgId}/members")
   public Result<List<Map<String, Object>>> members(@PathVariable Long orgId) {
     return Result.ok(orgService.listMembers(orgId));

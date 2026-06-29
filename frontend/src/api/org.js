@@ -7,6 +7,7 @@ export const updateOrg = (orgId, data) => request.patch(`/orgs/${orgId}`, data)
 export const transferOwner = (orgId, userId) =>
   request.post(`/orgs/${orgId}/transfer-owner`, { userId })
 export const deleteOrg = (orgId) => request.delete(`/orgs/${orgId}`)
+export const leaveOrg = (orgId) => request.post(`/orgs/${orgId}/leave`)
 export const getOrg = (orgId) => request.get(`/orgs/${orgId}`)
 export const listMembers = (orgId) => request.get(`/orgs/${orgId}/members`)
 export const searchMemberCandidates = (orgId, q) =>

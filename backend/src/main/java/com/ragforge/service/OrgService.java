@@ -95,8 +95,30 @@ public class OrgService {
     return organizationMapper
         .selectBatchIds(orgIds)
         .stream()
-        .map(o -> toView(o, orgMemberMapper.findRole(o.getId(), uid)))
+        .map(
+            o -> {
+              Map<String, Object> v = toView(o, orgMemberMapper.findRole(o.getId(), uid));
+              v.put("memberCount", countMembers(o.getId()));
+              v.put("kbCount", countOrgKbs(o.getId()));
+              return v;
+            })
         .toList();
+  }
+
+  private long countMembers(Long orgId) {
+    Long c =
+        orgMemberMapper.selectCount(
+            new LambdaQueryWrapper<OrgMember>().eq(OrgMember::getOrgId, orgId));
+    return c == null ? 0 : c;
+  }
+
+  private long countOrgKbs(Long orgId) {
+    Long c =
+        knowledgeBaseMapper.selectCount(
+            new LambdaQueryWrapper<com.ragforge.model.entity.KnowledgeBase>()
+                .eq(com.ragforge.model.entity.KnowledgeBase::getOrgId, orgId)
+                .ne(com.ragforge.model.entity.KnowledgeBase::getStatus, "deleted"));
+    return c == null ? 0 : c;
   }
 
   /** 组织详情（仅成员可见）。 */
@@ -269,6 +291,17 @@ public class OrgService {
       throw new BizException(409, "ORG_HAS_KBS");
     }
     organizationMapper.deleteById(orgId); // org_members / org_invitations 由外键 ON DELETE CASCADE 清理
+  }
+
+  /** 退出组织（任意成员退出自己）；唯一 OWNER 不能直接退出，需先转移所有权。 */
+  @Transactional
+  public void leaveOrganization(Long orgId) {
+    Long uid = currentUserId();
+    OrgMember me = findMember(orgId, uid);
+    if (OWNER.equals(me.getRole()) && ownerCount(orgId) <= 1) {
+      throw new BizException(409, "LAST_OWNER_CANNOT_LEAVE");
+    }
+    orgMemberMapper.deleteById(me.getId());
   }
 
   // ---- helpers ----
