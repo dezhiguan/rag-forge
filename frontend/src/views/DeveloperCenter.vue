@@ -1,6 +1,9 @@
 <template>
   <div class="page-body dev-center">
-    <div class="page-s">管理接入凭证、查阅接口与 MCP 集成方式。凭证与接口示例均归属<b>当前组织</b>，切换组织即切换上下文。</div>
+    <Teleport to="#topbar-left">
+      <span class="topbar-divider" />
+      <span class="topbar-subtitle">管理接入凭证、查阅接口与 MCP 集成方式，均归属当前组织，切换组织即切换上下文</span>
+    </Teleport>
 
     <!-- 子 tab -->
     <div class="seg">
@@ -161,8 +164,10 @@ const canManage = computed(() => {
 })
 const orgName = computed(() => current.value?.name || '当前组织')
 const orgIdText = computed(() => (isPlatform.value ? '—' : (currentOrgId.value ?? '—')))
-const baseUrl = computed(() => `${location.origin}/api/v1`)
-const mcpUrl = computed(() => `${location.origin}/mcp`)
+// 对外公开的线上域名（开发者按此接入，非本地 dev 地址）
+const PUBLIC_BASE = 'https://api.ragforge.net'
+const baseUrl = computed(() => `${PUBLIC_BASE}/api/v1`)
+const mcpUrl = computed(() => `${PUBLIC_BASE}/mcp`)
 const curlText = computed(
   () =>
     `curl ${baseUrl.value}/search \\\n` +
