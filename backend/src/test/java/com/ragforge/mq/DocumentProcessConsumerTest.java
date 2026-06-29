@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.entity.Document;
 import com.ragforge.pipeline.DocumentPipelineService;
@@ -22,6 +23,7 @@ class DocumentProcessConsumerTest {
   @Mock private DocumentMapper documentMapper;
   @Mock private DocumentPipelineService pipelineService;
   @Mock private ImagePipelineService imagePipelineService;
+  @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
 
   private DocumentProcessConsumer consumer;
 
@@ -32,7 +34,8 @@ class DocumentProcessConsumerTest {
             documentMapper,
             pipelineService,
             imagePipelineService,
-            new RagforgeMetrics(new SimpleMeterRegistry()));
+            new RagforgeMetrics(new SimpleMeterRegistry()),
+            knowledgeBaseMapper);
   }
 
   @Test

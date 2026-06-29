@@ -144,6 +144,7 @@ class SearchControllerTest {
             eq(120L),
             eq(List.of(hit)),
             isNull(),
+            isNull(),
             isNull());
   }
 
