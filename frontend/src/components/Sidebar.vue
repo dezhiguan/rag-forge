@@ -1,5 +1,6 @@
 <template>
   <nav class="sidebar" :class="{ collapsed: collapsed && !isMobile, 'mobile-open': isMobile && mobileOpen }">
+    <OrgSwitcher :collapsed="collapsed && !isMobile" />
     <div class="sidebar-user" v-show="!collapsed || isMobile">
       <UserMenu />
     </div>
@@ -33,6 +34,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { canAccessRoute } from '../router/guards'
 import UserMenu from './UserMenu.vue'
+import OrgSwitcher from './OrgSwitcher.vue'
 
 const router = useRouter()
 const route = useRoute()

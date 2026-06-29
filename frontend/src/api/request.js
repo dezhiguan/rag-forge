@@ -84,9 +84,18 @@ const request = axios.create({
 
 request.interceptors.request.use((config) => {
   const { state } = useAuth()
+  config.headers = config.headers || {}
   if (state.accessToken) {
-    config.headers = config.headers || {}
     config.headers.Authorization = `Bearer ${state.accessToken}`
+  }
+  // 注入当前组织上下文（null = 个人，不带头）。从 localStorage 读，避免与 api 层循环依赖。
+  try {
+    const orgId = localStorage.getItem('ragforge.currentOrgId')
+    if (orgId && orgId !== 'null' && orgId !== '') {
+      config.headers['X-Org-Id'] = orgId
+    }
+  } catch {
+    /* ignore */
   }
   return config
 })
