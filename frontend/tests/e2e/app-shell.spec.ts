@@ -691,3 +691,197 @@ test.describe('入库健康度与趋势', () => {
     expect(d).toMatch(/Z\s*$/);
   });
 });
+
+/* ======================================================================
+ * 模块 13：组织数据隔离与口径一致性（本次实现：KB/指标/成本按组织聚合）
+ * 资深测试视角：专挖"串味 / 部分 stale / 量级泄漏 / 往返漂移 / 团队不可直接公开"等隐藏回归。
+ * ==================================================================== */
+function num(t: string | null): number {
+  if (!t) return NaN;
+  let s = t.replace(/[¥,\s%]/g, '');
+  let mult = 1;
+  if (/K$/i.test(s)) { mult = 1e3; s = s.replace(/K$/i, ''); }
+  else if (/M$/i.test(s)) { mult = 1e6; s = s.replace(/M$/i, ''); }
+  return parseFloat(s) * mult;
+}
+const KPI_IDS = ['#m-chunks', '#m-docs', '#m-kbs', '#m-ingestrate', '#m-p95',
+  '#m-p50', '#m-success', '#m-requests', '#m-cost', '#m-tokens', '#m-er', '#m-llm'];
+async function snapshot(page: Page, ids = KPI_IDS): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const id of ids) out[id] = (await page.locator(id).textContent()) || '';
+  return out;
+}
+
+test.describe('组织数据隔离与口径一致性', () => {
+  test('1-个人→团队：12 个 KPI 字段无一保留个人值（防部分 stale）', async ({ page }) => {
+    const before = await snapshot(page);
+    await switchOrg(page, 'team');
+    for (const id of KPI_IDS) {
+      expect(await page.locator(id).textContent(), `${id} 切换后仍是个人值`).not.toEqual(before[id]);
+    }
+  });
+
+  test('2-往返 personal→team→personal：全部 KPI 精确恢复（防缓存串味）', async ({ page }) => {
+    const before = await snapshot(page);
+    await switchOrg(page, 'team');
+    await switchOrg(page, 'personal');
+    const after = await snapshot(page);
+    expect(after).toEqual(before);
+  });
+
+  test('3-资产规模单调：chunks 个人<团队<平台', async ({ page }) => {
+    const p = num(await page.locator('#m-chunks').textContent());
+    await switchOrg(page, 'team');
+    const t = num(await page.locator('#m-chunks').textContent());
+    await switchOrg(page, 'platform');
+    const a = num(await page.locator('#m-chunks').textContent());
+    expect(p).toBeLessThan(t);
+    expect(t).toBeLessThan(a);
+  });
+
+  test('4-文档数单调：docs 个人<团队<平台', async ({ page }) => {
+    const p = num(await page.locator('#m-docs').textContent());
+    await switchOrg(page, 'team');
+    const t = num(await page.locator('#m-docs').textContent());
+    await switchOrg(page, 'platform');
+    const a = num(await page.locator('#m-docs').textContent());
+    expect(p).toBeLessThan(t);
+    expect(t).toBeLessThan(a);
+  });
+
+  test('5-知识库数单调：kbs 个人<团队<平台', async ({ page }) => {
+    const p = num(await page.locator('#m-kbs').textContent());
+    await switchOrg(page, 'team');
+    const t = num(await page.locator('#m-kbs').textContent());
+    await switchOrg(page, 'platform');
+    const a = num(await page.locator('#m-kbs').textContent());
+    expect(p).toBeLessThan(t);
+    expect(t).toBeLessThan(a);
+  });
+
+  test('6-检索请求数单调：requests 个人<团队<平台', async ({ page }) => {
+    const p = num(await page.locator('#m-requests').textContent());
+    await switchOrg(page, 'team');
+    const t = num(await page.locator('#m-requests').textContent());
+    await switchOrg(page, 'platform');
+    const a = num(await page.locator('#m-requests').textContent());
+    expect(p).toBeLessThan(t);
+    expect(t).toBeLessThan(a);
+  });
+
+  test('7-成本单调：cost(¥) 个人<团队<平台', async ({ page }) => {
+    const p = num(await page.locator('#m-cost').textContent());
+    await switchOrg(page, 'team');
+    const t = num(await page.locator('#m-cost').textContent());
+    await switchOrg(page, 'platform');
+    const a = num(await page.locator('#m-cost').textContent());
+    expect(p).toBeLessThan(t);
+    expect(t).toBeLessThan(a);
+  });
+
+  test('8-Token 总量单调（K/M 归一）：个人<团队<平台', async ({ page }) => {
+    const p = num(await page.locator('#m-tokens').textContent());
+    await switchOrg(page, 'team');
+    const t = num(await page.locator('#m-tokens').textContent());
+    await switchOrg(page, 'platform');
+    const a = num(await page.locator('#m-tokens').textContent());
+    expect(p).toBeLessThan(t);
+    expect(t).toBeLessThan(a);
+  });
+
+  test('9-成本四要素联动：切团队后 cost/tokens/er/llm 同时变（无部分 stale）', async ({ page }) => {
+    const before = await snapshot(page, ['#m-cost', '#m-tokens', '#m-er', '#m-llm']);
+    await switchOrg(page, 'team');
+    for (const id of ['#m-cost', '#m-tokens', '#m-er', '#m-llm']) {
+      expect(await page.locator(id).textContent(), `${id} 未联动`).not.toEqual(before[id]);
+    }
+  });
+
+  test('10-成本往返恢复：personal cost/tokens/llm 切走再回精确恢复', async ({ page }) => {
+    const before = await snapshot(page, ['#m-cost', '#m-tokens', '#m-llm']);
+    await switchOrg(page, 'platform');
+    await switchOrg(page, 'personal');
+    const after = await snapshot(page, ['#m-cost', '#m-tokens', '#m-llm']);
+    expect(after).toEqual(before);
+  });
+
+  test('11-每个 scope 内 P95 ≥ P50（延迟口径自洽）', async ({ page }) => {
+    for (const s of ['personal', 'team', 'platform'] as const) {
+      await switchOrg(page, s);
+      const p95 = num(await page.locator('#m-p95').textContent());
+      const p50 = num(await page.locator('#m-p50').textContent());
+      expect(p95, `${s} P95<P50`).toBeGreaterThanOrEqual(p50);
+    }
+  });
+
+  test('12-导航知识库数 == KPI 知识库数（同口径，三 scope 均成立）', async ({ page }) => {
+    for (const s of ['personal', 'team', 'platform'] as const) {
+      await switchOrg(page, s);
+      const nav = (await page.locator('#navKb').textContent())?.trim();
+      const kpi = (await page.locator('#m-kbs').textContent())?.trim();
+      expect(nav, `${s} nav/kpi 知识库口径不一致`).toEqual(kpi);
+    }
+  });
+
+  test('13-范围提示文案与当前组织匹配', async ({ page }) => {
+    await expect(page.locator('#scopeHint')).toContainText('仅你个人组织');
+    await switchOrg(page, 'team');
+    await expect(page.locator('#scopeHint')).toContainText('本组织全部库');
+    await switchOrg(page, 'platform');
+    await expect(page.locator('#scopeHint')).toContainText('破玻璃');
+  });
+
+  test('14-升档横幅体现“组织 ID 不变、数据零迁移”（P0 升级语义）', async ({ page }) => {
+    await expect(page.locator('#upgradeBanner')).toContainText('组织 ID 不变');
+    await expect(page.locator('#upgradeBanner')).toContainText('零迁移');
+  });
+
+  test('15-KB 归属=个人 → 可见性含 PUBLIC“全平台可读”', async ({ page }) => {
+    await openModal(page, '新建知识库');
+    await expect(page.locator('#kbOwner')).toHaveValue('PERSONAL');
+    await expect(page.locator('#kbVis option[value="PUBLIC"]')).toContainText('全平台');
+  });
+
+  test('16-KB 归属=组织 → 可见性不含“公开/PUBLIC”（团队库不可直接公开）', async ({ page }) => {
+    await openModal(page, '新建知识库');
+    await page.locator('#kbOwner').selectOption('ORG:7');
+    await expect(page.locator('#kbVis')).not.toContainText('公开');
+    await expect(page.locator('#kbVis option[value="PUBLIC"]')).toHaveCount(0);
+  });
+
+  test('17-成本卡 embedding/rerank 每个 scope 都是两段 ¥ 金额', async ({ page }) => {
+    for (const s of ['personal', 'team', 'platform'] as const) {
+      await switchOrg(page, s);
+      const er = (await page.locator('#m-er').textContent()) || '';
+      expect(er, `${s} er 拆分异常`).toMatch(/¥[\d.]+\s*\/\s*¥[\d.]+/);
+    }
+  });
+
+  test('18-检索成功率三 scope 均有值且 <100%（口径合理非占位）', async ({ page }) => {
+    for (const s of ['personal', 'team', 'platform'] as const) {
+      await switchOrg(page, s);
+      const v = num(await page.locator('#m-success').textContent());
+      expect(v, `${s} success 异常`).toBeGreaterThan(0);
+      expect(v, `${s} success 应<100`).toBeLessThan(100);
+    }
+  });
+
+  test('19-趋势折线 personal 与 team path 不同（按组织重绘）', async ({ page }) => {
+    const p = await page.locator('#sparkLine').getAttribute('d');
+    await switchOrg(page, 'team');
+    const t = await page.locator('#sparkLine').getAttribute('d');
+    expect(t).not.toEqual(p);
+  });
+
+  test('20-状态机无漂移：platform→team→personal→team 与直接切 team 完全一致', async ({ page }) => {
+    await switchOrg(page, 'team');
+    const direct = await snapshot(page);
+    await switchOrg(page, 'personal');
+    await switchOrg(page, 'platform');
+    await switchOrg(page, 'team');
+    await switchOrg(page, 'personal');
+    await switchOrg(page, 'team');
+    const viaPath = await snapshot(page);
+    expect(viaPath).toEqual(direct);
+  });
+});
