@@ -35,16 +35,15 @@ import LogoutAllDialog from './LogoutAllDialog.vue'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 
 const router = useRouter()
-const { state, clearSession } = useAuth()
+const { clearSession, userDisplayName } = useAuth()
 const { current, isPersonal } = useOrg()
 const open = ref(false)
 const showLogoutAll = ref(false)
 const logoutAllLoading = ref(false)
 const menuRef = ref(null)
 
-const displayName = computed(
-  () => state.me?.displayName || state.user?.displayName || state.user?.account || 'RAGForge 用户'
-)
+// 与组织切换器同口径（显示名优先 → 用户名 → 脱敏手机号）
+const displayName = userDisplayName
 // 副标题展示当前所在组织；个人组织统一显示“个人组织”
 const orgLabel = computed(() => (isPersonal.value ? '个人组织' : current.value.name))
 const initials = computed(() => displayName.value.slice(0, 1).toUpperCase())

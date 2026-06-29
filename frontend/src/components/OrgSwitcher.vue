@@ -50,18 +50,13 @@ import { useAuth } from '../composables/useAuth'
 defineProps({ collapsed: { type: Boolean, default: false } })
 
 const { orgs, current, load, setCurrent } = useOrg()
-const { ragRole, state, isAuthenticated } = useAuth()
+const { ragRole, isAuthenticated, userDisplayName } = useAuth()
 const isAdmin = computed(() => ragRole.value === 'ADMIN')
 const open = ref(false)
 
-// 个人组织名：用户名优先 → 脱敏手机号 → 显示名；如「qa_admin 的个人组织」。
-const personalBase = computed(() => {
-  const me = state.me || {}
-  const user = state.user || {}
-  return me.username || user.username || me.maskedPhone || user.displayName || me.displayName || '我'
-})
+// 个人组织名与账号菜单同口径（显示名优先），如「官德志 的个人组织」。
 function nameOf(o) {
-  return o && o.personal ? `${personalBase.value} 的个人组织` : (o ? o.name : '')
+  return o && o.personal ? `${userDisplayName.value} 的个人组织` : (o ? o.name : '')
 }
 
 const PALETTE = ['#2563eb', '#15803d', '#7c3aed', '#db2777', '#0ea5e9', '#f59e0b']

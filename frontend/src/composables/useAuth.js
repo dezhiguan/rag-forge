@@ -52,6 +52,20 @@ export function useAuth() {
   return {
     state: readonly(state),
     isAuthenticated: computed(() => !!state.accessToken),
+    // 统一的用户标识：显示名优先 → 用户名 → 脱敏手机号（组织切换器与账号菜单共用，保持一致）。
+    userDisplayName: computed(() => {
+      const me = state.me || {}
+      const user = state.user || {}
+      return (
+        me.displayName ||
+        user.displayName ||
+        me.username ||
+        user.username ||
+        me.maskedPhone ||
+        user.account ||
+        'RAGForge 用户'
+      )
+    }),
     ragRole: computed(() => state.ragRole),
     scopes: computed(() => new Set(state.scopes)),
     capabilities: computed(() => state.capabilities),
