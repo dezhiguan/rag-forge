@@ -11,20 +11,22 @@
 
     <div v-if="open" class="org-menu">
       <div class="menu-label">切换组织（全局生效）</div>
-      <button
-        v-for="o in orgs"
-        :key="o.id ?? 'personal'"
-        class="org-opt"
-        :class="{ active: o.id === current.id }"
-        @click="select(o)"
-      >
-        <span class="org-ava sm" :style="{ background: avatarColor(o) }">{{ initial(o) }}</span>
-        <span class="org-meta">
-          <span class="org-name">{{ nameOf(o) }}</span>
-          <span class="org-sub">{{ o.personal ? '个人组织' : roleLabel(o.myRole) }}</span>
-        </span>
-        <span class="check">{{ o.id === current.id ? '✓' : '' }}</span>
-      </button>
+      <div class="org-list">
+        <button
+          v-for="o in orgs"
+          :key="o.id ?? 'personal'"
+          class="org-opt"
+          :class="{ active: o.id === current.id }"
+          @click="select(o)"
+        >
+          <span class="org-ava sm" :style="{ background: avatarColor(o) }">{{ initial(o) }}</span>
+          <span class="org-meta">
+            <span class="org-name">{{ nameOf(o) }}</span>
+            <span class="org-sub">{{ o.personal ? '个人组织' : roleLabel(o.myRole) }}</span>
+          </span>
+          <span class="check">{{ o.id === current.id ? '✓' : '' }}</span>
+        </button>
+      </div>
 
       <template v-if="isAdmin">
         <div class="menu-sep"></div>
@@ -177,6 +179,12 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   box-shadow: var(--shadow-md);
   padding: 7px;
   z-index: 60;
+}
+/* 组织多时列表内部滚动，保证下方「平台管理 / 全平台视图」始终可见 */
+.org-list {
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .menu-label {
   font-size: 10.5px;
