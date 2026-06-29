@@ -59,8 +59,8 @@ public class MetricsServiceImpl implements MetricsService {
     RagAuthContext ctx = RagAuthContextHolder.get();
     // 管理员默认只看自己的范围（与知识库访问一致）；仅在破玻璃(X-Admin-Override)时才看全平台。
     boolean fullPlatform = ctx != null && ctx.isAdmin() && AdminOverrideHolder.isActive();
-    Long uid = ctx == null ? null : ctx.userId();
-    String key = fullPlatform ? "ADMIN" : ("U:" + uid);
+    Long currentOrgId = com.ragforge.security.OrgContextHolder.get();
+    String key = fullPlatform ? "ADMIN" : ("O:" + currentOrgId);
 
     long now = System.currentTimeMillis();
     DashboardCache cached = dashboardCacheByPrincipal.get(key);
@@ -73,73 +73,73 @@ public class MetricsServiceImpl implements MetricsService {
       if (cached != null && now < cached.expiresAtMs()) {
         return cached.value();
       }
-      DashboardMetricsVO vo = fullPlatform ? loadAdminDashboard() : loadUserDashboard(uid);
+      DashboardMetricsVO vo = fullPlatform ? loadAdminDashboard() : loadOrgDashboard(currentOrgId);
       dashboardCacheByPrincipal.put(key, new DashboardCache(vo, now + DASHBOARD_CACHE_TTL_MS));
       return vo;
     }
   }
 
-  /** 普通用户：知识库/文档/chunk 仅统计自己拥有的库；检索次数/延迟按 user_id 精确归属本人。 */
-  private DashboardMetricsVO loadUserDashboard(Long uid) {
+  /** 按当前组织(X-Org-Id)：知识库/文档/chunk 仅统计本组织的库；检索次数/延迟/质量按 org_id 归属本组织。 */
+  private DashboardMetricsVO loadOrgDashboard(Long orgId) {
     DashboardMetricsVO vo = new DashboardMetricsVO();
-    List<Long> ownedIds = uid == null ? List.of() : ownedKbIds(uid);
-    vo.setKbCount(ownedIds.size());
-    if (ownedIds.isEmpty()) {
+    List<Long> kbIds = orgId == null ? List.of() : orgKbIds(orgId);
+    vo.setKbCount(kbIds.size());
+    if (kbIds.isEmpty()) {
       vo.setDocumentCount(0);
       vo.setChunkCount(0);
     } else {
       vo.setDocumentCount(
           documentMapper.selectCount(
-              new LambdaQueryWrapper<Document>().in(Document::getKbId, ownedIds)));
+              new LambdaQueryWrapper<Document>().in(Document::getKbId, kbIds)));
       vo.setChunkCount(
           documentChunkMapper.selectCount(
-              new LambdaQueryWrapper<DocumentChunk>().in(DocumentChunk::getKbId, ownedIds)));
+              new LambdaQueryWrapper<DocumentChunk>().in(DocumentChunk::getKbId, kbIds)));
     }
 
     LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
     LocalDateTime windowStart = windowStart();
-    if (uid == null) {
+    if (orgId == null) {
       vo.setTodayApiCalls(0);
       vo.setAvgLatencyMs(0);
     } else {
       vo.setTodayApiCalls(
           retrievalLogMapper.selectCount(
               new LambdaQueryWrapper<RetrievalLog>()
-                  .eq(RetrievalLog::getUserId, uid)
+                  .eq(RetrievalLog::getOrgId, orgId)
                   .ge(RetrievalLog::getCreatedAt, startOfDay)));
-      vo.setAvgLatencyMs(calcAvgLatencyMs(windowStart, uid));
+      vo.setAvgLatencyMs(calcAvgLatencyMs(windowStart, orgId));
     }
-    applyRetrievalQuality(vo, windowStart, uid);
-    applyIngestHealth(vo, ownedIds, false);
+    applyRetrievalQuality(vo, windowStart, orgId);
+    applyIngestHealth(vo, kbIds, false);
     applyCost(vo);
-    vo.setRetrievalTrend(loadRetrievalTrend(windowStart, uid));
+    vo.setRetrievalTrend(loadRetrievalTrend(windowStart, orgId));
     // 命中率源自评测实验（管理员/编辑功能），普通用户无评测，不展示。
     vo.setHitRate(0.0);
-    vo.setRecentActivities(uid == null ? List.of() : userRecentActivities(uid, ownedIds, 10));
+    vo.setRecentActivities(orgId == null ? List.of() : orgRecentActivities(orgId, kbIds, 10));
     return vo;
   }
 
-  private List<Long> ownedKbIds(Long uid) {
+  private List<Long> orgKbIds(Long orgId) {
     return knowledgeBaseMapper
         .selectList(
             new LambdaQueryWrapper<KnowledgeBase>()
-                .eq(KnowledgeBase::getOwnerUserId, uid)
+                .eq(KnowledgeBase::getOrgId, orgId)
                 .ne(KnowledgeBase::getStatus, KB_STATUS_DELETED))
         .stream()
         .map(KnowledgeBase::getId)
         .toList();
   }
 
-  /** 普通用户的"最近操作"：自有库文档动态 + 本人发起的检索；不含他人操作与评测。 */
-  private List<DashboardActivityVO> userRecentActivities(Long uid, List<Long> ownedIds, int limit) {
+  /** 本组织的"最近操作"：组织库文档动态 + 本组织发起的检索；不含他组织操作与评测。 */
+  private List<DashboardActivityVO> orgRecentActivities(Long orgId, List<Long> kbIds, int limit) {
     DateTimeFormatter tf = DateTimeFormatter.ofPattern("HH:mm");
     List<ActivityEntry> entries = new ArrayList<>();
 
-    if (!ownedIds.isEmpty()) {
+    if (!kbIds.isEmpty()) {
       List<Document> recentDocs =
           documentMapper.selectList(
               new LambdaQueryWrapper<Document>()
-                  .in(Document::getKbId, ownedIds)
+                  .in(Document::getKbId, kbIds)
                   .orderByDesc(Document::getCreatedAt)
                   .last("LIMIT " + limit));
       Map<Long, String> kbNameMap = loadKbNames(recentDocs.stream().map(Document::getKbId).toList());
@@ -166,7 +166,7 @@ public class MetricsServiceImpl implements MetricsService {
     List<RetrievalLog> myLogs =
         retrievalLogMapper.selectList(
             new LambdaQueryWrapper<RetrievalLog>()
-                .eq(RetrievalLog::getUserId, uid)
+                .eq(RetrievalLog::getOrgId, orgId)
                 .orderByDesc(RetrievalLog::getCreatedAt)
                 .last("LIMIT " + limit));
     for (RetrievalLog log : myLogs) {
@@ -222,7 +222,7 @@ public class MetricsServiceImpl implements MetricsService {
    * 零结果率 = result_count=0 占比；平均召回 = avg(result_count)；P95 = percentile_cont；改写率 =
    * rewritten_queries 非空占比。
    */
-  private void applyRetrievalQuality(DashboardMetricsVO vo, LocalDateTime startOfDay, Long uid) {
+  private void applyRetrievalQuality(DashboardMetricsVO vo, LocalDateTime startOfDay, Long orgId) {
     QueryWrapper<RetrievalLog> wrapper = new QueryWrapper<>();
     wrapper.select(
         "count(*) as total",
@@ -234,8 +234,8 @@ public class MetricsServiceImpl implements MetricsService {
         "count(*) filter (where status = 'SUCCESS' and rewritten_queries is not null and rewritten_queries <> '') as rewrite_cnt",
         "avg(avg_rerank_score) filter (where avg_rerank_score is not null) as avg_rerank");
     wrapper.ge("created_at", startOfDay);
-    if (uid != null) {
-      wrapper.eq("user_id", uid);
+    if (orgId != null) {
+      wrapper.eq("org_id", orgId);
     }
     List<Map<String, Object>> rows = retrievalLogMapper.selectMaps(wrapper);
     if (rows == null || rows.isEmpty() || rows.get(0) == null) {
@@ -343,15 +343,15 @@ public class MetricsServiceImpl implements MetricsService {
   }
 
   /** 近 7 天检索趋势：按自然日聚合请求数与 P95；无数据的日子不补零，由前端按返回点渲染。 */
-  private List<DashboardTrendPointVO> loadRetrievalTrend(LocalDateTime windowStart, Long uid) {
+  private List<DashboardTrendPointVO> loadRetrievalTrend(LocalDateTime windowStart, Long orgId) {
     QueryWrapper<RetrievalLog> w = new QueryWrapper<>();
     w.select(
         "to_char(created_at, 'MM-DD') as d",
         "count(*) as cnt",
         "percentile_cont(0.95) within group (order by latency_ms) as p95");
     w.ge("created_at", windowStart);
-    if (uid != null) {
-      w.eq("user_id", uid);
+    if (orgId != null) {
+      w.eq("org_id", orgId);
     }
     w.groupBy("to_char(created_at, 'MM-DD'), date(created_at)");
     w.last("ORDER BY date(created_at)");
@@ -402,12 +402,12 @@ public class MetricsServiceImpl implements MetricsService {
     return calcAvgLatencyMs(startOfDay, null);
   }
 
-  private long calcAvgLatencyMs(LocalDateTime startOfDay, Long uid) {
+  private long calcAvgLatencyMs(LocalDateTime startOfDay, Long orgId) {
     QueryWrapper<RetrievalLog> wrapper = new QueryWrapper<>();
     wrapper.select("avg(latency_ms) as avg_latency_ms");
     wrapper.ge("created_at", startOfDay);
-    if (uid != null) {
-      wrapper.eq("user_id", uid);
+    if (orgId != null) {
+      wrapper.eq("org_id", orgId);
     }
     List<Map<String, Object>> rows = retrievalLogMapper.selectMaps(wrapper);
     if (rows == null || rows.isEmpty()) return 0;

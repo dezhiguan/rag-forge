@@ -97,6 +97,7 @@ public class SearchController {
     // 在请求线程内取当前用户（@Async 日志线程拿不到 ThreadLocal 上下文）
     com.ragforge.security.RagAuthContext authCtx = com.ragforge.security.RagAuthContextHolder.get();
     Long principalUserId = authCtx == null ? null : authCtx.userId();
+    Long currentOrgId = com.ragforge.security.OrgContextHolder.get();
 
     long searchStart = System.currentTimeMillis();
     RetrievalOutput output;
@@ -120,7 +121,8 @@ public class SearchController {
           req.getStrategy(),
           req.getKbIds(),
           System.currentTimeMillis() - searchStart,
-          principalUserId);
+          principalUserId,
+          currentOrgId);
       throw e;
     }
 
@@ -139,7 +141,8 @@ public class SearchController {
         output.getLatencyMs(),
         output.getResults(),
         principalUserId,
-        avgRerankScore(output));
+        avgRerankScore(output),
+        currentOrgId);
 
     enrichImageUrls(output.getResults());
     return Result.ok(

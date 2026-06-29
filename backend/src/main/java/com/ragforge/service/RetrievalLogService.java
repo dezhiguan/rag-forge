@@ -61,7 +61,8 @@ public class RetrievalLogService {
       List<SearchResult> results,
       Long userId) {
     logAsync(
-        query, strategy, kbIds, rewrittenQueries, topK, resultCount, latencyMs, results, userId, null);
+        query, strategy, kbIds, rewrittenQueries, topK, resultCount, latencyMs, results, userId, null,
+        null);
   }
 
   @Async
@@ -75,9 +76,11 @@ public class RetrievalLogService {
       long latencyMs,
       List<SearchResult> results,
       Long userId,
-      Double avgRerankScore) {
+      Double avgRerankScore,
+      Long orgId) {
     RetrievalLog log = new RetrievalLog();
     log.setUserId(userId);
+    log.setOrgId(orgId);
     log.setQuery(query);
     log.setStrategy(strategy);
     if (kbIds != null && !kbIds.isEmpty()) {
@@ -99,10 +102,11 @@ public class RetrievalLogService {
   /** 检索失败补记一条 ERROR，供「检索成功率」统计；日志落库自身异常不得连累主流程。 */
   @Async
   public void logFailureAsync(
-      String query, String strategy, List<Long> kbIds, long latencyMs, Long userId) {
+      String query, String strategy, List<Long> kbIds, long latencyMs, Long userId, Long orgId) {
     try {
       RetrievalLog entry = new RetrievalLog();
       entry.setUserId(userId);
+      entry.setOrgId(orgId);
       entry.setQuery(query);
       entry.setStrategy(strategy);
       if (kbIds != null && !kbIds.isEmpty()) {

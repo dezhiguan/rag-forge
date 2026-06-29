@@ -16,6 +16,8 @@ public class RetrievalLog {
   private Long id;
 
   private Long userId;
+  /** 检索发生时的当前组织上下文（X-Org-Id），供按组织聚合指标。 */
+  private Long orgId;
   private String query;
   private String rewrittenQueries;
   private String strategy;
