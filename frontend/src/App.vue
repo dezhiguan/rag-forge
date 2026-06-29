@@ -18,6 +18,10 @@
         <span class="top-bar-title">{{ currentPage.label }}</span>
         <div id="topbar-left" class="top-bar-left"></div>
         <div id="topbar-right" class="top-bar-right"></div>
+        <div class="top-bar-actions">
+          <NotificationBell collapsed />
+          <UserMenu />
+        </div>
       </div>
       <router-view v-slot="{ Component, route: matchedRoute }">
         <transition name="page-fade">
@@ -34,6 +38,8 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/Sidebar.vue'
+import UserMenu from './components/UserMenu.vue'
+import NotificationBell from './components/NotificationBell.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 
@@ -184,6 +190,13 @@ body {
   gap: 10px;
   flex-shrink: 0;
   margin-left: auto;
+}
+/* 常驻顶栏右侧：通知 + 用户菜单（不随页面切换） */
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .page-fade-enter-active, .page-fade-leave-active {

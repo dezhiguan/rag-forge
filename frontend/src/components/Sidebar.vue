@@ -1,7 +1,6 @@
 <template>
   <nav class="sidebar" :class="{ collapsed: collapsed && !isMobile, 'mobile-open': isMobile && mobileOpen }">
     <OrgSwitcher :collapsed="collapsed && !isMobile" />
-    <NotificationBell :collapsed="collapsed && !isMobile" />
     <div class="sidebar-nav">
       <router-link
         v-for="item in navItems"
@@ -15,9 +14,6 @@
         <span class="nav-icon">{{ item.icon }}</span>
         <span class="nav-label" v-show="!collapsed || isMobile">{{ item.label }}</span>
       </router-link>
-    </div>
-    <div class="sidebar-user" v-show="!collapsed || isMobile">
-      <UserMenu />
     </div>
     <div class="sidebar-footer" v-show="!collapsed || isMobile">
       <div class="status-dot"></div>
@@ -34,9 +30,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { canAccessRoute } from '../router/guards'
-import UserMenu from './UserMenu.vue'
 import OrgSwitcher from './OrgSwitcher.vue'
-import NotificationBell from './NotificationBell.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -106,11 +100,6 @@ const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(it
   transition: width 0.25s ease;
 }
 .sidebar.collapsed { width: 56px; }
-
-.sidebar-user {
-  padding: 10px;
-  border-top: 1px solid var(--border);
-}
 
 .sidebar-nav {
   flex: 1;

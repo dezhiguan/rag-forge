@@ -1,14 +1,5 @@
 <template>
   <div class="page-body">
-    <Teleport to="#topbar-right">
-      <span class="dash-updated">
-        <span class="live-dot" />{{ lastUpdated ? `更新于 ${lastUpdated}` : '加载中…' }}
-      </span>
-      <button class="btn btn-secondary btn-sm" :disabled="loading" @click="loadMetrics">
-        <span class="refresh-ico" :class="{ spin: loading }">↻</span>{{ loading ? '刷新中' : '刷新' }}
-      </button>
-    </Teleport>
-
     <div v-if="isPersonal" class="upgrade-banner">
       <span class="ub-ico">⬆</span>
       <span class="ub-txt">

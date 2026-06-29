@@ -102,12 +102,10 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 <style scoped>
 .user-menu {
   position: relative;
-  width: 100%;
 }
 
 .avatar-btn {
-  width: 100%;
-  height: 42px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -167,10 +165,10 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 .menu-panel {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
   right: 0;
+  left: auto;
   z-index: 200;
-  width: auto;
+  min-width: 180px;
   padding: 6px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;

@@ -79,25 +79,27 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 </script>
 
 <style scoped>
-.noti-bell { position: relative; padding: 0 12px 8px; }
+.noti-bell { position: relative; }
 .bell-btn {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 8px 11px;
-  border-radius: 9px;
+  background: #fff;
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+  border-radius: 10px;
   cursor: pointer;
   color: var(--gray);
   font-size: 13px;
   font-weight: 500;
 }
-.bell-btn:hover { background: rgba(0, 0, 0, 0.04); color: var(--navy); }
+.bell-btn:hover { background: var(--light); color: var(--navy); border-color: #cbd5e1; }
 .bell-ico { font-size: 15px; width: 18px; text-align: center; }
 .bell-label { flex: 1; text-align: left; }
 .bell-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
   min-width: 17px;
   height: 17px;
   padding: 0 4px;
@@ -113,9 +115,10 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 .collapsed .bell-label { display: none; }
 .bell-menu {
   position: absolute;
-  bottom: calc(100% - 2px);
-  left: 12px;
-  right: 12px;
+  top: calc(100% + 8px);
+  right: 0;
+  left: auto;
+  width: 280px;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 13px;
