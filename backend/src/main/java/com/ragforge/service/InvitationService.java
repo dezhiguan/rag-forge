@@ -54,6 +54,10 @@ public class InvitationService {
     if (org == null) {
       throw new BizException(404, "ORG_NOT_FOUND");
     }
+    if ("INDIVIDUAL".equals(org.getType())) {
+      // 个人组织不可邀请成员；需协作请先升级为团队组织。
+      throw new BizException(409, "INDIVIDUAL_ORG_NO_INVITE");
+    }
     String normalizedRole = "ADMIN".equalsIgnoreCase(role) ? "ADMIN" : "MEMBER";
 
     Map<String, Object> resolved = gatewayClient.resolveByPhone(phone);

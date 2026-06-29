@@ -12,8 +12,10 @@ import com.ragforge.mapper.EvalExperimentMapper;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.EvalQuestionMapper;
 import com.ragforge.mapper.EvalResultMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.EvalDataset;
+import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.entity.EvalExperiment;
 import com.ragforge.model.entity.EvalQuestion;
 import com.ragforge.model.entity.EvalResult;
@@ -63,6 +65,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   private final EvalResultMapper evalResultMapper;
   private final EvalQuestionMapper evalQuestionMapper;
   private final EvalDatasetMapper evalDatasetMapper;
+  private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentChunkMapper documentChunkMapper;
   private final RetrievalService retrievalService;
   private final ObjectMapper objectMapper;
@@ -154,13 +157,50 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     return getDetail(experiment.getId());
   }
 
+  /** 当前组织的 KB ids；破玻璃(全平台)或无组织上下文返回 null（表示不按组织过滤）。 */
+  private List<Long> currentOrgKbIdsOrNull() {
+    com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
+    if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
+      return null;
+    }
+    Long orgId = com.ragforge.security.OrgContextHolder.get();
+    if (orgId == null) {
+      return null;
+    }
+    return knowledgeBaseMapper
+        .selectList(
+            new LambdaQueryWrapper<KnowledgeBase>()
+                .eq(KnowledgeBase::getOrgId, orgId)
+                .ne(KnowledgeBase::getStatus, "deleted"))
+        .stream()
+        .map(KnowledgeBase::getId)
+        .toList();
+  }
+
   @Override
   public List<EvalExperimentVO> listRecent() {
-    List<EvalExperiment> experiments =
-        evalExperimentMapper.selectList(
-            new LambdaQueryWrapper<EvalExperiment>()
-                .orderByDesc(EvalExperiment::getCreatedAt)
-                .last("LIMIT 20"));
+    LambdaQueryWrapper<EvalExperiment> w =
+        new LambdaQueryWrapper<EvalExperiment>()
+            .orderByDesc(EvalExperiment::getCreatedAt)
+            .last("LIMIT 20");
+    // 组织过滤：仅当前组织 KB 的数据集所属实验；破玻璃/无组织上下文不过滤。
+    List<Long> scopeKbIds = currentOrgKbIdsOrNull();
+    if (scopeKbIds != null) {
+      if (scopeKbIds.isEmpty()) {
+        return Collections.emptyList();
+      }
+      List<Long> datasetIds =
+          evalDatasetMapper
+              .selectList(new LambdaQueryWrapper<EvalDataset>().in(EvalDataset::getKbId, scopeKbIds))
+              .stream()
+              .map(EvalDataset::getId)
+              .toList();
+      if (datasetIds.isEmpty()) {
+        return Collections.emptyList();
+      }
+      w.in(EvalExperiment::getDatasetId, datasetIds);
+    }
+    List<EvalExperiment> experiments = evalExperimentMapper.selectList(w);
     if (experiments.isEmpty()) {
       return Collections.emptyList();
     }

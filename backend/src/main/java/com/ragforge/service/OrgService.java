@@ -231,6 +231,11 @@ public class OrgService {
   public void addMember(Long orgId, Long targetUserId, String role) {
     Long uid = currentUserId();
     requireOrgAdmin(orgId, uid);
+    Organization org = organizationMapper.selectById(orgId);
+    if (org != null && "INDIVIDUAL".equals(org.getType())) {
+      // 个人组织不可加成员；需协作请先升级为团队组织。
+      throw new BizException(409, "INDIVIDUAL_ORG_NO_MEMBER");
+    }
     String normalizedRole = normalizeRole(role);
     if (targetUserId == null) {
       throw new BizException(400, "USER_ID_REQUIRED");

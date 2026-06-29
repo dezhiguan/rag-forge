@@ -26,11 +26,36 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
 
   @Override
   public List<EvalDatasetVO> listAll() {
-    return evalDatasetMapper
+    LambdaQueryWrapper<EvalDataset> w =
+        new LambdaQueryWrapper<EvalDataset>().orderByDesc(EvalDataset::getCreatedAt);
+    // 组织过滤：仅当前组织 KB 的数据集；破玻璃/无组织上下文不过滤。
+    List<Long> scopeKbIds = currentOrgKbIdsOrNull();
+    if (scopeKbIds != null) {
+      if (scopeKbIds.isEmpty()) {
+        return List.of();
+      }
+      w.in(EvalDataset::getKbId, scopeKbIds);
+    }
+    return evalDatasetMapper.selectList(w).stream().map(EvalDatasetVO::fromEntity).toList();
+  }
+
+  /** 当前组织的 KB ids；破玻璃(全平台)或无组织上下文返回 null（表示不按组织过滤）。 */
+  private List<Long> currentOrgKbIdsOrNull() {
+    com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
+    if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
+      return null;
+    }
+    Long orgId = com.ragforge.security.OrgContextHolder.get();
+    if (orgId == null) {
+      return null;
+    }
+    return knowledgeBaseMapper
         .selectList(
-            new LambdaQueryWrapper<EvalDataset>().orderByDesc(EvalDataset::getCreatedAt))
+            new LambdaQueryWrapper<KnowledgeBase>()
+                .eq(KnowledgeBase::getOrgId, orgId)
+                .ne(KnowledgeBase::getStatus, KB_STATUS_DELETED))
         .stream()
-        .map(EvalDatasetVO::fromEntity)
+        .map(KnowledgeBase::getId)
         .toList();
   }
 
