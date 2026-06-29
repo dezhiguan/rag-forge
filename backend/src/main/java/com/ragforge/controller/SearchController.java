@@ -52,6 +52,22 @@ public class SearchController {
     results.forEach(r -> r.setImageUrl(urls.get(r.getChunkId())));
   }
 
+  /**
+   * 仅精排结果的 rerank 分均值：rerankLatencyMs 非空表示走了精排，此时 finalScore 即 rerank 分；
+   * 其它策略返回 null，不参与「平均 rerank 分（仅精排）」统计。
+   */
+  private static Double avgRerankScore(RetrievalOutput output) {
+    if (output.getRerankLatencyMs() == null
+        || output.getResults() == null
+        || output.getResults().isEmpty()) {
+      return null;
+    }
+    return output.getResults().stream()
+        .mapToDouble(SearchResult::getFinalScore)
+        .average()
+        .orElse(0.0);
+  }
+
   @PostMapping("/search")
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER','SERVICE_ACCOUNT')")
   public Result<SearchResponse> search(@Valid @RequestBody SearchRequest req) {
@@ -78,27 +94,41 @@ public class SearchController {
     }
     req.setKbIds(new ArrayList<>(readableKbIds));
 
-    RetrievalOutput output =
-        retrievalService.retrieve(
-            req.getQuery(),
-            req.getQueryImageBase64(),
-            req.getKbIds(),
-            req.getDocIds(),
-            req.getStrategy(),
-            req.getVectorWeight(),
-            req.getTopK(),
-            req.getRerankTopN(),
-            req.getFilter(),
-            req.getModality());
+    // 在请求线程内取当前用户（@Async 日志线程拿不到 ThreadLocal 上下文）
+    com.ragforge.security.RagAuthContext authCtx = com.ragforge.security.RagAuthContextHolder.get();
+    Long principalUserId = authCtx == null ? null : authCtx.userId();
+
+    long searchStart = System.currentTimeMillis();
+    RetrievalOutput output;
+    try {
+      output =
+          retrievalService.retrieve(
+              req.getQuery(),
+              req.getQueryImageBase64(),
+              req.getKbIds(),
+              req.getDocIds(),
+              req.getStrategy(),
+              req.getVectorWeight(),
+              req.getTopK(),
+              req.getRerankTopN(),
+              req.getFilter(),
+              req.getModality());
+    } catch (RuntimeException e) {
+      // 失败补记一条 ERROR，供「检索成功率」统计；原异常照常抛给全局处理器，行为不变。
+      retrievalLogService.logFailureAsync(
+          req.getQuery(),
+          req.getStrategy(),
+          req.getKbIds(),
+          System.currentTimeMillis() - searchStart,
+          principalUserId);
+      throw e;
+    }
 
     log.info(
         "ragforge.api search completed strategy={} resultCount={} latencyMs={}",
         output.getStrategy(),
         output.getResults() == null ? 0 : output.getResults().size(),
         output.getLatencyMs());
-    // 在请求线程内取当前用户（@Async 日志线程拿不到 ThreadLocal 上下文）
-    com.ragforge.security.RagAuthContext authCtx = com.ragforge.security.RagAuthContextHolder.get();
-    Long principalUserId = authCtx == null ? null : authCtx.userId();
     retrievalLogService.logAsync(
         req.getQuery(),
         output.getStrategy(),
@@ -108,7 +138,8 @@ public class SearchController {
         output.getResults() == null ? 0 : output.getResults().size(),
         output.getLatencyMs(),
         output.getResults(),
-        principalUserId);
+        principalUserId,
+        avgRerankScore(output));
 
     enrichImageUrls(output.getResults());
     return Result.ok(

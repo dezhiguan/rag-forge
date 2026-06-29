@@ -134,7 +134,17 @@ class SearchControllerTest {
             isNull(),
             eq("text"));
     verify(retrievalLogService)
-        .logAsync(eq("Java"), eq("hybrid"), eq(List.of(17L)), isNull(), eq(5), eq(1), eq(120L), eq(List.of(hit)));
+        .logAsync(
+            eq("Java"),
+            eq("hybrid"),
+            eq(List.of(17L)),
+            isNull(),
+            eq(5),
+            eq(1),
+            eq(120L),
+            eq(List.of(hit)),
+            isNull(),
+            isNull());
   }
 
   @Test

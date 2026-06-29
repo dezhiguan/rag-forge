@@ -60,6 +60,22 @@ public class RetrievalLogService {
       long latencyMs,
       List<SearchResult> results,
       Long userId) {
+    logAsync(
+        query, strategy, kbIds, rewrittenQueries, topK, resultCount, latencyMs, results, userId, null);
+  }
+
+  @Async
+  public void logAsync(
+      String query,
+      String strategy,
+      List<Long> kbIds,
+      List<String> rewrittenQueries,
+      int topK,
+      int resultCount,
+      long latencyMs,
+      List<SearchResult> results,
+      Long userId,
+      Double avgRerankScore) {
     RetrievalLog log = new RetrievalLog();
     log.setUserId(userId);
     log.setQuery(query);
@@ -74,8 +90,32 @@ public class RetrievalLogService {
     log.setResultCount(resultCount);
     log.setLatencyMs((int) latencyMs);
     log.setCitationsSnapshot(buildCitationsSnapshot(results));
+    log.setAvgRerankScore(avgRerankScore);
+    log.setStatus("SUCCESS");
     log.setCreatedAt(LocalDateTime.now());
     retrievalLogMapper.insert(log);
+  }
+
+  /** 检索失败补记一条 ERROR，供「检索成功率」统计；日志落库自身异常不得连累主流程。 */
+  @Async
+  public void logFailureAsync(
+      String query, String strategy, List<Long> kbIds, long latencyMs, Long userId) {
+    try {
+      RetrievalLog entry = new RetrievalLog();
+      entry.setUserId(userId);
+      entry.setQuery(query);
+      entry.setStrategy(strategy);
+      if (kbIds != null && !kbIds.isEmpty()) {
+        entry.setKbIds(kbIds.stream().map(String::valueOf).collect(Collectors.joining(",")));
+      }
+      entry.setResultCount(0);
+      entry.setLatencyMs((int) latencyMs);
+      entry.setStatus("ERROR");
+      entry.setCreatedAt(LocalDateTime.now());
+      retrievalLogMapper.insert(entry);
+    } catch (Exception e) {
+      log.warn("检索失败日志落库失败: {}", e.getMessage());
+    }
   }
 
   private String buildCitationsSnapshot(List<SearchResult> results) {

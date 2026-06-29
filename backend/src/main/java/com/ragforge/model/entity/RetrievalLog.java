@@ -27,5 +27,10 @@ public class RetrievalLog {
   @TableField(value = "citations_snapshot", typeHandler = JsonbStringTypeHandler.class)
   private String citationsSnapshot;
 
+  /** 该次检索结果的 rerank 分均值；仅精排策略落值，其它为 null。 */
+  private Double avgRerankScore;
+  /** 检索状态：SUCCESS / ERROR，供成功率聚合。 */
+  private String status;
+
   private LocalDateTime createdAt;
 }

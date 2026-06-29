@@ -226,11 +226,13 @@ public class MetricsServiceImpl implements MetricsService {
     QueryWrapper<RetrievalLog> wrapper = new QueryWrapper<>();
     wrapper.select(
         "count(*) as total",
-        "count(*) filter (where result_count = 0) as zero_cnt",
-        "avg(result_count) as avg_recall",
-        "percentile_cont(0.5) within group (order by latency_ms) as p50",
-        "percentile_cont(0.95) within group (order by latency_ms) as p95",
-        "count(*) filter (where rewritten_queries is not null and rewritten_queries <> '') as rewrite_cnt");
+        "count(*) filter (where status = 'SUCCESS') as success_cnt",
+        "count(*) filter (where status = 'SUCCESS' and result_count = 0) as zero_cnt",
+        "avg(result_count) filter (where status = 'SUCCESS') as avg_recall",
+        "percentile_cont(0.5) within group (order by latency_ms) filter (where status = 'SUCCESS') as p50",
+        "percentile_cont(0.95) within group (order by latency_ms) filter (where status = 'SUCCESS') as p95",
+        "count(*) filter (where status = 'SUCCESS' and rewritten_queries is not null and rewritten_queries <> '') as rewrite_cnt",
+        "avg(avg_rerank_score) filter (where avg_rerank_score is not null) as avg_rerank");
     wrapper.ge("created_at", startOfDay);
     if (uid != null) {
       wrapper.eq("user_id", uid);
@@ -245,11 +247,21 @@ public class MetricsServiceImpl implements MetricsService {
     if (total <= 0) {
       return;
     }
-    vo.setZeroResultRate(asDouble(r.get("zero_cnt")) / total);
+    long success = asLong(r.get("success_cnt"));
+    vo.setSearchSuccessRate((double) success / total);
+    double avgRerank = asDouble(r.get("avg_rerank"));
+    if (avgRerank > 0) {
+      vo.setAvgRerankScore(avgRerank);
+    }
+    // 质量指标（零结果/召回/延迟/改写）只在成功样本上计算，避免错误请求拉偏。
+    if (success <= 0) {
+      return;
+    }
+    vo.setZeroResultRate(asDouble(r.get("zero_cnt")) / success);
     vo.setAvgRecallCount(asDouble(r.get("avg_recall")));
     vo.setP50LatencyMs(Math.round(asDouble(r.get("p50"))));
     vo.setP95LatencyMs(Math.round(asDouble(r.get("p95"))));
-    vo.setRewriteRate(asDouble(r.get("rewrite_cnt")) / total);
+    vo.setRewriteRate(asDouble(r.get("rewrite_cnt")) / success);
   }
 
   /** 近 7 天窗口起点（含今天，共 WINDOW_DAYS 个自然日）。 */
