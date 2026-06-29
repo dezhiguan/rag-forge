@@ -25,6 +25,10 @@ public class ModelUsageDaily {
   @TableField("stat_date")
   private LocalDate statDate;
 
+  /** 成本归属组织（0 = 未归属/平台级，如评测）。V50 新增。 */
+  @TableField("org_id")
+  private Long orgId;
+
   @TableField("call_count")
   private Long callCount;
 
