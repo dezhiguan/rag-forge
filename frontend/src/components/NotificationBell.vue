@@ -22,10 +22,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { myInvitations, acceptInvitation, declineInvitation } from '../api/notification'
+import { useAuth } from '../composables/useAuth'
 
 defineProps({ collapsed: { type: Boolean, default: false } })
+
+const { isAuthenticated } = useAuth()
 
 const open = ref(false)
 const busy = ref(false)
@@ -71,10 +74,9 @@ function onDocClick() {
   open.value = false
 }
 
-onMounted(() => {
-  load()
-  document.addEventListener('click', onDocClick)
-})
+// 等鉴权就绪再拉邀请，避免刷新时早于路由守卫恢复会话而触发 401。
+watch(isAuthenticated, (ok) => { if (ok) load() }, { immediate: true })
+onMounted(() => document.addEventListener('click', onDocClick))
 onUnmounted(() => document.removeEventListener('click', onDocClick))
 </script>
 

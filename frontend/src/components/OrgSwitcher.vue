@@ -1,9 +1,9 @@
 <template>
   <div class="org-switch" :class="{ collapsed }">
-    <button class="org-trigger" :title="current.name" @click.stop="open = !open">
+    <button class="org-trigger" :title="nameOf(current)" @click.stop="open = !open">
       <span class="org-ava" :style="{ background: avatarColor(current) }">{{ initial(current) }}</span>
       <span v-show="!collapsed" class="org-meta">
-        <span class="org-name">{{ current.name }}</span>
+        <span class="org-name">{{ nameOf(current) }}</span>
         <span class="org-sub">{{ current.personal ? '个人组织' : roleLabel(current.myRole) }}</span>
       </span>
       <span v-show="!collapsed" class="org-caret">⇅</span>
@@ -20,7 +20,7 @@
       >
         <span class="org-ava sm" :style="{ background: avatarColor(o) }">{{ initial(o) }}</span>
         <span class="org-meta">
-          <span class="org-name">{{ o.name }}</span>
+          <span class="org-name">{{ nameOf(o) }}</span>
           <span class="org-sub">{{ o.personal ? '个人组织' : roleLabel(o.myRole) }}</span>
         </span>
         <span class="check">{{ o.id === current.id ? '✓' : '' }}</span>
@@ -43,16 +43,26 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useOrg, PLATFORM_ID } from '../composables/useOrg'
 import { useAuth } from '../composables/useAuth'
 
 defineProps({ collapsed: { type: Boolean, default: false } })
 
 const { orgs, current, load, setCurrent } = useOrg()
-const { ragRole } = useAuth()
+const { ragRole, state, isAuthenticated } = useAuth()
 const isAdmin = computed(() => ragRole.value === 'ADMIN')
 const open = ref(false)
+
+// 个人组织名：用户名优先 → 脱敏手机号 → 显示名；如「qa_admin 的个人组织」。
+const personalBase = computed(() => {
+  const me = state.me || {}
+  const user = state.user || {}
+  return me.username || user.username || me.maskedPhone || user.displayName || me.displayName || '我'
+})
+function nameOf(o) {
+  return o && o.personal ? `${personalBase.value} 的个人组织` : (o ? o.name : '')
+}
 
 const PALETTE = ['#2563eb', '#15803d', '#7c3aed', '#db2777', '#0ea5e9', '#f59e0b']
 function avatarColor(o) {
@@ -61,7 +71,7 @@ function avatarColor(o) {
   return PALETTE[key]
 }
 function initial(o) {
-  return (o.name || '?').trim().charAt(0).toUpperCase()
+  return (nameOf(o) || '?').trim().charAt(0).toUpperCase()
 }
 function roleLabel(role) {
   return { OWNER: 'OWNER · 你拥有', ADMIN: 'ADMIN · 管理员', MEMBER: 'MEMBER · 成员' }[role] || '组织'
@@ -86,10 +96,9 @@ function onDocClick() {
   open.value = false
 }
 
-onMounted(() => {
-  load()
-  document.addEventListener('click', onDocClick)
-})
+// 等鉴权就绪再拉组织列表，避免刷新时早于路由守卫恢复会话而触发 401。
+watch(isAuthenticated, (ok) => { if (ok) load() }, { immediate: true })
+onMounted(() => document.addEventListener('click', onDocClick))
 onUnmounted(() => document.removeEventListener('click', onDocClick))
 </script>
 
