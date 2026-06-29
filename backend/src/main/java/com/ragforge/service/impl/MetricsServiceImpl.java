@@ -144,20 +144,30 @@ public class MetricsServiceImpl implements MetricsService {
                   .last("LIMIT " + limit));
       Map<Long, String> kbNameMap = loadKbNames(recentDocs.stream().map(Document::getKbId).toList());
       for (Document doc : recentDocs) {
-        if (!"completed".equals(doc.getParseStatus()) && !"failed".equals(doc.getParseStatus())) {
-          continue;
-        }
+        // parse_status 历史大小写混用，统一归一化比较（此前大写 COMPLETED 漏判）。
+        String st =
+            doc.getParseStatus() == null
+                ? ""
+                : doc.getParseStatus().toLowerCase(java.util.Locale.ROOT);
         DashboardActivityVO vo = new DashboardActivityVO();
         vo.setTime(doc.getCreatedAt() != null ? doc.getCreatedAt().format(tf) : "--:--");
-        if ("completed".equals(doc.getParseStatus())) {
-          vo.setType("index");
-          String kbName = kbNameMap.getOrDefault(doc.getKbId(), String.valueOf(doc.getKbId()));
-          vo.setMessage(String.format("知识库「%s」文档「%s」处理完成", kbName, doc.getFilename()));
-        } else {
-          vo.setType("error");
-          vo.setMessage(String.format("文档「%s」解析失败", doc.getFilename()));
-          vo.setDocId(doc.getId());
-          vo.setRetryable(true);
+        String kbName = kbNameMap.getOrDefault(doc.getKbId(), String.valueOf(doc.getKbId()));
+        switch (st) {
+          case "completed" -> {
+            vo.setType("index");
+            vo.setMessage(String.format("知识库「%s」文档「%s」处理完成", kbName, doc.getFilename()));
+          }
+          case "failed" -> {
+            vo.setType("error");
+            vo.setMessage(String.format("文档「%s」解析失败", doc.getFilename()));
+            vo.setDocId(doc.getId());
+            vo.setRetryable(true);
+          }
+          default -> {
+            // pending/queued/processing/reprocessing → 上传后处理中，立即可见以给用户反馈。
+            vo.setType("upload");
+            vo.setMessage(String.format("知识库「%s」上传文档「%s」，处理中", kbName, doc.getFilename()));
+          }
         }
         entries.add(new ActivityEntry(doc.getCreatedAt(), vo));
       }
@@ -456,20 +466,29 @@ public class MetricsServiceImpl implements MetricsService {
             new LambdaQueryWrapper<Document>().orderByDesc(Document::getCreatedAt).last("LIMIT 5"));
     Map<Long, String> kbNameMap = loadKbNames(recentDocs.stream().map(Document::getKbId).toList());
     for (Document doc : recentDocs) {
-      if (!"completed".equals(doc.getParseStatus()) && !"failed".equals(doc.getParseStatus())) {
-        continue;
-      }
+      // parse_status 大小写归一化（此前 COMPLETED 漏判）。
+      String st =
+          doc.getParseStatus() == null
+              ? ""
+              : doc.getParseStatus().toLowerCase(java.util.Locale.ROOT);
       DashboardActivityVO vo = new DashboardActivityVO();
       vo.setTime(doc.getCreatedAt() != null ? doc.getCreatedAt().format(tf) : "--:--");
-      if ("completed".equals(doc.getParseStatus())) {
-        vo.setType("index");
-        String kbName = kbNameMap.getOrDefault(doc.getKbId(), String.valueOf(doc.getKbId()));
-        vo.setMessage(String.format("知识库「%s」文档「%s」处理完成", kbName, doc.getFilename()));
-      } else {
-        vo.setType("error");
-        vo.setMessage(String.format("文档「%s」解析失败", doc.getFilename()));
-        vo.setDocId(doc.getId());
-        vo.setRetryable(true);
+      String kbName = kbNameMap.getOrDefault(doc.getKbId(), String.valueOf(doc.getKbId()));
+      switch (st) {
+        case "completed" -> {
+          vo.setType("index");
+          vo.setMessage(String.format("知识库「%s」文档「%s」处理完成", kbName, doc.getFilename()));
+        }
+        case "failed" -> {
+          vo.setType("error");
+          vo.setMessage(String.format("文档「%s」解析失败", doc.getFilename()));
+          vo.setDocId(doc.getId());
+          vo.setRetryable(true);
+        }
+        default -> {
+          vo.setType("upload");
+          vo.setMessage(String.format("知识库「%s」上传文档「%s」，处理中", kbName, doc.getFilename()));
+        }
       }
       entries.add(new ActivityEntry(doc.getCreatedAt(), vo));
     }
