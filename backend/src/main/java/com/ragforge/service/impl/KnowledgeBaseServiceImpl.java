@@ -138,7 +138,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     boolean admin = ctx != null && ctx.isAdmin();
     Set<Long> adminIds = Set.of();
     Set<Long> writableIds = Set.of();
-    if (!admin && ctx != null && ctx.userId() != null) {
+    if (ctx != null && ctx.userId() != null) {
       adminIds = new java.util.HashSet<>(kbAclMapper.findAdminKbIds(ctx.userId()));
       writableIds = new java.util.HashSet<>(kbAclMapper.findWritableKbIds(ctx.userId()));
     }
@@ -203,10 +203,15 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
   private String resolvePermission(
       KnowledgeBase kb, Long uid, boolean isAdmin, Set<Long> adminSet, Set<Long> writableSet) {
-    if (isAdmin) {
+    // 平台超管仅在破玻璃(全平台视图)下对一切可写；普通组织上下文按真实关系判定，不再处处可编辑。
+    if (isAdmin && com.ragforge.security.AdminOverrideHolder.isActive()) {
       return "admin";
     }
     if (uid != null && uid.equals(kb.getOwnerUserId())) {
+      return "admin";
+    }
+    // 组织库：本人是该组织 OWNER/ADMIN → 可管理。
+    if (kb.getOrgId() != null && uid != null && orgMemberMapper.isOrgAdmin(kb.getOrgId(), uid)) {
       return "admin";
     }
     if (adminSet.contains(kb.getId())) {
@@ -288,7 +293,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     boolean admin = ctx != null && ctx.isAdmin();
     Set<Long> adminIds = Set.of();
     Set<Long> writableIds = Set.of();
-    if (!admin && ctx != null && ctx.userId() != null) {
+    if (ctx != null && ctx.userId() != null) {
       adminIds = new java.util.HashSet<>(kbAclMapper.findAdminKbIds(ctx.userId()));
       writableIds = new java.util.HashSet<>(kbAclMapper.findWritableKbIds(ctx.userId()));
     }
