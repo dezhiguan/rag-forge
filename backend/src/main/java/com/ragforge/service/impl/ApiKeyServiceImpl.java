@@ -1,10 +1,16 @@
 package com.ragforge.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.ragforge.common.BizException;
-import com.ragforge.security.ApiKeyInterceptor;
 import com.ragforge.mapper.ApiKeyMapper;
+import com.ragforge.mapper.OrgMemberMapper;
 import com.ragforge.model.entity.ApiKey;
+import com.ragforge.security.AdminOverrideHolder;
+import com.ragforge.security.ApiKeyInterceptor;
+import com.ragforge.security.OrgContextHolder;
+import com.ragforge.security.RagAuthContext;
+import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.ApiKeyService;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
@@ -13,21 +19,56 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 开发者中心 API key：按当前组织归属。普通上下文管自己组织的 key；超管破玻璃=全平台只读治理(吊销)。 */
 @Service
 @RequiredArgsConstructor
 public class ApiKeyServiceImpl implements ApiKeyService {
 
   private final ApiKeyMapper apiKeyMapper;
   private final ApiKeyInterceptor apiKeyInterceptor;
+  private final OrgMemberMapper orgMemberMapper;
+
+  /** 超管全平台视图（破玻璃）= 只读治理。 */
+  public boolean isPlatformGovernance() {
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    return ctx != null && ctx.isAdmin() && AdminOverrideHolder.isActive();
+  }
+
+  private Long currentUserId() {
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    return ctx == null ? null : ctx.userId();
+  }
+
+  /** 当前组织 OWNER/ADMIN 才能管理 key（个人组织 owner 亦满足）。 */
+  private void requireOrgAdmin(Long orgId) {
+    Long uid = currentUserId();
+    if (orgId == null || uid == null || !orgMemberMapper.isOrgAdmin(orgId, uid)) {
+      throw new BizException(403, "NOT_ORG_ADMIN");
+    }
+  }
 
   @Override
-  public List<ApiKey> listAll() {
-    return apiKeyMapper.selectList(null);
+  public List<ApiKey> listForCurrentOrg() {
+    if (isPlatformGovernance()) {
+      // 全平台治理：跨组织只读全部。
+      return apiKeyMapper.selectList(
+          new LambdaQueryWrapper<ApiKey>().orderByDesc(ApiKey::getCreatedAt));
+    }
+    Long orgId = OrgContextHolder.get();
+    if (orgId == null) {
+      return List.of();
+    }
+    return apiKeyMapper.selectList(
+        new LambdaQueryWrapper<ApiKey>()
+            .eq(ApiKey::getOrgId, orgId)
+            .orderByDesc(ApiKey::getCreatedAt));
   }
 
   @Override
   @Transactional
   public ApiKey create(String keyName) {
+    Long orgId = OrgContextHolder.get();
+    requireOrgAdmin(orgId); // 平台视图(orgId=null)无法创建 → 须下钻组织
     SecureRandom random = new SecureRandom();
     byte[] bytes = new byte[24];
     random.nextBytes(bytes);
@@ -42,6 +83,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     apiKey.setApiKey(key);
     apiKey.setEnabled(true);
     apiKey.setRateLimit(100);
+    apiKey.setOrgId(orgId);
     apiKey.setCreatedAt(LocalDateTime.now());
     apiKeyMapper.insert(apiKey);
     apiKeyInterceptor.resetKeyCache();
@@ -55,12 +97,12 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     if (apiKey == null) {
       throw new BizException(404, "API Key 不存在");
     }
+    // 平台治理可吊销任意 key；普通上下文须为该 key 所属组织的 admin。
+    if (!isPlatformGovernance()) {
+      requireOrgAdmin(apiKey.getOrgId());
+    }
     apiKey.setEnabled(enabled);
-    apiKeyMapper.update(
-        null,
-        new UpdateWrapper<ApiKey>()
-            .eq("id", id)
-            .set("enabled", enabled));
+    apiKeyMapper.update(null, new UpdateWrapper<ApiKey>().eq("id", id).set("enabled", enabled));
     apiKeyInterceptor.resetKeyCache();
     return apiKey;
   }
@@ -72,6 +114,8 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     if (apiKey == null) {
       throw new BizException(404, "API Key 不存在");
     }
+    // 删除是组织内操作（平台视图仅吊销不删，按设计），须为该 key 所属组织的 admin。
+    requireOrgAdmin(apiKey.getOrgId());
     apiKeyMapper.deleteById(id);
     apiKeyInterceptor.resetKeyCache();
   }

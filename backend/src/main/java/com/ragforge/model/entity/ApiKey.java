@@ -21,5 +21,8 @@ public class ApiKey {
   private String principalId;
   private String scopes;
   private String allowedKbIds;
+  /** 所属组织（开发者中心：key 归当前组织）。 */
+  private Long orgId;
+  private LocalDateTime lastUsedAt;
   private LocalDateTime createdAt;
 }
