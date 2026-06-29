@@ -169,6 +169,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   listOrgs,
   createOrg,
@@ -351,7 +352,17 @@ async function onRemoveMember(member) {
   await loadMembers()
 }
 
-onMounted(loadOrgs)
+const route = useRoute()
+const router = useRouter()
+
+onMounted(async () => {
+  await loadOrgs()
+  // 从驾驶舱「升级到团队组织」深链进入：自动打开创建组织弹窗
+  if (route.query.create) {
+    openCreate()
+    router.replace({ path: route.path })
+  }
+})
 </script>
 
 <style scoped>

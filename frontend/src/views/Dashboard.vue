@@ -9,6 +9,14 @@
       </button>
     </Teleport>
 
+    <div v-if="isPersonal" class="upgrade-banner">
+      <span class="ub-ico">⬆</span>
+      <span class="ub-txt">
+        <b>当前为个人空间</b> —— 需要和同事协作？创建团队组织即可共享知识库、邀请成员，按组织聚合指标。
+      </span>
+      <button class="btn btn-primary btn-sm" @click="$router.push({ path: '/orgs', query: { create: 1 } })">升级到团队组织</button>
+    </div>
+
     <div v-if="isPlatform" class="breakglass-banner">
       <span class="bg-ico">🛡</span>
       <span class="bg-txt">
@@ -431,6 +439,11 @@ onMounted(() => {
 
 .action-text { font-size: 14px; font-weight: 600; color: var(--slate); flex: 1; }
 .action-arrow { color: #cbd5e1; font-size: 16px; transition: color 0.15s ease, transform 0.15s ease; }
+
+/* ===== 升档横幅（个人空间） ===== */
+.upgrade-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-radius: 14px; padding: 12px 16px; background: linear-gradient(95deg, #eef4ff, #f7faff); border: 1px solid var(--primary-border); }
+.upgrade-banner .ub-ico { width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+.upgrade-banner .ub-txt { flex: 1; font-size: 13px; color: var(--slate); } .upgrade-banner .ub-txt b { color: var(--navy); }
 
 /* ===== 破玻璃横幅 + 权限矩阵（全平台视图） ===== */
 .breakglass-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-radius: 14px; padding: 12px 16px; background: linear-gradient(95deg, #fff7ed, #fffbeb); border: 1px solid #fed7aa; }
