@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RAGForge 权限重构方案 · 从「按平台控权」到「组织自治」</title>
+<style>
+  :root{
+    --border:#e2e8f0;--text:#1e293b;--slate:#334155;--gray:#475569;--muted:#64748b;--navy:#0f172a;
+    --primary:#2563eb;--primary-soft:#eff6ff;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--violet:#7c3aed;
+    --bg:#f6f8fb;--surface:#fff;--shadow-sm:0 1px 2px rgba(15,23,42,.04),0 1px 3px rgba(15,23,42,.05);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;line-height:1.6;}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 28px 60px;}
+  h1{font-size:24px;margin:0 0 6px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:24px;}
+  h2{font-size:18px;margin:30px 0 12px;padding-left:10px;border-left:4px solid var(--primary);}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-sm);padding:18px 20px;margin-bottom:16px;}
+  .ruler{background:linear-gradient(95deg,#eff6ff,#f7faff);border:1px solid #bfdbfe;}
+  .ruler b{color:var(--primary);}
+  .roles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .role{border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--surface);}
+  .role .rt{font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px;}
+  .role .rd{font-size:12px;color:var(--muted);margin-top:6px;}
+  .chip{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;}
+  .c-su{background:#1e293b;} .c-org{background:#15803d;} .c-mem{background:#64748b;} .c-per{background:#2563eb;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  thead th{background:#f8fafc;color:var(--slate);font-weight:600;font-size:12px;text-align:center;padding:10px 8px;border-bottom:1px solid var(--border);}
+  thead th.cap{text-align:left;width:34%;}
+  tbody td{padding:9px 8px;border-top:1px solid var(--border);text-align:center;}
+  tbody td.cap{text-align:left;color:var(--slate);font-weight:500;}
+  tbody td.cap small{color:var(--muted);font-weight:400;}
+  .grp td{background:#f1f5f9;font-weight:700;color:var(--navy);font-size:12.5px;text-align:left;letter-spacing:.3px;}
+  .y{color:var(--green);font-weight:700;} .h{color:var(--amber);font-weight:700;} .n{color:#cbd5e1;font-weight:700;} .na{color:#cbd5e1;}
+  .legend{font-size:12px;color:var(--muted);margin:8px 2px 0;}
+  .legend b{color:var(--slate);}
+
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .split .h2half{font-weight:700;margin-bottom:8px;}
+  .half{border:1px solid var(--border);border-radius:12px;padding:14px;}
+  .half.platform{background:#fef2f2;border-color:#fecaca;} .half.platform .h2half{color:#b91c1c;}
+  .half.org{background:#f0fdf4;border-color:#bbf7d0;} .half.org .h2half{color:#15803d;}
+  .half ul{margin:0;padding-left:18px;font-size:12.5px;color:var(--gray);} .half li{margin:4px 0;}
+
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0;}
+  ol.steps>li{position:relative;padding:14px 16px 14px 52px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;background:var(--surface);}
+  ol.steps>li::before{counter-increment:s;content:counter(s);position:absolute;left:14px;top:14px;width:26px;height:26px;border-radius:8px;background:var(--primary);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;}
+  ol.steps .st{font-weight:700;font-size:14px;} ol.steps .sd{font-size:12.5px;color:var(--muted);margin-top:4px;}
+  code{background:#f1f5f9;border-radius:5px;padding:1px 6px;font-size:12px;color:var(--slate);}
+  .tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px;}
+  .t-p1{background:#dcfce7;color:#15803d;} .t-p2{background:#fef3c7;color:#92400e;} .t-p3{background:#e0e7ff;color:#3730a3;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>权限重构方案：从「按平台控权」→「组织自治」</h1>
+  <div class="sub">RAGForge · 多组织上线后的权限模型重设计 · 供架构师审核</div>
+
+  <div class="card" style="background:#fff7ed;border-color:#fed7aa;">
+    <b style="color:#b91c1c;">⚠ 模型前提：Claude Code 式「一切皆组织」</b><br>
+    <span style="font-size:13px;color:var(--gray);">不再有"个人空间(org_id=null)"。每个用户注册即拥有<b>一个自己的组织</b>（<code>Individual</code> 类型、单人、你是 OWNER）；企业是 <code>Team</code> 类型（多成员）。<b>当前代码仍是 GitHub 式</b>，需先做模型迁移（见落地方案 P0）。</span>
+  </div>
+
+  <div class="card ruler">
+    <b>一把判断尺</b>：每个能力只问一句 —— 它是<b>横跨整个平台</b>的，还是<b>只作用于某一个组织自己的资源</b>的？<br>
+    横跨平台 → <b>必须超管</b>（下放=把全平台交出去）；只作用于本组织 → <b>可下放</b>给该组织的 OWNER/ADMIN。
+  </div>
+
+  <h2>一、角色模型（三维度，统一到"组织"）</h2>
+  <div class="card">
+    <p style="margin:0 0 12px;font-size:13px;color:var(--gray);">权限不再分"个人 vs 企业"两条轨，统一为：<b>平台角色(超管)</b> × <b>组织类型(Individual/Team)</b> × <b>组织角色(OWNER/ADMIN/MEMBER)</b>。「个人组织」= 成员只有你、你是 OWNER 的 <code>Individual</code> 组织，<b>权限与企业 OWNER 在各自组织里一致</b>，只是没有别的成员。</p>
+    <div class="roles">
+      <div class="role"><div class="rt"><span class="chip c-su">超</span>超管</div><div class="rd">平台角色 = ADMIN（正交维度）。治理整个平台，跨组织（破玻璃+审计）。</div></div>
+      <div class="role"><div class="rt"><span class="chip c-org">企</span>企业超管</div><div class="rd"><code>Team</code> 组织的 OWNER/ADMIN。在<b>本组织内</b>是"小超管"。</div></div>
+      <div class="role"><div class="rt"><span class="chip c-mem">员</span>普通员工</div><div class="rd"><code>Team</code> 组织的 MEMBER。只"用"不"管"。</div></div>
+      <div class="role"><div class="rt"><span class="chip c-per">个</span>个人组织</div><div class="rd"><code>Individual</code> 组织（单人，你=OWNER）。≈ 单人版企业超管。</div></div>
+    </div>
+  </div>
+
+  <h2>二、权限矩阵</h2>
+  <table>
+    <thead><tr>
+      <th class="cap">能力</th>
+      <th><span class="chip c-su" style="width:22px;height:22px;font-size:11px;">超</span><br>超管</th>
+      <th><span class="chip c-org" style="width:22px;height:22px;font-size:11px;">企</span><br>企业超管</th>
+      <th><span class="chip c-mem" style="width:22px;height:22px;font-size:11px;">员</span><br>普通员工</th>
+      <th><span class="chip c-per" style="width:22px;height:22px;font-size:11px;">个</span><br>个人组织</th>
+    </tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="5">A · 使用类（数据按当前上下文 scope）</td></tr>
+      <tr><td class="cap">驾驶舱 <small>· 范围内指标</small></td><td class="y">✓ 全平台</td><td class="y">✓ 组织</td><td class="y">✓ 组织概览</td><td class="y">✓ 个人</td></tr>
+      <tr><td class="cap">知识库 检索/上传/管理</td><td class="y">✓</td><td class="y">✓ 组织库</td><td class="h">◐ 读可见库·写按权限</td><td class="y">✓ 个人库</td></tr>
+      <tr><td class="cap">检索调试台</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><td class="cap">应答调试台</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+
+      <tr class="grp"><td colspan="5">B · 管理 / 质量类（管理者）</td></tr>
+      <tr><td class="cap">性能诊断</td><td class="y">✓</td><td class="y">✓ 组织</td><td class="n">✗</td><td class="h">◐ 可选</td></tr>
+      <tr><td class="cap">评测实验室 <small>· 建/跑评测</small></td><td class="y">✓</td><td class="y">✓ 组织库</td><td class="n">✗</td><td class="h">◐ 可选</td></tr>
+      <tr><td class="cap">质量看板 <small>· 查看结果</small></td><td class="y">✓</td><td class="y">✓</td><td class="h">◐ 只读</td><td class="h">◐</td></tr>
+      <tr><td class="cap">组织成员管理 <small>· 邀请/角色/移除</small></td><td class="y">✓</td><td class="y">✓</td><td class="n">✗</td><td class="na">— 无成员</td></tr>
+      <tr><td class="cap">组织设置 <small>· 改名/转移/删</small></td><td class="y">✓ 兜底</td><td class="y">✓ OWNER</td><td class="n">✗</td><td class="na">—</td></tr>
+
+      <tr class="grp"><td colspan="5">C · 成本与接入（注意：每项是"两半"）</td></tr>
+      <tr><td class="cap">模型选型 / Provider 配置 / 凭证</td><td class="y">✓ 平台级</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td></tr>
+      <tr><td class="cap">成本 / 用量查看</td><td class="y">✓ 平台总账</td><td class="y">✓ 本组织</td><td class="n">✗</td><td class="y">✓ 个人</td></tr>
+      <tr><td class="cap">平台级网关配置</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td></tr>
+      <tr><td class="cap">API key 管理 <small>· 组织/个人 scope</small></td><td class="y">✓ 平台 key</td><td class="y">✓ 组织 key</td><td class="n">✗</td><td class="y">✓ 个人 key</td></tr>
+
+      <tr class="grp"><td colspan="5">D · 平台治理（超管专属，不可下放）</td></tr>
+      <tr><td class="cap">全平台聚合 + 跨组织读他人数据 <small>· 破玻璃</small></td><td class="y">✓ 审计</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td></tr>
+      <tr><td class="cap">平台总账单 / 跨组织对账</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td></tr>
+      <tr><td class="cap">SYSTEM 库 / 中间件(ES/PG/MQ)</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td></tr>
+      <tr><td class="cap">平台授权 / 封号 / 兜底删组织</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td></tr>
+      <tr><td class="cap">全局开关 / 限流 / 配额</td><td class="y">✓</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td></tr>
+    </tbody>
+  </table>
+  <div class="legend"><b>✓</b> 可用 · <b style="color:var(--amber)">◐</b> 受限/只读/可选 · <b style="color:#cbd5e1">✗</b> 隐藏 · <b>—</b> 不适用。"组织/个人"列均指<b>仅限自己的资源</b>。</div>
+
+  <h2>三、最大的设计债：两个 tab 各是"两半"</h2>
+  <div class="split">
+    <div class="half platform">
+      <div class="h2half">🔒 平台那半（超管）</div>
+      <ul>
+        <li>模型选型、Provider 凭证、模型注册/路由</li>
+        <li>平台总账单、跨组织成本对账</li>
+        <li>平台级网关 / 全局 API 配置</li>
+      </ul>
+    </div>
+    <div class="half org">
+      <div class="h2half">🟢 组织/个人那半（可下放）</div>
+      <ul>
+        <li>看<b>本组织/个人</b>的用量与成本（不是改配置）</li>
+        <li>管<b>本组织/个人 scope</b> 的 API key</li>
+        <li>让企业自己的 Agent/应用按组织上下文接入</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px;font-size:13px;color:var(--gray);">现状把这两半整块锁在超管 → 企业<b>看不到自己花了多少钱、管不了自己的 key</b>，是从"组织自治"角度最该补的缺口。</div>
+
+  <h2>四、落地方案（分阶段）</h2>
+  <ol class="steps">
+    <li><div class="st">模型迁移：GitHub 式 → Claude Code 式（一切皆组织）<span class="tag" style="background:#fee2e2;color:#b91c1c;">P0·前置·不可回退</span></div>
+      <div class="sd"><code>organizations</code> 加 <code>type(INDIVIDUAL/TEAM)</code>；注册时为每个用户建一个 Individual 组织；存量"个人库"(<code>org_id=null</code>) 迁移到各自 Individual 组织（回填 <code>org_id</code>）；<code>KbAccessGuard</code> 去掉 owner_user_id 个人分支、统一走组织判定；前端 <code>useOrg</code> 去掉合成的 <code>id:null</code> PERSONAL，改为后端返回的真实 Individual 组织。<b>是 DB 迁移 + 多处改造，须先做。</b></div></li>
+    <li><div class="st">权限判定升级为"双维度"<span class="tag t-p1">P1·地基</span></div>
+      <div class="sd">前端 <code>canAccessRoute</code> 在<b>平台角色</b>之外，叠加<b>当前组织上下文 + 组织角色</b>（OWNER/ADMIN/MEMBER）。后端按 <code>X-Org-Id</code> 解析组织角色，授予对应 scope。B 桶(性能/评测/质量/成员/设置)对企业超管在组织内放开。</div></li>
+    <li><div class="st">导航与页面"上下文感知"<span class="tag t-p1">P1</span></div>
+      <div class="sd">切到不同组织时，导航与每页数据范围随之变（个人=自己、组织=本组织、全平台=超管破玻璃）。员工只看到"用+只读"。</div></li>
+    <li><div class="st">「成本」拆出组织/个人视图<span class="tag t-p2">P2</span></div>
+      <div class="sd">成本中心拆为：模型配置(超管) + 用量/账单(按 org_id/个人聚合，下放)。依赖用量计量带 org 归属（与 retrieval_logs.org_id 一致口径）。</div></li>
+    <li><div class="st">「API key」拆出组织/个人 scope<span class="tag t-p2">P2</span></div>
+      <div class="sd">api_keys 增加归属（org_id / owner_user_id）+ 作用域；企业超管管本组织 key，个人管个人 key，平台级仍超管。</div></li>
+    <li><div class="st">超管专属域收口 + 审计<span class="tag t-p3">P3</span></div>
+      <div class="sd">模型配置/SYSTEM库/平台总账/封号/全局开关 明确仅超管，且高危走破玻璃+审计；企业侧永远够不到这几样。</div></li>
+  </ol>
+
+  <div class="card" style="margin-top:18px;background:#fbfcfe;border-style:dashed;">
+    <b>一句话定调</b>：一切皆组织后，权限只看「<b>平台角色(超管) × 组织角色(OWNER/ADMIN/MEMBER)</b>」。除"模型配置、平台聚合/跨组织、平台总账、SYSTEM/中间件、平台授权"铁定归超管，<b>其余全部按组织下放</b> —— 你在自己 Individual 组织里就是 OWNER（小超管），企业 OWNER 同理，都只够不到平台级那几样。
+  </div>
+</div>
+</body>
+</html>
