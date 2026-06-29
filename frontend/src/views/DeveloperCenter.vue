@@ -22,8 +22,9 @@
     <!-- ============ API keys ============ -->
     <div v-show="tab === 'keys'" class="card card-pad">
       <div v-if="newKey" class="newkey">
-        <div class="nk-h">✅ 已创建，请立即复制保存（仅此一次可见）</div>
+        <div class="nk-h">🔑 API key 创建成功 —— 明文<b>仅显示这一次</b>，请立即复制并妥善保管</div>
         <div class="nk-row"><code>{{ newKey }}</code><button class="btn" @click="copy($event, newKey)">复制</button></div>
+        <div class="nk-tip">⚠️ 离开本页或刷新后将<b>无法再次查看</b>完整 key；如遗失只能删除后重建。请勿暴露在前端代码或公开仓库。</div>
       </div>
 
       <div class="desc">
@@ -193,7 +194,8 @@ async function onCreate() {
   if (creating.value) return
   const name = await confirmDialog({
     title: '创建 API key',
-    message: '为该 key 取一个便于识别的名称（如：招聘 Agent 接入）。',
+    message:
+      '为该 key 取一个便于识别的名称（如：招聘 Agent 接入）。\n\n⚠️ 创建后完整明文 key 仅显示这一次，请立即复制并妥善保管；遗失只能删除重建。',
     input: true,
     inputPlaceholder: 'key 名称',
     confirmText: '创建',
@@ -293,6 +295,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .nk-h { font-size: 12.5px; font-weight: 700; color: #15803d; margin-bottom: 8px; }
 .nk-row { display: flex; align-items: center; gap: 10px; }
 .nk-row code { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--navy); word-break: break-all; }
+.nk-tip { margin-top: 8px; font-size: 11.5px; color: #b45309; line-height: 1.6; } .nk-tip b { color: #b45309; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .sec-title { font-size: 13px; font-weight: 700; color: var(--navy); margin: 0 0 4px; }
