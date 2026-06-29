@@ -3,6 +3,7 @@ package com.ragforge.auth;
 import com.ragforge.mapper.UserProfileMapper;
 import com.ragforge.model.entity.UserProfile;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -25,6 +26,24 @@ public class UserProfileService {
       userProfileMapper.insert(profile);
     }
     return profile;
+  }
+
+  /**
+   * 按用户名/邮箱/显示名模糊搜索本地用户资料。
+   * 关键词不足 2 字符返回空，避免一字母把全表拉出来；上限 limit 条。
+   */
+  public List<UserProfile> search(String q, int limit) {
+    String trimmed = q == null ? "" : q.trim();
+    if (trimmed.length() < 2) {
+      return List.of();
+    }
+    String kw = "%" + escapeLike(trimmed) + "%";
+    return userProfileMapper.search(kw, Math.max(1, Math.min(limit, 50)));
+  }
+
+  /** 转义 LIKE 通配符，避免用户输入的 % 与 _ 被当成通配。 */
+  private String escapeLike(String raw) {
+    return raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
   }
 
   /** 个人设置：仅更新展示资料（显示名/头像/简介）。 */

@@ -1,18 +1,23 @@
 package com.ragforge.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ragforge.auth.UserProfileService;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.OrgMemberMapper;
 import com.ragforge.mapper.OrganizationMapper;
+import com.ragforge.mapper.UserProfileMapper;
 import com.ragforge.model.entity.OrgMember;
 import com.ragforge.model.entity.Organization;
+import com.ragforge.model.entity.UserProfile;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +35,8 @@ public class OrgService {
 
   private final OrganizationMapper organizationMapper;
   private final OrgMemberMapper orgMemberMapper;
+  private final UserProfileMapper userProfileMapper;
+  private final UserProfileService userProfileService;
 
   private Long currentUserId() {
     RagAuthContext ctx = RagAuthContextHolder.get();
@@ -99,20 +106,51 @@ public class OrgService {
     return toView(org, orgMemberMapper.findRole(orgId, uid));
   }
 
-  /** 成员列表（仅成员可见）。 */
+  /** 成员列表（仅成员可见）；回填本地用户资料的显示名/邮箱，避免前端只能显示「用户 {id}」。 */
   public List<Map<String, Object>> listMembers(Long orgId) {
     Long uid = currentUserId();
     requireMember(orgId, uid);
-    return orgMemberMapper.listByOrg(orgId).stream()
+    List<OrgMember> members = orgMemberMapper.listByOrg(orgId);
+    Map<Long, UserProfile> profiles = loadProfiles(members.stream().map(OrgMember::getUserId).toList());
+    return members.stream()
         .map(
             m -> {
+              UserProfile p = profiles.get(m.getUserId());
               Map<String, Object> v = new LinkedHashMap<>();
               v.put("userId", m.getUserId());
               v.put("role", m.getRole());
+              v.put("displayName", userProfileService.resolveDisplayName(p, m.getUserId()));
+              v.put("email", p == null ? null : p.getEmail());
               v.put("createdAt", m.getCreatedAt());
               return v;
             })
         .toList();
+  }
+
+  /** 成员候选搜索（仅 OWNER/ADMIN）：按用户名/邮箱/显示名匹配本地用户，并标注是否已是成员。 */
+  public List<Map<String, Object>> searchMemberCandidates(Long orgId, String q) {
+    Long uid = currentUserId();
+    requireOrgAdmin(orgId, uid);
+    return userProfileService.search(q, 10).stream()
+        .map(
+            p -> {
+              Map<String, Object> v = new LinkedHashMap<>();
+              v.put("userId", p.getAuthUserId());
+              v.put("displayName", userProfileService.resolveDisplayName(p, p.getAuthUserId()));
+              v.put("email", p.getEmail());
+              v.put("maskedPhone", p.getMaskedPhone());
+              v.put("alreadyMember", orgMemberMapper.isMember(orgId, p.getAuthUserId()));
+              return v;
+            })
+        .toList();
+  }
+
+  private Map<Long, UserProfile> loadProfiles(List<Long> userIds) {
+    if (userIds == null || userIds.isEmpty()) {
+      return Map.of();
+    }
+    return userProfileMapper.selectBatchIds(userIds).stream()
+        .collect(Collectors.toMap(UserProfile::getAuthUserId, Function.identity()));
   }
 
   /** 添加成员（仅 OWNER/ADMIN）。仅 OWNER 可授予 OWNER 角色。 */

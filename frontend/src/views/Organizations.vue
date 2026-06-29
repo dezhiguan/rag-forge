@@ -89,26 +89,60 @@
 
           <div class="modal-body">
             <div class="add-member">
-              <input
-                v-model="memberForm.userId"
-                type="number"
-                placeholder="用户 ID"
-                class="mini-input"
-              />
+              <div class="member-search">
+                <input
+                  v-model="memberQuery"
+                  type="text"
+                  placeholder="搜索用户名 / 邮箱 / 昵称"
+                  class="mini-input"
+                  data-test="member-search-input"
+                  @input="onMemberSearchInput"
+                  @focus="candidatesOpen = candidates.length > 0"
+                  @blur="onMemberSearchBlur"
+                />
+                <div v-if="candidatesOpen && candidates.length" class="candidate-list">
+                  <div
+                    v-for="c in candidates"
+                    :key="c.userId"
+                    class="candidate-row"
+                    :class="{ disabled: c.alreadyMember }"
+                    data-test="member-candidate"
+                    @mousedown.prevent="pickCandidate(c)"
+                  >
+                    <span class="candidate-name">{{ c.displayName }}</span>
+                    <span class="candidate-meta">{{ c.email || c.maskedPhone || ('用户 ' + c.userId) }}</span>
+                    <span v-if="c.alreadyMember" class="candidate-tag">已是成员</span>
+                  </div>
+                </div>
+                <div
+                  v-else-if="candidatesOpen && memberQuery.trim().length >= 2 && !searching"
+                  class="candidate-empty"
+                >
+                  无匹配用户（仅能搜到登录过本平台的用户）
+                </div>
+              </div>
               <select v-model="memberForm.role" class="mini-input">
                 <option value="MEMBER">成员</option>
                 <option value="ADMIN">管理员</option>
                 <option v-if="activeOrgIsOwner" value="OWNER">所有者</option>
               </select>
-              <button class="btn btn-primary btn-sm" :disabled="submitting" @click="onAddMember">
+              <button
+                class="btn btn-primary btn-sm"
+                :disabled="submitting || !memberForm.userId"
+                data-test="member-add-btn"
+                @click="onAddMember"
+              >
                 添加成员
               </button>
             </div>
 
             <div class="member-list">
               <div v-for="m in members" :key="m.userId" class="member-row">
-                <div class="member-avatar">{{ String(m.userId).slice(-2) }}</div>
-                <div class="member-id">用户 {{ m.userId }}</div>
+                <div class="member-avatar">{{ (m.displayName || ('U' + m.userId)).trim().slice(0, 2) }}</div>
+                <div class="member-id">
+                  <span class="member-name">{{ m.displayName || ('用户 ' + m.userId) }}</span>
+                  <span v-if="m.email" class="member-email">{{ m.email }}</span>
+                </div>
                 <select
                   :value="m.role"
                   class="mini-input role-select"
@@ -142,6 +176,7 @@ import {
   addMember as addMemberApi,
   updateMember as updateMemberApi,
   removeMember as removeMemberApi,
+  searchMemberCandidates as searchMemberCandidatesApi,
 } from '../api/org'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
@@ -159,6 +194,13 @@ const showMembers = ref(false)
 const activeOrg = ref(null)
 const members = ref([])
 const memberForm = ref({ userId: null, role: 'MEMBER' })
+
+// 成员搜索：输入关键词 → 防抖查后端候选 → 选中后才落 userId
+const memberQuery = ref('')
+const candidates = ref([])
+const candidatesOpen = ref(false)
+const searching = ref(false)
+let searchTimer = null
 
 const activeOrgIsOwner = computed(() => activeOrg.value?.myRole === 'OWNER')
 
@@ -205,9 +247,62 @@ async function onCreate() {
 
 async function openMembers(org) {
   activeOrg.value = org
+  resetMemberSearch()
   memberForm.value = { userId: null, role: 'MEMBER' }
   showMembers.value = true
   await loadMembers()
+}
+
+function resetMemberSearch() {
+  memberQuery.value = ''
+  candidates.value = []
+  candidatesOpen.value = false
+  searching.value = false
+  if (searchTimer) clearTimeout(searchTimer)
+}
+
+function onMemberSearchInput() {
+  // 关键词一变,之前选中的人即作废,必须重新从候选里选,避免 userId 与输入框对不上
+  memberForm.value.userId = null
+  const q = memberQuery.value.trim()
+  if (searchTimer) clearTimeout(searchTimer)
+  if (q.length < 2) {
+    candidates.value = []
+    candidatesOpen.value = false
+    return
+  }
+  searchTimer = setTimeout(() => runMemberSearch(q), 250)
+}
+
+async function runMemberSearch(q) {
+  if (!activeOrg.value) return
+  searching.value = true
+  candidatesOpen.value = true
+  try {
+    const res = await searchMemberCandidatesApi(activeOrg.value.id, q)
+    candidates.value = res?.data || res || []
+  } catch (e) {
+    candidates.value = []
+  } finally {
+    searching.value = false
+  }
+}
+
+function pickCandidate(c) {
+  if (c.alreadyMember) {
+    toast.warning('该用户已是组织成员')
+    return
+  }
+  memberForm.value.userId = c.userId
+  memberQuery.value = c.displayName || `用户 ${c.userId}`
+  candidatesOpen.value = false
+}
+
+function onMemberSearchBlur() {
+  // 延迟关闭,让候选项的 mousedown 先触发选中
+  setTimeout(() => {
+    candidatesOpen.value = false
+  }, 150)
 }
 
 async function loadMembers() {
@@ -217,7 +312,7 @@ async function loadMembers() {
 
 async function onAddMember() {
   if (!memberForm.value.userId) {
-    toast.warning('请输入用户 ID')
+    toast.warning('请先搜索并选择一个用户')
     return
   }
   submitting.value = true
@@ -226,7 +321,9 @@ async function onAddMember() {
       userId: Number(memberForm.value.userId),
       role: memberForm.value.role,
     })
-    memberForm.value = { userId: null, role: 'MEMBER' }
+    const role = memberForm.value.role
+    resetMemberSearch()
+    memberForm.value = { userId: null, role }
     await loadMembers()
   } finally {
     submitting.value = false
@@ -246,7 +343,7 @@ async function onChangeRole(member, role) {
 async function onRemoveMember(member) {
   const ok = await confirmDialog({
     title: '移除成员',
-    message: `确认把用户 ${member.userId} 移出组织？`,
+    message: `确认把 ${member.displayName || '用户 ' + member.userId} 移出组织？`,
     confirmText: '移除',
   })
   if (!ok) return
@@ -370,7 +467,26 @@ onMounted(loadOrgs)
   border-radius: var(--radius-sm); font-size: 13px; color: var(--text); background: #fff;
 }
 .mini-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-.add-member .mini-input:first-child { flex: 1; }
+.member-search { flex: 1; position: relative; }
+.member-search .mini-input { width: 100%; }
+.candidate-list {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12); max-height: 240px; overflow-y: auto;
+}
+.candidate-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; font-size: 13px;
+}
+.candidate-row:hover { background: var(--light); }
+.candidate-row.disabled { cursor: not-allowed; opacity: 0.55; }
+.candidate-name { font-weight: 600; color: var(--text); }
+.candidate-meta { color: var(--text-muted); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.candidate-tag { font-size: 11px; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-full); padding: 1px 8px; }
+.candidate-empty {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;
+}
 .member-list { display: flex; flex-direction: column; }
 .member-row {
   display: flex; align-items: center; gap: 12px;
@@ -381,7 +497,9 @@ onMounted(loadOrgs)
   width: 34px; height: 34px; border-radius: var(--radius-full); flex-shrink: 0;
   display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #475569; background: var(--light);
 }
-.member-id { flex: 1; font-size: 14px; color: var(--text); }
+.member-id { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--text); }
+.member-name { font-weight: 600; }
+.member-email { font-size: 12px; color: var(--text-muted); }
 .role-select { width: 96px; }
 .icon-btn {
   border: 1px solid var(--border); background: #fff; border-radius: var(--radius-sm);
