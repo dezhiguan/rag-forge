@@ -83,6 +83,7 @@ public class ApiKeyController {
   public record ApiKeyView(
       Long id,
       String keyName,
+      String keyMasked,
       Boolean enabled,
       Integer rateLimit,
       Long orgId,
@@ -96,6 +97,7 @@ public class ApiKeyController {
       return new ApiKeyView(
           k.getId(),
           k.getKeyName(),
+          mask(k.getApiKey()),
           k.getEnabled(),
           k.getRateLimit(),
           k.getOrgId(),
@@ -104,6 +106,13 @@ public class ApiKeyController {
           k.getAllowedKbIds(),
           k.getLastUsedAt(),
           k.getCreatedAt());
+    }
+
+    private static String mask(String key) {
+      if (key == null || key.length() < 12) {
+        return "****";
+      }
+      return key.substring(0, 8) + "****" + key.substring(key.length() - 4);
     }
   }
 
