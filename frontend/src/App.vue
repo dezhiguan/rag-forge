@@ -297,8 +297,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
+  padding: 16px 20px 6px;
 }
 .card-title { font-size: 14px; font-weight: 700; color: var(--slate); }
 .card-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
