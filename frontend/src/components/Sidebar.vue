@@ -80,7 +80,7 @@ const ALL_NAV_ITEMS = [
   { path: '/eval', icon: '🧪', label: '评测实验室', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/evaluation/quality', icon: '📈', label: '质量看板', meta: { roles: ['ADMIN', 'KB_EDITOR'], scope: 'rag:eval:write' } },
   { path: '/models', icon: '🧠', label: '模型 & 成本', meta: { role: 'ADMIN' } },
-  { path: '/api', icon: '🔌', label: 'API 网关', meta: { role: 'ADMIN', scope: 'rag:apikey:admin' } },
+  { path: '/api', icon: '🔌', label: '开发者中心', meta: { roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'] } },
 ]
 
 const navItems = computed(() => ALL_NAV_ITEMS.filter((item) => canAccessRoute(item.meta, ragRole.value, scopes.value)))

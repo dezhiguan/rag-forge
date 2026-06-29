@@ -1,11 +1,6 @@
 <template>
   <div class="page-body dev-center">
-    <div class="page-head">
-      <div>
-        <h1 class="page-h">开发者中心</h1>
-        <div class="page-s">管理接入凭证、查阅接口与 MCP 集成方式。凭证与接口示例均归属<b>当前组织</b>，切换组织即切换上下文。</div>
-      </div>
-    </div>
+    <div class="page-s">管理接入凭证、查阅接口与 MCP 集成方式。凭证与接口示例均归属<b>当前组织</b>，切换组织即切换上下文。</div>
 
     <!-- 子 tab -->
     <div class="seg">
@@ -263,9 +258,7 @@ onMounted(reload)
 
 <style scoped>
 .dev-center { padding: 20px 28px 48px; }
-.page-head { margin-bottom: 16px; }
-.page-h { font-size: 20px; font-weight: 700; margin: 0 0 4px; color: var(--navy); }
-.page-s { font-size: 12.5px; color: var(--text-muted); max-width: 640px; }
+.page-s { font-size: 12.5px; color: var(--text-muted); max-width: 720px; margin: 0 0 16px; }
 
 .seg { display: inline-flex; background: #eef2f7; border-radius: 11px; padding: 3px; margin-bottom: 16px; }
 .seg button { border: 0; background: transparent; color: var(--gray); font-size: 13.5px; font-weight: 600; padding: 7px 18px; border-radius: 9px; cursor: pointer; }
