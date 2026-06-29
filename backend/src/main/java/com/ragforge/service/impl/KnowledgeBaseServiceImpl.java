@@ -133,6 +133,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .in(KnowledgeBase::getId, readable)
                 .ne(KnowledgeBase::getStatus, STATUS_DELETED)
                 .orderByDesc(KnowledgeBase::getCreatedAt));
+    kbs = filterByOrgContext(kbs, ctx);
 
     boolean admin = ctx != null && ctx.isAdmin();
     Set<Long> adminIds = Set.of();
@@ -157,6 +158,21 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     enrichOrgNames(vos);
     applyRealCounts(vos);
     return vos;
+  }
+
+  /**
+   * 按当前组织上下文(X-Org-Id)过滤可读库：个人组织只看个人库、团队组织只看该组织库。 破玻璃(全平台)或未指定上下文时不过滤。
+   * 历史 org_id=null 数据将清理，不做兼容。
+   */
+  private List<KnowledgeBase> filterByOrgContext(List<KnowledgeBase> kbs, RagAuthContext ctx) {
+    if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
+      return kbs; // 全平台破玻璃：不按组织过滤
+    }
+    Long orgId = com.ragforge.security.OrgContextHolder.get();
+    if (orgId == null) {
+      return kbs; // 未指定当前组织：兼容不过滤
+    }
+    return kbs.stream().filter(kb -> orgId.equals(kb.getOrgId())).toList();
   }
 
   /** 批量回填组织库的组织名（个人库不受影响）。 */

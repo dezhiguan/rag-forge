@@ -67,6 +67,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         RagAuthContextHolder.set(context);
         maybeActivateAdminOverride(context, request);
+        OrgContextHolder.set(parseOrgId(request.getHeader("X-Org-Id")));
         UsernamePasswordAuthenticationToken authentication =
             new UsernamePasswordAuthenticationToken(
                 context,
@@ -78,7 +79,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     } finally {
       RagAuthContextHolder.clear();
       AdminOverrideHolder.clear();
+      OrgContextHolder.clear();
       SecurityContextHolder.clearContext();
+    }
+  }
+
+  private static Long parseOrgId(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    try {
+      return Long.parseLong(raw.trim());
+    } catch (NumberFormatException e) {
+      return null; // 非数字（如 'platform'）忽略
     }
   }
 

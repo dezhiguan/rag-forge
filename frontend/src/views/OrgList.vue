@@ -8,6 +8,28 @@
       <button class="btn-primary" @click="openCreate = true">＋ 创建组织</button>
     </div>
 
+    <template v-if="personalOrg">
+      <div class="sec-label">个人组织</div>
+      <div class="grid">
+        <div class="org-card">
+          <div class="oc-top">
+            <span class="oc-ava" style="background:#2563eb">{{ initial(personalDisplayName) }}</span>
+            <div class="oc-hd">
+              <div class="oc-name">{{ personalDisplayName }} 的个人组织 <span class="role-badge r-member">个人</span></div>
+              <div class="oc-slug">仅你可见 · 个人库归属此处</div>
+            </div>
+          </div>
+          <div class="oc-stats">
+            <div class="oc-stat"><div class="n">{{ personalOrg.kbCount ?? '—' }}</div><div class="l">知识库</div></div>
+          </div>
+          <div class="oc-foot">
+            <span class="oc-date">{{ fmtDate(personalOrg.createdAt) }}</span>
+            <div class="oc-actions"><button class="btn" @click="enterPersonalOrg">进入 →</button></div>
+          </div>
+        </div>
+      </div>
+    </template>
+
     <div class="sec-label">团队组织（{{ teamOrgs.length }}）</div>
 
     <div v-if="teamOrgs.length" class="grid">
@@ -67,10 +89,17 @@ import { confirm as confirmDialog } from '../composables/useConfirm'
 const router = useRouter()
 const toast = useToast()
 const { orgs, load, setCurrent } = useOrg()
-const { ragRole } = useAuth()
+const { ragRole, userDisplayName } = useAuth()
 
-// 个人组织(personal)不在"团队组织"列表里展示，通过左上切换器进入。
+// 个人组织单独成区展示；团队组织排除个人组织。
+const personalOrg = computed(() => orgs.value.find((o) => o.personal) || null)
+const personalDisplayName = computed(() => userDisplayName.value)
 const teamOrgs = computed(() => orgs.value.filter((o) => o.id != null && !o.personal))
+
+function enterPersonalOrg() {
+  if (personalOrg.value) setCurrent(personalOrg.value.id)
+  router.push('/')
+}
 
 const openCreate = ref(false)
 const creating = ref(false)
