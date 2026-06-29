@@ -33,7 +33,10 @@
         <div class="metric-subs">
           <div class="metric-sub"><span>文档</span><b>{{ formatNumber(metrics.documentCount) }}</b></div>
           <div class="metric-sub"><span>知识库</span><b>{{ metrics.kbCount }}</b></div>
-          <div class="metric-sub" v-if="ingestTotal > 0"><span>入库成功率</span><b class="pos">{{ formatPercent(metrics.ingestSuccessRate) }}</b></div>
+          <div class="metric-sub">
+            <span>入库成功率</span>
+            <b :class="{ pos: ingestTotal > 0 }">{{ ingestTotal > 0 ? formatPercent(metrics.ingestSuccessRate) : '—' }}</b>
+          </div>
         </div>
       </div>
       <!-- 检索质量 -->
@@ -45,7 +48,7 @@
         <div class="metric-value metric-value--hit">{{ formatPercent(metrics.zeroResultRate) }}<span class="metric-unit"> 零结果</span></div>
         <div class="metric-subs">
           <div class="metric-sub"><span>平均召回条数</span><b>{{ formatDecimal(metrics.avgRecallCount) }}</b></div>
-          <div class="metric-sub" v-if="metrics.avgRerankScore > 0">
+          <div class="metric-sub">
             <span>平均 rerank 分 <i class="tag-mini">仅精排</i></span><b>{{ formatDecimal2(metrics.avgRerankScore) }}</b>
           </div>
           <div class="metric-sub"><span>Query 改写率</span><b>{{ formatPercent(metrics.rewriteRate) }}</b></div>
@@ -60,7 +63,10 @@
         <div class="metric-value">{{ formatLatency(metrics.p95LatencyMs) }} <span class="metric-unit">P95</span></div>
         <div class="metric-subs">
           <div class="metric-sub"><span>P50 延迟</span><b>{{ formatLatency(metrics.p50LatencyMs) }}</b></div>
-          <div class="metric-sub" v-if="metrics.searchSuccessRate > 0"><span>检索成功率</span><b class="pos">{{ formatPercent(metrics.searchSuccessRate) }}</b></div>
+          <div class="metric-sub">
+            <span>检索成功率</span>
+            <b :class="{ pos: metrics.periodApiCalls > 0 }">{{ metrics.periodApiCalls > 0 ? formatPercent(metrics.searchSuccessRate) : '—' }}</b>
+          </div>
           <div class="metric-sub"><span>检索请求数</span><b>{{ formatNumber(metrics.periodApiCalls) }}</b></div>
         </div>
       </div>
@@ -104,20 +110,22 @@
           <span class="card-title">检索趋势 · 近 7 天</span>
           <span class="card-sub">请求数 / P95 延迟</span>
         </div>
-        <div v-if="trendStats.hasData" class="trend-summary">
-          请求峰值 <b>{{ trendStats.peak }}/日</b>
-          <span class="sep">·</span>
-          P95 区间 <b>{{ trendStats.p95Min }} ~ {{ trendStats.p95Max }}ms</b>
-        </div>
-        <div v-if="trendStats.hasData" class="trend-chart">
-          <div
-            v-for="(p, i) in metrics.retrievalTrend"
-            :key="i"
-            class="trend-bar-wrap"
-            :title="`${p.date}：${p.count} 次 · P95 ${p.p95LatencyMs}ms`"
-          >
-            <div class="trend-bar" :style="{ height: trendBarHeight(p.count) }"></div>
-            <span class="trend-x">{{ p.date }}</span>
+        <div v-if="trendStats.hasData" class="panel-body">
+          <div class="trend-summary">
+            请求峰值 <b>{{ trendStats.peak }}/日</b>
+            <span class="sep">·</span>
+            P95 区间 <b>{{ trendStats.p95Min }} ~ {{ trendStats.p95Max }}ms</b>
+          </div>
+          <div class="trend-chart">
+            <div
+              v-for="(p, i) in metrics.retrievalTrend"
+              :key="i"
+              class="trend-bar-wrap"
+              :title="`${p.date}：${p.count} 次 · P95 ${p.p95LatencyMs}ms`"
+            >
+              <div class="trend-bar" :style="{ height: trendBarHeight(p.count) }"></div>
+              <span class="trend-x">{{ p.date }}</span>
+            </div>
           </div>
         </div>
         <div v-else class="panel-empty">近 7 天暂无检索记录</div>
@@ -129,7 +137,7 @@
           <span class="card-title">入库处理健康度</span>
           <span class="card-sub">{{ formatNumber(ingestTotal) }} 文档</span>
         </div>
-        <template v-if="ingestTotal > 0">
+        <div v-if="ingestTotal > 0" class="panel-body">
           <div class="ingest-bar">
             <span class="seg seg-done" :style="{ width: ingestPct.completed }"></span>
             <span class="seg seg-proc" :style="{ width: ingestPct.processing }"></span>
@@ -150,7 +158,7 @@
             ⚠️ {{ metrics.ingestFailed }} 个文档解析失败 · 一键重试 →
           </div>
           <div v-else class="ingest-cta ok">✓ 入库链路健康，无失败文档</div>
-        </template>
+        </div>
         <div v-else class="panel-empty">当前范围内暂无文档</div>
       </div>
     </div>
@@ -584,8 +592,9 @@ onMounted(() => {
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
 }
 .panel-empty { padding: 28px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.panel-body { padding: 14px 20px 18px; }
 
-.trend-summary { font-size: 12.5px; color: var(--text-muted); margin: 4px 0 14px; }
+.trend-summary { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; }
 .trend-summary b { color: var(--slate); font-variant-numeric: tabular-nums; }
 .trend-summary .sep { margin: 0 8px; color: var(--border); }
 .trend-chart {

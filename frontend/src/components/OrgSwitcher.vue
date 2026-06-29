@@ -4,7 +4,7 @@
       <span class="org-ava" :style="{ background: avatarColor(current) }">{{ initial(current) }}</span>
       <span v-show="!collapsed" class="org-meta">
         <span class="org-name">{{ current.name }}</span>
-        <span class="org-sub">{{ current.personal ? '个人空间' : roleLabel(current.myRole) }}</span>
+        <span class="org-sub">{{ current.personal ? '个人组织' : roleLabel(current.myRole) }}</span>
       </span>
       <span v-show="!collapsed" class="org-caret">⇅</span>
     </button>
@@ -21,7 +21,7 @@
         <span class="org-ava sm" :style="{ background: avatarColor(o) }">{{ initial(o) }}</span>
         <span class="org-meta">
           <span class="org-name">{{ o.name }}</span>
-          <span class="org-sub">{{ o.personal ? '个人空间' : roleLabel(o.myRole) }}</span>
+          <span class="org-sub">{{ o.personal ? '个人组织' : roleLabel(o.myRole) }}</span>
         </span>
         <span class="check">{{ o.id === current.id ? '✓' : '' }}</span>
       </button>

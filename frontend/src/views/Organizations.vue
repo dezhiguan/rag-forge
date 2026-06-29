@@ -1,50 +1,285 @@
 <template>
-  <div class="orgs-page">
-    <div class="toolbar">
-      <button class="btn btn-primary" @click="openCreate">
-        <span class="plus">＋</span> 创建组织
-      </button>
-      <button class="btn btn-secondary" :disabled="loading" @click="loadOrgs">刷新</button>
-    </div>
+  <div class="page-body org-mgmt">
+    <!-- 引导态：个人组织 / 平台 / 未选团队组织 -->
+    <div v-if="!isTeamOrg" class="org-gate">
+      <div class="gate-card">
+        <div class="gate-ico">🏢</div>
+        <h2 class="gate-title">{{ isPersonal ? '当前是「个人组织」' : '选择一个组织来管理' }}</h2>
+        <p class="gate-desc">
+          个人组织无需管理成员；创建团队组织后可邀请成员、共享组织知识库、按组织聚合指标。
+        </p>
+        <button class="btn btn-primary" @click="openCreate"><span class="plus">＋</span> 创建组织</button>
+      </div>
 
-    <!-- 加载中 -->
-    <div v-if="loading" class="state-card">
-      <div class="spinner" /> 加载中…
-    </div>
-
-    <!-- 空态 -->
-    <div v-else-if="!orgs.length" class="empty-card">
-      <div class="empty-icon">🏢</div>
-      <div class="empty-title">还没有组织</div>
-      <div class="empty-desc">创建组织后，可把知识库归属到组织，并邀请成员协作共享。</div>
-      <button class="btn btn-primary" @click="openCreate"><span class="plus">＋</span> 创建组织</button>
-    </div>
-
-    <!-- 组织卡片网格 -->
-    <div v-else class="org-grid">
-      <article v-for="org in orgs" :key="org.id" class="org-card">
-        <div class="org-head">
-          <div class="org-avatar">{{ orgInitial(org.name) }}</div>
-          <div class="org-meta">
-            <div class="org-name" :title="org.name">{{ org.name }}</div>
-            <div class="org-slug">@{{ org.slug }}</div>
+      <div v-if="manageableOrgs.length" class="gate-list">
+        <div class="gate-list-label">切换到你所属的组织进行管理：</div>
+        <div v-for="o in manageableOrgs" :key="o.id" class="gate-org" @click="switchTo(o.id)">
+          <span class="org-ava sm" :style="{ background: avatarColor(o) }">{{ initial(o.name) }}</span>
+          <div class="go-meta">
+            <div class="go-name">{{ o.name }}</div>
+            <div class="go-sub">@{{ o.slug }} · {{ roleLabel(o.myRole) }}</div>
           </div>
-          <span class="role-tag" :class="'role-' + (org.myRole || '').toLowerCase()">
-            {{ roleLabel(org.myRole) }}
-          </span>
+          <span class="go-arrow">管理 →</span>
         </div>
-        <div class="org-foot">
-          <button
-            v-if="isOrgAdmin(org)"
-            class="btn btn-secondary btn-sm"
-            @click="openMembers(org)"
-          >
-            管理成员
-          </button>
-          <span v-else class="foot-hint">成员身份 · 只读</span>
-        </div>
-      </article>
+      </div>
     </div>
+
+    <template v-else>
+      <!-- 组织头 -->
+      <div class="org-head">
+        <span class="org-ava" :style="{ background: avatarColor(org) }">{{ initial(org.name) }}</span>
+        <div class="org-head-meta">
+          <div class="org-head-name">
+            {{ org.name }} <span class="type-badge tb-team">TEAM</span>
+          </div>
+          <div class="org-head-sub">
+            <span>slug <code>{{ org.slug }}</code></span>
+            <span>org_id <code>{{ org.id }}</code></span>
+            <span v-if="org.createdAt">创建于 {{ fmtDate(org.createdAt) }}</span>
+            <span>你的角色 <b class="role-strong">{{ org.myRole }}</b></span>
+          </div>
+        </div>
+        <button v-if="canManage" class="btn-primary head-invite" @click="openInvite">+ 邀请成员</button>
+      </div>
+
+      <div class="layout">
+        <!-- 左导航 -->
+        <div class="side-nav">
+          <div
+            v-for="n in navItems"
+            :key="n.key"
+            class="nav-item"
+            :class="{ active: tab === n.key, danger: n.danger }"
+            @click="tab = n.key"
+          >
+            <span class="ico">{{ n.ico }}</span>{{ n.label }}
+            <span v-if="n.count != null" class="nav-count" :class="{ warn: n.warn }">{{ n.count }}</span>
+            <span v-if="n.wip" class="wip-dot" title="待开发">·</span>
+          </div>
+        </div>
+
+        <!-- 右内容 -->
+        <div class="content">
+          <!-- 通用 -->
+          <section v-show="tab === 'general'" class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">通用设置</div>
+                <div class="panel-desc">仅 OWNER / ADMIN 可修改 · 编辑保存 <i class="wip-badge">待开发</i></div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="form-row">
+                <span class="form-label">组织名称</span>
+                <input class="form-input" :value="org.name" disabled />
+              </div>
+              <div class="form-row">
+                <span class="form-label">slug（短标识）</span>
+                <input class="form-input" :value="org.slug" disabled />
+              </div>
+              <div class="form-row">
+                <span class="form-label">组织 ID</span>
+                <span class="form-static"><code>{{ org.id }}</code> · 不可修改</span>
+              </div>
+              <div class="form-row">
+                <span class="form-label">类型</span>
+                <span class="form-static"><span class="type-badge tb-team">TEAM</span> · 团队组织</span>
+              </div>
+              <div class="form-row">
+                <span class="form-label">创建时间</span>
+                <span class="form-static">{{ org.createdAt ? fmtDate(org.createdAt) : '—' }}</span>
+              </div>
+              <div class="form-actions">
+                <button class="btn-primary" disabled>保存修改</button>
+                <span class="wip-note">组织信息编辑接口待开发</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 成员 -->
+          <section v-show="tab === 'members'">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">组织成员</div>
+                  <div class="panel-desc">支持搜索 / 改角色 / 移除</div>
+                </div>
+                <button v-if="canManage" class="btn-primary btn-sm" @click="openInvite">+ 邀请成员</button>
+              </div>
+              <div class="member-tools">
+                <div class="search">
+                  <span class="si">🔍</span>
+                  <input v-model="memberSearch" placeholder="搜索用户名 / 显示名 / 邮箱" />
+                </div>
+                <select v-model="roleFilter" class="role-filter">
+                  <option value="">全部角色</option>
+                  <option value="OWNER">OWNER</option>
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="MEMBER">MEMBER</option>
+                </select>
+              </div>
+
+              <div class="m-list">
+                <div v-for="m in filteredMembers" :key="m.userId" class="m-row">
+                  <span class="m-ava" :style="{ background: avatarColor({ id: m.userId, name: m.displayName }) }">
+                    {{ initial(m.displayName || ('U' + m.userId)) }}
+                  </span>
+                  <div class="m-meta">
+                    <div class="m-name">
+                      {{ m.displayName || ('用户 ' + m.userId) }}
+                      <span v-if="m.userId === myUserId" class="you-tag">你</span>
+                    </div>
+                    <div class="m-sub">{{ m.email || ('用户 ID ' + m.userId) }}</div>
+                  </div>
+                  <div class="m-actions">
+                    <span v-if="m.role === 'OWNER'" class="role-badge role-owner">OWNER</span>
+                    <template v-else-if="canManage && m.userId !== myUserId">
+                      <select
+                        class="role-select"
+                        :value="m.role"
+                        @change="onChangeRole(m, $event.target.value)"
+                      >
+                        <option value="ADMIN">ADMIN</option>
+                        <option value="MEMBER">MEMBER</option>
+                      </select>
+                      <span class="link-danger" @click="onRemoveMember(m)">移除</span>
+                    </template>
+                    <span v-else class="role-badge" :class="roleBadgeClass(m.role)">{{ m.role }}</span>
+                  </div>
+                </div>
+                <div v-if="!filteredMembers.length" class="empty">没有匹配的成员</div>
+              </div>
+              <div class="list-foot">
+                <span>共 {{ members.length }} 人{{ filteredMembers.length !== members.length ? `（筛出 ${filteredMembers.length}）` : '' }}</span>
+              </div>
+            </div>
+            <div class="hint-box">
+              🔒 <b>权限：</b>仅 <b>OWNER / ADMIN</b> 能改角色、移除成员；<b>OWNER 行不可被操作</b>；唯一 OWNER 不能移除自己（需先转移所有权）。所有写操作服务端强校验，前端隐藏≠真授权。
+            </div>
+          </section>
+
+          <!-- 邀请 -->
+          <section v-show="tab === 'invites'">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">待处理邀请</div>
+                  <div class="panel-desc">PENDING 不计入正式成员，对方接受后才写入组织</div>
+                </div>
+                <button v-if="canManage" class="btn-primary btn-sm" @click="openInvite">+ 邀请成员</button>
+              </div>
+              <div class="m-list">
+                <div v-for="inv in invites" :key="inv.id" class="m-row">
+                  <span class="m-ava" style="background: #94a3b8">✉</span>
+                  <div class="m-meta">
+                    <div class="m-name">
+                      {{ inv.maskedPhone || '邀请' }} <span class="role-badge role-pending">PENDING</span>
+                    </div>
+                    <div class="m-sub">角色 {{ inv.role }} · {{ fmtDate(inv.createdAt) }}</div>
+                  </div>
+                  <div class="m-actions">
+                    <span v-if="canManage" class="link-danger" @click="onRevoke(inv)">撤销</span>
+                  </div>
+                </div>
+                <div v-if="!invites.length" class="empty">暂无待处理邀请</div>
+              </div>
+            </div>
+            <div class="hint-box">
+              📨 <b>邀请方式：</b>按<b>手机号</b>经网关精确解析；已注册→站内通知接受；未注册→短信拉新、注册后自动关联。解析仅返回脱敏号，不提供用户目录浏览。
+            </div>
+          </section>
+
+          <!-- 知识库归属 -->
+          <section v-show="tab === 'kb'">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">组织知识库</div>
+                  <div class="panel-desc">org_id={{ org.id }} 名下的库（visibility 决定成员可见范围）</div>
+                </div>
+              </div>
+              <div class="m-list">
+                <div v-for="kb in orgKbs" :key="kb.id" class="m-row">
+                  <span class="m-ava" :style="{ background: avatarColor({ id: kb.id, name: kb.name }) }">
+                    {{ initial(kb.name) }}
+                  </span>
+                  <div class="m-meta">
+                    <div class="m-name">{{ kb.name }}</div>
+                    <div class="m-sub">
+                      visibility: {{ kb.visibility }} · {{ kb.docCount ?? 0 }} 文档 ·
+                      {{ kb.visibility === 'ORG' ? '全体成员可读' : '仅 OWNER/ADMIN 可读' }}
+                    </div>
+                  </div>
+                  <span class="role-badge" :class="kb.visibility === 'ORG' ? 'role-admin' : 'role-member'">
+                    {{ kb.visibility }}
+                  </span>
+                </div>
+                <div v-if="!orgKbs.length" class="empty">该组织名下暂无知识库</div>
+              </div>
+            </div>
+            <div class="hint-box">
+              📚 个人库转组织 / 组织库转回个人属「所有权转移」（改 org_id），在知识库页操作；删除库走库自己的危险操作。
+            </div>
+          </section>
+
+          <!-- 套餐与升级（待开发） -->
+          <section v-show="tab === 'plan'" class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">套餐与升级 <i class="wip-badge">待开发</i></div>
+                <div class="panel-desc">类型由套餐决定；升级显式触发，组织 ID 不变、数据零迁移</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="plan-now">
+                <span class="pn-ico">✅</span>
+                <div class="pn-meta">
+                  <div class="pn-t">当前：TEAM（团队组织）</div>
+                  <div class="pn-s">{{ members.length }} 名成员 · 可邀请成员、共享组织知识库</div>
+                </div>
+                <button class="btn" disabled>管理套餐</button>
+              </div>
+              <div class="state-flow">
+                <span class="sf-node">INDIVIDUAL 个人组织</span>
+                <span class="sf-arrow">──显式升档──▶</span>
+                <span class="sf-node cur">TEAM 团队组织</span>
+                <span class="sf-note">（你在这里）</span>
+              </div>
+              <div class="hint-box">
+                ⬆️ <b>状态机：</b>INDIVIDUAL →(显式升档)→ TEAM；组织实体不变、零数据迁移。套餐/计费体系<b>后端待开发</b>，当前所有组织默认 TEAM。
+              </div>
+            </div>
+          </section>
+
+          <!-- 危险区（待开发） -->
+          <section v-show="tab === 'danger'">
+            <div class="danger-zone">
+              <div class="dz-head">
+                <div class="dz-title">危险区 <i class="wip-badge wip-danger">待开发</i></div>
+                <div class="dz-desc">高危操作，仅 OWNER 可执行，需二次确认；平台超管代为执行须破玻璃 + 审计</div>
+              </div>
+              <div class="dz-row">
+                <div class="dz-info">
+                  <div class="dz-r-t">转移所有权（OWNER）</div>
+                  <div class="dz-r-s">将 OWNER 移交给另一名成员，自己降为 ADMIN</div>
+                </div>
+                <button class="btn-danger" disabled>转移</button>
+              </div>
+              <div class="dz-row">
+                <div class="dz-info">
+                  <div class="dz-r-t">删除组织</div>
+                  <div class="dz-r-s">需先清空成员与组织库归属；删除后不可恢复</div>
+                </div>
+                <button class="btn-danger" disabled>删除组织</button>
+              </div>
+            </div>
+            <div class="hint-box">
+              ⚠️ 转移 / 删除会触发二次确认 + 写审计，平台超管也不能静默执行。相关后端端点<b>待开发</b>。
+            </div>
+          </section>
+        </div>
+      </div>
+    </template>
 
     <!-- 创建组织 -->
     <Teleport to="body">
@@ -55,131 +290,48 @@
             <button class="modal-close" @click="showCreate = false">✕</button>
           </div>
           <div class="modal-body">
-            <label class="field">
-              <span class="field-label">组织名称 <i>*</i></span>
+            <label class="field"><span>组织名称 *</span>
               <input v-model="createForm.name" type="text" placeholder="例如：广州日不落科技有限公司" />
             </label>
-            <label class="field">
-              <span class="field-label">标识 slug <i>*</i></span>
-              <input v-model="createForm.slug" type="text" placeholder="例如：rblk" />
-              <span class="field-hint">小写字母 / 数字 / 连字符，组织的唯一短标识，创建后用于归属知识库</span>
+            <label class="field"><span>slug（短标识）*</span>
+              <input v-model="createForm.slug" type="text" placeholder="小写字母/数字/连字符，如 rblk" />
             </label>
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary" @click="showCreate = false">取消</button>
-            <button class="btn btn-primary" :disabled="submitting" @click="onCreate">
-              {{ submitting ? '创建中…' : '确定' }}
-            </button>
+            <button class="btn btn-primary" :disabled="submitting" @click="onCreate">创建</button>
           </div>
         </div>
       </div>
     </Teleport>
 
-    <!-- 成员管理 -->
+    <!-- 邀请成员 -->
     <Teleport to="body">
-      <div v-if="showMembers" class="modal-mask" @click.self="showMembers = false">
-        <div class="modal modal-wide">
+      <div v-if="showInvite" class="modal-mask" @click.self="showInvite = false">
+        <div class="modal">
           <div class="modal-header">
-            <div>
-              <h3 class="modal-title">成员管理</h3>
-              <div class="modal-sub">{{ activeOrg?.name }} · @{{ activeOrg?.slug }}</div>
-            </div>
-            <button class="modal-close" @click="showMembers = false">✕</button>
+            <h3 class="modal-title">邀请成员加入「{{ org.name }}」</h3>
+            <button class="modal-close" @click="showInvite = false">✕</button>
           </div>
-
           <div class="modal-body">
-            <div class="add-member">
-              <div class="member-search">
-                <input
-                  v-model="memberQuery"
-                  type="text"
-                  placeholder="搜索用户名 / 邮箱 / 昵称"
-                  class="mini-input"
-                  data-test="member-search-input"
-                  @input="onMemberSearchInput"
-                  @focus="candidatesOpen = candidates.length > 0"
-                  @blur="onMemberSearchBlur"
-                />
-                <div v-if="candidatesOpen && candidates.length" class="candidate-list">
-                  <div
-                    v-for="c in candidates"
-                    :key="c.userId"
-                    class="candidate-row"
-                    :class="{ disabled: c.alreadyMember }"
-                    data-test="member-candidate"
-                    @mousedown.prevent="pickCandidate(c)"
-                  >
-                    <span class="candidate-name">{{ c.displayName }}</span>
-                    <span class="candidate-meta">{{ c.email || c.maskedPhone || ('用户 ' + c.userId) }}</span>
-                    <span v-if="c.alreadyMember" class="candidate-tag">已是成员</span>
-                  </div>
-                </div>
-                <div
-                  v-else-if="candidatesOpen && memberQuery.trim().length >= 2 && !searching"
-                  class="candidate-empty"
-                >
-                  无匹配用户（仅能搜到登录过本平台的用户）
-                </div>
-              </div>
-              <select v-model="memberForm.role" class="mini-input">
-                <option value="MEMBER">成员</option>
-                <option value="ADMIN">管理员</option>
-                <option v-if="activeOrgIsOwner" value="OWNER">所有者</option>
+            <label class="field"><span>手机号</span>
+              <input v-model="inviteForm.phone" type="text" placeholder="请输入完整手机号，如 13800000000" />
+            </label>
+            <label class="field"><span>分配角色</span>
+              <select v-model="inviteForm.role">
+                <option value="MEMBER">MEMBER（成员）</option>
+                <option value="ADMIN">ADMIN（管理员）</option>
               </select>
-              <button
-                class="btn btn-primary btn-sm"
-                :disabled="submitting || !memberForm.userId"
-                data-test="member-add-btn"
-                @click="onAddMember"
-              >
-                添加成员
-              </button>
-            </div>
-
-            <div class="add-member invite-by-phone">
-              <input
-                v-model="invitePhone"
-                type="tel"
-                placeholder="按手机号邀请（对方需接受）"
-                class="mini-input"
-              />
-              <select v-model="inviteRole" class="mini-input">
-                <option value="MEMBER">成员</option>
-                <option value="ADMIN">管理员</option>
-              </select>
-              <button
-                class="btn btn-secondary btn-sm"
-                :disabled="submitting || !invitePhone.trim()"
-                @click="onInviteByPhone"
-              >
-                发送邀请
-              </button>
-            </div>
-
-            <div class="member-list">
-              <div v-for="m in members" :key="m.userId" class="member-row">
-                <div class="member-avatar">{{ (m.displayName || ('U' + m.userId)).trim().slice(0, 2) }}</div>
-                <div class="member-id">
-                  <span class="member-name">{{ m.displayName || ('用户 ' + m.userId) }}</span>
-                  <span v-if="m.email" class="member-email">{{ m.email }}</span>
-                </div>
-                <select
-                  :value="m.role"
-                  class="mini-input role-select"
-                  @change="onChangeRole(m, $event.target.value)"
-                >
-                  <option value="MEMBER">成员</option>
-                  <option value="ADMIN">管理员</option>
-                  <option v-if="activeOrgIsOwner" value="OWNER">所有者</option>
-                </select>
-                <button class="icon-btn danger" title="移除成员" @click="onRemoveMember(m)">移除</button>
-              </div>
-              <div v-if="!members.length" class="member-empty">暂无成员</div>
+            </label>
+            <div class="pii-note">
+              🔒 经网关精确解析单个手机号（限频、返回脱敏号）：已注册→站内通知接受；未注册→短信邀请，注册后自动关联。不返回明文、不可批量、不提供用户列表。
             </div>
           </div>
-
           <div class="modal-footer">
-            <button class="btn btn-secondary" @click="showMembers = false">关闭</button>
+            <button class="btn btn-secondary" @click="showInvite = false">取消</button>
+            <button class="btn btn-primary" :disabled="inviting || !inviteForm.phone" @click="onSendInvite">
+              发送邀请
+            </button>
           </div>
         </div>
       </div>
@@ -188,377 +340,372 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
-  listOrgs,
   createOrg,
   listMembers as listMembersApi,
-  addMember as addMemberApi,
   updateMember as updateMemberApi,
   removeMember as removeMemberApi,
-  searchMemberCandidates as searchMemberCandidatesApi,
-  inviteByPhone as inviteByPhoneApi,
+  inviteByPhone,
+  listOrgInvitations,
+  revokeInvitation,
 } from '../api/org'
+import { listKb } from '../api/kb'
+import { useOrg } from '../composables/useOrg'
+import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 
 const toast = useToast()
+const { state: authState } = useAuth()
+const { current, orgs, isPersonal, isPlatform, load: loadOrgs, setCurrent } = useOrg()
 
-const orgs = ref([])
-const loading = ref(false)
-const submitting = ref(false)
+const org = computed(() => current.value)
+const isTeamOrg = computed(() => !isPersonal.value && !isPlatform.value && org.value?.id != null)
+const canManage = computed(() => org.value?.myRole === 'OWNER' || org.value?.myRole === 'ADMIN')
+const myUserId = computed(() => authState.me?.userId ?? null)
+const manageableOrgs = computed(() => orgs.value.filter((o) => o.id != null))
 
-const showCreate = ref(false)
-const createForm = ref({ name: '', slug: '' })
-
-const showMembers = ref(false)
-const activeOrg = ref(null)
+const tab = ref('general')
 const members = ref([])
-const memberForm = ref({ userId: null, role: 'MEMBER' })
-const invitePhone = ref('')
-const inviteRole = ref('MEMBER')
+const invites = ref([])
+const orgKbs = ref([])
+const memberSearch = ref('')
+const roleFilter = ref('')
 
-// 成员搜索：输入关键词 → 防抖查后端候选 → 选中后才落 userId
-const memberQuery = ref('')
-const candidates = ref([])
-const candidatesOpen = ref(false)
-const searching = ref(false)
-let searchTimer = null
+const navItems = computed(() => [
+  { key: 'general', ico: '⚙️', label: '通用' },
+  { key: 'members', ico: '👥', label: '成员', count: members.value.length },
+  { key: 'invites', ico: '✉️', label: '邀请', count: invites.value.length, warn: invites.value.length > 0 },
+  { key: 'kb', ico: '📚', label: '知识库归属' },
+  { key: 'plan', ico: '⬆️', label: '套餐与升级', wip: true },
+  { key: 'danger', ico: '⚠️', label: '危险区', danger: true, wip: true },
+])
 
-const activeOrgIsOwner = computed(() => activeOrg.value?.myRole === 'OWNER')
+const filteredMembers = computed(() => {
+  const q = memberSearch.value.trim().toLowerCase()
+  return members.value.filter((m) => {
+    const hitText =
+      !q ||
+      (m.displayName || '').toLowerCase().includes(q) ||
+      (m.email || '').toLowerCase().includes(q) ||
+      String(m.userId).includes(q)
+    return hitText && (!roleFilter.value || m.role === roleFilter.value)
+  })
+})
 
-function roleLabel(role) {
-  return { OWNER: '所有者', ADMIN: '管理员', MEMBER: '成员' }[role] || role || '-'
+async function loadAll() {
+  if (!isTeamOrg.value) return
+  const id = org.value.id
+  await Promise.all([loadMembers(id), loadInvites(id), loadOrgKbs(id)])
 }
-function isOrgAdmin(org) {
-  return org?.myRole === 'OWNER' || org?.myRole === 'ADMIN'
-}
-function orgInitial(name) {
-  return (name || '组').trim().slice(0, 1).toUpperCase()
-}
-
-async function loadOrgs() {
-  loading.value = true
+async function loadMembers(id) {
   try {
-    const res = await listOrgs()
-    orgs.value = res?.data || res || []
-  } finally {
-    loading.value = false
+    const res = await listMembersApi(id)
+    members.value = Array.isArray(res?.data) ? res.data : []
+  } catch {
+    members.value = []
   }
 }
-
-function openCreate() {
-  createForm.value = { name: '', slug: '' }
-  showCreate.value = true
-}
-
-async function onCreate() {
-  if (!createForm.value.name?.trim() || !createForm.value.slug?.trim()) {
-    toast.warning('请填写组织名称和标识')
+async function loadInvites(id) {
+  if (!canManage.value) {
+    invites.value = []
     return
   }
-  submitting.value = true
   try {
-    await createOrg({ name: createForm.value.name.trim(), slug: createForm.value.slug.trim() })
-    showCreate.value = false
-    toast.success('组织已创建')
-    await loadOrgs()
-  } finally {
-    submitting.value = false
+    const res = await listOrgInvitations(id)
+    invites.value = Array.isArray(res?.data) ? res.data : []
+  } catch {
+    invites.value = []
   }
 }
-
-async function openMembers(org) {
-  activeOrg.value = org
-  resetMemberSearch()
-  memberForm.value = { userId: null, role: 'MEMBER' }
-  showMembers.value = true
-  await loadMembers()
-}
-
-function resetMemberSearch() {
-  memberQuery.value = ''
-  candidates.value = []
-  candidatesOpen.value = false
-  searching.value = false
-  if (searchTimer) clearTimeout(searchTimer)
-}
-
-function onMemberSearchInput() {
-  // 关键词一变,之前选中的人即作废,必须重新从候选里选,避免 userId 与输入框对不上
-  memberForm.value.userId = null
-  const q = memberQuery.value.trim()
-  if (searchTimer) clearTimeout(searchTimer)
-  if (q.length < 2) {
-    candidates.value = []
-    candidatesOpen.value = false
-    return
-  }
-  searchTimer = setTimeout(() => runMemberSearch(q), 250)
-}
-
-async function runMemberSearch(q) {
-  if (!activeOrg.value) return
-  searching.value = true
-  candidatesOpen.value = true
+async function loadOrgKbs(id) {
   try {
-    const res = await searchMemberCandidatesApi(activeOrg.value.id, q)
-    candidates.value = res?.data || res || []
-  } catch (e) {
-    candidates.value = []
-  } finally {
-    searching.value = false
+    const res = await listKb()
+    const list = Array.isArray(res?.data) ? res.data : []
+    orgKbs.value = list.filter((kb) => kb.orgId === id)
+  } catch {
+    orgKbs.value = []
   }
 }
 
-function pickCandidate(c) {
-  if (c.alreadyMember) {
-    toast.warning('该用户已是组织成员')
-    return
-  }
-  memberForm.value.userId = c.userId
-  memberQuery.value = c.displayName || `用户 ${c.userId}`
-  candidatesOpen.value = false
-}
-
-function onMemberSearchBlur() {
-  // 延迟关闭,让候选项的 mousedown 先触发选中
-  setTimeout(() => {
-    candidatesOpen.value = false
-  }, 150)
-}
-
-async function loadMembers() {
-  const res = await listMembersApi(activeOrg.value.id)
-  members.value = res?.data || res || []
-}
-
-async function onAddMember() {
-  if (!memberForm.value.userId) {
-    toast.warning('请先搜索并选择一个用户')
-    return
-  }
-  submitting.value = true
-  try {
-    await addMemberApi(activeOrg.value.id, {
-      userId: Number(memberForm.value.userId),
-      role: memberForm.value.role,
-    })
-    const role = memberForm.value.role
-    resetMemberSearch()
-    memberForm.value = { userId: null, role }
-    await loadMembers()
-  } finally {
-    submitting.value = false
-  }
-}
-
-async function onInviteByPhone() {
-  const phone = invitePhone.value.trim()
-  if (!phone) return
-  submitting.value = true
-  try {
-    const res = await inviteByPhoneApi(activeOrg.value.id, phone, inviteRole.value)
-    const d = res?.data || {}
-    invitePhone.value = ''
-    if (d.registered) {
-      toast.success(`已发送站内邀请（${d.maskedPhone || phone}），待对方接受`)
-    } else {
-      toast.success('该手机号未注册，邀请已暂存；对方注册后可在通知中接受')
-    }
-  } catch (e) {
-    toast.error(e?.message || '邀请失败')
-  } finally {
-    submitting.value = false
-  }
-}
+watch(
+  () => org.value?.id,
+  () => {
+    tab.value = 'general'
+    loadAll()
+  },
+)
 
 async function onChangeRole(member, role) {
   if (role === member.role) return
   try {
-    await updateMemberApi(activeOrg.value.id, member.userId, { role })
-    await loadMembers()
+    await updateMemberApi(org.value.id, member.userId, { role })
+    toast.success('角色已更新')
   } catch (e) {
-    await loadMembers()
+    /* 错误由全局拦截提示 */
   }
+  await loadMembers(org.value.id)
 }
 
 async function onRemoveMember(member) {
   const ok = await confirmDialog({
     title: '移除成员',
-    message: `确认把 ${member.displayName || '用户 ' + member.userId} 移出组织？`,
+    message: `确认把 ${member.displayName || '用户 ' + member.userId} 移出组织？其个人库不受影响。`,
     confirmText: '移除',
   })
   if (!ok) return
-  await removeMemberApi(activeOrg.value.id, member.userId)
-  await loadMembers()
+  await removeMemberApi(org.value.id, member.userId)
+  await loadMembers(org.value.id)
+  toast.success('已移除')
 }
 
-const route = useRoute()
-const router = useRouter()
+async function onRevoke(inv) {
+  const ok = await confirmDialog({
+    title: '撤销邀请',
+    message: `撤销对 ${inv.maskedPhone || '该手机号'} 的邀请？`,
+    confirmText: '撤销',
+  })
+  if (!ok) return
+  await revokeInvitation(org.value.id, inv.id)
+  await loadInvites(org.value.id)
+  toast.success('已撤销')
+}
+
+// 邀请弹窗
+const showInvite = ref(false)
+const inviting = ref(false)
+const inviteForm = ref({ phone: '', role: 'MEMBER' })
+function openInvite() {
+  inviteForm.value = { phone: '', role: 'MEMBER' }
+  showInvite.value = true
+}
+async function onSendInvite() {
+  const phone = inviteForm.value.phone.trim()
+  if (!/^1\d{10}$/.test(phone)) {
+    toast.warning('请输入 11 位手机号')
+    return
+  }
+  inviting.value = true
+  try {
+    const res = await inviteByPhone(org.value.id, phone, inviteForm.value.role)
+    const data = res?.data || {}
+    showInvite.value = false
+    toast.success(data.registered ? '已发送站内邀请，待对方接受' : '已发送短信邀请，对方注册后自动关联')
+    await loadInvites(org.value.id)
+  } finally {
+    inviting.value = false
+  }
+}
+
+// 创建组织
+const showCreate = ref(false)
+const submitting = ref(false)
+const createForm = ref({ name: '', slug: '' })
+function openCreate() {
+  createForm.value = { name: '', slug: '' }
+  showCreate.value = true
+}
+async function onCreate() {
+  if (!createForm.value.name.trim() || !createForm.value.slug.trim()) {
+    toast.warning('请填写组织名称和 slug')
+    return
+  }
+  submitting.value = true
+  try {
+    const res = await createOrg({ name: createForm.value.name.trim(), slug: createForm.value.slug.trim() })
+    const newId = res?.data?.id
+    showCreate.value = false
+    toast.success('组织已创建')
+    await loadOrgs()
+    if (newId) setCurrent(newId)
+  } finally {
+    submitting.value = false
+  }
+}
+
+function switchTo(id) {
+  setCurrent(id)
+}
+
+// 工具
+const PALETTE = ['#0f1f3d', '#2563eb', '#15803d', '#7c3aed', '#db2777', '#0ea5e9', '#f59e0b', '#65a30d']
+function avatarColor(o) {
+  const seed = o?.id != null ? Number(o.id) : (o?.name || '').length
+  return PALETTE[Math.abs(seed || 0) % PALETTE.length]
+}
+function initial(name) {
+  return (name || '?').trim().charAt(0).toUpperCase()
+}
+function roleLabel(role) {
+  return { OWNER: '所有者', ADMIN: '管理员', MEMBER: '成员' }[role] || role || '-'
+}
+function roleBadgeClass(role) {
+  return { OWNER: 'role-owner', ADMIN: 'role-admin', MEMBER: 'role-member' }[role] || 'role-member'
+}
+function fmtDate(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 onMounted(async () => {
-  await loadOrgs()
-  // 从驾驶舱「升级到团队组织」深链进入：自动打开创建组织弹窗
-  if (route.query.create) {
-    openCreate()
-    router.replace({ path: route.path })
-  }
+  if (!orgs.value.some((o) => o.id != null)) await loadOrgs()
+  await loadAll()
 })
 </script>
 
 <style scoped>
-.orgs-page { padding: 24px 28px; }
-.toolbar { display: flex; gap: 10px; margin-bottom: 22px; }
-.plus { font-weight: 700; margin-right: 2px; }
-.btn-sm { height: 32px; padding: 0 14px; font-size: 13px; }
+.org-mgmt { max-width: 1080px; }
 
-/* 加载 / 空态 */
-.state-card {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 64px; color: var(--text-muted);
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg);
+/* 引导态 */
+.org-gate { display: flex; flex-direction: column; gap: 18px; }
+.gate-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: var(--shadow-sm); padding: 36px; text-align: center;
 }
-.spinner {
-  width: 18px; height: 18px; border-radius: 50%;
-  border: 2px solid var(--border); border-top-color: var(--primary);
-  animation: spin .8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+.gate-ico { font-size: 36px; }
+.gate-title { font-size: 18px; font-weight: 700; color: var(--navy); margin: 12px 0 6px; }
+.gate-desc { font-size: 13px; color: var(--text-muted); max-width: 460px; margin: 0 auto 18px; line-height: 1.7; }
+.gate-list { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-sm); padding: 8px; }
+.gate-list-label { font-size: 12.5px; color: var(--text-muted); padding: 8px 10px 4px; }
+.gate-org { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px; cursor: pointer; }
+.gate-org:hover { background: var(--light); }
+.go-meta { flex: 1; min-width: 0; }
+.go-name { font-size: 14px; font-weight: 600; color: var(--slate); }
+.go-sub { font-size: 12px; color: var(--text-muted); }
+.go-arrow { font-size: 12.5px; color: var(--primary); font-weight: 600; }
 
-.empty-card {
-  display: flex; flex-direction: column; align-items: center; text-align: center;
-  padding: 72px 24px; gap: 12px;
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg);
+/* 组织头 */
+.org-head {
+  display: flex; align-items: center; gap: 14px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px;
+  box-shadow: var(--shadow-sm); margin-bottom: 18px;
 }
-.empty-icon {
-  width: 72px; height: 72px; border-radius: var(--radius-full);
-  display: grid; place-items: center; font-size: 32px;
-  background: var(--primary-soft); border: 1px solid var(--primary-border);
+.org-ava {
+  width: 52px; height: 52px; border-radius: 13px; color: #fff; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;
 }
-.empty-title { font-size: 17px; font-weight: 700; color: var(--text); }
-.empty-desc { font-size: 13px; color: var(--text-muted); max-width: 380px; line-height: 1.7; margin-bottom: 6px; }
+.org-ava.sm { width: 38px; height: 38px; border-radius: 10px; font-size: 16px; }
+.org-head-meta { flex: 1; min-width: 0; }
+.org-head-name { font-size: 19px; font-weight: 700; color: var(--navy); display: flex; align-items: center; gap: 9px; }
+.org-head-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
+.org-head-sub code, .form-static code { background: #f1f5f9; border-radius: 5px; padding: 1px 6px; font-size: 11.5px; color: var(--slate); }
+.role-strong { color: #92400e; }
+.type-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.tb-team { background: #f0fdf4; color: #15803d; }
+.head-invite { flex-shrink: 0; }
 
-/* 组织卡片 */
-.org-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+/* 布局 */
+.layout { display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
+.side-nav {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 8px; box-shadow: var(--shadow-sm); height: fit-content; position: sticky; top: 18px;
 }
-.org-card {
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: 18px; transition: box-shadow .18s, transform .18s, border-color .18s;
+.nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 9px;
+  font-size: 13.5px; color: var(--slate); cursor: pointer; font-weight: 500;
 }
-.org-card:hover {
-  box-shadow: 0 8px 24px rgba(2, 6, 23, .08);
-  border-color: var(--primary-border);
-  transform: translateY(-2px);
-}
-.org-head { display: flex; align-items: center; gap: 12px; }
-.org-avatar {
-  width: 46px; height: 46px; border-radius: var(--radius-md); flex-shrink: 0;
-  display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 19px;
-  background: linear-gradient(135deg, #2563eb, #4f46e5);
-}
-.org-meta { flex: 1; min-width: 0; }
-.org-name { font-size: 15px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.org-slug { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.org-foot { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border); display: flex; justify-content: flex-end; align-items: center; min-height: 32px; }
-.foot-hint { font-size: 12px; color: var(--text-muted); }
+.nav-item:hover { background: var(--light); }
+.nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.nav-item.danger { color: var(--red); }
+.nav-item.danger.active { background: #fef2f2; color: var(--red); }
+.nav-item .ico { width: 18px; text-align: center; }
+.nav-count { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.nav-count.warn { color: var(--amber); }
+.wip-dot { color: var(--amber); font-weight: 900; margin-left: auto; }
 
-/* 角色标签 */
-.role-tag { flex-shrink: 0; font-size: 11px; font-weight: 700; border-radius: var(--radius-full); padding: 2px 10px; }
+/* 面板 */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-sm); margin-bottom: 18px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.panel-title { font-size: 15px; font-weight: 700; color: var(--navy); }
+.panel-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+.panel-body { padding: 18px 20px; }
+.wip-badge { font-style: normal; font-size: 10px; font-weight: 700; color: var(--amber); background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px; padding: 1px 7px; margin-left: 6px; }
+.wip-badge.wip-danger { color: #b45309; }
+
+/* 表单行 */
+.form-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px dashed var(--border); }
+.form-row:first-child { border-top: none; }
+.form-label { width: 160px; font-size: 13px; color: var(--gray); font-weight: 600; flex-shrink: 0; }
+.form-input { flex: 1; border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; font-size: 13px; max-width: 360px; background: #fff; color: var(--slate); }
+.form-input:disabled { background: #f8fafc; color: var(--text-muted); }
+.form-static { flex: 1; font-size: 13px; color: var(--slate); }
+.form-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.form-actions .btn-primary[disabled] { opacity: 0.6; cursor: not-allowed; }
+.wip-note { font-size: 12px; color: var(--text-muted); }
+
+/* 成员/列表 */
+.member-tools { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+.search { flex: 1; max-width: 320px; position: relative; }
+.search input { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px 8px 32px; font-size: 13px; }
+.search input:focus { outline: none; border-color: var(--primary); }
+.search .si { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; }
+.role-filter { border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; font-size: 13px; color: var(--slate); }
+.m-list { display: flex; flex-direction: column; }
+.m-row { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--border); }
+.m-row:first-child { border-top: none; }
+.m-ava { width: 36px; height: 36px; border-radius: 10px; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+.m-meta { flex: 1; min-width: 0; }
+.m-name { font-size: 13.5px; font-weight: 600; color: var(--slate); display: flex; align-items: center; gap: 8px; }
+.m-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+.you-tag { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #f1f5f9; color: #475569; }
+.role-badge { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
 .role-owner { background: #fef3c7; color: #92400e; }
-.role-admin { background: #dbeafe; color: #1e40af; }
+.role-admin { background: #e0e7ff; color: #3730a3; }
 .role-member { background: #f1f5f9; color: #475569; }
+.role-pending { background: #fff7ed; color: #c2410c; }
+.role-select { border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font-size: 12px; color: var(--slate); }
+.m-actions { display: flex; align-items: center; gap: 10px; min-width: 140px; justify-content: flex-end; }
+.link-danger { color: var(--red); font-size: 12.5px; cursor: pointer; }
+.link-danger:hover { text-decoration: underline; }
+.list-foot { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-muted); }
+.empty { padding: 30px 0; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+.hint-box { font-size: 12px; color: var(--text-muted); line-height: 1.7; background: #fbfcfe; border: 1px dashed var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 18px; }
+.hint-box b { color: var(--slate); }
+
+/* 套餐 */
+.plan-now { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: #f7faff; margin-bottom: 16px; }
+.pn-ico { width: 40px; height: 40px; border-radius: 11px; background: var(--primary-soft); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+.pn-meta { flex: 1; }
+.pn-t { font-size: 14px; font-weight: 700; color: var(--slate); }
+.pn-s { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+.plan-now .btn { border: 1px solid var(--border); background: #fff; border-radius: 9px; padding: 7px 13px; font-size: 13px; color: var(--text-muted); cursor: not-allowed; }
+.state-flow { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--gray); margin: 12px 0; flex-wrap: wrap; }
+.sf-node { border: 1px solid var(--border); border-radius: 8px; padding: 5px 11px; font-weight: 600; background: #fff; }
+.sf-node.cur { border-color: var(--primary-border, #cfe0ff); background: var(--primary-soft); color: var(--primary); }
+.sf-arrow { color: var(--text-muted); }
+.sf-note { color: var(--text-muted); }
+
+/* 危险区 */
+.danger-zone { border: 1px solid #fecaca; border-radius: 14px; overflow: hidden; margin-bottom: 18px; }
+.dz-head { background: #fef2f2; padding: 14px 20px; border-bottom: 1px solid #fecaca; }
+.dz-title { font-size: 14px; font-weight: 700; color: #b91c1c; }
+.dz-desc { font-size: 12px; color: #ef4444; margin-top: 2px; }
+.dz-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid #fee2e2; }
+.dz-row:first-child { border-top: none; }
+.dz-r-t { font-size: 13.5px; font-weight: 600; color: var(--slate); }
+.dz-r-s { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.btn-danger { background: #fff; color: var(--red); border: 1px solid #fecaca; border-radius: 9px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: not-allowed; opacity: 0.65; }
 
 /* 弹窗 */
-.modal-mask {
-  position: fixed; inset: 0; z-index: 1000; padding: 24px;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(15, 23, 42, .45); backdrop-filter: blur(2px);
-}
-.modal {
-  width: min(460px, 94vw); background: #fff; border-radius: var(--radius-lg);
-  box-shadow: 0 24px 70px rgba(2, 6, 23, .28); overflow: hidden;
-  animation: pop .16s ease-out;
-}
-.modal-wide { width: min(580px, 94vw); }
-@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-.modal-header {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  padding: 18px 22px; border-bottom: 1px solid var(--border);
-}
-.modal-title { font-size: 16px; font-weight: 700; color: var(--text); }
-.modal-sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
-.modal-close { border: none; background: transparent; color: var(--text-muted); font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
-.modal-close:hover { background: var(--light); color: var(--text); }
-.modal-body { padding: 22px; display: flex; flex-direction: column; gap: 18px; }
-.modal-footer {
-  display: flex; justify-content: flex-end; gap: 10px;
-  padding: 14px 22px; border-top: 1px solid var(--border); background: #fafbfc;
-}
+.modal-mask { position: fixed; inset: 0; background: rgba(15, 31, 61, 0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { width: 440px; background: #fff; border-radius: 16px; box-shadow: var(--shadow-lg); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 0; }
+.modal-title { font-size: 16px; font-weight: 700; color: var(--navy); margin: 0; }
+.modal-close { border: none; background: none; font-size: 16px; color: var(--text-muted); cursor: pointer; }
+.modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 12.5px; font-weight: 600; color: var(--slate); }
+.field input, .field select { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.field input:focus, .field select:focus { outline: none; border-color: var(--primary); }
+.pii-note { font-size: 11px; color: var(--text-muted); line-height: 1.6; background: #fbfcfe; border: 1px dashed var(--border); border-radius: 8px; padding: 9px 11px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 0 20px 18px; }
 
-/* 表单 */
-.field { display: flex; flex-direction: column; gap: 7px; }
-.field-label { font-size: 13px; font-weight: 600; color: var(--text); }
-.field-label i { color: #ef4444; font-style: normal; }
-.field input {
-  height: 42px; padding: 0 13px; width: 100%;
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  font-size: 14px; color: var(--text); background: #fff; transition: border-color .15s, box-shadow .15s;
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  .side-nav { position: static; display: flex; overflow-x: auto; }
 }
-.field input::placeholder { color: #94a3b8; }
-.field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-.field-hint { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
-
-/* 成员管理 */
-.add-member {
-  display: flex; gap: 8px; align-items: center;
-  padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md);
-}
-.mini-input {
-  height: 36px; padding: 0 10px; border: 1px solid var(--border);
-  border-radius: var(--radius-sm); font-size: 13px; color: var(--text); background: #fff;
-}
-.mini-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-.member-search { flex: 1; position: relative; }
-.member-search .mini-input { width: 100%; }
-.candidate-list {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12); max-height: 240px; overflow-y: auto;
-}
-.candidate-row {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; font-size: 13px;
-}
-.candidate-row:hover { background: var(--light); }
-.candidate-row.disabled { cursor: not-allowed; opacity: 0.55; }
-.candidate-name { font-weight: 600; color: var(--text); }
-.candidate-meta { color: var(--text-muted); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.candidate-tag { font-size: 11px; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-full); padding: 1px 8px; }
-.candidate-empty {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;
-}
-.member-list { display: flex; flex-direction: column; }
-.member-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 11px 4px; border-bottom: 1px solid var(--border);
-}
-.member-row:last-child { border-bottom: none; }
-.member-avatar {
-  width: 34px; height: 34px; border-radius: var(--radius-full); flex-shrink: 0;
-  display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #475569; background: var(--light);
-}
-.member-id { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--text); }
-.member-name { font-weight: 600; }
-.member-email { font-size: 12px; color: var(--text-muted); }
-.role-select { width: 96px; }
-.icon-btn {
-  border: 1px solid var(--border); background: #fff; border-radius: var(--radius-sm);
-  height: 30px; padding: 0 12px; font-size: 12px; cursor: pointer; color: var(--text-muted);
-}
-.icon-btn.danger:hover { border-color: #fecaca; background: #fef2f2; color: #dc2626; }
-.member-empty { padding: 28px; text-align: center; color: var(--text-muted); font-size: 13px; }
 </style>

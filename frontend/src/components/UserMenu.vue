@@ -4,14 +4,14 @@
       <span class="avatar">{{ initials }}</span>
       <span class="user-meta">
         <span class="user-name">{{ displayName }}</span>
-        <span class="tenant">{{ accountLabel }}</span>
+        <span class="tenant">{{ orgLabel }}</span>
       </span>
     </button>
 
     <div v-if="open" class="menu-panel" role="menu">
       <button type="button" role="menuitem" class="menu-item" @click="goAccount('profile')">个人设置</button>
       <button type="button" role="menuitem" class="menu-item" @click="goAccount('security')">安全中心</button>
-      <button type="button" role="menuitem" class="menu-item" @click="goOrgs">组织</button>
+      <button type="button" role="menuitem" class="menu-item" @click="goOrgs">组织管理</button>
       <button type="button" role="menuitem" class="menu-item danger" @click="handleLogout">退出登录</button>
       <button type="button" role="menuitem" class="menu-item danger" @click="showLogoutAll = true">退出所有设备</button>
     </div>
@@ -30,11 +30,13 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { logout, logoutAll } from '../api/auth'
 import { useAuth } from '../composables/useAuth'
+import { useOrg } from '../composables/useOrg'
 import LogoutAllDialog from './LogoutAllDialog.vue'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 
 const router = useRouter()
 const { state, clearSession } = useAuth()
+const { current, isPersonal } = useOrg()
 const open = ref(false)
 const showLogoutAll = ref(false)
 const logoutAllLoading = ref(false)
@@ -43,10 +45,8 @@ const menuRef = ref(null)
 const displayName = computed(
   () => state.me?.displayName || state.user?.displayName || state.user?.account || 'RAGForge 用户'
 )
-// 租户模型已移除：副标题展示账号/用户名，无则回退“个人账号”
-const accountLabel = computed(
-  () => state.me?.username || state.user?.account || state.me?.email || '个人账号'
-)
+// 副标题展示当前所在组织；个人组织统一显示“个人组织”
+const orgLabel = computed(() => (isPersonal.value ? '个人组织' : current.value.name))
 const initials = computed(() => displayName.value.slice(0, 1).toUpperCase())
 
 function goAccount(tab) {
