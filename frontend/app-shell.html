@@ -149,6 +149,35 @@
   .activity-actor { color: var(--text-muted); font-size: 11.5px; background: #f1f5f9; border-radius: 5px; padding: 1px 6px; margin-left: 8px; }
 
   .note { font-size: 12.5px; color: var(--text-muted); line-height: 1.7; background: #fbfcfe; border: 1px dashed var(--border); border-radius: 12px; padding: 14px 18px; } .note b { color: var(--slate); }
+
+  /* ===== 弹窗 ===== */
+  .modal-mask { position: fixed; inset: 0; background: rgba(15,31,61,.42); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-mask.open { display: flex; }
+  .modal { width: 460px; max-width: calc(100vw - 40px); background: #fff; border-radius: 16px; box-shadow: var(--shadow-lg); padding: 22px; }
+  .modal h3 { margin: 0 0 4px; font-size: 16px; } .modal .modal-sub { font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; }
+  .fld { margin-bottom: 14px; } .fld label { display: block; font-size: 12.5px; font-weight: 600; color: var(--slate); margin-bottom: 6px; }
+  .fld input, .fld select, .fld textarea { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 13px; font-family: inherit; }
+  .fld input:focus, .fld select:focus, .fld textarea:focus { outline: none; border-color: var(--primary); }
+  .fld-row { display: flex; gap: 12px; } .fld-row .fld { flex: 1; }
+  .fld-hint { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+  .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 26px; text-align: center; color: var(--text-muted); font-size: 13px; cursor: pointer; }
+  .dropzone:hover { border-color: var(--primary-border); background: #f9fbff; } .dropzone .dz-i { font-size: 26px; display: block; margin-bottom: 8px; }
+  .chk { display: flex; gap: 9px; align-items: flex-start; font-size: 11.5px; font-weight: 400; color: var(--text-muted); line-height: 1.55; cursor: pointer; }
+  .chk input { width: auto; margin-top: 1px; flex-shrink: 0; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .seg button { border: none; background: #fff; padding: 8px 14px; font-size: 13px; color: var(--slate); cursor: pointer; } .seg button.on { background: var(--primary); color: #fff; }
+  /* 检索测试 内联结果（轻量） */
+  .sr { margin-top: 4px; border-top: 1px solid var(--border); padding-top: 14px; }
+  .sr-sum { font-size: 12.5px; color: var(--gray); margin-bottom: 10px; } .sr-sum b { color: var(--navy); }
+  .sr-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px; }
+  .sr-rank { width: 20px; height: 20px; border-radius: 6px; background: #eef4ff; color: var(--primary); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sr-body { flex: 1; min-width: 0; } .sr-t { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .sr-src { font-size: 11px; color: var(--text-muted); }
+  .sr-score { font-size: 12px; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
+  /* toast */
+  .toast { position: fixed; bottom: 22px; right: 22px; background: var(--navy); color: #fff; padding: 12px 16px; border-radius: 11px; font-size: 13px; box-shadow: var(--shadow-lg); display: flex; align-items: center; gap: 12px; opacity: 0; transform: translateY(10px); transition: .25s; z-index: 200; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .toast a { color: #93c5fd; cursor: pointer; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -251,9 +280,9 @@
         </tbody></table></div>
 
       <div class="quick-actions">
-        <div class="action-card"><span class="action-chip">📁</span><span class="action-text">管理知识库</span><span class="action-arrow">→</span></div>
-        <div class="action-card"><span class="action-chip">🔍</span><span class="action-text">检索调试台</span><span class="action-arrow">→</span></div>
-        <div class="action-card"><span class="action-chip">🔌</span><span class="action-text">查看 API 文档</span><span class="action-arrow">→</span></div>
+        <div class="action-card" onclick="openModal('kbModal')"><span class="action-chip">＋</span><span class="action-text">新建知识库</span><span class="action-arrow">→</span></div>
+        <div class="action-card" onclick="openModal('uploadModal')"><span class="action-chip">⬆</span><span class="action-text">上传文档</span><span class="action-arrow">→</span></div>
+        <div class="action-card" onclick="openModal('searchModal')"><span class="action-chip">▷</span><span class="action-text">发起检索测试</span><span class="action-arrow">→</span></div>
       </div>
 
       <div class="panel"><div class="panel-head"><span class="panel-title">最近操作</span><span class="panel-hint" id="actHint">本组织内动态</span></div><div class="activity-list" id="activityList"></div></div>
@@ -262,6 +291,52 @@
     </div>
   </main>
 </div>
+
+<!-- 新建知识库 -->
+<div class="modal-mask" id="kbModal">
+  <div class="modal">
+    <h3>新建知识库</h3>
+    <div class="modal-sub">与「知识库管理」页为同一表单组件</div>
+    <div class="fld"><label>名称 *</label><input id="kbName" placeholder="例如：产品文档库" /></div>
+    <div class="fld"><label>描述</label><textarea id="kbDesc" rows="2" placeholder="可选"></textarea></div>
+    <div class="fld"><label>归属</label><select id="kbOwner" onchange="syncVis()"></select></div>
+    <div class="fld"><label>可见性</label><select id="kbVis"></select></div>
+    <div class="fld"><label>应答模型（可选）</label><select id="kbAnswerModel"><option value="">使用默认模型</option><option value="deepseek-v3">DeepSeek-V3</option></select></div>
+    <div class="fld"><label>多模态处理</label><label class="chk"><input type="checkbox" id="kbMultimodal" /><span>开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。</span></label></div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('kbModal')">取消</button><button class="btn-primary" onclick="submitKb()">创建</button></div>
+  </div>
+</div>
+
+<!-- 上传文档 -->
+<div class="modal-mask" id="uploadModal">
+  <div class="modal">
+    <h3>上传文档</h3>
+    <div class="modal-sub">上传后异步入库：解析(Tika) → 分块 → Embedding → PG 入库 → ES 索引</div>
+    <div class="fld"><label>目标知识库</label><select id="uploadKb"></select></div>
+    <div class="fld"><label>文件</label><div class="dropzone" onclick="alert('选择文件（mock）')"><span class="dz-i">⬆</span>拖拽文件到此处，或点击选择<br><span style="font-size:11.5px">支持 PDF / Word / Markdown / TXT</span></div></div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('uploadModal')">取消</button><button class="btn-primary" onclick="submitUpload()">开始上传</button></div>
+  </div>
+</div>
+
+<!-- 发起检索测试 -->
+<div class="modal-mask" id="searchModal">
+  <div class="modal">
+    <h3>发起检索测试</h3>
+    <div class="modal-sub">快速验证召回效果，完整参数与结果在「检索调试台」</div>
+    <div class="fld"><label>查询</label><input id="searchQ" placeholder="输入测试问题，如：Java 后端岗位的薪资范围" /></div>
+    <div class="fld"><label>检索策略</label>
+      <div class="seg" id="stratSeg"><button class="on" data-s="hybrid">hybrid</button><button data-s="vector">vector</button><button data-s="bm25">bm25</button></div>
+    </div>
+    <div class="fld-row">
+      <div class="fld"><label>知识库</label><select id="searchKb"></select></div>
+      <div class="fld"><label>topK</label><input type="number" value="5" /></div>
+    </div>
+    <div id="searchResult" style="display:none"></div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('searchModal')">关闭</button><button class="btn-primary" onclick="submitSearch()">检索</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
 const SCOPES = {
@@ -291,6 +366,7 @@ const setText = (id,v) => { const e=$(id); if(e) e.textContent=v; };
 const sparkPath = arr => { const step=680/(arr.length-1); return arr.map((y,i)=>`${i===0?'M':'L'}${Math.round(i*step)},${y}`).join(' '); };
 
 function render(scope){
+  currentScope = scope;
   const d = SCOPES[scope];
   $('trAva').textContent=d.ava; $('trAva').style.background=d.avaColor; setText('trName',d.name);
   $('trBadge').textContent=d.badge; $('trBadge').className='type-badge '+d.badgeClass;
@@ -339,6 +415,90 @@ $('bellBtn').addEventListener('click', e=>{ e.stopPropagation(); $('bellMenu').c
 $('userTrigger').addEventListener('click', e=>{ e.stopPropagation(); $('userMenu').classList.toggle('open'); $('orgMenu').classList.remove('open'); $('bellMenu').classList.remove('open'); });
 document.addEventListener('click', ()=>{ $('orgMenu').classList.remove('open'); $('bellMenu').classList.remove('open'); $('userMenu').classList.remove('open'); });
 document.querySelectorAll('.org-opt').forEach(o=>o.addEventListener('click', e=>{ e.stopPropagation(); render(o.dataset.scope); $('orgMenu').classList.remove('open'); }));
+
+// ===== 当前组织上下文（全局状态） =====
+let currentScope = 'personal';
+const KB_OPTIONS = {
+  personal: ['我的简历库', '个人项目库'],
+  team: ['岗位 JD 库', '薪资情报库', '招聘策略（仅管理者）'],
+  platform: ['（全平台只读，下钻具体组织后操作）'],
+};
+// 归属选项：个人 + 当前用户作为 OWNER/ADMIN 的组织
+const OWNER_LIST = [['PERSONAL','个人（我自己）'], ['ORG:7','广州日不落科技（组织）']];
+// 可见性随归属变（个人：私有/公开；组织：组织可见/仅管理者）
+function syncVis(){
+  const o = $('kbOwner').value;
+  if (o === 'PERSONAL') fillSelect($('kbVis'), [['PRIVATE','私有（仅自己）'], ['PUBLIC','公开（全平台可读）']]);
+  else fillSelect($('kbVis'), [['ORG','组织可见（全体成员可读）'], ['PRIVATE','仅管理者（OWNER/ADMIN）']]);
+}
+
+function fillSelect(sel, items){ sel.innerHTML = items.map(o => Array.isArray(o) ? `<option value="${o[0]}">${o[1]}</option>` : `<option>${o}</option>`).join(''); }
+
+function openModal(id){
+  // 按当前组织上下文填充
+  if (id==='kbModal'){
+    fillSelect($('kbOwner'), OWNER_LIST);
+    $('kbOwner').value = currentScope === 'personal' ? 'PERSONAL' : 'ORG:7';
+    syncVis();
+  }
+  if (id==='uploadModal'){ fillSelect($('uploadKb'), KB_OPTIONS[currentScope]); }
+  if (id==='searchModal'){ fillSelect($('searchKb'), [['ALL','全部知识库'], ...KB_OPTIONS[currentScope].map(k=>[k,k])]); }
+  $(id).classList.add('open');
+}
+function closeModal(id){ $(id).classList.remove('open'); }
+document.querySelectorAll('.modal-mask').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
+
+// 策略分段切换
+let strat = 'hybrid';
+document.querySelectorAll('#stratSeg button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#stratSeg button').forEach(x => x.classList.remove('on')); b.classList.add('on'); strat = b.dataset.s;
+}));
+
+// 非阻塞 toast：操作后留在原地
+let toastTimer;
+function toast(msg, linkText, linkFn){
+  const t = $('toast');
+  t.innerHTML = `<span>✓ ${msg}</span>` + (linkText ? ` <a id="toastLink">${linkText}</a>` : '');
+  t.classList.add('show');
+  if (linkText) $('toastLink').onclick = () => { t.classList.remove('show'); linkFn && linkFn(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3800);
+}
+// 让驾驶舱"最近操作"即时反映新动作
+function prependActivity(dot, time, msg){
+  const el = document.createElement('div'); el.className = 'activity-item';
+  el.innerHTML = `<span class="activity-dot ${dot}"></span><span class="activity-time">${time}</span><span class="activity-msg">${msg}</span>`;
+  $('activityList').prepend(el);
+}
+
+function submitKb(){
+  const name = ($('kbName').value||'').trim(); if(!name){ alert('请填写知识库名称'); return; }
+  const owner = $('kbOwner').value, vis = $('kbVis').value, mm = $('kbMultimodal').checked;
+  closeModal('kbModal'); $('kbName').value=''; $('kbDesc').value=''; $('kbMultimodal').checked=false;
+  // 与知识库页同一 payload：name/desc/orgId(归属)/visibility/answerModel/imageProcessingMode
+  const ownerTxt = owner==='PERSONAL' ? '个人' : '广州日不落科技';
+  toast(`已创建知识库「${name}」（${ownerTxt} · ${vis}${mm?' · 多模态':''}）`, '上传文档 →', () => openModal('uploadModal'));
+}
+function submitUpload(){
+  const kb = $('uploadKb').value; closeModal('uploadModal');
+  // 留在原地：进度反映到「最近操作」
+  prependActivity('d-index', '刚刚', `文档已上传到「${kb}」，进入处理队列（解析中）`);
+  toast('已加入入库处理队列，进度见「最近操作」');
+}
+function submitSearch(){
+  const q = ($('searchQ').value||'').trim(); if(!q){ alert('请输入测试查询'); return; }
+  // 驾驶舱只给轻量摘要 + top 命中；完整明细去检索调试台
+  const results = [
+    {t:'广州 Java 后端薪资普遍 18-30K，资深可达 40K+', src:'薪资报告-2026.pdf · 第3段', score:'0.74'},
+    {t:'Java 后端岗位要求：Spring Boot、MySQL、分布式经验', src:'岗位-JD-广州.pdf · 第1段', score:'0.69'},
+    {t:'应届 Java 起薪约 10-14K，看项目与学历', src:'校招薪资概览.md', score:'0.61'},
+  ];
+  const box = $('searchResult'); box.style.display = 'block';
+  box.innerHTML = `<div class="sr">
+    <div class="sr-sum">召回 <b>${results.length}</b> 条 · 耗时 <b>388ms</b> · 策略 <b>${strat}</b> · 零结果 <b>否</b></div>
+    ${results.map((r,i)=>`<div class="sr-item"><span class="sr-rank">${i+1}</span><div class="sr-body"><div class="sr-t">${r.t}</div><div class="sr-src">${r.src}</div></div><span class="sr-score">${r.score}</span></div>`).join('')}
+    <button class="btn btn-sm" style="margin-top:2px" onclick="alert('深链到检索调试台：带入 query/策略，展示完整召回明细、rerank 前后对比、query 改写链、逐条 chunk 分数')">在检索调试台查看完整结果 →</button>
+  </div>`;
+}
 
 render('personal'); renderNoti();
 </script>
