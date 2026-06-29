@@ -65,19 +65,19 @@
     </div>
 
     <div class="quick-actions">
-      <div class="action-card primary" @click="$router.push('/knowledge')">
-        <span class="action-chip">📁</span>
-        <span class="action-text">管理知识库</span>
+      <div class="action-card primary" @click="$router.push({ path: '/knowledge', query: { create: 1 } })">
+        <span class="action-chip">＋</span>
+        <span class="action-text">新建知识库</span>
+        <span class="action-arrow">→</span>
+      </div>
+      <div class="action-card" @click="$router.push('/uploads/wizard')">
+        <span class="action-chip">⬆</span>
+        <span class="action-text">上传文档</span>
         <span class="action-arrow">→</span>
       </div>
       <div class="action-card" @click="$router.push('/debug')">
-        <span class="action-chip">🔍</span>
-        <span class="action-text">检索调试台</span>
-        <span class="action-arrow">→</span>
-      </div>
-      <div class="action-card" @click="$router.push('/api-gateway')">
-        <span class="action-chip">🔌</span>
-        <span class="action-text">查看 API 文档</span>
+        <span class="action-chip">▷</span>
+        <span class="action-text">发起检索测试</span>
         <span class="action-arrow">→</span>
       </div>
     </div>

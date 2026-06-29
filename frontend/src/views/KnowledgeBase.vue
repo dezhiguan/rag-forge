@@ -1175,6 +1175,11 @@ onMounted(async () => {
     expandedKbId.value = kbList.value[0].id
     await loadDocs(kbList.value[0].id)
   }
+  // 从驾驶舱「新建知识库」深链进入：自动打开创建弹窗，并清掉 query 防刷新重弹
+  if (route.query.create) {
+    openCreate()
+    router.replace({ path: route.path })
+  }
 })
 </script>
 
