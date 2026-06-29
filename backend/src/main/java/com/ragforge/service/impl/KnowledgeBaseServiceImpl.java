@@ -161,8 +161,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   }
 
   /**
-   * 按当前组织上下文(X-Org-Id)过滤可读库：个人组织只看个人库、团队组织只看该组织库。 破玻璃(全平台)或未指定上下文时不过滤。
-   * 历史 org_id=null 数据将清理，不做兼容。
+   * 按当前组织上下文(X-Org-Id)过滤可读库：当前组织的库 + PUBLIC 公开库(全平台共享、任何上下文可见)。
+   * 破玻璃(全平台)或未指定上下文时不过滤。历史 org_id=null 数据将清理，不做兼容。
    */
   private List<KnowledgeBase> filterByOrgContext(List<KnowledgeBase> kbs, RagAuthContext ctx) {
     if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
@@ -172,7 +172,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     if (orgId == null) {
       return kbs; // 未指定当前组织：兼容不过滤
     }
-    return kbs.stream().filter(kb -> orgId.equals(kb.getOrgId())).toList();
+    return kbs.stream()
+        .filter(kb -> orgId.equals(kb.getOrgId()) || "PUBLIC".equals(kb.getVisibility()))
+        .toList();
   }
 
   /** 批量回填组织库的组织名（个人库不受影响）。 */
