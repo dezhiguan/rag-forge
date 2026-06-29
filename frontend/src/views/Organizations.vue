@@ -25,6 +25,7 @@
     </div>
 
     <template v-else>
+      <div class="crumb-back" @click="goBackToList">← 我的组织</div>
       <!-- 组织头 -->
       <div class="org-head">
         <span class="org-ava" :style="{ background: avatarColor(org) }">{{ initial(org.name) }}</span>
@@ -356,6 +357,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   createOrg,
   updateOrg,
@@ -374,8 +376,13 @@ import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 
+const router = useRouter()
 const toast = useToast()
 const { state: authState } = useAuth()
+
+function goBackToList() {
+  router.push('/orgs')
+}
 const { current, orgs, isPersonal, isPlatform, load: loadOrgs, setCurrent } = useOrg()
 
 const org = computed(() => current.value)
@@ -657,6 +664,8 @@ onMounted(async () => {
 .go-arrow { font-size: 12.5px; color: var(--primary); font-weight: 600; }
 
 /* 组织头 */
+.crumb-back { display: inline-flex; align-items: center; font-size: 13px; color: var(--text-muted); cursor: pointer; margin-bottom: 12px; }
+.crumb-back:hover { color: var(--primary); }
 .org-head {
   display: flex; align-items: center; gap: 14px; background: var(--surface);
   border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px;
