@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
+import com.ragforge.mapper.OrganizationMapper;
 import com.ragforge.model.entity.ApiKey;
 import com.ragforge.service.ApiKeyService;
 import java.util.List;
@@ -26,13 +27,14 @@ import org.springframework.test.web.servlet.MockMvc;
 class ApiKeyControllerTest {
 
   @Mock private ApiKeyService apiKeyService;
+  @Mock private OrganizationMapper organizationMapper;
 
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     mockMvc =
-        standaloneSetup(new ApiKeyController(apiKeyService))
+        standaloneSetup(new ApiKeyController(apiKeyService, organizationMapper))
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .build();
   }
@@ -43,10 +45,10 @@ class ApiKeyControllerTest {
     key.setId(1L);
     key.setKeyName("ci-key");
     key.setApiKey("sk-rf-secret");
-    when(apiKeyService.listAll()).thenReturn(List.of(key));
+    when(apiKeyService.listForCurrentOrg()).thenReturn(List.of(key));
 
     mockMvc
-        .perform(get("/api/v1/admin/api-keys"))
+        .perform(get("/api/v1/keys"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data[0].keyName").value("ci-key"))
         .andExpect(jsonPath("$.data[0].apiKey").doesNotExist());
@@ -62,7 +64,7 @@ class ApiKeyControllerTest {
 
     mockMvc
         .perform(
-            post("/api/v1/admin/api-keys")
+            post("/api/v1/keys")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"keyName\":\"new-key\"}"))
         .andExpect(status().isOk())
@@ -80,7 +82,7 @@ class ApiKeyControllerTest {
 
     mockMvc
         .perform(
-            put("/api/v1/admin/api-keys/3/enable")
+            put("/api/v1/keys/3/enable")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"enabled\":false}"))
         .andExpect(status().isOk())
@@ -90,7 +92,7 @@ class ApiKeyControllerTest {
 
   @Test
   void delete_delegatesToService() throws Exception {
-    mockMvc.perform(delete("/api/v1/admin/api-keys/4")).andExpect(status().isOk());
+    mockMvc.perform(delete("/api/v1/keys/4")).andExpect(status().isOk());
 
     verify(apiKeyService).delete(4L);
   }
