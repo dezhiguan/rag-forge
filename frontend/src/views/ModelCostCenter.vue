@@ -16,7 +16,7 @@
     <div class="org-scope-note" :class="{ gov: isPlatform }">
       🛡
       <span v-if="isPlatform"><b>全平台视图（破玻璃）</b> —— 成本看板为全平台聚合（含未归属组织的评测成本）；模型管理 / 用户配额可配置。</span>
-      <span v-else>成本看板按<b>当前组织（{{ orgName }}）</b>统计，切换组织即切换；模型与定价为平台统一维护，<b>模型启停仅平台管理员可操作</b>。</span>
+      <span v-else>成本看板按<b>当前组织（{{ orgName }}）</b>统计，切换组织即切换；模型与定价为平台统一维护，<b>组织内只读</b>，超管需切到「全平台视图」才能启停模型。</span>
     </div>
 
     <!-- ============ 模型管理 ============ -->
@@ -175,8 +175,8 @@ import { useOrg } from '../composables/useOrg'
 const toast = useToast()
 const { ragRole } = useAuth()
 const { current, currentOrgId, isPlatform } = useOrg()
-// 模型启停仅平台管理员可操作；企业用户只读。
-const canManageModels = computed(() => ragRole.value === 'ADMIN')
+// 模型启停仅超管在「全平台视图」(破玻璃)可操作；组织上下文内所有人只读。
+const canManageModels = computed(() => ragRole.value === 'ADMIN' && isPlatform.value)
 const orgName = computed(() => current.value?.name || '当前组织')
 
 const activeTab = ref(0)

@@ -39,6 +39,10 @@ public class ModelCenterService {
    * @return 更新后的启用状态
    */
   public boolean toggle(String code, boolean enabled) {
+    // 模型启停是全平台动作：仅超管在「全平台视图」(破玻璃)下可操作，组织上下文内一律拒绝。
+    if (!com.ragforge.security.AdminOverrideHolder.isActive()) {
+      throw new BizException(403, "MODEL_TOGGLE_REQUIRES_PLATFORM_VIEW");
+    }
     ModelConfig cfg =
         modelConfigMapper.selectOne(new LambdaQueryWrapper<ModelConfig>().eq(ModelConfig::getCode, code));
     if (cfg == null) {
