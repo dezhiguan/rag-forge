@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RAGForge · 全局布局（侧边栏组织切换）</title>
+<style>
+  :root {
+    --bg: #f6f8fb; --surface: #fff; --border: #e8edf3;
+    --navy: #0f1f3d; --slate: #334155; --gray: #475569; --text-muted: #8a94a6;
+    --primary: #2563eb; --primary-hover: #1d4ed8; --primary-soft: #eef4ff; --primary-border: #cfe0ff;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444; --cyan: #06b6d4; --violet: #7c3aed;
+    --shadow-sm: 0 1px 2px rgba(15,31,61,.04), 0 1px 3px rgba(15,31,61,.06);
+    --shadow-md: 0 6px 18px rgba(15,31,61,.08); --shadow-lg: 0 12px 34px rgba(15,31,61,.14);
+    --radius-lg: 14px; --sidebar-w: 248px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--navy); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-font-smoothing: antialiased; }
+  .btn { border: 1px solid var(--border); background: #fff; color: var(--slate); border-radius: 9px; padding: 7px 13px; font-size: 13px; cursor: pointer; }
+  .btn-sm { padding: 5px 11px; font-size: 12px; }
+  .btn-primary { background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-ghost-green { background: #fff; color: #15803d; border: 1px solid #bbf7d0; border-radius: 9px; padding: 7px 13px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .hidden { display: none !important; }
+
+  /* ===== 布局 ===== */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar { width: var(--sidebar-w); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  /* ===== 侧边栏顶部：品牌 + 组织切换器 ===== */
+  .brand { display: flex; align-items: center; gap: 9px; padding: 16px 16px 10px; font-weight: 800; font-size: 15px; letter-spacing: -.2px; }
+  .brand .logo { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
+
+  .org-switch { position: relative; padding: 14px 12px 12px; border-bottom: 1px solid var(--border); }
+  .org-trigger { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--border); border-radius: 11px; padding: 9px 10px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+  .org-trigger:hover { border-color: var(--primary-border); box-shadow: var(--shadow-sm); }
+  .org-ava { width: 34px; height: 34px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+  .org-meta { flex: 1; min-width: 0; line-height: 1.2; }
+  .org-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .org-sub2 { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .type-badge { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; }
+  .tb-ind { background: #eef4ff; color: var(--primary); } .tb-team { background: #f0fdf4; color: #15803d; } .tb-plat { background: #1e293b; color: #fff; }
+  .org-caret { color: #b6bdca; font-size: 11px; }
+  .org-menu { position: absolute; top: calc(100% - 4px); left: 12px; right: 12px; background: #fff; border: 1px solid var(--border); border-radius: 13px; box-shadow: var(--shadow-lg); padding: 7px; z-index: 50; display: none; }
+  .org-menu.open { display: block; }
+  .menu-label { font-size: 10.5px; font-weight: 700; color: var(--text-muted); letter-spacing: .4px; text-transform: uppercase; padding: 7px 9px 5px; }
+  .org-opt { display: flex; align-items: center; gap: 10px; padding: 8px 9px; border-radius: 9px; cursor: pointer; }
+  .org-opt:hover { background: #f6f8fb; } .org-opt.active { background: var(--primary-soft); }
+  .org-opt .org-meta .org-name { font-size: 12.5px; }
+  .org-opt .check { margin-left: auto; color: var(--primary); font-weight: 700; opacity: 0; } .org-opt.active .check { opacity: 1; }
+  .org-menu-sep { height: 1px; background: var(--border); margin: 5px 4px; }
+
+  /* ===== 侧边栏导航 ===== */
+  .nav { flex: 1; overflow-y: auto; padding: 10px 12px; }
+  .nav-item { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 9px; font-size: 13.5px; color: var(--slate); cursor: pointer; font-weight: 500; margin-bottom: 2px; }
+  .nav-item:hover { background: #f6f8fb; } .nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .nav-item .nico { width: 18px; text-align: center; font-size: 15px; }
+  .nav-item .ncount { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+  .nav-group { font-size: 10.5px; font-weight: 700; color: var(--text-muted); letter-spacing: .4px; text-transform: uppercase; padding: 14px 11px 6px; }
+
+  /* ===== 侧边栏底部：账号 ===== */
+  .user-box { position: relative; border-top: 1px solid var(--border); padding: 10px 12px; }
+  .user-trigger { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 10px; cursor: pointer; }
+  .user-trigger:hover { background: #f6f8fb; }
+  .uava { width: 32px; height: 32px; border-radius: 9px; background: var(--navy); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .uinfo { flex: 1; min-width: 0; } .uname { font-size: 13px; font-weight: 600; } .usub { font-size: 11px; color: var(--text-muted); }
+  .user-menu { position: absolute; bottom: calc(100% - 2px); left: 12px; right: 12px; background: #fff; border: 1px solid var(--border); border-radius: 13px; box-shadow: var(--shadow-lg); padding: 7px; z-index: 50; display: none; }
+  .user-menu.open { display: block; }
+  .um-head { display: flex; gap: 10px; align-items: center; padding: 9px; border-bottom: 1px solid var(--border); margin-bottom: 5px; }
+  .um-ava { width: 38px; height: 38px; border-radius: 10px; background: var(--navy); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+  .um-name { font-size: 13.5px; font-weight: 700; } .um-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; } .um-bind { font-size: 11px; color: var(--amber); cursor: pointer; }
+  .um-item { display: flex; align-items: center; gap: 10px; padding: 8px 9px; border-radius: 8px; font-size: 13px; color: var(--slate); cursor: pointer; } .um-item:hover { background: #f6f8fb; }
+  .um-item .um-ico { width: 17px; text-align: center; } .um-item .um-right { margin-left: auto; color: var(--text-muted); font-size: 11.5px; } .um-item.danger { color: var(--red); }
+  .um-sep { height: 1px; background: var(--border); margin: 5px 4px; }
+
+  /* ===== 主区顶栏 ===== */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 30; }
+  .topbar h1 { font-size: 18px; margin: 0; } .topbar .crumb { font-size: 12px; color: var(--text-muted); margin-bottom: 3px; }
+  .topbar-right { display: inline-flex; align-items: center; gap: 12px; }
+  .dash-updated { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(16,185,129,.16); }
+  .bell-wrap { position: relative; }
+  .bell-btn { position: relative; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 17px; display: inline-flex; align-items: center; justify-content: center; }
+  .bell-badge { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--red); color: #fff; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #fff; }
+  .bell-menu { position: absolute; top: calc(100% + 8px); right: 0; width: 360px; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 8px; z-index: 40; display: none; } .bell-menu.open { display: block; }
+  .noti { display: flex; gap: 10px; padding: 11px 10px; border-radius: 10px; } .noti:hover { background: #f6f8fb; }
+  .noti-ico { width: 32px; height: 32px; border-radius: 9px; background: var(--primary-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .noti-title { font-size: 13px; font-weight: 600; color: var(--slate); } .noti-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; } .noti-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .noti-empty { padding: 26px 0; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+  /* ===== 主区内容 ===== */
+  .page-body { padding: 20px 28px 50px; }
+  .banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-radius: 14px; padding: 12px 16px; }
+  .banner .b-ico { width: 34px; height: 34px; border-radius: 10px; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+  .banner .b-txt { flex: 1; font-size: 13px; color: var(--slate); } .banner .b-txt b { color: var(--navy); } .banner .b-txt span { color: var(--text-muted); }
+  .banner.upgrade { background: linear-gradient(95deg, #eef4ff, #f7faff); border: 1px solid var(--primary-border); } .banner.upgrade .b-ico { background: var(--primary); }
+  .banner.invite { background: linear-gradient(95deg, #f0fdf4, #f7fefb); border: 1px solid #bbf7d0; } .banner.invite .b-ico { background: var(--green); }
+  .banner.breakglass { background: linear-gradient(95deg, #fff7ed, #fffbeb); border: 1px solid #fed7aa; } .banner.breakglass .b-ico { background: var(--amber); }
+
+  .scope-hint { font-size: 12px; color: var(--text-muted); margin: 4px 2px 14px; display: flex; align-items: center; gap: 6px; }
+  .section-label { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .6px; text-transform: uppercase; margin: 4px 2px 12px; }
+
+  .quad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
+  .kpi { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow-sm); overflow: hidden; transition: transform .18s, box-shadow .18s, border-color .18s; }
+  .kpi:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: #d8e2ef; }
+  .kpi::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
+  .kpi.q-asset::before { background: var(--primary); } .kpi.q-quality::before { background: var(--green); } .kpi.q-health::before { background: var(--amber); } .kpi.q-cost::before { background: var(--violet); }
+  .kpi-top { display: flex; align-items: center; justify-content: space-between; }
+  .kpi-label { font-size: 12.5px; color: var(--text-muted); font-weight: 600; }
+  .kpi-chip { width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+  .c-blue { background: var(--primary-soft); } .c-green { background: #ecfdf5; } .c-amber { background: #fffbeb; } .c-violet { background: #f5f3ff; }
+  .kpi-value { font-size: 29px; font-weight: 700; letter-spacing: -0.6px; margin-top: 14px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .kpi-value .unit { font-size: 14px; font-weight: 600; color: var(--text-muted); margin-left: 3px; } .q-quality .kpi-value { color: var(--green); } .kpi-value.warn { color: var(--amber); }
+  .kpi-subs { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 7px; }
+  .kpi-sub { display: flex; align-items: center; justify-content: space-between; font-size: 12px; } .kpi-sub .k { color: var(--text-muted); } .kpi-sub .v { color: var(--slate); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .kpi-sub .v.good { color: var(--green); } .tag-eval { font-size: 10px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 5px; padding: 0 4px; margin-left: 5px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-sm); margin-bottom: 22px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; } .panel-title { font-size: 14px; font-weight: 700; } .panel-hint { font-size: 12px; color: var(--text-muted); }
+  .trend-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; margin-bottom: 22px; } .trend-row .panel { margin-bottom: 0; }
+  .spark-legend { display:flex; gap:18px; font-size:12px; color:var(--text-muted); padding:0 20px 8px; } .spark-legend b { color: var(--slate); } .spark-wrap { padding: 4px 20px 16px; }
+  .ingest { padding: 14px 20px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .ingest-bar { height: 10px; border-radius: 6px; overflow: hidden; display: flex; background: #eef2f7; } .ingest-bar i { display: block; height: 100%; }
+  .seg-completed { background: var(--green); } .seg-processing { background: var(--cyan); } .seg-pending { background: var(--amber); } .seg-failed { background: var(--red); }
+  .ingest-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--gray); } .ingest-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dotc { width: 8px; height: 8px; border-radius: 3px; display: inline-block; } .ingest-cta { font-size: 12px; color: var(--red); font-weight: 600; } .ingest-cta.none { color: var(--green); }
+
+  .member-overview { padding: 6px 20px 18px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .ava-pile { display: flex; } .m-ava { width: 34px; height: 34px; border-radius: 9px; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .ava-pile .m-ava { margin-left: -10px; border: 2px solid #fff; } .ava-pile .m-ava:first-child { margin-left: 0; }
+  .ava-more { background: #e2e8f0 !important; color: var(--gray) !important; font-size: 12px !important; }
+  .member-stats { font-size: 13px; color: var(--gray); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; } .member-stats .stat b { color: var(--navy); font-weight: 700; } .member-stats .sep { color: #dbe2ea; } .member-stats .pend { color: var(--amber); font-weight: 600; }
+
+  .perm-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .perm-table th, .perm-table td { text-align: left; padding: 9px 20px; border-top: 1px solid var(--border); } .perm-table th { color: var(--text-muted); font-weight: 600; font-size: 11.5px; } .perm-table td.cap { color: var(--slate); }
+  .yes { color: var(--green); font-weight: 700; } .no { color: #cbd5e1; font-weight: 700; } .cond { color: var(--amber); font-weight: 600; font-size: 11.5px; }
+
+  .quick-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 22px; }
+  .action-card { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 15px 16px; cursor: pointer; box-shadow: var(--shadow-sm); transition: transform .15s, box-shadow .15s, border-color .15s; }
+  .action-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--primary-border); }
+  .action-chip { width: 38px; height: 38px; border-radius: 11px; background: var(--primary-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; } .action-text { font-size: 14px; font-weight: 600; color: var(--slate); flex: 1; } .action-arrow { color: #cbd5e1; font-size: 16px; }
+
+  .activity-list { padding: 6px 10px 12px; }
+  .activity-item { display: flex; align-items: center; gap: 11px; font-size: 13px; color: var(--gray); padding: 10px 12px; border-radius: 8px; } .activity-item:hover { background: #f8fafc; }
+  .activity-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; } .d-search { background: var(--cyan); } .d-index { background: var(--green); } .d-eval { background: var(--violet); } .d-error { background: var(--red); }
+  .activity-time { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 12px; flex-shrink: 0; min-width: 74px; } .activity-time .day { color: #b6bdca; margin-right: 4px; }
+  .activity-msg { flex: 1; min-width: 0; } .activity-item.error .activity-msg { color: var(--red); }
+  .activity-retry { margin-left: auto; color: var(--primary); border: 1px solid var(--primary-border); background: var(--primary-soft); border-radius: 7px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+  .activity-actor { color: var(--text-muted); font-size: 11.5px; background: #f1f5f9; border-radius: 5px; padding: 1px 6px; margin-left: 8px; }
+
+  .note { font-size: 12.5px; color: var(--text-muted); line-height: 1.7; background: #fbfcfe; border: 1px dashed var(--border); border-radius: 12px; padding: 14px 18px; } .note b { color: var(--slate); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== 侧边栏（全局） ===== -->
+  <aside class="sidebar">
+    <!-- 组织切换器（侧边栏顶部整块，全局上下文） -->
+    <div class="org-switch">
+      <div class="org-trigger" id="orgTrigger">
+        <span class="org-ava" id="trAva">Q</span>
+        <span class="org-meta"><span class="org-name" id="trName">qa_admin 的个人组织</span><span class="org-sub2"><span class="type-badge tb-ind" id="trBadge">INDIVIDUAL</span></span></span>
+        <span class="org-caret">⇅</span>
+      </div>
+      <div class="org-menu" id="orgMenu">
+        <div class="menu-label">切换组织（全局生效）</div>
+        <div class="org-opt active" data-scope="personal"><span class="org-ava" style="background:#2563eb">Q</span><span class="org-meta"><span class="org-name">qa_admin 的个人组织</span><span class="org-sub2">INDIVIDUAL · 仅你</span></span><span class="check">✓</span></div>
+        <div class="org-opt" data-scope="team"><span class="org-ava" style="background:#15803d">日</span><span class="org-meta"><span class="org-name">广州日不落科技</span><span class="org-sub2">TEAM · 你是 OWNER</span></span><span class="check">✓</span></div>
+        <div class="org-menu-sep"></div>
+        <div class="menu-label">平台管理</div>
+        <div class="org-opt" data-scope="platform"><span class="org-ava" style="background:#1e293b">∞</span><span class="org-meta"><span class="org-name">全平台视图</span><span class="org-sub2">超管 · 需破玻璃</span></span><span class="check">✓</span></div>
+      </div>
+    </div>
+
+    <!-- 导航 -->
+    <nav class="nav">
+      <div class="nav-item active"><span class="nico">📊</span>驾驶舱</div>
+      <div class="nav-item"><span class="nico">📁</span>知识库管理<span class="ncount" id="navKb">2</span></div>
+      <div class="nav-item"><span class="nico">🔍</span>检索调试台</div>
+      <div class="nav-item"><span class="nico">🧪</span>评测实验室</div>
+      <div class="nav-item"><span class="nico">🔌</span>API 网关</div>
+      <div class="nav-group" id="navMgmtGroup">组织</div>
+      <div class="nav-item" id="navOrgMgmt" onclick="location.href='org-management.html'"><span class="nico">🏢</span>组织管理</div>
+    </nav>
+
+    <!-- 账号（侧边栏底部） -->
+    <div class="user-box">
+      <div class="user-trigger" id="userTrigger">
+        <span class="uava">Q</span>
+        <span class="uinfo"><div class="uname">qa_admin</div><div class="usub">138****0001</div></span>
+        <span class="org-caret">⋯</span>
+      </div>
+      <div class="user-menu" id="userMenu">
+        <div class="um-head"><span class="um-ava">Q</span><div><div class="um-name">qa_admin</div><div class="um-sub">用户名 qa_admin · 138****0001</div><div class="um-bind" onclick="alert('绑定邮箱：POST /auth/credential/bind-email')">未绑定邮箱 · 去绑定</div></div></div>
+        <div class="um-item" onclick="alert('个人资料：显示名 / 头像 / 简介')"><span class="um-ico">👤</span>个人资料</div>
+        <div class="um-item" onclick="alert('账号与安全：设置密码 / 绑定邮箱 / 设置用户名')"><span class="um-ico">🔑</span>账号与安全</div>
+        <div class="um-item" onclick="location.href='org-management.html'"><span class="um-ico">🏢</span>我的组织<span class="um-right">2 个 ›</span></div>
+        <div class="um-item"><span class="um-ico">🌐</span>语言<span class="um-right">简体中文 ›</span></div>
+        <div class="um-item"><span class="um-ico">❓</span>帮助中心</div>
+        <div class="um-sep"></div>
+        <div class="um-item danger" onclick="alert('退出登录：吊销当前 JWT')"><span class="um-ico">↩</span>退出登录</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== 主区 ===== -->
+  <main class="main">
+    <div class="topbar">
+      <div><h1>驾驶舱</h1></div>
+      <div class="topbar-right">
+        <span class="dash-updated"><span class="live-dot"></span>更新于 16:58:24</span>
+        <button class="btn btn-sm">↻ 刷新</button>
+        <div class="bell-wrap"><button class="bell-btn" id="bellBtn">🔔<span class="bell-badge" id="bellBadge">1</span></button>
+          <div class="bell-menu" id="bellMenu"><div class="menu-label">通知中心</div><div id="notiList"></div></div></div>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <!-- 横幅 -->
+      <div class="banner invite" id="inviteBanner"><span class="b-ico">✉</span><span class="b-txt"><b>你有 1 个组织邀请待处理</b> —— <span>「新引擎科技」邀请你以 <b>MEMBER</b> 身份加入。</span></span><button class="btn-ghost-green" onclick="acceptInvite()">接受</button><button class="btn btn-sm" onclick="declineInvite()">拒绝</button></div>
+      <div class="banner upgrade" id="upgradeBanner"><span class="b-ico">⬆</span><span class="b-txt"><b>当前为个人组织（INDIVIDUAL）</b> —— <span>需要协作？升档为团队组织即可邀请成员、共享知识库，组织 ID 不变、数据零迁移。</span></span><button class="btn-primary">升级到团队组织</button></div>
+      <div class="banner breakglass hidden" id="breakglassBanner"><span class="b-ico">🛡</span><span class="b-txt"><b>破玻璃提权已激活（X-Admin-Override）</b> —— <span>原因：季度安全审计 · 全程审计留痕 · SYSTEM 库不可见 · 明文凭证不可得。</span></span><button class="btn btn-sm">退出提权</button></div>
+
+      <div class="scope-hint" id="scopeHint">📊 统计范围：仅你个人组织内的库与检索 · 口径：近 7 天</div>
+
+      <div class="section-label">核心指标 · 近 7 天</div>
+      <div class="quad-grid">
+        <div class="kpi q-asset"><div class="kpi-top"><span class="kpi-label">资产规模</span><span class="kpi-chip c-blue">📚</span></div><div class="kpi-value"><span id="m-chunks">—</span> <span class="unit">Chunk</span></div><div class="kpi-subs"><div class="kpi-sub"><span class="k">文档</span><span class="v" id="m-docs">—</span></div><div class="kpi-sub"><span class="k">知识库</span><span class="v" id="m-kbs">—</span></div><div class="kpi-sub"><span class="k">入库成功率</span><span class="v good" id="m-ingestrate">—</span></div></div></div>
+        <div class="kpi q-quality"><div class="kpi-top"><span class="kpi-label">检索质量</span><span class="kpi-chip c-green">🎯</span></div><div class="kpi-value"><span id="m-nohit">—</span><span class="unit">% 零结果</span></div><div class="kpi-subs"><div class="kpi-sub"><span class="k">平均召回条数</span><span class="v" id="m-recall">—</span></div><div class="kpi-sub"><span class="k">平均 rerank 分<span class="tag-eval">仅精排</span></span><span class="v" id="m-rerank">—</span></div><div class="kpi-sub"><span class="k">Query 改写率</span><span class="v" id="m-rewrite">—</span></div></div></div>
+        <div class="kpi q-health"><div class="kpi-top"><span class="kpi-label">运行健康</span><span class="kpi-chip c-amber">⚡</span></div><div class="kpi-value warn"><span id="m-p95">—</span> <span class="unit">ms · P95</span></div><div class="kpi-subs"><div class="kpi-sub"><span class="k">P50 延迟</span><span class="v" id="m-p50">—</span></div><div class="kpi-sub"><span class="k">检索成功率</span><span class="v good" id="m-success">—</span></div><div class="kpi-sub"><span class="k">检索请求数</span><span class="v" id="m-requests">—</span></div></div></div>
+        <div class="kpi q-cost"><div class="kpi-top"><span class="kpi-label">成本消耗</span><span class="kpi-chip c-violet">💰</span></div><div class="kpi-value" id="m-cost">—</div><div class="kpi-subs"><div class="kpi-sub"><span class="k">Token 总量</span><span class="v" id="m-tokens">—</span></div><div class="kpi-sub"><span class="k">embedding / rerank</span><span class="v" id="m-er">—</span></div><div class="kpi-sub"><span class="k">LLM(改写+评测)</span><span class="v" id="m-llm">—</span></div></div></div>
+      </div>
+
+      <div class="trend-row">
+        <div class="panel"><div class="panel-head"><span class="panel-title">检索趋势 · 近 7 天</span><span class="panel-hint">请求数 / P95 延迟</span></div><div class="spark-legend"><span>请求峰值 <b id="m-peak">—</b>/日</span><span>P95 区间 <b id="m-p95range">—</b></span></div>
+          <div class="spark-wrap"><svg viewBox="0 0 680 140" width="100%" height="140" preserveAspectRatio="none"><defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(37,99,235,.22)"/><stop offset="100%" stop-color="rgba(37,99,235,0)"/></linearGradient></defs><path id="sparkArea" d="" fill="url(#g1)"/><path id="sparkLine" d="" fill="none" stroke="#2563eb" stroke-width="2.5"/><path id="sparkP95" d="" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5 4"/><g font-size="11" fill="#9aa3b2"><text x="0" y="136">06-23</text><text x="300" y="136">06-26</text><text x="640" y="136">06-29</text></g></svg></div></div>
+        <div class="panel"><div class="panel-head"><span class="panel-title">入库处理健康度</span><span class="panel-hint"><span id="m-ingest-total">—</span> 文档</span></div><div class="ingest"><div class="ingest-bar"><i class="seg-completed" id="seg-c"></i><i class="seg-processing" id="seg-p"></i><i class="seg-pending" id="seg-q"></i><i class="seg-failed" id="seg-f"></i></div><div class="ingest-legend"><span><i class="dotc seg-completed"></i>已完成 <b id="in-c">—</b></span><span><i class="dotc seg-processing"></i>处理中 <b id="in-p">—</b></span><span><i class="dotc seg-pending"></i>排队 <b id="in-q">—</b></span><span><i class="dotc seg-failed"></i>失败 <b id="in-f">—</b></span></div><div class="ingest-cta" id="ingestCta">—</div></div></div>
+      </div>
+
+      <div class="panel hidden" id="memberPanel"><div class="panel-head"><span class="panel-title" id="memberTitle">组织成员</span><button class="btn btn-sm" id="manageBtn" onclick="location.href='org-management.html'">管理成员 →</button></div><div class="member-overview" id="memberOverview"></div></div>
+
+      <div class="panel hidden" id="permPanel"><div class="panel-head"><span class="panel-title">平台管理员权限模型</span><span class="panel-hint">最小权限 + 破玻璃 + 强制审计</span></div>
+        <table class="perm-table"><thead><tr><th style="width:42%">能力</th><th>默认 ADMIN</th><th>破玻璃后</th><th>说明</th></tr></thead><tbody>
+          <tr><td class="cap">看自己的库/数据</td><td class="yes">✓</td><td class="yes">✓</td><td class="cond">同普通用户</td></tr>
+          <tr><td class="cap">全平台聚合指标</td><td class="no">✗</td><td class="yes">✓</td><td class="cond">默认只看自己</td></tr>
+          <tr><td class="cap">跨组织读他人私库内容</td><td class="no">✗</td><td class="yes">✓</td><td class="cond">写审计留痕</td></tr>
+          <tr><td class="cap">SYSTEM 库</td><td class="no">✗</td><td class="no">✗</td><td class="cond">永不暴露</td></tr>
+          <tr><td class="cap">危险操作（删组织/转 OWNER/封号）</td><td class="no">✗</td><td class="cond">破玻璃 + 二次确认</td><td class="cond">建议补</td></tr>
+          <tr><td class="cap">明文手机号 / 凭证</td><td class="no">✗</td><td class="no">✗</td><td class="cond">网关只存哈希</td></tr>
+        </tbody></table></div>
+
+      <div class="quick-actions">
+        <div class="action-card"><span class="action-chip">📁</span><span class="action-text">管理知识库</span><span class="action-arrow">→</span></div>
+        <div class="action-card"><span class="action-chip">🔍</span><span class="action-text">检索调试台</span><span class="action-arrow">→</span></div>
+        <div class="action-card"><span class="action-chip">🔌</span><span class="action-text">查看 API 文档</span><span class="action-arrow">→</span></div>
+      </div>
+
+      <div class="panel"><div class="panel-head"><span class="panel-title">最近操作</span><span class="panel-hint" id="actHint">本组织内动态</span></div><div class="activity-list" id="activityList"></div></div>
+
+      <div class="note"><b>布局调整（按 B 方案）：</b>组织切换器移到<b>左侧边栏顶部</b>，作为<b>全局上下文</b> —— 在任何页面都常驻可切；切换后整个应用按新组织重新取数（这里演示主区随之变化），currentOrg 为全局状态，API 透传 <code>X-Org-Id</code>。账号入口在侧边栏底部，账号菜单里「我的组织」是次入口。数字均为示意 mock。</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const SCOPES = {
+  personal: { ava:'Q', avaColor:'#2563eb', name:'qa_admin 的个人组织', badge:'INDIVIDUAL', badgeClass:'tb-ind', crumb:'个人组织', kbNav:'2',
+    scopeHint:'📊 统计范围：仅你个人组织内的库与检索 · 口径：近 7 天', actHint:'个人组织内动态', showActor:false, canRetry:true,
+    chunks:'1,284', docs:'86', kbs:'2', ingestRate:'98.9%', nohit:'3.4', rerank:'0.69', recall:'6.8', rewrite:'71%',
+    p95:'512', p50:'208', success:'99.4%', requests:'142', cost:'¥0.46', tokens:'162K', er:'¥0.03 / ¥0.01', llm:'¥0.42',
+    peak:'38', p95range:'380 ~ 560ms', spark:{line:[110,96,104,82,90,70,78],p95:[100,92,104,86,96,80,88]}, ingest:{c:79,p:2,q:3,f:2,total:86},
+    acts:[{t:'14:35',dot:'d-search',msg:'检索请求完成，策略: hybrid，耗时: 455ms'},{t:'11:02',dot:'d-index',msg:'知识库「我的简历库」文档「个人项目集.pdf」处理完成'},{t:'10:48',dot:'d-error',msg:'文档「薪资报告-2026.xlsx」解析失败',retry:true},{day:'昨天',t:'22:14',dot:'d-search',msg:'检索请求完成，策略: vector，耗时: 219ms'}] },
+  team: { ava:'日', avaColor:'#15803d', name:'广州日不落科技', badge:'TEAM', badgeClass:'tb-team', crumb:'广州日不落科技', kbNav:'6',
+    scopeHint:'📊 统计范围：本组织全部库 + 全体成员检索（你作为 OWNER 可见组织全量）· 口径：近 7 天', actHint:'组织内全体成员动态', showActor:true, canRetry:true,
+    chunks:'12,840', docs:'863', kbs:'6', ingestRate:'98.8%', nohit:'2.1', rerank:'0.71', recall:'7.4', rewrite:'78%',
+    p95:'612', p50:'238', success:'99.6%', requests:'1,240', cost:'¥3.42', tokens:'1.21M', er:'¥0.18 / ¥0.06', llm:'¥3.18',
+    peak:'286', p95range:'410 ~ 680ms', spark:{line:[120,95,105,60,72,40,55],p95:[100,88,110,75,92,70,82]}, ingest:{c:794,p:26,q:25,f:18,total:863},
+    memberOverview:{total:8, owner:1, admin:1, member:6, pending:1}, members:[{ini:'Q',avaColor:'#0f1f3d'},{ini:'L',avaColor:'#2563eb'},{ini:'王',avaColor:'#15803d'},{ini:'1',avaColor:'#7c3aed'},{ini:'赵',avaColor:'#f59e0b'}],
+    acts:[{t:'15:48',dot:'d-search',msg:'检索请求完成，策略: hybrid，耗时: 388ms',actor:'李四'},{t:'14:35',dot:'d-search',msg:'检索请求完成，策略: hybrid，耗时: 455ms',actor:'qa_admin'},{t:'13:20',dot:'d-eval',msg:'评测实验「岗位集-hybrid」完成，Top3: 86.4%',actor:'王五'},{t:'11:02',dot:'d-index',msg:'知识库「岗位 JD 库」文档「广州-Java-后端.pdf」处理完成',actor:'李四'},{t:'10:48',dot:'d-error',msg:'文档「薪资报告-2026.xlsx」解析失败',retry:true,actor:'137****6666'},{day:'昨天',t:'22:14',dot:'d-search',msg:'检索请求完成，策略: vector，耗时: 219ms',actor:'qa_admin'}] },
+  platform: { ava:'∞', avaColor:'#1e293b', name:'全平台视图', badge:'超管', badgeClass:'tb-plat', crumb:'全平台（破玻璃）', kbNav:'214',
+    scopeHint:'🛡 统计范围：全平台所有组织 + 所有个人组织（仅超级管理员，破玻璃生效中）· 口径：近 7 天', actHint:'全平台动态', showActor:true, canRetry:false,
+    chunks:'486,200', docs:'32,470', kbs:'214', ingestRate:'97.9%', nohit:'2.8', rerank:'0.70', recall:'7.1', rewrite:'80%',
+    p95:'690', p50:'256', success:'99.3%', requests:'58,930', cost:'¥182.60', tokens:'64.8M', er:'¥9.40 / ¥3.10', llm:'¥170.10',
+    peak:'12,840', p95range:'420 ~ 760ms', spark:{line:[118,100,96,70,80,52,62],p95:[104,90,106,78,94,72,86]}, ingest:{c:30180,p:640,q:980,f:670,total:32470},
+    memberOverview:{platform:true},
+    acts:[{t:'16:01',dot:'d-search',msg:'检索请求完成，策略: hybrid，耗时: 402ms',actor:'org#7 / 陈强'},{t:'15:58',dot:'d-index',msg:'知识库「法务合同库」文档「采购合同模板.docx」处理完成',actor:'org#3 / 孙莉'},{t:'15:50',dot:'d-error',msg:'文档「年报扫描件.pdf」解析失败',retry:true,actor:'org#12 / 137****9999'},{t:'15:42',dot:'d-eval',msg:'评测实验「客服集-rerank」完成，Top3: 88.2%',actor:'org#1 / admin'},{day:'昨天',t:'23:30',dot:'d-search',msg:'检索请求完成，策略: vector，耗时: 175ms',actor:'org#9 / 周文'}] },
+};
+const $ = id => document.getElementById(id);
+const setText = (id,v) => { const e=$(id); if(e) e.textContent=v; };
+const sparkPath = arr => { const step=680/(arr.length-1); return arr.map((y,i)=>`${i===0?'M':'L'}${Math.round(i*step)},${y}`).join(' '); };
+
+function render(scope){
+  const d = SCOPES[scope];
+  $('trAva').textContent=d.ava; $('trAva').style.background=d.avaColor; setText('trName',d.name);
+  $('trBadge').textContent=d.badge; $('trBadge').className='type-badge '+d.badgeClass;
+  setText('navKb', d.kbNav);
+  $('upgradeBanner').classList.toggle('hidden', d.type!==undefined ? false : true); // placeholder
+  $('upgradeBanner').classList.toggle('hidden', d.badge!=='INDIVIDUAL');
+  $('breakglassBanner').classList.toggle('hidden', d.badge!=='超管');
+  setText('scopeHint',d.scopeHint); setText('actHint',d.actHint);
+  setText('m-chunks',d.chunks); setText('m-docs',d.docs); setText('m-kbs',d.kbs); setText('m-ingestrate',d.ingestRate);
+  setText('m-nohit',d.nohit); setText('m-rerank',d.rerank); setText('m-recall',d.recall); setText('m-rewrite',d.rewrite);
+  setText('m-p95',d.p95); setText('m-p50',d.p50); setText('m-success',d.success); setText('m-requests',d.requests);
+  setText('m-cost',d.cost); setText('m-tokens',d.tokens); setText('m-er',d.er); setText('m-llm',d.llm);
+  setText('m-peak',d.peak); setText('m-p95range',d.p95range);
+  $('sparkLine').setAttribute('d',sparkPath(d.spark.line)); $('sparkArea').setAttribute('d',sparkPath(d.spark.line)+' L680,140 L0,140 Z'); $('sparkP95').setAttribute('d',sparkPath(d.spark.p95));
+  const g=d.ingest; setText('m-ingest-total',g.total.toLocaleString());
+  $('seg-c').style.width=(g.c/g.total*100)+'%'; $('seg-p').style.width=(g.p/g.total*100)+'%'; $('seg-q').style.width=(g.q/g.total*100)+'%'; $('seg-f').style.width=(g.f/g.total*100)+'%';
+  setText('in-c',g.c.toLocaleString()); setText('in-p',g.p); setText('in-q',g.q); setText('in-f',g.f);
+  const cta=$('ingestCta'); if(g.f>0){cta.className='ingest-cta';cta.textContent=`⚠ ${g.f} 个文档解析失败 · 一键重试 →`;}else{cta.className='ingest-cta none';cta.textContent='✓ 入库链路健康，无失败文档';}
+  const mp=$('memberPanel'); const ov=d.memberOverview;
+  if(ov){ mp.classList.remove('hidden');
+    if(ov.platform){ setText('memberTitle','平台规模'); $('manageBtn').textContent='组织管理 →';
+      $('memberOverview').innerHTML = `<div class="member-stats"><span class="stat"><b>214</b> 个组织</span><span class="sep">·</span><span class="stat"><b>8,640</b> 名用户</span><span class="sep">·</span><span class="stat" style="color:var(--text-muted)">破玻璃下钻可查看任一组织成员</span></div>`;
+    } else { setText('memberTitle','组织成员'); $('manageBtn').textContent='管理成员 →';
+      const shown=(d.members||[]).slice(0,6); const more=ov.total-shown.length;
+      const pile=shown.map(m=>`<span class="m-ava" style="background:${m.avaColor}">${m.ini}</span>`).join('')+(more>0?`<span class="m-ava ava-more">+${more}</span>`:'');
+      $('memberOverview').innerHTML = `<div class="ava-pile">${pile}</div><div class="member-stats"><span class="stat">共 <b>${ov.total}</b> 人</span><span class="sep">·</span><span class="stat">${ov.owner} OWNER</span><span class="stat">${ov.admin} ADMIN</span><span class="stat">${ov.member} MEMBER</span>${ov.pending?`<span class="sep">·</span><span class="stat pend">${ov.pending} 待接受</span>`:''}</div>`;
+    }
+  } else mp.classList.add('hidden');
+  $('permPanel').classList.toggle('hidden', d.badge!=='超管');
+  $('activityList').innerHTML = d.acts.map(a=>{
+    const time=a.day?`<span class="day">${a.day}</span>${a.t}`:a.t;
+    const actor=(d.showActor&&a.actor)?`<span class="activity-actor">${a.actor}</span>`:'';
+    const retry=a.retry?(d.canRetry?`<button class="activity-retry">重试</button>`:`<span class="activity-actor" style="margin-left:auto;color:var(--text-muted)">需该组织管理员处理</span>`):'';
+    const err=a.dot==='d-error'?' error':'';
+    return `<div class="activity-item${err}"><span class="activity-dot ${a.dot}"></span><span class="activity-time">${time}</span><span class="activity-msg">${a.msg}${actor}</span>${retry}</div>`;
+  }).join('');
+  document.querySelectorAll('.org-opt').forEach(o=>o.classList.toggle('active',o.dataset.scope===scope));
+}
+function renderNoti(){ const has=!$('inviteBanner').classList.contains('hidden'); $('bellBadge').style.display=has?'inline-flex':'none';
+  $('notiList').innerHTML = has?`<div class="noti"><span class="noti-ico">✉</span><div><div class="noti-title">「新引擎科技」邀请你加入</div><div class="noti-sub">角色 MEMBER · 5 分钟前</div><div class="noti-actions"><button class="btn-ghost-green btn-sm" onclick="acceptInvite()">接受</button><button class="btn btn-sm" onclick="declineInvite()">拒绝</button></div></div></div>`:`<div class="noti-empty">暂无新通知</div>`; }
+function acceptInvite(){ $('inviteBanner').classList.add('hidden'); renderNoti(); alert('已接受邀请：你已加入「新引擎科技」(MEMBER)。侧边栏组织切换器中将出现该组织。'); }
+function declineInvite(){ $('inviteBanner').classList.add('hidden'); renderNoti(); }
+
+$('orgTrigger').addEventListener('click', e=>{ e.stopPropagation(); $('orgMenu').classList.toggle('open'); $('bellMenu').classList.remove('open'); $('userMenu').classList.remove('open'); });
+$('bellBtn').addEventListener('click', e=>{ e.stopPropagation(); $('bellMenu').classList.toggle('open'); $('orgMenu').classList.remove('open'); $('userMenu').classList.remove('open'); });
+$('userTrigger').addEventListener('click', e=>{ e.stopPropagation(); $('userMenu').classList.toggle('open'); $('orgMenu').classList.remove('open'); $('bellMenu').classList.remove('open'); });
+document.addEventListener('click', ()=>{ $('orgMenu').classList.remove('open'); $('bellMenu').classList.remove('open'); $('userMenu').classList.remove('open'); });
+document.querySelectorAll('.org-opt').forEach(o=>o.addEventListener('click', e=>{ e.stopPropagation(); render(o.dataset.scope); $('orgMenu').classList.remove('open'); }));
+
+render('personal'); renderNoti();
+</script>
+</body>
+</html>

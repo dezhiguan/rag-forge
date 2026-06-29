@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RAGForge 驾驶舱 · 重构原型</title>
+<style>
+  :root {
+    --bg: #f6f8fb;
+    --surface: #ffffff;
+    --border: #e8edf3;
+    --navy: #0f1f3d;
+    --slate: #334155;
+    --gray: #475569;
+    --text-muted: #8a94a6;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --primary-soft: #eef4ff;
+    --primary-border: #cfe0ff;
+    --green: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --cyan: #06b6d4;
+    --violet: #7c3aed;
+    --shadow-sm: 0 1px 2px rgba(15, 31, 61, 0.04), 0 1px 3px rgba(15, 31, 61, 0.06);
+    --shadow-md: 0 6px 18px rgba(15, 31, 61, 0.08);
+    --radius-lg: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--navy);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell { max-width: 1200px; margin: 0 auto; padding: 22px 24px 60px; }
+
+  /* topbar */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 22px;
+  }
+  .topbar h1 { font-size: 19px; margin: 0; letter-spacing: -0.3px; }
+  .topbar .sub { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+  .topbar-right { display: inline-flex; align-items: center; gap: 14px; }
+  .dash-updated { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(16,185,129,.16); }
+  .btn { border: 1px solid var(--border); background: #fff; color: var(--slate); border-radius: 9px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+
+  .section-label { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .6px; text-transform: uppercase; margin: 4px 2px 12px; }
+
+  /* 四象限 KPI */
+  .quad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
+  .kpi {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 18px 20px 18px; box-shadow: var(--shadow-sm); overflow: hidden;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .kpi:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: #d8e2ef; }
+  .kpi::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
+  .kpi.q-asset::before { background: var(--primary); }
+  .kpi.q-quality::before { background: var(--green); }
+  .kpi.q-health::before { background: var(--amber); }
+  .kpi.q-cost::before { background: var(--violet); }
+
+  .kpi-top { display: flex; align-items: center; justify-content: space-between; }
+  .kpi-label { font-size: 12.5px; color: var(--text-muted); font-weight: 600; letter-spacing: .2px; }
+  .kpi-chip { width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+  .c-blue { background: var(--primary-soft); }
+  .c-green { background: #ecfdf5; }
+  .c-amber { background: #fffbeb; }
+  .c-violet { background: #f5f3ff; }
+
+  .kpi-value { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; margin-top: 14px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .kpi-value .unit { font-size: 15px; font-weight: 600; color: var(--text-muted); margin-left: 3px; }
+  .q-quality .kpi-value { color: var(--green); }
+  .kpi-value.warn { color: var(--amber); }
+
+  .kpi-subs { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 7px; }
+  .kpi-sub { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+  .kpi-sub .k { color: var(--text-muted); }
+  .kpi-sub .v { color: var(--slate); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .kpi-sub .v.good { color: var(--green); }
+  .kpi-sub .v.bad { color: var(--red); }
+  .kpi-sub .v.muted { color: var(--text-muted); font-weight: 500; }
+  .tag-eval { font-size: 10px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 5px; padding: 0 4px; margin-left: 5px; vertical-align: middle; }
+
+  /* 趋势条 */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-sm); }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; }
+  .panel-title { font-size: 14px; font-weight: 700; }
+  .panel-hint { font-size: 12px; color: var(--text-muted); }
+
+  .trend-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; margin-bottom: 22px; }
+  .spark-wrap { padding: 6px 20px 18px; }
+  .spark-legend { display:flex; gap:18px; font-size:12px; color:var(--text-muted); padding:0 20px 10px; }
+  .spark-legend b { color: var(--slate); }
+
+  /* 入库健康 */
+  .ingest { padding: 14px 20px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .ingest-bar { height: 10px; border-radius: 6px; overflow: hidden; display: flex; background: #eef2f7; }
+  .ingest-bar i { display: block; height: 100%; }
+  .seg-completed { background: var(--green); }
+  .seg-processing { background: var(--cyan); }
+  .seg-pending { background: var(--amber); }
+  .seg-failed { background: var(--red); }
+  .ingest-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--gray); }
+  .ingest-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dotc { width: 8px; height: 8px; border-radius: 3px; display: inline-block; }
+  .ingest-cta { font-size: 12px; color: var(--red); font-weight: 600; }
+
+  /* 快捷入口 */
+  .quick-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 22px; }
+  .action-card { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 15px 16px; cursor: pointer; box-shadow: var(--shadow-sm); transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+  .action-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--primary-border); }
+  .action-chip { width: 38px; height: 38px; border-radius: 11px; background: var(--primary-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+  .action-card.primary { border-color: var(--primary-border); background: linear-gradient(180deg, #fff, #f7faff); }
+  .action-text { font-size: 14px; font-weight: 600; color: var(--slate); flex: 1; }
+  .action-arrow { color: #cbd5e1; font-size: 16px; }
+
+  /* 最近操作 */
+  .activity-list { padding: 6px 10px 12px; }
+  .activity-item { display: flex; align-items: center; gap: 11px; font-size: 13px; color: var(--gray); padding: 10px 12px; border-radius: 8px; }
+  .activity-item:hover { background: #f8fafc; }
+  .activity-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .d-search { background: var(--cyan); }
+  .d-index { background: var(--green); }
+  .d-eval { background: var(--violet); }
+  .d-error { background: var(--red); }
+  .activity-time { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 12px; flex-shrink: 0; min-width: 74px; }
+  .activity-time .day { color: #b6bdca; margin-right: 4px; }
+  .activity-msg { flex: 1; min-width: 0; }
+  .activity-item.error .activity-msg { color: var(--red); }
+  .activity-retry { margin-left: auto; color: var(--primary); border: 1px solid var(--primary-border); background: var(--primary-soft); border-radius: 7px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+
+  .note { margin-top: 26px; font-size: 12.5px; color: var(--text-muted); line-height: 1.7; background: #fbfcfe; border: 1px dashed var(--border); border-radius: 12px; padding: 14px 18px; }
+  .note b { color: var(--slate); }
+
+  @media (max-width: 900px) {
+    .quad-grid { grid-template-columns: repeat(2, 1fr); }
+    .trend-row { grid-template-columns: 1fr; }
+    .quick-actions { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="topbar">
+    <div>
+      <h1>驾驶舱</h1>
+      <div class="sub">RAGForge 企业级知识引擎 · 全平台视图</div>
+    </div>
+    <div class="topbar-right">
+      <span class="dash-updated"><span class="live-dot"></span>更新于 15:36:24</span>
+      <button class="btn">↻ 刷新</button>
+    </div>
+  </div>
+
+  <!-- ===== 四象限核心指标 ===== -->
+  <div class="section-label">核心指标 · 近 7 天</div>
+  <div class="quad-grid">
+
+    <!-- 资产规模 -->
+    <div class="kpi q-asset">
+      <div class="kpi-top">
+        <span class="kpi-label">资产规模</span>
+        <span class="kpi-chip c-blue">📚</span>
+      </div>
+      <div class="kpi-value">12,840 <span class="unit">Chunk</span></div>
+      <div class="kpi-subs">
+        <div class="kpi-sub"><span class="k">文档</span><span class="v">863</span></div>
+        <div class="kpi-sub"><span class="k">知识库</span><span class="v">3</span></div>
+        <div class="kpi-sub"><span class="k">入库成功率</span><span class="v good">98.8%</span></div>
+      </div>
+    </div>
+
+    <!-- 检索质量 -->
+    <div class="kpi q-quality">
+      <div class="kpi-top">
+        <span class="kpi-label">检索质量</span>
+        <span class="kpi-chip c-green">🎯</span>
+      </div>
+      <div class="kpi-value">2.1<span class="unit">% 零召回</span></div>
+      <div class="kpi-subs">
+        <div class="kpi-sub"><span class="k">平均 rerank 分</span><span class="v">0.71</span></div>
+        <div class="kpi-sub"><span class="k">平均召回条数</span><span class="v">7.4</span></div>
+        <div class="kpi-sub"><span class="k">Top3 命中率<span class="tag-eval">评测</span></span><span class="v muted">86.4%</span></div>
+      </div>
+    </div>
+
+    <!-- 运行健康 -->
+    <div class="kpi q-health">
+      <div class="kpi-top">
+        <span class="kpi-label">运行健康</span>
+        <span class="kpi-chip c-amber">⚡</span>
+      </div>
+      <div class="kpi-value warn">612 <span class="unit">ms · P95</span></div>
+      <div class="kpi-subs">
+        <div class="kpi-sub"><span class="k">P50 延迟</span><span class="v">238ms</span></div>
+        <div class="kpi-sub"><span class="k">检索成功率</span><span class="v good">99.6%</span></div>
+        <div class="kpi-sub"><span class="k">检索请求数</span><span class="v">1,240</span></div>
+      </div>
+    </div>
+
+    <!-- 成本 -->
+    <div class="kpi q-cost">
+      <div class="kpi-top">
+        <span class="kpi-label">成本消耗</span>
+        <span class="kpi-chip c-violet">💰</span>
+      </div>
+      <div class="kpi-value">¥3.42</div>
+      <div class="kpi-subs">
+        <div class="kpi-sub"><span class="k">Token 总量</span><span class="v">1.21M</span></div>
+        <div class="kpi-sub"><span class="k">embedding / rerank</span><span class="v">¥0.18 / ¥0.06</span></div>
+        <div class="kpi-sub"><span class="k">LLM(改写+评测)</span><span class="v">¥3.18</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 趋势 + 入库健康 ===== -->
+  <div class="trend-row">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">检索趋势 · 近 7 天</span>
+        <span class="panel-hint">请求数 / P95 延迟</span>
+      </div>
+      <div class="spark-legend">
+        <span>请求数峰值 <b>286</b>/日</span>
+        <span>P95 区间 <b>410 ~ 680ms</b></span>
+      </div>
+      <div class="spark-wrap">
+        <svg viewBox="0 0 680 150" width="100%" height="150" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(37,99,235,.22)"/>
+              <stop offset="100%" stop-color="rgba(37,99,235,0)"/>
+            </linearGradient>
+          </defs>
+          <!-- 请求数面积 -->
+          <path d="M0,120 L113,95 L226,105 L339,60 L452,72 L565,40 L680,55 L680,150 L0,150 Z" fill="url(#g1)"/>
+          <path d="M0,120 L113,95 L226,105 L339,60 L452,72 L565,40 L680,55" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+          <!-- P95 延迟线 -->
+          <path d="M0,100 L113,88 L226,110 L339,75 L452,92 L565,70 L680,82" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5 4"/>
+          <g font-size="11" fill="#9aa3b2" font-family="sans-serif">
+            <text x="0" y="146">06-23</text>
+            <text x="300" y="146">06-26</text>
+            <text x="640" y="146">06-29</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">入库处理健康度</span>
+        <span class="panel-hint">863 文档</span>
+      </div>
+      <div class="ingest">
+        <div class="ingest-bar">
+          <i class="seg-completed" style="width:92%"></i>
+          <i class="seg-processing" style="width:3%"></i>
+          <i class="seg-pending" style="width:3%"></i>
+          <i class="seg-failed" style="width:2%"></i>
+        </div>
+        <div class="ingest-legend">
+          <span><i class="dotc seg-completed"></i>已完成 794</span>
+          <span><i class="dotc seg-processing"></i>处理中 26</span>
+          <span><i class="dotc seg-pending"></i>排队 25</span>
+          <span><i class="dotc seg-failed"></i>失败 18</span>
+        </div>
+        <div class="ingest-cta">⚠ 18 个文档解析失败 · 一键重试 →</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 快捷入口 ===== -->
+  <div class="quick-actions">
+    <div class="action-card primary">
+      <span class="action-chip">📁</span><span class="action-text">管理知识库</span><span class="action-arrow">→</span>
+    </div>
+    <div class="action-card">
+      <span class="action-chip">🔍</span><span class="action-text">检索调试台</span><span class="action-arrow">→</span>
+    </div>
+    <div class="action-card">
+      <span class="action-chip">🔌</span><span class="action-text">查看 API 文档</span><span class="action-arrow">→</span>
+    </div>
+  </div>
+
+  <!-- ===== 最近操作（带日期，跨天不再误导） ===== -->
+  <div class="panel">
+    <div class="panel-head"><span class="panel-title">最近操作</span></div>
+    <div class="activity-list">
+      <div class="activity-item">
+        <span class="activity-dot d-search"></span>
+        <span class="activity-time">14:35</span>
+        <span class="activity-msg">检索请求完成，策略: hybrid，耗时: 455ms</span>
+      </div>
+      <div class="activity-item">
+        <span class="activity-dot d-index"></span>
+        <span class="activity-time">11:02</span>
+        <span class="activity-msg">知识库「岗位 JD 库」文档「广州-Java-后端.pdf」处理完成</span>
+      </div>
+      <div class="activity-item error">
+        <span class="activity-dot d-error"></span>
+        <span class="activity-time">10:48</span>
+        <span class="activity-msg">文档「薪资报告-2026.xlsx」解析失败</span>
+        <button class="activity-retry">重试</button>
+      </div>
+      <div class="activity-item">
+        <span class="activity-dot d-eval"></span>
+        <span class="activity-time"><span class="day">昨天</span>22:14</span>
+        <span class="activity-msg">评测实验「求职集-hybrid」完成，Top3: 86.4%</span>
+      </div>
+      <div class="activity-item">
+        <span class="activity-dot d-search"></span>
+        <span class="activity-time"><span class="day">昨天</span>05:41</span>
+        <span class="activity-msg">检索请求完成，策略: vector，耗时: 219ms</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>对比说明（给架构师看的）：</b><br>
+    ① 最近操作的「昨天 05:41」加了日期前缀 —— 不再和「今日请求数」对不上，统计"不准确"的观感消失。<br>
+    ② 四象限：<b>资产规模 / 检索质量 / 运行健康 / 成本</b>，时间口径统一为"近 7 天"，低流量下不再出现单样本均值噪声。<br>
+    ③ 「命中率」从 C 位降级为检索质量卡里的次要项并标注「评测」来源；C 位换成<b>零召回率</b>这种不依赖评测、人人可见的线上质量信号。<br>
+    ④ 新增<b>入库处理健康度</b>与<b>成本消耗</b>两块 RAG 引擎该有的指标。数字均为示意 mock。
+  </div>
+
+</div>
+</body>
+</html>

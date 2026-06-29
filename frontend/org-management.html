@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RAGForge · 组织管理</title>
+<style>
+  :root {
+    --bg: #f6f8fb; --surface: #fff; --border: #e8edf3;
+    --navy: #0f1f3d; --slate: #334155; --gray: #475569; --text-muted: #8a94a6;
+    --primary: #2563eb; --primary-hover: #1d4ed8; --primary-soft: #eef4ff; --primary-border: #cfe0ff;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444; --violet: #7c3aed;
+    --shadow-sm: 0 1px 2px rgba(15,31,61,.04), 0 1px 3px rgba(15,31,61,.06);
+    --shadow-md: 0 6px 18px rgba(15,31,61,.08);
+    --shadow-lg: 0 12px 34px rgba(15,31,61,.14);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--navy); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-font-smoothing: antialiased; }
+  .shell { max-width: 1080px; margin: 0 auto; padding: 18px 24px 60px; }
+  a { color: inherit; text-decoration: none; }
+  .btn { border: 1px solid var(--border); background: #fff; color: var(--slate); border-radius: 9px; padding: 7px 13px; font-size: 13px; cursor: pointer; }
+  .btn:hover { border-color: var(--primary-border); }
+  .btn-sm { padding: 5px 11px; font-size: 12px; }
+  .btn-primary { background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-danger { background: #fff; color: var(--red); border: 1px solid #fecaca; border-radius: 9px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-danger:hover { background: #fef2f2; }
+
+  /* 顶部面包屑 + 组织头 */
+  .crumb { font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px; }
+  .crumb a:hover { color: var(--primary); }
+  .org-head { display: flex; align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow-sm); margin-bottom: 18px; }
+  .org-ava { width: 52px; height: 52px; border-radius: 13px; background: #15803d; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; flex-shrink: 0; }
+  .org-head-meta { flex: 1; }
+  .org-head-name { font-size: 19px; font-weight: 700; display: flex; align-items: center; gap: 9px; }
+  .type-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .tb-team { background: #f0fdf4; color: #15803d; } .tb-ind { background: #eef4ff; color: var(--primary); }
+  .org-head-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .org-head-sub code { background: #f1f5f9; border-radius: 5px; padding: 1px 6px; font-size: 11.5px; color: var(--slate); }
+
+  /* 布局：左导航 + 右内容 */
+  .layout { display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
+  .side-nav { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 8px; box-shadow: var(--shadow-sm); height: fit-content; position: sticky; top: 18px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 9px; font-size: 13.5px; color: var(--slate); cursor: pointer; font-weight: 500; }
+  .nav-item:hover { background: #f6f8fb; }
+  .nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .nav-item .ico { width: 18px; text-align: center; }
+  .nav-item.danger { color: var(--red); } .nav-item.danger.active { background: #fef2f2; color: var(--red); }
+  .nav-sep { height: 1px; background: var(--border); margin: 6px 6px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-sm); margin-bottom: 18px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .panel-title { font-size: 15px; font-weight: 700; } .panel-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+  .panel-body { padding: 18px 20px; }
+
+  .section { display: none; } .section.active { display: block; }
+
+  /* 表单行 */
+  .form-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px dashed var(--border); }
+  .form-row:first-child { border-top: none; }
+  .form-label { width: 160px; font-size: 13px; color: var(--gray); font-weight: 600; flex-shrink: 0; }
+  .form-input { flex: 1; border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; font-size: 13px; max-width: 360px; }
+  .form-input:focus { outline: none; border-color: var(--primary); }
+  .form-static { flex: 1; font-size: 13px; color: var(--slate); }
+
+  /* 成员工具条 + 列表 */
+  .member-tools { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+  .search { flex: 1; max-width: 320px; position: relative; }
+  .search input { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px 8px 32px; font-size: 13px; }
+  .search input:focus { outline: none; border-color: var(--primary); }
+  .search .si { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; }
+  .role-filter { border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; font-size: 13px; color: var(--slate); }
+
+  .m-row { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--border); }
+  .m-ava { width: 36px; height: 36px; border-radius: 10px; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+  .m-meta { flex: 1; min-width: 0; } .m-name { font-size: 13.5px; font-weight: 600; } .m-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+  .you-tag { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #f1f5f9; color: #475569; }
+  .role-badge { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+  .role-owner { background: #fef3c7; color: #92400e; } .role-admin { background: #e0e7ff; color: #3730a3; } .role-member { background: #f1f5f9; color: #475569; } .role-pending { background: #fff7ed; color: #c2410c; }
+  .role-select { border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font-size: 12px; color: var(--slate); }
+  .m-actions { display: flex; align-items: center; gap: 8px; min-width: 150px; justify-content: flex-end; }
+  .link-danger { color: var(--red); font-size: 12.5px; cursor: pointer; } .link-danger:hover { text-decoration: underline; }
+  .link-muted { color: var(--text-muted); font-size: 12.5px; cursor: pointer; } .link-muted:hover { color: var(--primary); }
+  .list-foot { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-muted); }
+  .pager { display: flex; gap: 6px; } .pager .pg { border: 1px solid var(--border); border-radius: 7px; padding: 4px 9px; cursor: pointer; background: #fff; font-size: 12px; } .pager .pg.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  .empty { padding: 30px 0; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+  /* 升档卡 */
+  .plan-now { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: #f7faff; margin-bottom: 16px; }
+  .plan-now .pn-ico { width: 40px; height: 40px; border-radius: 11px; background: var(--primary-soft); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+  .plan-now .pn-meta { flex: 1; } .plan-now .pn-t { font-size: 14px; font-weight: 700; } .plan-now .pn-s { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+  .state-flow { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--gray); margin-top: 12px; flex-wrap: wrap; }
+  .sf-node { border: 1px solid var(--border); border-radius: 8px; padding: 5px 11px; font-weight: 600; background: #fff; }
+  .sf-node.cur { border-color: var(--primary-border); background: var(--primary-soft); color: var(--primary); }
+  .sf-arrow { color: var(--text-muted); }
+  .sf-note { color: var(--text-muted); }
+
+  /* 危险区 */
+  .danger-zone { border: 1px solid #fecaca; border-radius: 14px; overflow: hidden; }
+  .danger-zone .dz-head { background: #fef2f2; padding: 14px 20px; border-bottom: 1px solid #fecaca; }
+  .dz-title { font-size: 14px; font-weight: 700; color: #b91c1c; } .dz-desc { font-size: 12px; color: #ef4444; margin-top: 2px; }
+  .dz-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid #fee2e2; }
+  .dz-row:first-child { border-top: none; }
+  .dz-info .dz-r-t { font-size: 13.5px; font-weight: 600; } .dz-info .dz-r-s { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  .hint-box { font-size: 12px; color: var(--text-muted); line-height: 1.7; background: #fbfcfe; border: 1px dashed var(--border); border-radius: 10px; padding: 12px 14px; margin-top: 14px; } .hint-box b { color: var(--slate); }
+
+  /* 邀请弹窗（复用驾驶舱的精确解析） */
+  .modal-mask { position: fixed; inset: 0; background: rgba(15,31,61,.4); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-mask.open { display: flex; }
+  .modal { width: 440px; background: #fff; border-radius: 16px; box-shadow: var(--shadow-lg); padding: 22px; }
+  .modal h3 { margin: 0 0 4px; font-size: 16px; } .modal .modal-sub { font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; }
+  .field-label { font-size: 12.5px; font-weight: 600; color: var(--slate); margin-bottom: 6px; display: block; }
+  .field-row { display: flex; gap: 8px; } .field-input { flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 13px; } .field-input:focus { outline: none; border-color: var(--primary); }
+  .resolve-box { margin-top: 14px; border: 1px solid var(--border); border-radius: 12px; padding: 13px; display: none; } .resolve-box.show { display: block; }
+  .resolve-box.found { border-color: #bbf7d0; background: #f7fefb; } .resolve-box.notfound { border-color: #fed7aa; background: #fffbeb; }
+  .resolve-head { display: flex; align-items: center; gap: 11px; } .resolve-state { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: auto; } .rs-reg { background: #dcfce7; color: #15803d; } .rs-unreg { background: #ffedd5; color: #c2410c; }
+  .role-pick { margin-top: 14px; } .role-pick select { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .pii-note { font-size: 11px; color: var(--text-muted); margin-top: 12px; line-height: 1.6; background: #fbfcfe; border: 1px dashed var(--border); border-radius: 8px; padding: 9px 11px; }
+
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } .side-nav { position: static; display: flex; overflow-x: auto; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="crumb"><a href="dashboard-v3.html">驾驶舱</a> / 广州日不落科技 / <b style="color:var(--slate)">组织管理</b></div>
+
+  <!-- 组织头 -->
+  <div class="org-head">
+    <span class="org-ava">日</span>
+    <div class="org-head-meta">
+      <div class="org-head-name">广州日不落科技 <span class="type-badge tb-team">TEAM</span></div>
+      <div class="org-head-sub">
+        <span>套餐 Team plan</span>
+        <span>slug <code>rblk</code></span>
+        <span>org_id <code>7</code></span>
+        <span>创建于 2026-03-12</span>
+        <span>你的角色 <b style="color:#92400e">OWNER</b></span>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="openInvite()">+ 邀请成员</button>
+  </div>
+
+  <div class="layout">
+    <!-- 左导航 -->
+    <div class="side-nav">
+      <div class="nav-item active" data-sec="general"><span class="ico">⚙️</span>通用</div>
+      <div class="nav-item" data-sec="members"><span class="ico">👥</span>成员 <span style="margin-left:auto;color:var(--text-muted);font-size:12px">8</span></div>
+      <div class="nav-item" data-sec="invites"><span class="ico">✉️</span>邀请 <span style="margin-left:auto;color:var(--amber);font-size:12px">1</span></div>
+      <div class="nav-item" data-sec="kb"><span class="ico">📚</span>知识库归属</div>
+      <div class="nav-item" data-sec="plan"><span class="ico">⬆️</span>套餐与升级</div>
+      <div class="nav-sep"></div>
+      <div class="nav-item danger" data-sec="danger"><span class="ico">⚠️</span>危险区</div>
+    </div>
+
+    <!-- 右内容 -->
+    <div class="content">
+
+      <!-- 通用 -->
+      <div class="section active" id="sec-general">
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">通用设置</div><div class="panel-desc">仅 OWNER / ADMIN 可修改</div></div></div>
+          <div class="panel-body">
+            <div class="form-row"><span class="form-label">组织名称</span><input class="form-input" value="广州日不落科技" /></div>
+            <div class="form-row"><span class="form-label">slug（短标识）</span><input class="form-input" value="rblk" /></div>
+            <div class="form-row"><span class="form-label">组织 ID</span><span class="form-static"><code style="background:#f1f5f9;border-radius:5px;padding:2px 7px">7</code> · 不可修改</span></div>
+            <div class="form-row"><span class="form-label">类型</span><span class="form-static"><span class="type-badge tb-team">TEAM</span> · 由套餐决定，升级见「套餐与升级」</span></div>
+            <div class="form-row"><span class="form-label">创建者 / 创建时间</span><span class="form-static">qa_admin · 2026-03-12</span></div>
+            <div style="margin-top:14px"><button class="btn-primary">保存修改</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 成员 -->
+      <div class="section" id="sec-members">
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">组织成员</div><div class="panel-desc">完整列表 · 支持搜索/分页/改角色/移除（首页只展示概览）</div></div>
+            <button class="btn-primary btn-sm" onclick="openInvite()">+ 邀请成员</button></div>
+          <div class="member-tools">
+            <div class="search"><span class="si">🔍</span><input id="memberSearch" placeholder="搜索用户名 / 显示名 / 脱敏手机号" oninput="renderMembers()" /></div>
+            <select class="role-filter" id="roleFilter" onchange="renderMembers()">
+              <option value="">全部角色</option><option value="OWNER">OWNER</option><option value="ADMIN">ADMIN</option><option value="MEMBER">MEMBER</option>
+            </select>
+          </div>
+          <div id="memberList"></div>
+          <div class="list-foot"><span id="memberCount">共 8 人</span>
+            <div class="pager"><span class="pg active">1</span><span class="pg">2</span><span class="pg">›</span></div>
+          </div>
+        </div>
+        <div class="hint-box">🔒 <b>权限：</b>仅 <b>OWNER / ADMIN</b> 能改角色、移除成员；<b>OWNER 行不可被 ADMIN 操作</b>；唯一 OWNER 不能移除自己（需先转移所有权）。所有写操作服务端强校验，前端隐藏≠真授权。</div>
+      </div>
+
+      <!-- 邀请 -->
+      <div class="section" id="sec-invites">
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">待处理邀请</div><div class="panel-desc">PENDING 不计入正式成员，对方接受后才写入 org_members</div></div>
+            <button class="btn-primary btn-sm" onclick="openInvite()">+ 邀请成员</button></div>
+          <div id="inviteList"></div>
+        </div>
+        <div class="hint-box">📨 <b>邀请方式：</b>按<b>手机号</b>(非邮箱，用户名/邮箱非必填)经网关精确解析；已注册→站内通知接受；未注册→短信拉新、注册后自动关联。邀请 7 天过期、可撤销。</div>
+      </div>
+
+      <!-- 知识库归属 -->
+      <div class="section" id="sec-kb">
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">组织知识库</div><div class="panel-desc">org_id=7 名下的库（visibility 决定成员可见范围）</div></div></div>
+          <div class="panel-body" style="padding:0">
+            <div class="m-row"><span class="m-ava" style="background:#2563eb">JD</span><div class="m-meta"><div class="m-name">岗位 JD 库</div><div class="m-sub">visibility: ORG · 286 文档 · 全体成员可读</div></div><span class="role-badge role-admin">ORG</span></div>
+            <div class="m-row"><span class="m-ava" style="background:#15803d">薪</span><div class="m-meta"><div class="m-name">薪资情报库</div><div class="m-sub">visibility: ORG · 142 文档 · 全体成员可读</div></div><span class="role-badge role-admin">ORG</span></div>
+            <div class="m-row"><span class="m-ava" style="background:#7c3aed">私</span><div class="m-meta"><div class="m-name">招聘策略（仅管理者）</div><div class="m-sub">visibility: PRIVATE · 38 文档 · 仅 OWNER/ADMIN 可读</div></div><span class="role-badge role-member">PRIVATE</span></div>
+          </div>
+        </div>
+        <div class="hint-box">📚 转移个人库到组织 / 组织库转回个人都属「<b>所有权转移</b>」(改 org_id)，是显式动作；删除库走库自己的危险操作，不在此页。</div>
+      </div>
+
+      <!-- 套餐与升级 -->
+      <div class="section" id="sec-plan">
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">套餐与升级</div><div class="panel-desc">类型由套餐决定；升级显式触发，组织 ID 不变、数据零迁移</div></div></div>
+          <div class="panel-body">
+            <div class="plan-now">
+              <span class="pn-ico">✅</span>
+              <div class="pn-meta"><div class="pn-t">当前：TEAM（团队组织）</div><div class="pn-s">8 名成员 · 可邀请成员、共享组织知识库</div></div>
+              <button class="btn">管理套餐</button>
+            </div>
+            <div class="state-flow">
+              <span class="sf-node">INDIVIDUAL 个人组织</span>
+              <span class="sf-arrow">──显式升档──▶</span>
+              <span class="sf-node cur">TEAM 团队组织</span>
+              <span class="sf-note">（你在这里）</span>
+            </div>
+            <div class="hint-box">⬆️ <b>状态机：</b>INDIVIDUAL →(显式升档)→ TEAM。升级是付费/主动动作，<b>组织实体不变、零数据迁移</b>；人数减到 1 仍是 TEAM（type 由套餐决定，不由人数自动回退）。<b>降级 MVP 暂不提供</b>。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 危险区 -->
+      <div class="section" id="sec-danger">
+        <div class="danger-zone">
+          <div class="dz-head"><div class="dz-title">危险区</div><div class="dz-desc">高危操作，仅 OWNER 可执行，需二次确认；平台超管代为执行须破玻璃 + 审计</div></div>
+          <div class="dz-row">
+            <div class="dz-info"><div class="dz-r-t">转移所有权（OWNER）</div><div class="dz-r-s">将 OWNER 移交给另一名成员，自己降为 ADMIN</div></div>
+            <button class="btn-danger" onclick="confirmDanger('转移所有权')">转移</button>
+          </div>
+          <div class="dz-row">
+            <div class="dz-info"><div class="dz-r-t">删除组织</div><div class="dz-r-s">需先清空成员与组织库归属；删除后不可恢复</div></div>
+            <button class="btn-danger" onclick="confirmDanger('删除组织')">删除组织</button>
+          </div>
+        </div>
+        <div class="hint-box">⚠️ 删除/转移会触发二次确认（输入组织 slug 确认）+ 写审计。<b>平台超管也不能静默执行</b>，须 X-Admin-Override 破玻璃并留痕。</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- 邀请弹窗 -->
+<div class="modal-mask" id="inviteModal">
+  <div class="modal">
+    <h3>邀请成员加入「广州日不落科技」</h3>
+    <div class="modal-sub">输入对方手机号，系统向网关精确解析（不提供用户目录浏览）。</div>
+    <label class="field-label">手机号</label>
+    <div class="field-row"><input class="field-input" id="phoneInput" placeholder="请输入完整手机号，如 13800000003" /><button class="btn-primary" onclick="resolvePhone()">解析</button></div>
+    <div class="resolve-box" id="resolveBox">
+      <div class="resolve-head"><span class="m-ava" id="rsAva">?</span><div class="m-meta"><div class="m-name" id="rsName">—</div><div class="m-sub" id="rsSub">—</div></div><span class="resolve-state" id="rsState">—</span></div>
+      <div class="role-pick" id="rolePick"><label class="field-label">分配角色</label><select id="roleSel"><option value="MEMBER">MEMBER（成员）</option><option value="ADMIN">ADMIN（管理员）</option></select></div>
+    </div>
+    <div class="pii-note">🔒 隐私红线：解析仅精确匹配单个手机号、限频；返回脱敏号供核对，<b>不返回明文、不可批量、不提供用户列表</b>。</div>
+    <div class="modal-foot"><button class="btn" onclick="closeInvite()">取消</button><button class="btn-primary" id="sendInviteBtn" disabled onclick="sendInvite()">发送邀请</button></div>
+  </div>
+</div>
+
+<script>
+const MEMBERS = [
+  {ini:'Q', color:'#0f1f3d', name:'qa_admin', uname:'qa_admin', phone:'138****0001', role:'OWNER', you:true},
+  {ini:'赵', color:'#f59e0b', name:'赵管', uname:'zhaoadmin', phone:'138****9999', role:'ADMIN'},
+  {ini:'L', color:'#2563eb', name:'李四', uname:'lisi', phone:'138****0002', role:'ADMIN'},
+  {ini:'王', color:'#15803d', name:'王五', uname:'wangwu', phone:'139****8888', role:'MEMBER'},
+  {ini:'1', color:'#7c3aed', name:'137****6666', uname:'(未设用户名)', phone:'137****6666', role:'MEMBER', nouname:true},
+  {ini:'陈', color:'#0ea5e9', name:'陈晨', uname:'chenchen', phone:'135****1234', role:'MEMBER'},
+  {ini:'周', color:'#db2777', name:'周武', uname:'zhouwu', phone:'136****5678', role:'MEMBER'},
+  {ini:'孙', color:'#65a30d', name:'孙莉', uname:'sunli', phone:'137****2345', role:'MEMBER'},
+];
+const INVITES = [
+  {ini:'赵', color:'#f59e0b', name:'赵六', phone:'138****0006', role:'MEMBER', sent:'2 小时前', state:'已发送站内通知'},
+  {ini:'+', color:'#94a3b8', name:'新同事（未注册）', phone:'138****7777', role:'MEMBER', sent:'昨天', state:'短信邀请已发，待注册'},
+];
+const GATEWAY_USERS = { '13800000003': {name:'张三', sub:'zhangsan · 138****0003'} };
+const $ = id => document.getElementById(id);
+
+// 左导航切换
+document.querySelectorAll('.nav-item').forEach(n => n.addEventListener('click', () => {
+  document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
+  n.classList.add('active'); $('sec-'+n.dataset.sec).classList.add('active');
+}));
+
+// 成员列表（搜索 + 过滤 + 角色操作）
+function renderMembers(){
+  const q = ($('memberSearch').value||'').trim().toLowerCase();
+  const rf = $('roleFilter').value;
+  const rows = MEMBERS.filter(m => {
+    const hit = !q || m.name.toLowerCase().includes(q) || m.uname.toLowerCase().includes(q) || m.phone.includes(q);
+    return hit && (!rf || m.role===rf);
+  });
+  $('memberCount').textContent = `共 ${MEMBERS.length} 人` + (rows.length!==MEMBERS.length ? `（筛出 ${rows.length}）` : '');
+  const rc = {OWNER:'role-owner',ADMIN:'role-admin',MEMBER:'role-member'};
+  $('memberList').innerHTML = rows.length ? rows.map(m => {
+    const you = m.you ? '<span class="you-tag">你</span>' : '';
+    // OWNER 行：当前用户是 OWNER 可转移；普通行可改角色/移除。OWNER 自己不可被移除。
+    let actions;
+    if (m.role==='OWNER') actions = `<span class="role-badge role-owner">OWNER</span>`;
+    else actions = `<select class="role-select" onchange="changeRole('${m.uname}', this.value)"><option ${m.role==='ADMIN'?'selected':''}>ADMIN</option><option ${m.role==='MEMBER'?'selected':''}>MEMBER</option></select><span class="link-danger" onclick="removeMember('${m.name}')">移除</span>`;
+    const display = m.nouname ? `${m.name}` : m.name;
+    const sub = m.nouname ? `未设用户名 · 显示脱敏手机号 · ${m.phone}` : `${m.uname} · ${m.phone}`;
+    return `<div class="m-row"><span class="m-ava" style="background:${m.color}">${m.ini}</span><div class="m-meta"><div class="m-name">${display} ${you}</div><div class="m-sub">${sub}</div></div><div class="m-actions">${actions}</div></div>`;
+  }).join('') : `<div class="empty">没有匹配的成员</div>`;
+}
+function changeRole(uname, role){ alert(`将 ${uname} 的角色改为 ${role}（PUT /orgs/7/members/${uname} {role}，服务端校验操作者为 OWNER/ADMIN）。`); }
+function removeMember(name){ if(confirm(`确定将「${name}」移出组织？其个人库不受影响，仅解除组织成员关系。`)){ alert('已移除（DELETE /orgs/7/members/...，写审计）'); } }
+
+// 邀请列表
+function renderInvites(){
+  $('inviteList').innerHTML = INVITES.length ? INVITES.map(v =>
+    `<div class="m-row"><span class="m-ava" style="background:${v.color}">${v.ini}</span><div class="m-meta"><div class="m-name">${v.name} <span class="role-badge role-pending">PENDING</span></div><div class="m-sub">${v.phone} · 角色 ${v.role} · ${v.sent} · ${v.state}</div></div><div class="m-actions"><span class="link-muted" onclick="alert('已重新发送邀请')">重新发送</span><span class="link-danger" onclick="revokeInvite('${v.name}')">撤销</span></div></div>`
+  ).join('') : `<div class="empty">暂无待处理邀请</div>`;
+}
+function revokeInvite(name){ if(confirm(`撤销对「${name}」的邀请？`)) alert('已撤销（status=REVOKED）'); }
+
+// 危险操作
+function confirmDanger(act){
+  const slug = prompt(`${act} 是高危操作。请输入组织 slug「rblk」以确认：`);
+  if(slug==='rblk') alert(`已发起「${act}」（二次确认通过 + 写审计）。`);
+  else if(slug!==null) alert('slug 不匹配，操作已取消。');
+}
+
+// 邀请弹窗
+function openInvite(){ $('phoneInput').value=''; $('resolveBox').className='resolve-box'; $('sendInviteBtn').disabled=true; $('inviteModal').classList.add('open'); }
+function closeInvite(){ $('inviteModal').classList.remove('open'); }
+function resolvePhone(){
+  const phone=$('phoneInput').value.trim(); const box=$('resolveBox');
+  if(!/^1\d{10}$/.test(phone)){ box.className='resolve-box show notfound'; $('rsAva').textContent='!'; $('rsName').textContent='手机号格式不正确'; $('rsSub').textContent='请输入 11 位手机号'; $('rsState').textContent='无效'; $('rsState').className='resolve-state rs-unreg'; $('rolePick').style.display='none'; $('sendInviteBtn').disabled=true; return; }
+  const u=GATEWAY_USERS[phone];
+  if(u){ box.className='resolve-box show found'; $('rsAva').textContent=u.name[0]; $('rsName').textContent=u.name; $('rsSub').textContent=u.sub; $('rsState').textContent='已注册'; $('rsState').className='resolve-state rs-reg'; $('rolePick').style.display='block'; $('sendInviteBtn').disabled=false; $('sendInviteBtn').textContent='发送邀请'; }
+  else { box.className='resolve-box show notfound'; $('rsAva').textContent='+'; $('rsName').textContent='该手机号未注册'; $('rsSub').textContent='将发送短信邀请，对方注册后自动加入'; $('rsState').textContent='未注册'; $('rsState').className='resolve-state rs-unreg'; $('rolePick').style.display='block'; $('sendInviteBtn').disabled=false; $('sendInviteBtn').textContent='发送短信邀请'; }
+}
+function sendInvite(){ const reg=$('rsState').textContent==='已注册'; const role=$('roleSel').value; closeInvite(); alert(reg?`已发送站内邀请（角色 ${role}），状态 PENDING。`:`已发送短信邀请（角色 ${role}），对方注册后自动关联。`); }
+$('inviteModal').addEventListener('click', e=>{ if(e.target===$('inviteModal')) closeInvite(); });
+
+renderMembers(); renderInvites();
+</script>
+</body>
+</html>
