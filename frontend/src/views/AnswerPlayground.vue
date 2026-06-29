@@ -286,7 +286,7 @@ function isAnswerDisabledPayload(text) {
 .event-strip {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   box-shadow: var(--shadow-sm);
 }
 .answer-controls { padding: 14px; align-self: start; }

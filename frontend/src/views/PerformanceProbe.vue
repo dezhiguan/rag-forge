@@ -443,7 +443,7 @@ onMounted(async () => {
 .panel-kicker {
   color: var(--primary);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -622,9 +622,10 @@ onMounted(async () => {
 
 .metric-card {
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 16px;
   background: #f8fafc;
   padding: 12px;
+  box-shadow: var(--shadow-sm);
 }
 
 .metric-card span {
@@ -651,10 +652,11 @@ onMounted(async () => {
   max-width: 100%;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 16px;
   background: #fff;
   padding: 14px;
   margin-top: 12px;
+  box-shadow: var(--shadow-sm);
 }
 
 .section-head {
@@ -750,7 +752,7 @@ th {
 
 .strong {
   color: var(--slate);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .row-status {
@@ -759,7 +761,7 @@ th {
   border-radius: var(--radius-full);
   padding: 1px 8px;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: center;
 }
 

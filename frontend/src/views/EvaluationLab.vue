@@ -1973,8 +1973,8 @@ onMounted(async () => {
   flex: 1;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
   padding: 14px 18px;
   min-width: 0;
 }
@@ -2069,9 +2069,10 @@ onMounted(async () => {
 
 .table-card {
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 16px;
   overflow: hidden;
   background: #fff;
+  box-shadow: var(--shadow-sm);
 }
 
 .data-table {
@@ -2144,7 +2145,7 @@ onMounted(async () => {
   gap: 12px;
   margin-bottom: 10px;
 }
-.questions-title { font-size: 13px; color: var(--slate); font-weight: 800; }
+.questions-title { font-size: 13px; color: var(--slate); font-weight: 700; }
 .questions-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .questions-table {

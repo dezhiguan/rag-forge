@@ -303,10 +303,10 @@ onMounted(load)
 .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .kpi { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
 .kpi-label { font-size: 12.5px; color: var(--text-muted); }
-.kpi-val { font-size: 26px; font-weight: 800; color: var(--navy); margin-top: 6px; letter-spacing: -.5px; }
+.kpi-val { font-size: 26px; font-weight: 700; color: var(--navy); margin-top: 6px; letter-spacing: -.5px; }
 .kpi-delta { font-size: 12px; margin-top: 5px; color: var(--text-muted); }
 
-.card { background: #fff; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 20px; }
+.card { background: #fff; border: 1px solid var(--border); border-radius: 16px; margin-bottom: 20px; box-shadow: var(--shadow-sm); }
 .card-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .card-head h3 { font-size: 15px; font-weight: 700; color: var(--slate); }
 .card-head .hint { font-size: 12px; color: var(--text-muted); }

@@ -955,7 +955,7 @@ onMounted(async () => {
 }
 @media (max-width: 768px) { .topbar-divider, .topbar-subtitle { display: none; } }
 .page-body { padding: 20px 24px; }
-.debug-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr) 260px; max-width: 100%; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; min-height: calc(100vh - 88px); }
+.debug-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr) 260px; max-width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-sm); overflow: hidden; min-height: calc(100vh - 88px); }
 .debug-left { min-width: 0; background: #f8fafc; border-right: 1px solid var(--border); padding: 16px; font-size: 11px; }
 .debug-center { min-width: 0; padding: 16px; font-size: 11px; }
 .debug-right { min-width: 0; background: #f8fafc; border-left: 1px solid var(--border); padding: 16px; font-size: 10px; font-family: 'SF Mono', Monaco, monospace; }

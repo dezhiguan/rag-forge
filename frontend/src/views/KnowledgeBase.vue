@@ -1291,7 +1291,7 @@ onMounted(async () => {
 .upload-item-title {
   color: var(--slate);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1317,7 +1317,7 @@ onMounted(async () => {
 .upload-progress-text {
   color: var(--slate);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: right;
 }
 
@@ -1391,9 +1391,10 @@ onMounted(async () => {
 
 .table-card {
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 16px;
   overflow: hidden;
   background: #fff;
+  box-shadow: var(--shadow-sm);
 }
 
 .data-table {
@@ -1506,9 +1507,9 @@ onMounted(async () => {
   padding: 1px 9px;
   line-height: 1.7;
 }
-.kb-tag-org { background: #ede9fe; color: #5b21b6; }
-.kb-tag-orgvis { background: #dbeafe; color: #1e40af; }
-.kb-tag-pub { background: #dcfce7; color: #166534; }
+.kb-tag-org { background: #f5f3ff; color: #7c3aed; }
+.kb-tag-orgvis { background: #eef4ff; color: #2563eb; }
+.kb-tag-pub { background: #ecfdf5; color: #15803d; }
 .no-writable-hint {
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
@@ -1533,7 +1534,7 @@ onMounted(async () => {
   gap: 12px;
   margin-bottom: 10px;
 }
-.docs-title { font-size: 13px; color: var(--slate); font-weight: 800; }
+.docs-title { font-size: 13px; color: var(--slate); font-weight: 700; }
 .docs-sub {
   margin-top: 2px;
   color: var(--text-muted);

@@ -234,7 +234,7 @@ onMounted(() => {
 
 <style scoped>
 .page-body { padding: 20px 24px; }
-.api-layout { display: grid; grid-template-columns: 220px 1fr; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; min-height: calc(100vh - 88px); }
+.api-layout { display: grid; grid-template-columns: 220px 1fr; background: #fff; border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-sm); overflow: hidden; min-height: calc(100vh - 88px); }
 .api-left { background: #f8fafc; border-right: 1px solid var(--border); padding: 16px; font-size: 10px; }
 .api-right { padding: 18px; font-size: 12px; }
 .api-section-title { font-weight: 700; font-size: 12px; margin-bottom: 10px; }
