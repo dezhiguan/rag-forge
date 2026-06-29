@@ -71,15 +71,21 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
   private final com.ragforge.storage.ChunkImageResolver chunkImageResolver;
 
   @Override
-  public OverviewVo overview(int days, Long kbId) {
+  public OverviewVo overview(int days, Long kbId, Set<Long> scopeKbIds) {
     int safeDays = normalizeDays(days);
     LocalDate today = LocalDate.now();
     LocalDate queryStart = today.minusDays(Math.max(0, safeDays * 2 - 1));
 
-    List<Map<String, Object>> rows =
-        (kbId == null)
-            ? queryGlobalMetricsRows(queryStart)
-            : queryKbMetricsRows(kbId, queryStart);
+    // scopeKbIds == null：破玻璃全平台；非空：限当前组织 KB（空集→无数据）。
+    List<Map<String, Object>> rows;
+    if (kbId != null) {
+      rows = queryKbMetricsRows(kbId, queryStart);
+    } else if (scopeKbIds == null) {
+      rows = queryGlobalMetricsRows(queryStart);
+    } else {
+      Set<Long> scope = normalizeKbIds(scopeKbIds);
+      rows = scope.isEmpty() ? List.of() : queryScopedMetricsRows(scope, queryStart);
+    }
 
     TrendWindow current = aggregateWindow(rows, today.minusDays(safeDays - 1), today);
     TrendWindow previous = aggregateWindow(rows, today.minusDays(safeDays * 2 - 1), today.minusDays(safeDays));
@@ -111,36 +117,40 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
   }
 
   @Override
-  public List<KbSliceVo> byKb(int days, Set<Long> readableKbIds) {
+  public List<KbSliceVo> byKb(int days, Set<Long> scopeKbIds) {
     int safeDays = normalizeDays(days);
-    Set<Long> filtered = normalizeKbIds(readableKbIds);
-    if (filtered.isEmpty()) {
-      return List.of();
-    }
-
     LocalDate today = LocalDate.now();
     LocalDate queryStart = today.minusDays(safeDays * 2 - 1);
-    List<Long> orderedIds = new ArrayList<>(filtered);
 
-    String inSql = orderedIds.stream().map(i -> "?").collect(Collectors.joining(","));
-    String sql =
-        String.format(
-            """
-            SELECT date, kb_id, sample_count, failed_count,
-                   faithfulness_p50, context_precision_p50, answer_relevance_p50,
-                   overall_p50, overall_p95, overall_mean, overall_std,
-                   total_cost_cny
-            FROM judge_metrics_daily
-            WHERE kb_id IN (%s)
-              AND date >= ?
-            ORDER BY kb_id ASC, date ASC
-            """,
-            inSql);
-
-    List<Object> args = new ArrayList<>();
-    args.addAll(orderedIds);
-    args.add(queryStart);
-    List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, args.toArray());
+    // scopeKbIds == null：破玻璃全部 KB；非空：限当前组织（空集→无数据）。
+    List<Map<String, Object>> rows;
+    final String cols =
+        "date, kb_id, sample_count, failed_count,"
+            + " faithfulness_p50, context_precision_p50, answer_relevance_p50,"
+            + " overall_p50, overall_p95, overall_mean, overall_std, total_cost_cny";
+    if (scopeKbIds == null) {
+      String sql =
+          "SELECT " + cols
+              + " FROM judge_metrics_daily WHERE kb_id IS NOT NULL AND date >= ?"
+              + " ORDER BY kb_id ASC, date ASC";
+      rows = jdbcTemplate.queryForList(sql, queryStart);
+    } else {
+      Set<Long> filtered = normalizeKbIds(scopeKbIds);
+      if (filtered.isEmpty()) {
+        return List.of();
+      }
+      List<Long> orderedIds = new ArrayList<>(filtered);
+      String inSql = orderedIds.stream().map(i -> "?").collect(Collectors.joining(","));
+      String sql =
+          String.format(
+              "SELECT " + cols
+                  + " FROM judge_metrics_daily WHERE kb_id IN (%s) AND date >= ?"
+                  + " ORDER BY kb_id ASC, date ASC",
+              inSql);
+      List<Object> args = new ArrayList<>(orderedIds);
+      args.add(queryStart);
+      rows = jdbcTemplate.queryForList(sql, args.toArray());
+    }
 
     Map<Long, List<Map<String, Object>>> rowsByKb =
         rows.stream()
@@ -150,10 +160,12 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
                     LinkedHashMap::new,
                     Collectors.toList()));
 
-        Map<Long, String> kbNames =
-        knowledgeBaseMapper.selectList(new QueryWrapper<KnowledgeBase>().in("id", orderedIds))
-            .stream()
-            .collect(Collectors.toMap(kb -> kb.getId(), KnowledgeBase::getName, (a, b) -> a, LinkedHashMap::new));
+    List<Long> presentIds = new ArrayList<>(rowsByKb.keySet());
+    Map<Long, String> kbNames = new LinkedHashMap<>();
+    if (!presentIds.isEmpty()) {
+      knowledgeBaseMapper.selectList(new QueryWrapper<KnowledgeBase>().in("id", presentIds)).stream()
+          .forEach(kb -> kbNames.putIfAbsent(kb.getId(), kb.getName()));
+    }
 
     return rowsByKb.entrySet().stream()
         .map(
@@ -180,16 +192,27 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
   }
 
   @Override
-  public List<WorstCaseVo> worstCases(int limit, int days, Long kbId, Set<Long> readableKbIds) {
+  public List<WorstCaseVo> worstCases(int limit, int days, Long kbId, Set<Long> scopeKbIds) {
     int safeLimit = normalizeLimit(limit);
     int safeDays = normalizeDays(days);
     LocalDate start = LocalDate.now().minusDays(safeDays - 1);
 
     List<Map<String, Object>> rows;
-    if (kbId == null) {
-      List<Long> safeReadableKbIds =
-          readableKbIds == null ? List.of() : readableKbIds.stream().filter(Objects::nonNull).toList();
-      if (CollectionUtils.isEmpty(safeReadableKbIds)) {
+    if (kbId == null && scopeKbIds == null) {
+      // 破玻璃：全部（无 KB 过滤）。
+      String sql =
+          """
+          SELECT id, answer_log_id, query, overall_score, created_at, judge_raw_response
+          FROM judge_results
+          WHERE status='COMPLETED'
+            AND created_at >= ?
+          ORDER BY overall_score ASC NULLS LAST, created_at DESC
+          LIMIT ?
+          """;
+      rows = jdbcTemplate.queryForList(sql, start, safeLimit);
+    } else if (kbId == null) {
+      List<Long> safeScopeKbIds = scopeKbIds.stream().filter(Objects::nonNull).toList();
+      if (CollectionUtils.isEmpty(safeScopeKbIds)) {
         return List.of();
       }
       String sql =
@@ -201,7 +224,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
             AND EXISTS (
               SELECT 1
               FROM unnest(kb_ids) AS readable(kb_id)
-              WHERE readable.kb_id IN (:readableKbIds)
+              WHERE readable.kb_id IN (:scopeKbIds)
             )
           ORDER BY overall_score ASC NULLS LAST, created_at DESC
           LIMIT :limit
@@ -209,7 +232,7 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
       MapSqlParameterSource params =
           new MapSqlParameterSource()
               .addValue("start", start)
-              .addValue("readableKbIds", safeReadableKbIds)
+              .addValue("scopeKbIds", safeScopeKbIds)
               .addValue("limit", safeLimit);
       rows = new NamedParameterJdbcTemplate(jdbcTemplate).queryForList(sql, params);
     } else {
@@ -329,6 +352,35 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     String sql = "SELECT COUNT(1) FROM eval_questions WHERE judge_enabled = TRUE";
     Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
     return count == null ? 0 : count;
+  }
+
+  /** 按当前组织的 KB 范围聚合：按 date 分组，p50/p95/mean 按样本数加权，counts/cost 求和。 */
+  private List<Map<String, Object>> queryScopedMetricsRows(Set<Long> scopeKbIds, LocalDate start) {
+    List<Long> ids = new ArrayList<>(scopeKbIds);
+    String inSql = ids.stream().map(i -> "?").collect(Collectors.joining(","));
+    String sql =
+        String.format(
+            """
+            SELECT date,
+                   SUM(sample_count) AS sample_count,
+                   SUM(failed_count) AS failed_count,
+                   CASE WHEN SUM(sample_count) > 0 THEN SUM(faithfulness_p50 * sample_count) / SUM(sample_count) END AS faithfulness_p50,
+                   CASE WHEN SUM(sample_count) > 0 THEN SUM(context_precision_p50 * sample_count) / SUM(sample_count) END AS context_precision_p50,
+                   CASE WHEN SUM(sample_count) > 0 THEN SUM(answer_relevance_p50 * sample_count) / SUM(sample_count) END AS answer_relevance_p50,
+                   CASE WHEN SUM(sample_count) > 0 THEN SUM(overall_p50 * sample_count) / SUM(sample_count) END AS overall_p50,
+                   CASE WHEN SUM(sample_count) > 0 THEN SUM(overall_p95 * sample_count) / SUM(sample_count) END AS overall_p95,
+                   CASE WHEN SUM(sample_count) > 0 THEN SUM(overall_mean * sample_count) / SUM(sample_count) END AS overall_mean,
+                   SUM(total_cost_cny) AS total_cost_cny
+            FROM judge_metrics_daily
+            WHERE kb_id IN (%s)
+              AND date >= ?
+            GROUP BY date
+            ORDER BY date ASC
+            """,
+            inSql);
+    List<Object> args = new ArrayList<>(ids);
+    args.add(start);
+    return jdbcTemplate.queryForList(sql, args.toArray());
   }
 
   private List<Map<String, Object>> queryGlobalMetricsRows(LocalDate start) {

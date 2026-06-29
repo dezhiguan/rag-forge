@@ -11,11 +11,12 @@ import java.util.Set;
 
 public interface JudgeQueryService {
 
-  OverviewVo overview(int days, Long kbId);
+  /** scopeKbIds：当前组织的 KB 范围；null = 破玻璃全平台，空集 = 无数据。 */
+  OverviewVo overview(int days, Long kbId, Set<Long> scopeKbIds);
 
-  List<KbSliceVo> byKb(int days, Set<Long> readableKbIds);
+  List<KbSliceVo> byKb(int days, Set<Long> scopeKbIds);
 
-  List<WorstCaseVo> worstCases(int limit, int days, Long kbId, Set<Long> readableKbIds);
+  List<WorstCaseVo> worstCases(int limit, int days, Long kbId, Set<Long> scopeKbIds);
 
   CaseDetailVo caseDetail(Long judgeResultId);
 

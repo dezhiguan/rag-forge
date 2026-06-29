@@ -28,6 +28,29 @@ public class JudgeQualityController {
 
   private final JudgeQueryService queryService;
   private final KbAccessGuard kbAccessGuard;
+  private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
+
+  /** 当前组织的 KB 范围；破玻璃返回 null(全平台)，无组织上下文返回空集(无数据)。 */
+  private Set<Long> currentOrgScope() {
+    com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
+    if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
+      return null;
+    }
+    Long orgId = com.ragforge.security.OrgContextHolder.get();
+    if (orgId == null) {
+      return Set.of();
+    }
+    return new HashSet<>(
+        knowledgeBaseMapper
+            .selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<
+                        com.ragforge.model.entity.KnowledgeBase>()
+                    .eq(com.ragforge.model.entity.KnowledgeBase::getOrgId, orgId)
+                    .ne(com.ragforge.model.entity.KnowledgeBase::getStatus, "deleted"))
+            .stream()
+            .map(com.ragforge.model.entity.KnowledgeBase::getId)
+            .toList());
+  }
 
   @GetMapping("/overview")
   public Result<OverviewVo> overview(
@@ -36,13 +59,12 @@ public class JudgeQualityController {
     if (kbId != null && !kbAccessGuard.canRead(kbId)) {
       throw new com.ragforge.common.BizException(403, "KB_ACCESS_DENIED");
     }
-    return Result.ok(queryService.overview(days, kbId));
+    return Result.ok(queryService.overview(days, kbId, currentOrgScope()));
   }
 
   @GetMapping("/by-kb")
   public Result<List<KbSliceVo>> byKb(@RequestParam(defaultValue = "7") int days) {
-    Set<Long> readableKbIds = new HashSet<>(kbAccessGuard.allReadableKbIds());
-    return Result.ok(queryService.byKb(days, readableKbIds));
+    return Result.ok(queryService.byKb(days, currentOrgScope()));
   }
 
   @GetMapping("/worst-cases")
@@ -50,14 +72,10 @@ public class JudgeQualityController {
       @RequestParam(defaultValue = "10") int limit,
       @RequestParam(defaultValue = "7") int days,
       @RequestParam(required = false) Long kbId) {
-    Set<Long> readableKbIds = Set.of();
     if (kbId != null && !kbAccessGuard.canRead(kbId)) {
       throw new com.ragforge.common.BizException(403, "KB_ACCESS_DENIED");
     }
-    if (kbId == null) {
-      readableKbIds = new HashSet<>(kbAccessGuard.allReadableKbIds());
-    }
-    return Result.ok(queryService.worstCases(limit, days, kbId, readableKbIds));
+    return Result.ok(queryService.worstCases(limit, days, kbId, currentOrgScope()));
   }
 
   @GetMapping("/case/{judgeResultId}")
