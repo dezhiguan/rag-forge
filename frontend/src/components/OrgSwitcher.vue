@@ -162,8 +162,8 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   margin-top: 1px;
 }
 .org-caret {
-  color: #b6bdca;
-  font-size: 11px;
+  color: var(--gray);
+  font-size: 13px;
   flex-shrink: 0;
 }
 .org-menu {
