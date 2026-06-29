@@ -12,7 +12,7 @@
             :title="adminViewAll ? '正在以平台管理员身份查看全部知识库（已留审计）' : '平台管理员破玻璃：查看全部用户的知识库（将被审计）'"
             @click="toggleAdminViewAll"
           >
-            {{ adminViewAll ? '✓ 查看全部·已留痕' : '查看全部(平台管理员)' }}
+            <span class="bg-ic">🛡</span>{{ adminViewAll ? '查看全部·已留痕' : '查看全部 · 平台管理员' }}
           </button>
         </div>
       </div>
@@ -1201,11 +1201,16 @@ onMounted(async () => {
   gap: 10px;
 }
 
-/* 平台管理员「查看全部」破玻璃按钮：红色警示，激活后填充红 */
-.bg-breakglass { color: var(--red); border-color: #fecaca; background: #fff; }
-.bg-breakglass:hover { background: #fef2f2; border-color: #fca5a5; }
-.bg-breakglass.on { background: var(--red); border-color: var(--red); color: #fff; }
-.bg-breakglass.on:hover { background: #dc2626; }
+/* 平台管理员「查看全部」破玻璃按钮：柔和红色胶囊，激活后填充红 */
+.bg-breakglass {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; font-weight: 600;
+}
+.bg-breakglass:hover { background: #fee2e2; border-color: #fca5a5; }
+.bg-breakglass:focus, .bg-breakglass:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18); }
+.bg-breakglass.on { background: #dc2626; border-color: #dc2626; color: #fff; box-shadow: 0 1px 2px rgba(220, 38, 38, 0.3); }
+.bg-breakglass.on:hover { background: #b91c1c; border-color: #b91c1c; }
+.bg-breakglass .bg-ic { font-size: 12px; line-height: 1; }
 
 .content {
   display: flex;
