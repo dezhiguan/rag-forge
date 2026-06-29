@@ -4,7 +4,7 @@
       <div v-if="state.open" class="confirm-mask" @click.self="onCancel">
         <div class="confirm-dialog" role="dialog" aria-modal="true">
           <div class="confirm-head">
-            <div class="confirm-icon" :class="`is-${state.variant}`">{{ state.icon }}</div>
+            <div v-if="state.icon" class="confirm-icon" :class="`is-${state.variant}`">{{ state.icon }}</div>
             <div class="confirm-text">
               <div class="confirm-title">{{ state.title }}</div>
               <div v-if="state.message" class="confirm-message">{{ state.message }}</div>

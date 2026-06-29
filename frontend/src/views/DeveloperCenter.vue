@@ -21,6 +21,19 @@
 
     <!-- ============ API keys ============ -->
     <div v-show="tab === 'keys'" class="card card-pad">
+      <!-- 创建成功：当前页面内联展示一次性明文 -->
+      <div v-if="showReveal" class="reveal-inline">
+        <div class="ri-top">
+          <span class="ri-title">🔑 API key 创建成功</span>
+          <span class="ri-x" @click="closeReveal">×</span>
+        </div>
+        <p class="ri-msg">请将此 key 保存在安全且易于访问的地方。出于安全原因，你将<b>无法再次查看它</b>；如果丢失，需要重新创建。</p>
+        <div class="ri-row">
+          <code>{{ newKey }}</code>
+          <button class="btn-primary sm" @click="copy($event, newKey)">复制</button>
+        </div>
+      </div>
+
       <div class="desc">
         <template v-if="isPlatform">下表是<b>全平台所有组织</b>的 API key（只读）。发现疑似泄露可一键吊销；不能在此为某组织新建 key，请下钻到对应组织。</template>
         <template v-else>下表是<b>本组织</b>的全部 API key。Key 仅在创建时可见可复制，请妥善保存，不要暴露在前端代码中。</template>
@@ -119,21 +132,6 @@
       </div>
     </div>
 
-    <!-- 创建成功：一次性展示明文 key -->
-    <div v-if="showReveal" class="mask" @click.self="closeReveal">
-      <div class="reveal">
-        <div class="rv-head">
-          <h3>创建 API key</h3>
-          <span class="rv-x" @click="closeReveal">×</span>
-        </div>
-        <p class="rv-msg">请将此 API key 保存在安全且易于访问的地方。出于安全原因，你将<b>无法通过 API keys 管理界面再次查看它</b>。如果你丢失了这个 key，将需要重新创建。</p>
-        <div class="rv-key"><code>{{ newKey }}</code></div>
-        <div class="rv-foot">
-          <button class="btn" @click="closeReveal">关闭</button>
-          <button class="btn-primary" @click="copy($event, newKey)">复制</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -204,6 +202,7 @@ async function onCreate() {
   const name = await confirmDialog({
     title: '创建 API key',
     message: '名称',
+    icon: '',
     input: true,
     inputPlaceholder: '输入 API key 的名称',
     confirmText: '创建',
@@ -231,10 +230,11 @@ function closeReveal() {
 async function onRename(k) {
   const name = await confirmDialog({
     title: '修改 API key 名称',
-    message: '为该 key 设置一个新的名称。',
+    message: '名称',
+    icon: '',
     input: true,
     inputValue: k.keyName,
-    inputPlaceholder: 'key 名称',
+    inputPlaceholder: '输入 API key 的名称',
     confirmText: '保存',
   })
   if (!name || String(name).trim() === k.keyName) return
@@ -321,19 +321,15 @@ tbody tr:last-child td { border-bottom: 0; }
 .nk-row code { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--navy); word-break: break-all; }
 .nk-tip { margin-top: 8px; font-size: 11.5px; color: #b45309; line-height: 1.6; } .nk-tip b { color: #b45309; }
 
-/* 创建成功 reveal 弹窗 */
-.mask { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.reveal { width: 480px; max-width: calc(100vw - 40px); background: #fff; border-radius: 16px; box-shadow: 0 20px 50px rgba(15, 31, 61, .25); padding: 22px 24px; }
-.rv-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.rv-head h3 { margin: 0; font-size: 17px; font-weight: 700; color: var(--navy); }
-.rv-x { font-size: 22px; color: var(--text-muted); cursor: pointer; line-height: 1; }
-.rv-msg { font-size: 13px; color: var(--gray); line-height: 1.7; margin: 0 0 16px; }
-.rv-msg b { color: var(--slate); }
-.rv-key { background: #f5f7fa; border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; margin-bottom: 18px; }
-.rv-key code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--navy); word-break: break-all; }
-.rv-foot { display: flex; justify-content: flex-end; gap: 10px; }
-.rv-foot .btn { height: 38px; padding: 0 18px; }
-.rv-foot .btn-primary { height: 38px; background: #0f1726; }
+/* 创建成功：当前页面内联展示明文 key（非弹窗） */
+.reveal-inline { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+.ri-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.ri-title { font-size: 13.5px; font-weight: 700; color: #15803d; }
+.ri-x { font-size: 18px; color: var(--text-muted); cursor: pointer; line-height: 1; }
+.ri-msg { font-size: 12.5px; color: var(--slate); line-height: 1.6; margin: 0 0 12px; } .ri-msg b { color: #b45309; }
+.ri-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.ri-row code { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--navy); word-break: break-all; }
+.btn-primary.sm { height: 30px; padding: 0 14px; font-size: 12.5px; background: #0f1726; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .sec-title { font-size: 13px; font-weight: 700; color: var(--navy); margin: 0 0 4px; }

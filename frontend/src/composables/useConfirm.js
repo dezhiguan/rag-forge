@@ -28,7 +28,15 @@ export function confirm(opts = {}) {
     state.confirmText = opts.confirmText || '确认'
     state.cancelText = opts.cancelText || '取消'
     state.variant = opts.variant || 'default'
-    state.icon = opts.icon || (opts.variant === 'danger' ? '⚠️' : opts.variant === 'warning' ? '❗' : '❓')
+    // 显式传 icon（含空串）则按传入；未传时按 variant 给默认。
+    state.icon =
+      opts.icon !== undefined
+        ? opts.icon
+        : opts.variant === 'danger'
+          ? '⚠️'
+          : opts.variant === 'warning'
+            ? '❗'
+            : '❓'
     state.choices = Array.isArray(opts.choices) ? opts.choices : []
     state.input = !!opts.input
     state.inputValue = opts.inputValue || ''
