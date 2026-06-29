@@ -25,7 +25,7 @@ public interface ModelUsageDailyMapper extends BaseMapper<ModelUsageDaily> {
              COALESCE(SUM(cost), 0) AS cost
       FROM model_usage_daily
       WHERE stat_date >= #{since}
-        AND (#{orgId} IS NULL OR org_id = #{orgId})
+        AND (#{orgId,jdbcType=BIGINT} IS NULL OR org_id = #{orgId,jdbcType=BIGINT})
       GROUP BY lower(purpose)
       """)
   List<Map<String, Object>> aggregateCostSince(
