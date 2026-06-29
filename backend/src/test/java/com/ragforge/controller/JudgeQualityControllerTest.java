@@ -241,7 +241,7 @@ class JudgeQualityControllerTest {
 
   @Test
   void cost_typicalPayload() throws Exception {
-    when(queryService.cost(30)).thenReturn(buildCost());
+    when(queryService.cost(eq(30), any())).thenReturn(buildCost());
 
     mockMvc
         .perform(get("/api/v1/evaluation/quality/cost?days=30"))
@@ -252,14 +252,14 @@ class JudgeQualityControllerTest {
 
   @Test
   void cost_defaultDaysFallback() throws Exception {
-    when(queryService.cost(30)).thenReturn(buildCost());
+    when(queryService.cost(eq(30), any())).thenReturn(buildCost());
 
     mockMvc
         .perform(get("/api/v1/evaluation/quality/cost"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(200));
 
-    verify(queryService).cost(30);
+    verify(queryService).cost(eq(30), any());
   }
 
   private OverviewVo buildOverview() {

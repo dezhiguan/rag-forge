@@ -282,39 +282,73 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
   }
 
   @Override
-  public CostSummaryVo cost(int days) {
+  public CostSummaryVo cost(int days, Set<Long> scopeKbIds) {
     int safeDays = normalizeDays(days);
     LocalDate start = LocalDate.now().minusDays(safeDays - 1);
 
-    String totalSql =
-        """
-        SELECT COALESCE(SUM(total_cost_cny), 0) AS total_cost_cny,
-               COALESCE(SUM(sample_count), 0) AS total_samples,
-               COALESCE(SUM(failed_count), 0) AS failed_samples
-        FROM judge_metrics_daily
-        WHERE kb_id IS NULL
-          AND date >= ?
-        """;
+    boolean platform = scopeKbIds == null; // 破玻璃/全平台口径
+    Set<Long> scope = platform ? null : normalizeKbIds(scopeKbIds);
+    if (!platform && scope.isEmpty()) {
+      return zeroCost(); // 当前组织无可见 KB → 成本为 0
+    }
 
-    Map<String, Object> totalRow = jdbcTemplate.queryForMap(totalSql, start);
+    // 总量：全平台用 kb_id IS NULL 的 rollup 行；组织用 kb_id IN(scope) 的逐 KB 行求和
+    Map<String, Object> totalRow;
+    String totalCols =
+        "COALESCE(SUM(total_cost_cny), 0) AS total_cost_cny,"
+            + " COALESCE(SUM(sample_count), 0) AS total_samples,"
+            + " COALESCE(SUM(failed_count), 0) AS failed_samples";
+    if (platform) {
+      totalRow =
+          jdbcTemplate.queryForMap(
+              "SELECT " + totalCols + " FROM judge_metrics_daily WHERE kb_id IS NULL AND date >= ?",
+              start);
+    } else {
+      List<Long> ids = new ArrayList<>(scope);
+      String inSql = ids.stream().map(i -> "?").collect(Collectors.joining(","));
+      List<Object> args = new ArrayList<>(ids);
+      args.add(start);
+      totalRow =
+          jdbcTemplate.queryForMap(
+              String.format(
+                  "SELECT " + totalCols + " FROM judge_metrics_daily WHERE kb_id IN (%s) AND date >= ?",
+                  inSql),
+              args.toArray());
+    }
     BigDecimal totalCost = toBigDecimal(totalRow.get("total_cost_cny"));
     int totalSamples = toInt(totalRow.get("total_samples"));
     int failedSamples = toInt(totalRow.get("failed_samples"));
 
-    String sourceSql =
-        """
-        SELECT source, COALESCE(SUM(judge_cost_cny), 0) AS total_cost
-        FROM judge_results
-        WHERE created_at >= ?
-        GROUP BY source
-        """;
-
+    // 按来源：组织口径加 kb_ids 与 scope 的交集过滤
     Map<String, BigDecimal> bySource = new LinkedHashMap<>();
     bySource.put("PRODUCTION", BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
     bySource.put("GOLDEN_SET", BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
     bySource.put("MANUAL", BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
 
-    for (Map<String, Object> row : jdbcTemplate.queryForList(sourceSql, start)) {
+    List<Map<String, Object>> sourceRows;
+    if (platform) {
+      sourceRows =
+          jdbcTemplate.queryForList(
+              "SELECT source, COALESCE(SUM(judge_cost_cny), 0) AS total_cost"
+                  + " FROM judge_results WHERE created_at >= ? GROUP BY source",
+              start);
+    } else {
+      List<Long> ids = new ArrayList<>(scope);
+      String inSql = ids.stream().map(i -> "?").collect(Collectors.joining(","));
+      List<Object> args = new ArrayList<>();
+      args.add(start);
+      args.addAll(ids);
+      sourceRows =
+          jdbcTemplate.queryForList(
+              String.format(
+                  "SELECT source, COALESCE(SUM(judge_cost_cny), 0) AS total_cost"
+                      + " FROM judge_results WHERE created_at >= ?"
+                      + " AND EXISTS (SELECT 1 FROM unnest(kb_ids) AS r(kb_id) WHERE r.kb_id IN (%s))"
+                      + " GROUP BY source",
+                  inSql),
+              args.toArray());
+    }
+    for (Map<String, Object> row : sourceRows) {
       String source = Objects.toString(row.get("source"), "").trim().toUpperCase();
       if (source.isBlank()) {
         continue;
@@ -331,6 +365,21 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     vo.setMonthlyProjectedCny(monthlyProjected);
     vo.setTotalCalls(totalSamples);
     vo.setFailedCalls(failedSamples);
+    vo.setCostBySource(bySource);
+    return vo;
+  }
+
+  private CostSummaryVo zeroCost() {
+    Map<String, BigDecimal> bySource = new LinkedHashMap<>();
+    bySource.put("PRODUCTION", BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
+    bySource.put("GOLDEN_SET", BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
+    bySource.put("MANUAL", BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
+    CostSummaryVo vo = new CostSummaryVo();
+    vo.setTotalCny(BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
+    vo.setDailyAverageCny(BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
+    vo.setMonthlyProjectedCny(BigDecimal.ZERO.setScale(DEFAULT_SCALE, HALF_UP));
+    vo.setTotalCalls(0);
+    vo.setFailedCalls(0);
     vo.setCostBySource(bySource);
     return vo;
   }

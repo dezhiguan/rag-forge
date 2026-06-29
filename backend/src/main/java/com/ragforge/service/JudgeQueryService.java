@@ -20,7 +20,7 @@ public interface JudgeQueryService {
 
   CaseDetailVo caseDetail(Long judgeResultId);
 
-  CostSummaryVo cost(int days);
+  CostSummaryVo cost(int days, Set<Long> scopeKbIds);
 
   BigDecimal costThisMonth();
 

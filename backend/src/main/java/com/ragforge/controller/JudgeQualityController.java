@@ -13,7 +13,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/evaluation/quality")
-@PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR')")
+// 下放到组织：登录用户即可访问，所有读接口按当前组织(含公开库)过滤、按 KB canRead 兜底。
 @RequiredArgsConstructor
 public class JudgeQualityController {
 
@@ -45,8 +44,12 @@ public class JudgeQualityController {
             .selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<
                         com.ragforge.model.entity.KnowledgeBase>()
-                    .eq(com.ragforge.model.entity.KnowledgeBase::getOrgId, orgId)
-                    .ne(com.ragforge.model.entity.KnowledgeBase::getStatus, "deleted"))
+                    .ne(com.ragforge.model.entity.KnowledgeBase::getStatus, "deleted")
+                    .and(
+                        w ->
+                            w.eq(com.ragforge.model.entity.KnowledgeBase::getOrgId, orgId)
+                                .or()
+                                .eq(com.ragforge.model.entity.KnowledgeBase::getVisibility, "PUBLIC")))
             .stream()
             .map(com.ragforge.model.entity.KnowledgeBase::getId)
             .toList());
@@ -94,6 +97,6 @@ public class JudgeQualityController {
 
   @GetMapping("/cost")
   public Result<CostSummaryVo> cost(@RequestParam(defaultValue = "30") int days) {
-    return Result.ok(queryService.cost(days));
+    return Result.ok(queryService.cost(days, currentOrgScope()));
   }
 }
