@@ -1963,6 +1963,32 @@ onMounted(async () => {
 }
 .btn-outline-sm:hover { background: #eff6ff; }
 
+/* 次要按钮（刷新等）：干净的白底浅边，悬停变蓝，替代浏览器默认丑按钮 */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--slate);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--primary-border);
+  color: var(--primary);
+  background: #f8faff;
+}
+.btn-ghost:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-ghost.btn-sm { height: 34px; padding: 0 14px; font-size: 12.5px; }
+
 /* Summary Cards */
 .summary-cards {
   display: flex;
