@@ -626,9 +626,16 @@ function onEditChunkOverlapBlur() {
 
 async function toggleAdminViewAll() {
   if (!adminViewAll.value) {
-    const reason = window.prompt('「查看全部知识库」属管理员越权操作，将被审计留痕。请填写访问原因：', '')
-    if (!reason || !reason.trim()) return
-    adminOverrideReason.value = reason.trim()
+    const reason = await confirmDialog({
+      title: '查看全部知识库',
+      message: '这是平台管理员越权操作，将被审计留痕。请填写访问原因：',
+      input: true,
+      inputPlaceholder: '如：排查某用户入库失败',
+      confirmText: '确认查看',
+      variant: 'danger',
+    })
+    if (!reason || !String(reason).trim()) return
+    adminOverrideReason.value = String(reason).trim()
     adminViewAll.value = true
   } else {
     adminViewAll.value = false

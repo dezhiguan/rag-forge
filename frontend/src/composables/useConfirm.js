@@ -11,6 +11,9 @@ const state = reactive({
   icon: '',
   choices: [],            // 多选模式：[{ value, label, variant }]，留空则回退到 confirm/cancel 两按钮
   cancelValue: false,     // 取消（或遮罩点击 / ESC）时 resolve 的值；默认 false 兼容旧调用
+  input: false,           // 输入(prompt)模式：确认时 resolve 输入字符串；取消 resolve cancelValue(默认 null)
+  inputValue: '',
+  inputPlaceholder: '',
   resolve: null,
 })
 
@@ -27,9 +30,12 @@ export function confirm(opts = {}) {
     state.variant = opts.variant || 'default'
     state.icon = opts.icon || (opts.variant === 'danger' ? '⚠️' : opts.variant === 'warning' ? '❗' : '❓')
     state.choices = Array.isArray(opts.choices) ? opts.choices : []
+    state.input = !!opts.input
+    state.inputValue = opts.inputValue || ''
+    state.inputPlaceholder = opts.inputPlaceholder || ''
     state.cancelValue = Object.prototype.hasOwnProperty.call(opts, 'cancelValue')
       ? opts.cancelValue
-      : (state.choices.length > 0 ? null : false)
+      : (state.choices.length > 0 || state.input ? null : false)
     state.resolve = resolve
     state.open = true
   })

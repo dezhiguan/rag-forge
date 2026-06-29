@@ -9,6 +9,14 @@
               <div class="confirm-title">{{ state.title }}</div>
               <div v-if="state.message" class="confirm-message">{{ state.message }}</div>
               <div v-if="state.detail" class="confirm-detail">{{ state.detail }}</div>
+              <input
+                v-if="state.input"
+                ref="inputRef"
+                v-model="state.inputValue"
+                class="confirm-input"
+                :placeholder="state.inputPlaceholder"
+                @keydown.enter.prevent="onOk"
+              />
             </div>
           </div>
           <div class="confirm-actions">
@@ -28,6 +36,7 @@
               v-else
               class="confirm-btn-ok"
               :class="`is-${state.variant}`"
+              :disabled="state.input && !String(state.inputValue).trim()"
               @click="onOk"
             >
               {{ state.confirmText }}
@@ -40,12 +49,28 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { confirmState as state, resolveConfirm } from '../composables/useConfirm'
 
+const inputRef = ref(null)
+
 function onOk() {
+  if (state.input) {
+    const v = String(state.inputValue || '').trim()
+    if (!v) return
+    resolveConfirm(v)
+    return
+  }
   resolveConfirm(true)
 }
+
+// 打开输入模式时自动聚焦
+watch(
+  () => state.open,
+  (open) => {
+    if (open && state.input) nextTick(() => inputRef.value?.focus())
+  },
+)
 
 function onCancel() {
   resolveConfirm(state.cancelValue)
@@ -139,6 +164,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   word-break: break-word;
 }
 
+.confirm-input {
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #0f172a;
+}
+.confirm-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+
 .confirm-actions {
   display: flex;
   gap: 8px;
@@ -171,7 +208,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   background: var(--primary);
   color: #fff;
 }
-.confirm-btn-ok:hover { background: var(--primary-hover); }
+.confirm-btn-ok:hover:not(:disabled) { background: var(--primary-hover); }
+.confirm-btn-ok:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .confirm-btn-ok.is-danger {
   background: #ef4444;
