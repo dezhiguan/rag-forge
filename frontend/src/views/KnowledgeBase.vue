@@ -188,6 +188,7 @@
                             data-test="kb-public-badge"
                           >公开</span>
                         </span>
+                        <div v-if="kb.description" class="desc">{{ kb.description }}</div>
                         <span
                           v-if="kb.orgId || kb.visibility === 'ORG'"
                           class="kb-meta-row"
@@ -204,7 +205,6 @@
                             data-test="kb-orgvis-badge"
                           >组织可见</span>
                         </span>
-                        <div v-if="kb.description" class="desc">{{ kb.description }}</div>
                       </div>
                     </div>
                   </td>
