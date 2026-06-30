@@ -1081,7 +1081,7 @@ const costStacks = computed(() => {
   }))
   const total = entries.reduce((acc, item) => acc + item.value, 0)
   if (total <= 0) {
-    return [{ key: 'EMPTY', label: '无调用', value: 1, pct: 100, color: '#e2e8f0' }]
+    return [{ key: 'EMPTY', label: '无调用', value: 0, pct: 100, color: '#e2e8f0' }]
   }
   return entries.map((item) => Object.assign({}, item, { pct: (item.value / total) * 100 }))
 })
