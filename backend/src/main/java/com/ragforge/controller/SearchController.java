@@ -76,7 +76,7 @@ public class SearchController {
     boolean hasDeprecatedImageQuery =
         req.getQueryImageBase64() != null && !req.getQueryImageBase64().isBlank();
     if (!hasQuery && !hasDeprecatedImageQuery) {
-      throw new BizException(400, "QUERY_REQUIRED");
+      throw new BizException(400, "请输入检索内容");
     }
     log.info(
         "ragforge.api search received strategy={} modality={} kbCount={} topK={} queryLen={}",
@@ -161,7 +161,7 @@ public class SearchController {
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER','SERVICE_ACCOUNT')")
   public Result<SearchResponse> searchByImage(@Valid @RequestBody ImageSearchRequest req) {
     if (req.getQueryImageBase64() == null || req.getQueryImageBase64().isBlank()) {
-      throw new BizException(400, "IMAGE_QUERY_REQUIRED");
+      throw new BizException(400, "请选择用于检索的图片");
     }
     boolean requestedSpecificKbs = req.getKbIds() != null && !req.getKbIds().isEmpty();
     Set<Long> readableKbIds =
