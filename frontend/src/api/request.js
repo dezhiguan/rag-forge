@@ -30,6 +30,15 @@ const ERROR_CODE_LABELS = {
   CHUNK_OVERLAP_OUT_OF_RANGE: '块重叠需要在 0-512 范围内',
   ALREADY_IN_PROGRESS: '文档正在处理，请等待完成后重试',
   ENABLED_REQUIRED: '缺少启用状态参数，请刷新页面后重试',
+  NOT_ORG_ADMIN: '只有组织的所有者或管理员才能执行此操作',
+  NOT_ORG_OWNER: '只有组织所有者才能执行此操作',
+  MODEL_TOGGLE_REQUIRES_PLATFORM_VIEW: '启停模型需切换到「全平台视图」（平台管理员）',
+  KB_VISIBILITY_INVALID: '该可见性不适用于此知识库（团队库仅私有/组织可见，个人库仅私有/公开）',
+  KB_VISIBILITY_PUBLIC_REASON_REQUIRED: '设为公开需填写原因（将记入审计）',
+  KB_VISIBILITY_HAS_DEPENDENCIES: '该库被其他组织的密钥或评测引用，收紧前请确认影响',
+  KB_VISIBILITY_REQUIRED: '请选择可见性',
+  INDIVIDUAL_ORG_NO_INVITE: '个人组织不支持邀请成员',
+  MODEL_DISABLE_WOULD_LEAVE_PURPOSE_UNAVAILABLE: '停用后该用途将没有可用模型，请先启用备用模型',
 }
 
 // 模型 & 成本中心：用途环节中文名（与前端 PURPOSE_META 保持一致）
