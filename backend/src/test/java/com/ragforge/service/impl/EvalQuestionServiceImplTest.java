@@ -3,6 +3,7 @@ package com.ragforge.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -97,6 +98,39 @@ class EvalQuestionServiceImplTest {
   }
 
   @Test
+  void batchCreate_emptyInputReturnsEmptyWithoutInsert() {
+    var result = evalQuestionService.batchCreate(5L, List.of());
+
+    assertThat(result).isEmpty();
+    verify(evalDatasetService).requireDataset(5L);
+    verify(evalQuestionMapper, never()).insert(any(EvalQuestion.class));
+  }
+
+  @Test
+  void batchCreate_deduplicatesJudgeTagsAndIncrementsByCreatedSize() {
+    CreateEvalQuestionDTO first = new CreateEvalQuestionDTO();
+    first.setQuestion("q1");
+    first.setExpectedChunkIds(List.of(1L));
+    first.setJudgeEnabled(true);
+    first.setJudgeTags(List.of(" logic ", "", "logic", "safety"));
+    CreateEvalQuestionDTO second = new CreateEvalQuestionDTO();
+    second.setQuestion("q2");
+    second.setExpectedChunkIds(List.of(2L));
+    when(evalDatasetMapper.selectById(5L)).thenReturn(dataset(5L, 1));
+
+    var result = evalQuestionService.batchCreate(5L, List.of(first, second));
+
+    assertThat(result).hasSize(2);
+    ArgumentCaptor<EvalQuestion> questionCaptor = ArgumentCaptor.forClass(EvalQuestion.class);
+    verify(evalQuestionMapper, org.mockito.Mockito.times(2)).insert(questionCaptor.capture());
+    assertThat(questionCaptor.getAllValues().get(0).getJudgeEnabled()).isTrue();
+    assertThat(questionCaptor.getAllValues().get(0).getJudgeTags()).containsExactly("logic", "safety");
+    ArgumentCaptor<EvalDataset> datasetCaptor = ArgumentCaptor.forClass(EvalDataset.class);
+    verify(evalDatasetMapper).updateById(datasetCaptor.capture());
+    assertThat(datasetCaptor.getValue().getQuestionCount()).isEqualTo(3);
+  }
+
+  @Test
   void update_missingQuestion_throws404() {
     when(evalQuestionMapper.selectById(99L)).thenReturn(null);
 
@@ -124,6 +158,30 @@ class EvalQuestionServiceImplTest {
   }
 
   @Test
+  void delete_missingQuestion_throws404AndDoesNotDecrement() {
+    when(evalQuestionMapper.selectById(8L)).thenReturn(null);
+
+    assertThatThrownBy(() -> evalQuestionService.delete(5L, 8L))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
+
+    verify(evalDatasetMapper, never()).updateById(any(EvalDataset.class));
+  }
+
+  @Test
+  void delete_neverDecrementsBelowZero() {
+    EvalQuestion question = question(7L, 5L, "q", "[1]");
+    when(evalQuestionMapper.selectById(7L)).thenReturn(question);
+    when(evalDatasetMapper.selectById(5L)).thenReturn(dataset(5L, 0));
+
+    evalQuestionService.delete(5L, 7L);
+
+    ArgumentCaptor<EvalDataset> captor = ArgumentCaptor.forClass(EvalDataset.class);
+    verify(evalDatasetMapper).updateById(captor.capture());
+    assertThat(captor.getValue().getQuestionCount()).isZero();
+  }
+
+  @Test
   void listByDataset_returnsPagedResults() {
     EvalQuestion question = question(1L, 5L, "q", "[1]");
     Page<EvalQuestion> page = new Page<>(1, 10);
@@ -135,6 +193,26 @@ class EvalQuestionServiceImplTest {
 
     assertThat(result.getList()).hasSize(1);
     verify(evalDatasetService).requireDataset(5L);
+  }
+
+  @Test
+  void listByDataset_invalidJsonAndDuplicateTagsFallBackGracefully() {
+    EvalQuestion question = question(1L, 5L, "q", "not-json");
+    question.setExpectedTextSnippets("not-json");
+    question.setJudgeEnabled(null);
+    question.setJudgeTags(new String[] {" tag ", "", "tag", "risk"});
+    Page<EvalQuestion> page = new Page<>(2, 5);
+    page.setRecords(List.of(question));
+    page.setTotal(1);
+    when(evalQuestionMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+    var result = evalQuestionService.listByDataset(5L, 2, 5);
+
+    var vo = result.getList().get(0);
+    assertThat(vo.getExpectedChunkIds()).isEmpty();
+    assertThat(vo.getExpectedTextSnippets()).isEmpty();
+    assertThat(vo.getJudgeEnabled()).isFalse();
+    assertThat(vo.getJudgeTags()).containsExactly("tag", "risk");
   }
 
   private static EvalDataset dataset(long id, int questionCount) {

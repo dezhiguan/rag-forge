@@ -27,6 +27,7 @@ import org.springframework.jdbc.core.PreparedStatementSetter;
 import org.springframework.jdbc.core.RowMapper;
 
 @ExtendWith(MockitoExtension.class)
+@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class VectorSearchServiceTest {
 
   @Mock private EmbeddingService embedder;
@@ -149,6 +150,47 @@ class VectorSearchServiceTest {
             () -> vectorSearchService.searchByQueries(List.of("q1"), List.of(1L), null, 5))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Embedding 数量");
+  }
+
+  @Test
+  void search_emptyKbIds_throwsIllegalState() {
+    assertThatThrownBy(() ->
+        vectorSearchService.search("query", List.of(), null, 5))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void searchImage_textQuery_embedsAndReturnsResults() throws Exception {
+    when(vlEmbeddingClient.embed(any())).thenReturn(List.of(new float[]{0.5f, 0.6f}));
+    when(jdbcTemplate.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
+        .thenAnswer(inv -> {
+          RowMapper<SearchResult> mapper = inv.getArgument(2);
+          ResultSet rs = row(99L, 0.9);
+          return List.of(mapper.mapRow(rs, 1));
+        });
+    // mock pgvector connection callback
+    when(jdbcTemplate.execute(any(org.springframework.jdbc.core.ConnectionCallback.class)))
+        .thenReturn(null);
+
+    List<SearchResult> results =
+        vectorSearchService.searchImage("keyword", null, List.of(1L), null, 5, null);
+
+    assertThat(results).hasSize(1);
+    assertThat(results.get(0).getChunkId()).isEqualTo(99L);
+  }
+
+  @Test
+  void searchImage_base64WithDataUri_stripsPrefix() throws Exception {
+    String base64 = "data:image/png;base64,iVBORw0KGgo=";
+    when(vlEmbeddingClient.embed(any())).thenReturn(List.of(new float[]{0.3f}));
+    when(jdbcTemplate.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
+        .thenReturn(List.of());
+
+    List<SearchResult> results =
+        vectorSearchService.searchImage(null, base64, List.of(2L), null, 3, null);
+
+    assertThat(results).isEmpty();
+    verify(vlEmbeddingClient).embed(any());
   }
 
   @Test

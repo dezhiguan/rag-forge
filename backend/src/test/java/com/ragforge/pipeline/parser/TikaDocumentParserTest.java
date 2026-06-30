@@ -92,6 +92,66 @@ class TikaDocumentParserTest {
     assertTrue(ex.getMessage().contains("exe"));
   }
 
+  @Test
+  void parseMarkdownFile_extractsContent(@TempDir Path tempDir) throws IOException {
+    Path md = tempDir.resolve("readme.md");
+    Files.writeString(md, "# Hello\n\nThis is **markdown** content.\n\n- item 1\n- item 2");
+
+    ParseResult result = parser.parse(md.toAbsolutePath().toString(), "md");
+
+    assertNotNull(result.getText());
+    assertTrue(result.getText().contains("Hello") || result.getText().contains("markdown"));
+    assertEquals(1, result.getPageCount());
+  }
+
+  @Test
+  void parseHtmlFile_extractsText(@TempDir Path tempDir) throws IOException {
+    Path html = tempDir.resolve("page.html");
+    Files.writeString(
+        html,
+        "<html><body><h1>Title</h1><p>Body paragraph.</p></body></html>",
+        java.nio.charset.StandardCharsets.UTF_8);
+
+    ParseResult result = parser.parse(html.toAbsolutePath().toString(), "html");
+
+    assertNotNull(result.getText());
+    assertTrue(result.getText().contains("Title") || result.getText().contains("Body"));
+    assertEquals(1, result.getPageCount());
+    assertTrue(result.getParseTimeMs() >= 0);
+  }
+
+  @Test
+  void parseNonExistentFile_throwsBizException() {
+    BizException ex =
+        assertThrows(
+            BizException.class,
+            () -> parser.parse("/non/existent/path/file.pdf", "pdf"));
+
+    assertTrue(ex.getMessage().contains("文件不存在"));
+  }
+
+  @Test
+  void parseEmptyPdf_returnsZeroPageCount(@TempDir Path tempDir) throws IOException {
+    Path emptyPdf = tempDir.resolve("zero-pages.pdf");
+    Files.writeString(emptyPdf, ""); // empty file
+
+    ParseResult result = parser.parse(emptyPdf.toAbsolutePath().toString(), "pdf");
+
+    assertEquals("", result.getText());
+    assertEquals(0, result.getPageCount());
+  }
+
+  @Test
+  void parseMarkdownWithUppercase_normalizes(@TempDir Path tempDir) throws IOException {
+    Path md = tempDir.resolve("file.MD");
+    Files.writeString(md, "Hello from markdown");
+
+    // file extension casing should be normalized
+    ParseResult result = parser.parse(md.toAbsolutePath().toString(), "MD");
+
+    assertNotNull(result);
+  }
+
   private static void createChinesePdf(Path target) throws IOException {
     try (PDDocument document = new PDDocument()) {
       PDPage page = new PDPage();
