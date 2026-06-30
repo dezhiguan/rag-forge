@@ -1,3 +1,5 @@
+> 🕰️ **历史归档** — 本文描述早期 **docker-compose 三层**部署形态。应用层现已迁移到 **k3s**,请以 [`deployment-architecture.md`](deployment-architecture.md) 为准。本文仅供演进追溯。
+
 # RAGForge 三层部署架构
 
 ## 架构概览
@@ -6,7 +8,7 @@
 用户
   │
   ▼
-Server 2 入口层（8.163.63.222 / 172.19.40.32）
+Server 2 入口层（{入口层公网IP} / {入口层内网IP}）
   Nginx + RAGForge 前端 + CareerMate 前端
   │
   ├─ /              → RAGForge 静态资源
@@ -15,12 +17,12 @@ Server 2 入口层（8.163.63.222 / 172.19.40.32）
   └─ /careermate-api/ → careermate_backend → Server 3 :18080/:18081/:18082
   │
   ▼
-Server 3 应用层（8.138.191.228 / 172.25.90.184）
+Server 3 应用层（{应用层公网IP} / {应用层内网IP}）
   RAGForge backend Docker :8080 / :8081 / :8082
   CareerMate backend Docker :18080 / :18081 / :18082
   │
   ▼
-Server 1 数据层（8.163.30.216 / 172.25.90.183）
+Server 1 数据层（{数据层公网IP} / {数据层内网IP}）
   PostgreSQL / PgVector / Elasticsearch / Redis / RocketMQ
   数据层容器按 8C16G 规格调优，详见下方 Server 1 资源配置
   （Reranker 预留，当前不默认启动）
@@ -37,7 +39,7 @@ Server 1 数据层（8.163.30.216 / 172.25.90.183）
 
 ## Server 3 Bootstrap（一次性）
 
-在 `8.138.191.228` 上：
+在 `{应用层公网IP}` 上：
 
 ```bash
 # 1. 安装 Docker
@@ -80,7 +82,7 @@ EOF
 chmod 600 /opt/shared/env/common.env /opt/shared/env/ragforge.env
 
 # 3. 确认数据层连通（见 docs/deployment-migration-runbook.md）
-HOST=172.25.90.183
+HOST={数据层内网IP}
 for p in 5432 9200 6379 9876 10909 10911 10912; do
   nc -vz -w 3 "$HOST" "$p"
 done
@@ -130,15 +132,15 @@ docker compose -f docker-compose-backend.yml up -d --force-recreate
 
 ## Server 2 Bootstrap（一次性）
 
-在 `8.163.63.222` 上：
+在 `{入口层公网IP}` 上：
 
 ```bash
 # RAGForge 与 CareerMate 前端共用此目录；CareerMate 在 careermate/ 子目录
 mkdir -p /opt/rag-forge/frontend/dist/careermate
 
 # 确认可访问 Server 3 应用层
-nc -vz -w 3 172.25.90.184 8080
-nc -vz -w 3 172.25.90.184 18080 18081 18082
+nc -vz -w 3 {应用层内网IP} 8080
+nc -vz -w 3 {应用层内网IP} 18080 18081 18082
 ```
 
 **Server 2 只跑 Nginx + 两个前端**，不部署任何 backend 容器。
@@ -165,8 +167,8 @@ nc -vz -w 3 172.25.90.184 18080 18081 18082
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
-| `RAGFORGE_INGRESS_HOST` | `root@8.163.63.222` | Server 2 SSH |
-| `RAGFORGE_APP_HOST` | `root@8.138.191.228` | Server 3 SSH |
+| `RAGFORGE_INGRESS_HOST` | `root@{入口层公网IP}` | Server 2 SSH |
+| `RAGFORGE_APP_HOST` | `root@{应用层公网IP}` | Server 3 SSH |
 | `RAGFORGE_INGRESS_DIR` | `/opt/rag-forge` | Server 2 目录 |
 | `RAGFORGE_APP_DIR` | `/opt/rag-forge` | Server 3 目录 |
 
@@ -175,11 +177,11 @@ nc -vz -w 3 172.25.90.184 18080 18081 18082
 | Secret | 说明 |
 |--------|------|
 | `RAGFORGE_INGRESS_SSH_KEY` | Server 2 SSH 私钥 |
-| `RAGFORGE_INGRESS_KNOWN_HOSTS` | `ssh-keyscan 8.163.63.222` |
+| `RAGFORGE_INGRESS_KNOWN_HOSTS` | `ssh-keyscan {入口层公网IP}` |
 | `RAGFORGE_APP_SSH_KEY` | Server 3 SSH 私钥 |
-| `RAGFORGE_APP_KNOWN_HOSTS` | `ssh-keyscan 8.138.191.228` |
-| `RAGFORGE_INGRESS_HOST` | 可选，默认 `root@8.163.63.222` |
-| `RAGFORGE_APP_HOST` | 可选，默认 `root@8.138.191.228` |
+| `RAGFORGE_APP_KNOWN_HOSTS` | `ssh-keyscan {应用层公网IP}` |
+| `RAGFORGE_INGRESS_HOST` | 可选，默认 `root@{入口层公网IP}` |
+| `RAGFORGE_APP_HOST` | 可选，默认 `root@{应用层公网IP}` |
 | `RAGFORGE_INGRESS_DIR` | 可选，默认 `/opt/rag-forge`（Server 2） |
 | `RAGFORGE_APP_DIR` | 可选，默认 `/opt/rag-forge`（Server 3） |
 
@@ -193,10 +195,10 @@ curl http://127.0.0.1:8080/api/v1/health
 curl http://127.0.0.1:8080/api/v1/.well-known/ragforge-admin-backend-jwks.json
 
 # Server 2 内网
-curl http://172.19.40.32:19080/api/v1/health
+curl http://{入口层内网IP}:19080/api/v1/health
 
 # 公网入口
-curl http://8.163.63.222/api/v1/health
+curl http://{入口层公网IP}/api/v1/health
 ```
 
 ## /data/files 迁移（Server 2 → Server 3）
@@ -213,16 +215,16 @@ docker volume inspect rag-forge_files_data --format '{{ .Mountpoint }}'
 
 # 3. rsync 到 Server 3（先不删除旧数据）
 # 在 Server 3 上先停止 backend，再同步
-ssh root@8.138.191.228 'cd /opt/rag-forge && \
+ssh root@{应用层公网IP} 'cd /opt/rag-forge && \
   docker compose -f docker-compose-backend.yml stop backend-1 backend-2 backend-3'
 
 # 从旧 Server 2 同步（示例）
 rsync -avz --progress \
-  root@8.163.63.222:/var/lib/docker/volumes/rag-forge_files_data/_data/ \
-  root@8.138.191.228:/var/lib/docker/volumes/rag-forge_files_data/_data/
+  root@{入口层公网IP}:/var/lib/docker/volumes/rag-forge_files_data/_data/ \
+  root@{应用层公网IP}:/var/lib/docker/volumes/rag-forge_files_data/_data/
 
 # 4. 重启 Server 3 backend 并验证上传/下载
-ssh root@8.138.191.228 'cd /opt/rag-forge && \
+ssh root@{应用层公网IP} 'cd /opt/rag-forge && \
   docker compose -f docker-compose-backend.yml up -d'
 ```
 
@@ -235,7 +237,7 @@ ssh root@8.138.191.228 'cd /opt/rag-forge && \
 简要步骤：
 
 1. 启动 Server 3 两个 backend，验证本机健康
-2. 更新 Server 2 `nginx.conf`（`proxy_pass` 指向 `172.25.90.184`）
+2. 更新 Server 2 `nginx.conf`（`proxy_pass` 指向 `{应用层内网IP}`）
 3. `nginx -t && docker compose -f docker-compose-ingress.yml exec nginx nginx -s reload`
 4. 公网验证通过后，停止 Server 2 旧 backend 容器
 

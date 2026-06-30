@@ -1,186 +1,270 @@
 # RAGForge
 
-RAGForge 是一个面向 RAG 应用的知识库检索基础设施服务。
+> **RAG knowledge engine** — document ingestion, multimodal embedding, hybrid retrieval, reranking, RAG answering, quality evaluation and unified auth, exposed as a clean API and an MCP server.
+>
+> 🔗 **Live Demo:** https://ragforge.net
+>
+> **What it is:** RAGForge 不是聊天应用,而是一层**可追溯的检索基础设施**。它的核心输出是 `query → chunks + scores + citations + 分段耗时`,上层 Agent / 问答系统按需取用。
+>
+> **Highlights**
+> - 🔍 5 种检索策略:`vector` / `keyword` / `hybrid (RRF)` / `rewrite` / `full (+rerank)`
+> - 🖼️ 多模态统一向量空间(文本 + 图片同空间,DashScope `qwen3-vl-embedding`)
+> - 💬 RAG 应答(`/api/v1/answer`,SSE 流式,带引用)
+> - 🧪 检索质量评测 + **LLM-as-Judge** 自动打分(DeepSeek)
+> - 🔐 统一认证(Auth Gateway 颁发 JWT/JWKS)+ 知识库级 ACL + API Key + MCP Server
+> - 📊 模型注册表 & 成本中心(按模型/组织计量计价)
+>
+> **Stack:** Java 21 · Spring Boot 3.5 · PostgreSQL + pgvector · Elasticsearch · RocketMQ · Redis · Spring AI (MCP) · Vue 3 · 部署于 k3s。
 
-它负责文档导入、解析、切分、向量化、关键词索引、混合检索、检索调试、质量评测、认证鉴权和 API 输出。RAGForge 本身不是聊天应用，核心输出是可追溯的检索结果：
+---
+
+## 目录
+
+- [项目定位](#项目定位)
+- [核心能力](#核心能力)
+- [架构概览](#架构概览)
+- [技术栈](#技术栈)
+- [检索策略](#检索策略)
+- [多模态与向量空间](#多模态与向量空间)
+- [模型与成本中心](#模型与成本中心)
+- [认证与权限模型](#认证与权限模型)
+- [项目结构](#项目结构)
+- [前端页面](#前端页面)
+- [快速开始(本地开发)](#快速开始本地开发)
+- [API 示例](#api-示例)
+- [MCP Server](#mcp-server)
+- [数据库迁移](#数据库迁移)
+- [部署架构](#部署架构)
+- [文档导航](#文档导航)
+- [当前状态](#当前状态)
+
+---
+
+## 项目定位
+
+RAGForge 是一个面向 RAG 应用的**知识库检索基础设施服务**,负责文档导入、解析、清洗、切分、(多模态)向量化、关键词索引、混合检索、重排、RAG 应答、检索调试、质量评测、统一认证鉴权和 API 输出。
+
+它本身不是问答机器人,核心输出是**可追溯的检索结果**:
 
 ```text
-query -> chunks + scores + metadata + latency
+query -> chunks + scores + citations + metadata + 分段耗时(rewrite/vector/keyword/rerank/total)
 ```
 
-上层 Agent、问答系统或业务应用可以调用 RAGForge 获取候选上下文，再由自己的 LLM 流程生成最终答案。
+上层 Agent、问答系统或业务应用可以调用 RAGForge 获取候选上下文(`/api/v1/search`),或直接使用内置的 RAG 应答(`/api/v1/answer`),也可以通过 MCP 协议把检索能力接入 AI 工具链。本项目是 [CareerMate(AI 求职 Agent)](https://github.com/dezhiguan/careermate) 的知识检索底座。
 
 ## 核心能力
 
-- 知识库和文档管理。
-- 支持 PDF、Markdown、TXT、Word 等常见文档格式解析。
-- 文档切分、Embedding 生成和 RocketMQ 异步索引。
-- PostgreSQL + pgvector 存储业务数据和向量。
-- Elasticsearch 构建 BM25 关键词索引。
-- 多种检索策略：
-  - `vector`：向量语义检索
-  - `keyword`：Elasticsearch BM25 关键词检索
-  - `hybrid`：向量 + 关键词 + RRF 融合
-  - `rewrite`：Query 改写 + 多路向量召回
-  - `full`：Query 改写 + 混合召回 + Rerank 精排
-- 检索调试台：对比不同策略、权重和 TopK 参数。
-- 评测实验室：构建评测集并观察召回、排序和失败样本。
-- 性能诊断页：手动查看检索链路分段耗时。
-- 统一认证与权限：
-  - 后台管理接口使用 Auth Gateway 颁发的 Bearer JWT。
-  - JWT 通过 issuer、audience、JWKS、公钥缓存和时钟偏移校验。
-  - 前端支持账号密码登录、手机号验证码登录、刷新令牌、退出登录、全端退出和密码重置。
-  - 角色支持 `ADMIN`、`KB_EDITOR`、`KB_VIEWER`、`SERVICE_ACCOUNT`。
-  - 知识库访问通过 `kb_acl`、JWT claims 和 API Key 允许的知识库列表做细粒度读写控制。
-  - Auth Gateway 会话撤销和密码变更事件通过 HMAC webhook 同步到 RAGForge，Redis 保存撤销状态。
-- API Key 管理：为外部系统和 MCP 工具提供受控 API 调用，支持启停、服务账号上下文、知识库范围和 Redis 分钟级限流。
-- 文本直传接口：`POST /api/v1/documents/text`，已解析文本直接入库，支持 `chunkType` 语义标注，避免 Tika 二次解析。
-- 元数据过滤检索：检索请求支持 `filter.chunkType` 参数，向量和关键词两路均可按 chunk 类型精确过滤。
-- MCP Server：基于 Spring AI MCP HTTP SSE，暴露 `searchKnowledgeBase` 和 `listKnowledgeBases` 工具，可通过 `http://localhost:8080/sse` 调用 RAGForge 检索能力。
+- **知识库与文档管理**:支持 PDF、Markdown、TXT、Word/OOXML 等常见格式,Tika 解析。
+- **异步文档处理管道**:上传 → 存储 → RocketMQ → 解析 → 清洗 → 分块 → Embedding → PG/ES 入库,全程状态可查。
+- **多模态统一向量空间**:文本与图片统一编码到 **2560 维** 同一向量空间(DashScope `qwen3-vl-embedding`),支持以文搜图/图文混合检索。
+- **5 种检索策略**:`vector` / `keyword` / `hybrid(RRF 融合)` / `rewrite(改写+多路召回)` / `full(改写+混合+rerank 精排)`,每种策略带独立并发限流与超时保护。
+- **RAG 应答**:`POST /api/v1/answer`,SSE 流式返回答案 + 引用片段。
+- **检索调试台**:对比不同策略、权重、TopK 参数下的召回与排序。
+- **质量评测 + LLM-as-Judge**:构建评测集观察召回/排序/失败样本;离线 Golden Set 与在线抽样由 DeepSeek 充当裁判自动打分,质量看板内置。
+- **统一认证与权限**:后台接口使用 Auth Gateway 颁发的 Bearer JWT(RS256 + JWKS 校验);支持账号密码/短信验证码登录、刷新令牌、退出、全端退出、密码重置;角色 `ADMIN` / `KB_EDITOR` / `KB_VIEWER` / `SERVICE_ACCOUNT`;知识库通过 `kb_acl`、JWT claims 和组织模型做细粒度读写控制;Auth Gateway 的会话撤销/密码变更事件经 HMAC webhook 同步,Redis 维护撤销名单。
+- **组织模型**:GitHub 式"个人 + 组织"协作(已移除早期 tenant 多租户),知识库归属 `owner_user_id` / `org_id`,支持组织邀请与通知。
+- **API Key 管理**:为外部系统和 MCP 工具提供受控调用,支持启停、服务账号上下文、知识库范围(`allowed_kb_ids`)和 Redis 分钟级限流。
+- **MCP Server**:基于 Spring AI MCP(WebMVC SSE),暴露 `searchKnowledgeBase`、`listKnowledgeBases`、`answerWithCitations` 三个工具。
+- **模型注册表 & 成本中心**:模型统一注册(`model_config`),按模型/组织维度计量计价(`model_usage_daily`);改写与应答支持运行时动态选型与 fallback。
+- **元数据过滤检索**:检索请求支持 `filter.chunkType` 等参数。
+- **文本直传接口**:`POST /api/v1/documents`(text 通道)已解析文本直接入库,避免二次解析。
 
 ## 架构概览
 
 ```text
-                  +----------------------+
-                  |      Vue Frontend    |
-                  | Login / Dashboard /  |
-                  | Debug / Eval / API   |
-                  +----------+-----------+
-                             |
-                             v
-                  +----------------------+
-                  | Spring Boot Backend  |
-                  | Auth Proxy / REST /  |
-                  | Pipeline / Search    |
-                  +-----+----------+-----+
-                        |          |
-             async job  |          | model calls
-                        v          v
-               +---------------+  +----------------------+
-               |   RocketMQ    |  | DashScope API         |
-               | document jobs |  | embedding/rewrite/    |
-               +-------+-------+  | rerank                |
-                       |          +----------------------+
-                       v
-        +---------------------------------------------+
-        |                 Data Layer                  |
-        | PostgreSQL + pgvector / Elasticsearch / Redis|
-        +---------------------------------------------+
+                         +------------------------------+
+                         |         Vue 3 Frontend       |
+                         | Login / Dashboard / KB /     |
+                         | Debug / Eval / Answer / API  |
+                         +---------------+--------------+
+                                         | HTTPS
+                                         v
+   +-----------------+        +------------------------------+
+   |  Auth Gateway   |<-------|       Spring Boot Backend     |
+   | (独立 IdP 服务)  | JWKS   |  (同一镜像, RAGFORGE_ROLE 区分) |
+   |  JWT 颁发/JWKS   |  +HMAC |  ┌────────┬─────────┬───────┐ |
+   +-----------------+ webhook|  │  api   │ worker  │ judge │ |
+                              |  │ REST/  │ MQ 文档 │ LLM-as│ |
+                              |  │ Search/│ 处理    │ Judge │ |
+                              |  │ Answer │ consumer│ 评测  │ |
+                              |  └───┬────┴────┬────┴───┬───┘ |
+                              +------|---------|--------|------+
+                          async job  |   model |  judge |
+                                     v   calls v        v
+                        +------------------+  +----------------------+
+                        |    RocketMQ      |  |  DashScope / DeepSeek |
+                        | document-process |  |  embedding / rewrite /|
+                        +--------+---------+  |  answer / rerank /judge|
+                                 |            +----------------------+
+                                 v
+            +-------------------------------------------------+
+            |                   Data Layer                    |
+            | PostgreSQL + pgvector(vl_vector 2560) /          |
+            | Elasticsearch(BM25) / Redis                      |
+            +-------------------------------------------------+
 ```
 
-认证链路：
+认证链路:
 
 ```text
 Browser
-  -> RAGForge /api/auth/*
-  -> Auth Gateway
+  -> RAGForge /api/auth/*  (代理到 Auth Gateway)
   -> access token + HttpOnly refresh cookie
   -> RAGForge /api/v1/* with Bearer JWT
-  -> JWKS verify + role/scope check + KB ACL check
+  -> JwtVerifier: JWKS 验签 + issuer/audience + 撤销名单 + 角色/scope + KB ACL
 ```
 
-外部检索链路：
+外部检索链路:
 
 ```text
-Client / MCP
-  -> /api/v1/search or /sse
-  -> Bearer JWT or X-API-Key
-  -> SERVICE_ACCOUNT / user context
-  -> allowed KB filtering
+Client / Agent / MCP
+  -> /api/v1/search | /api/v1/answer | /sse
+  -> Bearer JWT 或 X-API-Key
+  -> SERVICE_ACCOUNT / user 上下文
+  -> 按可读 KB 范围过滤
 ```
 
 ## 技术栈
 
 | 层级 | 技术 |
 | --- | --- |
-| 后端 | Spring Boot 3.5.x, Java 21 |
-| 安全 | Spring Security, JWT, JWKS, HMAC webhook, Redis revocation store |
-| ORM | MyBatis-Plus |
-| 数据库 | PostgreSQL 15 |
-| 向量检索 | pgvector |
-| 关键词检索 | Elasticsearch 8.x |
-| 消息队列 | RocketMQ 5.x |
-| 缓存 / 限流 / 撤销状态 | Redis, Caffeine |
-| 文档解析 | Apache Tika, PDFBox |
-| Embedding / Query Rewrite / Rerank | DashScope API |
-| 前端 | Vue 3, Vite, Axios, Vue Router |
-| 部署 | Docker Compose, Nginx, SkyWalking Java Agent |
+| 后端 | Java 21, Spring Boot 3.5.15 |
+| AI / MCP | Spring AI 1.0.0(`spring-ai-starter-mcp-server-webmvc`) |
+| 安全 | Spring Security, 自研 JWT 校验(RS256 + JWKS), HMAC webhook, Redis 撤销名单 |
+| ORM | MyBatis-Plus 3.5.16 |
+| 数据库 | PostgreSQL + pgvector 0.1.6 |
+| 向量检索 | pgvector(`vl_vector` 2560 维) |
+| 关键词检索 | Elasticsearch 8.15.x(BM25, IK 分词,缺失回退 standard) |
+| 消息队列 | RocketMQ(spring-boot-starter 2.3.3) |
+| 缓存 / 限流 / 撤销 / 分布式锁 | Redis, Caffeine, ShedLock 5.16 |
+| 文档解析 | Apache Tika 2.9.3 |
+| 对象存储 | 阿里云 OSS SDK 3.18.3(抽象层,默认本地盘) |
+| 可观测 | Micrometer + Prometheus, SkyWalking Agent 9.3 |
+| Embedding / Rewrite / Answer / Rerank | DashScope(`qwen3-vl-embedding` / `qwen-turbo` / `qwen-plus` / `qwen3-rerank`) |
+| LLM-as-Judge | DeepSeek(`deepseek-v4-flash`) |
+| 前端 | Vue 3.4, Vite 5, Vue Router 4, Element Plus 2, Axios(纯 JavaScript) |
+| 部署 | k3s(应用层),数据层独立机,入口层 Nginx |
+
+## 检索策略
+
+所有策略共用统一的 `RetrievalService`,检索调试台、评测、诊断页共享同一套链路;返回并记录分段耗时(rewrite / vector / keyword / rerank / total)。
+
+| 策略 | 链路 | 是否 Rerank | 默认并发上限 | 默认超时 |
+| --- | --- | --- | --- | --- |
+| `vector` (默认) | pgvector 余弦相似度 | 否 | 5 | 8s |
+| `keyword` | Elasticsearch BM25 | 否 | 20 | 5s |
+| `hybrid` | vector + keyword 并行 + RRF 融合(RRF_K=10) | 否 | 5 | 12s |
+| `rewrite` | Query 改写(qwen-turbo)+ 多路向量召回 | 否 | 3 | 10s |
+| `full` | 改写 → 多查询混合(RRF)→ DashScope rerank 精排 | **是** | 1 | 15s |
+
+- `full` 是唯一调用 rerank 的策略,默认并发限制为 1,避免重链路拖垮在线服务。
+- 受控检索线程池(`retrieval-` 前缀)并行执行 hybrid/full 的多路召回;触发限流返回 429,超时返回 504。
+
+## 多模态与向量空间
+
+- 文本与图片统一编码到 **同一个 2560 维向量空间**(DashScope `qwen3-vl-embedding` 多模态 embedding 接口),向量列为 `document_chunks.vl_vector vector(2560)`。
+- **已知工程权衡**:pgvector 0.8.x 的 HNSW/IVF 索引维度上限为 2000,因此 2560 维向量**当前没有近似索引,向量检索走顺序扫描(sequential scan)**。在当前规模(约 10 万 chunk)下延迟可接受;若规模显著增长,需考虑降维、PQ 量化或换向量库。该取舍记录在 `backend/src/main/resources/db/manual/V27__vl_unified_vector.sql`。
+- 图片文档走独立的图片处理管道(`ImagePipelineService`),可选 OCR(`qwen-vl-ocr`)与图片描述。
+
+## 模型与成本中心
+
+| 用途(Purpose) | 当前模型 | 供应商 | 备注 |
+| --- | --- | --- | --- |
+| EMBEDDING | `qwen3-vl-embedding` | DashScope | 文本+图片统一 2560 维 |
+| REWRITE | `qwen-turbo` | DashScope | Query 改写,支持运行时动态选型 |
+| ANSWER | `qwen-plus` | DashScope | RAG 应答 / 调试台,支持运行时动态选型 |
+| RERANK | `qwen3-rerank` | DashScope | 仅 `full` 策略调用 |
+| OCR | `qwen-vl-ocr` | DashScope | 图片管道可选 |
+| JUDGE | `deepseek-v4-flash` | DeepSeek | LLM-as-Judge 评测 |
+
+- 模型在 `model_config` 表统一注册(code / vendor / purpose / 单价 / 主备 / fallback),日用量与成本汇总进 `model_usage_daily`(支持按 `org_id` 组织维度分摊)。
+- 动态选型(主→fallback→任一可用)目前接入 **REWRITE / ANSWER**;EMBEDDING / RERANK / OCR / JUDGE 走配置默认模型并参与计量计价。
+- 历史说明:早期设计中 rerank 曾计划用本地 Python 微服务(`reranker/`,jina-reranker),现已改为 DashScope 在线 `qwen3-rerank`;`reranker/` 目录作为历史/可选预留,**线上未部署**。
+
+## 认证与权限模型
+
+核心入口与鉴权方式:
+
+| 入口 | 鉴权方式 | 说明 |
+| --- | --- | --- |
+| `/api/auth/**` | 公开 | 代理 Auth Gateway,处理登录/刷新/退出/密码重置/userinfo |
+| `/api/v1/health`、`/actuator/health` | 公开 | 健康检查 |
+| `/api/v1/.well-known/...jwks.json` | 公开 | RAGForge 后端 client assertion 公钥 |
+| `/api/v1/events/**` | HMAC | Auth Gateway 事件 webhook(HmacSHA256 + 时间戳) |
+| `/api/v1/search`、`/api/v1/answer`、`/mcp/**`、`/sse` | JWT 或 API Key | 外部检索 / RAG 应答 / MCP |
+| 其他 `/api/v1/**` | JWT | 后台管理 API |
+
+角色:
+
+| 角色 | 主要能力 |
+| --- | --- |
+| `ADMIN` | 访问非 SYSTEM 知识库,管理 API Key,执行维护任务(破玻璃提权写审计) |
+| `KB_EDITOR` | 读写被授权知识库,运行评测和诊断 |
+| `KB_VIEWER` | 读取被授权知识库并运行检索调试 |
+| `SERVICE_ACCOUNT` | 由 API Key 创建,仅能访问 API Key 允许的知识库 |
+
+知识库访问由统一的 `KbAccessGuard` 裁决:SYSTEM 库永不可访问 → ADMIN(破玻璃)可访问任意非 SYSTEM 库 → owner 放行 → PUBLIC 库可读 → 组织库按 org 角色 → 回退 JWT claims(`rag_readable/writable_kb_ids`)或 `kb_acl`。
+
+详见 [docs/dev/auth-and-permissions.md](docs/dev/auth-and-permissions.md)。
 
 ## 项目结构
 
 ```text
 rag-forge/
-├── backend/                 # Spring Boot 后端服务
-├── frontend/                # Vue 3 前端
-├── reranker/                # 可选 Python Reranker 服务预留
-├── docker/                  # 中间件配置
-├── docs/                    # 架构、认证权限、部署、路线图
-├── deploy/                  # K8s、Nginx、环境变量和部署脚本
-├── docker-compose.yml           # 本地中间件环境
-├── docker-compose-data.yml      # Server 1 数据与检索层
-├── docker-compose-ingress.yml   # Server 2 入口层（Nginx + 前端）
-├── docker-compose-backend.yml   # Server 3 应用层（RAGForge 后端 3 副本）
-├── docker-compose-app.yml       # LEGACY 单机模式（Nginx + 后端同机）
-├── deploy.sh                    # 三层部署脚本
-└── nginx.conf                   # Nginx 前端和 API 代理配置
+├── backend/                 # Spring Boot 后端(api / worker / judge 同一镜像,RAGFORGE_ROLE 区分角色)
+├── frontend/                # Vue 3 前端(纯 JS)
+├── reranker/                # 历史/可选 Python Reranker 预留(线上未部署,rerank 实走 DashScope)
+├── docker/                  # 本地中间件配置
+├── deploy/                  # k3s 清单、Nginx、环境变量模板和部署脚本
+├── docs/
+│   ├── architecture.md      # 权威架构文档(以此为准)
+│   ├── prototype/           # 早期设计稿与原型(历史)
+│   ├── dev/                 # 实现说明、任务、路线、设计规格
+│   ├── test/                # 测试计划、用例、验收报告、排障
+│   └── deploy/              # 部署、运维、监控
+├── docker-compose*.yml      # 本地中间件 / 历史单机部署编排
+└── deploy.sh                # 部署脚本
 ```
 
-## 页面功能
+## 前端页面
 
-- Login：账号密码登录、手机号验证码登录。
-- Reset Password：短信验证后重置密码。
-- Dashboard：知识库、文档、分块和最近活动概览。
-- Knowledge Base：创建知识库、上传和管理文档。
-- Document Detail：查看文档解析状态和分块结果。
-- Debug Console：调试检索策略并查看返回 Chunk。
-- Evaluation Lab：管理评测集并分析检索质量。
-- API Gateway：管理 API Key 和外部调用。
-- Performance Probe：手动诊断检索链路耗时。
-- Forbidden：当前角色或 scope 无权访问时展示。
+主要路由(基于角色/scope 控制可见性,真实权限以后端为准):
 
-前端路由按角色和 scope 控制可访问页面，默认角色能力在 `frontend/src/composables/useAuth.js` 中兜底，真实权限仍以后端校验为准。
+- **Login / Register / ResetPassword** — 登录、注册、密码重置。
+- **Dashboard(`/`)** — 知识库、文档、分块和最近活动概览。
+- **KnowledgeBase(`/knowledge`)/ KnowledgeDocuments** — 知识库与文档管理。
+- **UploadWizard(`/uploads/wizard`)** — 文档上传向导。
+- **DocumentDetail(`/document/:id`)** — 文档解析状态与分块结果。
+- **DebugConsole(`/debug`)** — 检索策略调试。
+- **AnswerPlayground(`/answer`)** — RAG 应答演练(流式 + 引用)。
+- **EvaluationLab(`/eval`)/ EvaluationQuality(`/evaluation/quality`)** — 评测集与 LLM-as-Judge 质量看板。
+- **ModelCostCenter(`/models`)** — 模型注册与成本看板。
+- **DeveloperCenter(`/api`)** — API Key 与外部调用管理。
+- **Organizations(`/orgs`)/ AccountSettings(`/account`)** — 组织管理与账号设置。
+- **PerformanceProbe(`/perf-probe`)** — 检索链路耗时诊断。
+- **Forbidden(`/403`)** — 无权访问提示。
 
-## 环境要求
-
-- JDK 21+
-- Maven 3.8+
-- Node.js 18+
-- Docker 和 Docker Compose
-- Redis
-- DashScope API Key
-- 可选：Auth Gateway。如果没有本地 Auth Gateway，只能使用开发 API Key 调试 `/api/v1/search`、MCP 等外部检索入口，后台页面需要有效 JWT。
-
-## 快速开始
+## 快速开始(本地开发)
 
 ### 1. 启动中间件
 
-本地开发可以先启动 PostgreSQL、Elasticsearch 和 RocketMQ：
-
 ```bash
-docker compose up -d
+docker compose up -d   # PostgreSQL+pgvector / Elasticsearch / RocketMQ
 ```
 
-默认端口：
-
-- PostgreSQL + pgvector：`localhost:5433`
-- Elasticsearch：`localhost:9200`
-- RocketMQ NameServer：`localhost:9876`
-- RocketMQ Broker：`localhost:10911`
-
-Redis 没有包含在根目录 `docker-compose.yml` 中，开发配置默认读取 `REDIS_HOST` 和 `REDIS_PORT`。认证事件撤销、API Key 限流和 ShedLock 都依赖 Redis，建议本地提供一个 Redis 实例。
+默认端口:PostgreSQL `5433`、Elasticsearch `9200`、RocketMQ NameServer `9876`、Broker `10911`。Redis 需另行提供(认证撤销、API Key 限流、ShedLock 均依赖)。
 
 ### 2. 配置环境变量
-
-复制环境变量模板：
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-编辑 `backend/.env`，至少配置以下内容：
+至少配置:
 
 ```properties
 DASHSCOPE_API_KEY=your-dashscope-api-key
+DEEPSEEK_API_KEY=your-deepseek-api-key        # LLM-as-Judge 评测需要
 POSTGRES_HOST=127.0.0.1
 POSTGRES_PORT=5433
 POSTGRES_DB=ragforge
@@ -193,228 +277,122 @@ REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 ```
 
-如需启用后台登录和 JWT 认证，请同时配置 Auth Gateway：
-
-```properties
-RAGFORGE_AUTH_ISSUER=https://auth.careermate.cn
-RAGFORGE_AUTH_AUDIENCE=ragforge-admin-api
-RAGFORGE_AUTH_JWKS_URL=http://127.0.0.1:8090/.well-known/jwks.json
-RAGFORGE_AUTH_PROXY_BASE_URL=http://127.0.0.1:8090
-RAGFORGE_AUTH_PROXY_CLIENT_ID=ragforge-admin-backend
-RAGFORGE_AUTH_PROXY_TARGET_AUDIENCE=ragforge-admin-api
-RAGFORGE_AUTH_PROXY_TOKEN_ENDPOINT_AUDIENCE=https://auth.careermate.cn/oauth/token
-RAGFORGE_AUTH_PROXY_CLIENT_ASSERTION_PRIVATE_KEY=
-RAGFORGE_AUTH_PROXY_CLIENT_ASSERTION_KID=ragforge-admin-backend
-RAGFORGE_AUTH_PROXY_PUBLIC_KEY_PEM=
-RAGFORGE_AUTH_PROXY_COOKIE_SECURE=false
-RAGFORGE_AUTH_EVENT_HMAC_SECRET=dev-secret-must-match-authgw
-```
-
-认证和权限配置详见 [docs/auth-and-permissions.md](docs/auth-and-permissions.md)。
+后台登录与 JWT 认证还需配置 Auth Gateway(issuer / audience / JWKS / token 代理 / client assertion 私钥 / HMAC secret),详见 [docs/dev/auth-and-permissions.md](docs/dev/auth-and-permissions.md)。本地 `dev` profile 下文件存储默认走本地盘。
 
 ### 3. 启动后端
 
 ```bash
-cd backend
-mvn spring-boot:run
-```
-
-健康检查：
-
-```text
-http://localhost:8080/api/v1/health
+cd backend && mvn spring-boot:run
+# 健康检查: http://localhost:8080/api/v1/health
 ```
 
 ### 4. 启动前端
 
 ```bash
-cd frontend
-npm install
-npm run dev
-```
-
-前端地址：
-
-```text
-http://localhost:5173
-```
-
-Vite 开发服务当前把 `/api/v1` 代理到后端。认证接口 `/api/auth` 在生产环境由 Nginx 同源转发；本地调试登录能力时，需要额外配置前端代理或通过后端同源入口访问。
-
-## 构建
-
-后端构建：
-
-```bash
-cd backend
-mvn clean package -DskipTests
-```
-
-前端构建：
-
-```bash
-cd frontend
-npm install
-npm run build
+cd frontend && npm install && npm run dev
+# 前端: http://localhost:5173
 ```
 
 ## API 示例
 
-后台接口默认使用 Bearer JWT：
-
-```bash
-curl http://localhost:8080/api/v1/kb \
-  -H "Authorization: Bearer <access-token>"
-```
-
-检索接口支持 Bearer JWT 或 API Key：
+检索接口(JWT 或 API Key):
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/search \
   -H "Content-Type: application/json" \
   -H "X-API-Key: sk-ragforge-dev" \
   -d '{
-    "query": "候选人有哪些 Java 项目经验？",
+    "query": "候选人有哪些 Java 项目经验?",
     "strategy": "full",
     "topK": 5,
-    "filter": {
-      "chunkType": ["resume", "project"]
-    }
+    "filter": { "chunkType": ["resume", "project"] }
   }'
 ```
 
-说明：
+RAG 应答(SSE 流式):
 
-- `sk-ragforge-dev` 只在 `dev` profile 下由 `DevApiKeyConfig` 提供，用于本地调试 `/api/v1/search`、`/mcp/**`、`/sse`。
-- 生产环境应通过 API Gateway 页面或 `api_keys` 表创建 `sk-rf-*` API Key。
-- API Key 请求会转换成 `SERVICE_ACCOUNT` 上下文，并按 `allowed_kb_ids` 过滤可检索知识库。
-- API Key 默认分钟限流为 `100`，Redis 异常时 fail-open 放行业务请求并记录告警。
-- 普通后台管理接口不接受 API Key，只接受 Auth Gateway 颁发的 JWT。
+```bash
+curl -N -X POST http://localhost:8080/api/v1/answer \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: sk-ragforge-dev" \
+  -d '{ "query": "总结候选人的后端技术栈", "kbId": 16 }'
+```
 
-## 认证与权限模型
+说明:
 
-核心入口：
+- `sk-ragforge-dev` 仅在 `dev` profile 下由 `DevApiKeyConfig` 提供;生产请在开发者中心(`/api`)或 `api_keys` 表创建 `sk-rf-*` Key。
+- API Key 请求转换为 `SERVICE_ACCOUNT` 上下文,按 `allowed_kb_ids` 过滤;默认分钟限流 100,Redis 异常时 fail-open。
+- 普通后台管理接口只接受 Auth Gateway 颁发的 JWT,不接受 API Key。
 
-| 入口 | 鉴权方式 | 说明 |
-| --- | --- | --- |
-| `/api/auth/**` | 公开 | RAGForge 代理到 Auth Gateway，处理登录、刷新、退出、密码重置和 userinfo |
-| `/api/v1/health`、`/actuator/health` | 公开 | 健康检查 |
-| `/api/v1/.well-known/ragforge-admin-backend-jwks.json` | 公开 | RAGForge 后端自身 client assertion 公钥 |
-| `/api/v1/events/**` | HMAC | Auth Gateway 事件 webhook，校验签名和时间戳 |
-| `/api/v1/search`、`/mcp/**`、`/sse` | JWT 或 API Key | 面向外部检索和 MCP |
-| 其他 `/api/v1/**` | JWT | 后台管理 API |
+## MCP Server
 
-角色和权限：
+基于 Spring AI MCP(WebMVC SSE),server name `ragforge-mcp-server`,暴露三个工具:
 
-| 角色 | 主要能力 |
-| --- | --- |
-| `ADMIN` | 可访问非系统知识库，管理 API Key，执行维护任务 |
-| `KB_EDITOR` | 可读写被授权知识库，运行评测和诊断 |
-| `KB_VIEWER` | 可读取被授权知识库并运行检索调试 |
-| `SERVICE_ACCOUNT` | 由 API Key 创建，仅能访问 API Key 允许的知识库 |
+- `searchKnowledgeBase` — 按策略检索知识库
+- `listKnowledgeBases` — 列出可访问的知识库
+- `answerWithCitations` — RAG 应答并返回引用
 
-知识库权限来源：
-
-- `ADMIN`：可访问非 `SYSTEM` 类型知识库。
-- 用户 JWT：优先使用 claims 中的 `rag_readable_kb_ids`、`rag_writable_kb_ids`，否则回退查询 `kb_acl`。
-- API Key：使用 `api_keys.allowed_kb_ids` 作为可读写知识库范围。
-- 文档读写会先解析文档所属知识库，再调用同一套 `KbAccessGuard`。
+SSE 订阅端点 `/sse`,消息端点 `/mcp/message`,均按调用方可读 KB 范围过滤。
 
 ## 数据库迁移
 
-后端启用 Flyway，迁移文件位于 `backend/src/main/resources/db/migration`。
+后端启用 Flyway(`baseline-version=26`、`out-of-order=true`),迁移文件位于 `backend/src/main/resources/db/migration`,当前最新 `V51`。核心演进:
 
-当前与认证权限相关的迁移：
+- `V1` 初始 9 表;`V4/V7` chunk_type;`V6` HNSW 索引(1024 维时代)。
+- `V9/V10/V12` 知识库 owner/visibility、`kb_acl`、API Key 扩展。
+- `V19~V26` 身份标识、清洗 profile、chunker profile、多模态图片 chunk。
+- `V28` RAG 应答(`answer_logs`);`V30/V32` LLM-as-Judge(`judge_results` 等)。
+- `V35~V38` 模型成本中心 + rerank 主备修正(`qwen3-rerank` 为主)。
+- `V42` JWT 撤销名单;`V44` 破玻璃审计;`V45` 组织模型(移除 `tenant_id`)。
+- **手工迁移** `db/manual/V27__vl_unified_vector.sql`:向量列从 `vector(1024)` 切换为统一的 `vl_vector(2560)`(在 Flyway 之外执行)。
 
-- `V9__add_kb_owner_and_visibility.sql`：给知识库增加 `tenant_id`、`owner_user_id`、`visibility`、`kb_type`。
-- `V10__create_kb_acl.sql`：创建 `kb_acl`，并把知识库 owner 初始化为 admin 权限。
-- `V12__extend_api_keys.sql`：给 API Key 增加 `principal_type`、`principal_id`、`scopes`、`allowed_kb_ids`，并移除旧的数据库开发 Key。
+## 部署架构
 
-## 部署说明
+生产采用**物理三层分离**,但**应用层运行在 k3s** 上(不再是 docker-compose):
 
-生产环境采用三层架构，详见 [docs/deployment-three-tier.md](docs/deployment-three-tier.md)：
-
-| 服务器 | 角色 | 组件 |
+| 层 | 角色 | 组件 |
 | --- | --- | --- |
-| Server 1（172.25.90.183） | 数据层 | PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ（8C16G，数据层容器已按导入业务数据调优；Reranker 预留，当前不默认启动） |
-| Server 2（8.163.63.222） | 入口层 | Nginx、RAGForge 前端、CareerMate 前端 |
-| Server 3（8.138.191.228） | 应用层 | RAGForge backend 3 副本、CareerMate backend 3 副本、爬虫 |
+| 数据层(独立节点) | 状态层 | PostgreSQL + pgvector、Elasticsearch、Redis、RocketMQ(裸装,未进 k8s) |
+| 入口层(独立节点) | 接入层 | 宿主机 Nginx:静态前端 + `/api/` 反代到应用层 NodePort |
+| 应用层(k3s 单节点) | 计算层 | `ragforge` 命名空间下的全部 pod |
 
-Compose 文件：
+`ragforge` 命名空间(**同一个 backend 镜像,通过 `RAGFORGE_ROLE` 区分角色**):
 
-- `docker-compose-data.yml` -> Server 1（数据与检索层资源限制随 Server 1 规格维护）
-- `docker-compose-ingress.yml` -> Server 2
-- `docker-compose-backend.yml` -> Server 3
-- `docker-compose-app.yml` -> LEGACY 单机模式（兼容旧部署）
+| Deployment | 角色 | 副本 | Service |
+| --- | --- | --- | --- |
+| `ragforge-api` | REST / Search / Answer | 3 | NodePort `8080:31090` |
+| `ragforge-frontend` | 前端(集群内) | 2 | NodePort `80:31002` |
+| `ragforge-worker` | RocketMQ 文档处理 consumer | 1 | 无(纯后台) |
+| `ragforge-judge` | LLM-as-Judge 评测 | 1 | 无(纯后台) |
 
-部署注意事项：
+入口链路:`域名(443) → 入口层 Nginx → 应用层 NodePort 31090 → ragforge-backend Service → api pod`。Auth Gateway 在同集群独立命名空间,RAGForge 通过集群内 DNS(`auth-gateway.auth-gateway.svc:8090`)消费其 JWKS 与 token 代理。
 
-- Server 1 跑数据层，当前 PostgreSQL `4g`、Elasticsearch `5g`、RocketMQ Broker `2g`、Redis `512m`；Server 2 只跑 Nginx + 两个前端；Server 3 跑 RAGForge k3s backend 和 CareerMate k3s backend。
-- 三个 RAGForge backend 副本共用 Server 3 宿主机 `/data/files`，后续多机器部署前应切换到 OSS、MinIO、NAS 或 NFS。
-- RAGForge 与 CareerMate 前端共用 Nginx html 根目录：`/opt/rag-forge/frontend/dist/`。CareerMate 前端在子目录 `careermate/`，由 CareerMate CI 单独同步。
-- Server 3 使用 `/opt/shared/env/common.env` 和 `/opt/shared/env/ragforge.env` 注入敏感配置，这些文件不入库、不随 CI 同步。
-- Auth Gateway 的 issuer、JWKS、token 代理地址、client assertion 私钥、公钥和 HMAC webhook secret 必须通过服务器本地 env 配置。
-- 迁移与切流步骤见 [docs/deployment-migration-runbook.md](docs/deployment-migration-runbook.md)。
+文件存储当前为节点本地 `hostPath /data/files`(单节点可用);OSS 抽象层(`ObjectStorage`)已就绪,跨节点多实例前建议切换到 OSS/NAS。k3s 清单见 [`deploy/k8s/ragforge/`](deploy/k8s/ragforge/),完整说明见 [docs/deploy/deployment-architecture.md](docs/deploy/deployment-architecture.md)。
 
-当前版本更适合作为中小型知识库检索服务验证。一个比较务实的容量目标是：
+> 历史部署文档(docker-compose 三层)保留在 `docs/deploy/` 中并已标注为历史口径,**以 `deployment-architecture.md` 为准**。
 
-```text
-10,000 份文档 / 50,000 到 100,000 个 Chunk
-```
+## 文档导航
 
-实际容量取决于文档长度、切分参数、Embedding 调用速度、ES/PG 参数和服务器资源。
-
-## 文档
-
-- [认证与权限模型](docs/auth-and-permissions.md)
-- [三层部署架构](docs/deployment-three-tier.md)
-- [应用层多副本部署](docs/deployment-app-cluster.md)
-- [迁移 Runbook](docs/deployment-migration-runbook.md)
-- [架构设计](docs/architecture.md)
-- [当前真实架构与重构路线](docs/current-architecture-and-refactor-roadmap.md)
-- [测试计划](docs/ragforge-test-plan.html)
+- 📐 [架构设计(权威)](docs/architecture.md)
+- 🛠️ 开发:[认证与权限](docs/dev/auth-and-permissions.md) · [安全与组织模型](docs/dev/security-and-multitenancy.md) · [模型成本中心](docs/dev/model-cost-center-design.md) · [重构路线](docs/dev/current-architecture-and-refactor-roadmap.md)
+- 🚀 部署:[部署架构(k3s,权威)](docs/deploy/deployment-architecture.md) · [OSS CORS](docs/deploy/oss-cors-setup.md) · [SkyWalking 业务日志](docs/deploy/skywalking-business-logs.md)
+- 🧪 测试:[检索质量测试](docs/test/retrieval-quality-test-plan-V1.md) · [V5 验收用例](docs/test/v5-acceptance-playwright-cases.md)
+- 🗂️ [版本演进时间线(CHANGELOG)](docs/CHANGELOG.md) · [文档索引](docs/INDEX.md)
 
 ## 当前状态
 
-RAGForge 已完成阶段性验收，核心的导入、索引、检索、调试、评测、API Key 管理、统一认证、知识库权限和线上部署流程已经跑通。
+RAGForge 已上线运行(见 [Live Demo](https://ragforge.net)),核心的导入、(多模态)索引、检索、RAG 应答、调试、评测、LLM-as-Judge、API Key、统一认证、组织权限和 k3s 部署链路均已跑通。
 
-当前线上验证规模：
+当前线上验证规模(参考):
 
 ```text
-8 个知识库 / 9,800 份文档 / 约 96,000 个 Chunk
+约 10,000 份文档 / 约 100,000 个 Chunk / 8 个知识库
 ```
 
-已完成的工程化增强：
+实际容量取决于文档长度、切分参数、Embedding 速度、ES/PG 参数和资源。当前向量检索为顺序扫描(见[多模态与向量空间](#多模态与向量空间)),更适合中小型知识库检索场景。
 
-- 统一 `RetrievalService`，搜索接口、评测和诊断页共用同一套检索链路。
-- 检索链路返回并记录分段耗时：rewrite、vector、keyword、rerank、total。
-- `vector`、`hybrid`、`full` 增加策略级限流和服务端超时保护。
-- `full` 默认限制并发 1，避免重链路拖垮在线服务。
-- `hybrid` 中 keyword/vector 召回使用受控检索线程池并行执行。
-- 增加 query embedding 本地缓存、Dashboard 缓存和知识库列表缓存。
-- 补充 PostgreSQL/pgvector 相关查询索引 SQL。
-- 接入 Spring Security、JWT、JWKS、Auth Gateway 代理、Auth 事件撤销和知识库 ACL。
-- API Key 支持服务账号上下文、允许知识库范围和 Redis 分钟级限流。
-- 完成 Server 3 单机三副本部署形态，配合 Nginx upstream 切流。
+后续路线见 [docs/dev/current-architecture-and-refactor-roadmap.md](docs/dev/current-architecture-and-refactor-roadmap.md):向量索引优化、文件存储切 OSS、API/worker/judge 资源隔离深化、评测指标增强、可观测告警完善等。
 
-仍建议后续继续完善：
+## License
 
-- 将本地文件存储切换为 OSS / MinIO / NAS，便于后端跨机器多实例部署。
-- API 实例、文档处理 Worker、维护任务实例做角色隔离。
-- 为 `full` 策略增加异步化、缓存或更明确的队列化能力。
-- 引入 Prometheus/Grafana 或云监控告警，长期观察 PG、ES、JVM、Redis 和检索分段耗时。
-- API Key 管理页面补齐 `allowedKbIds`、`scopes`、`principal`、`rateLimit` 的编辑能力。
-- 评测集增加人工标注与 MRR/Top1 等更严格指标。
-- 对认证事件 webhook 增加可观测指标和补偿排查工具。
-
-## 开源说明
-
-这个项目适合作为 RAG 检索系统、混合检索、工程化文档处理、评测闭环和统一认证接入的学习与实践项目。
-
-如果要正式开源发布，建议补充：
-
-- `LICENSE`
-- 示例截图
-- 更完整的 API 文档
-- 一份可复现的 demo 数据集
-- 本地 Auth Gateway 或 mock auth 的最小启动说明
+尚未声明开源协议。如需复用请联系作者。
