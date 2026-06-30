@@ -598,13 +598,17 @@ const showEdit = ref(false)
 const submittingKb = ref(false)
 const openHint = ref(null)
 
-// 我作为 OWNER/ADMIN 的组织（可在其下建组织库）
+// 我作为 OWNER/ADMIN 的「团队」组织（可在其下建组织库）。
+// 排除个人组织（personal / type=INDIVIDUAL）：它就是"个人（我自己）"那一项，
+// 不再作为普通"组织：xxx"重复出现（建库归属选"个人"时后端会自动落到个人组织）。
 const manageableOrgs = ref([])
 async function loadManageableOrgs() {
   try {
     const res = await listOrgs()
     const orgs = res?.data || res || []
-    manageableOrgs.value = orgs.filter((o) => o.myRole === 'OWNER' || o.myRole === 'ADMIN')
+    manageableOrgs.value = orgs.filter(
+      (o) => (o.myRole === 'OWNER' || o.myRole === 'ADMIN') && !o.personal,
+    )
   } catch (e) {
     manageableOrgs.value = []
   }
