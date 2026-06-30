@@ -330,7 +330,6 @@
           <label class="field">
             <span>归属</span>
             <select v-model="kbForm.orgId" @change="onOwnerChange" data-test="kb-form-owner">
-              <option :value="null" data-test="kb-form-owner-personal">个人（我自己）</option>
               <option
                 v-for="org in manageableOrgs"
                 :key="org.id"
@@ -600,14 +599,13 @@ const openHint = ref(null)
 
 // 我加入的全部组织（含个人组织 personal/type=INDIVIDUAL）。
 const allMyOrgs = ref([])
-// 我作为 OWNER/ADMIN 的「团队」组织（可在其下建组织库）。
-// 排除个人组织：它就是"个人（我自己）"那一项，不再作为普通"组织：xxx"重复出现
-// （建库归属选"个人"时后端会自动落到个人组织）。
+// 我作为 OWNER/ADMIN 的组织（可在其下建库）。一切皆组织：个人组织也在内，
+// 统一以"组织：xxx"呈现，建库归属默认预选个人组织。
 const manageableOrgs = computed(() =>
-  allMyOrgs.value.filter(
-    (o) => (o.myRole === 'OWNER' || o.myRole === 'ADMIN') && !o.personal,
-  ),
+  allMyOrgs.value.filter((o) => o.myRole === 'OWNER' || o.myRole === 'ADMIN'),
 )
+// 我的个人组织（personal/type=INDIVIDUAL，恒存在且唯一），作为建库归属默认项。
+const personalOrg = computed(() => allMyOrgs.value.find((o) => o.personal) || null)
 async function loadManageableOrgs() {
   try {
     const res = await listOrgs()
@@ -884,7 +882,7 @@ async function toggleKb(kbId) {
   }
 }
 
-function openCreate() {
+async function openCreate() {
   kbForm.value = {
     name: '',
     description: '',
@@ -893,8 +891,10 @@ function openCreate() {
     orgId: null,
     visibility: 'PRIVATE',
   }
-  loadManageableOrgs()
   showCreate.value = true
+  await loadManageableOrgs()
+  // 默认归属＝个人组织（一切皆组织，沿用"默认建到自己名下"）
+  kbForm.value.orgId = personalOrg.value?.id ?? manageableOrgs.value[0]?.id ?? null
 }
 
 async function onCreateKb() {
