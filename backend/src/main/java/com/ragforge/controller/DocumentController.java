@@ -127,20 +127,20 @@ public class DocumentController {
   }
 
   @DeleteMapping("/documents/{id}")
-  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR') and @kbAccessGuard.canWriteDocument(#id)")
+  @PreAuthorize("@kbAccessGuard.canWriteDocument(#id)")
   public Result<Void> delete(@PathVariable Long id) {
     documentService.delete(id);
     return Result.ok();
   }
 
   @PostMapping("/documents/{id}/reprocess")
-  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR') and @kbAccessGuard.canWriteDocument(#id)")
+  @PreAuthorize("@kbAccessGuard.canWriteDocument(#id)")
   public ResponseEntity<Map<String, Object>> reprocess(@PathVariable Long id) {
     return ResponseEntity.ok(uploadApplicationService.reprocess(id));
   }
 
   @PostMapping("/documents/{id}/rechunk")
-  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR') and @kbAccessGuard.canWriteDocument(#id)")
+  @PreAuthorize("@kbAccessGuard.canWriteDocument(#id)")
   public ResponseEntity<Map<String, Object>> rechunk(
       @PathVariable Long id, @RequestBody(required = false) RechunkRequest req) {
     return ResponseEntity.ok(uploadApplicationService.rechunk(id, req));

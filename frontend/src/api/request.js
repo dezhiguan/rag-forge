@@ -39,6 +39,8 @@ const ERROR_CODE_LABELS = {
   KB_VISIBILITY_REQUIRED: '请选择可见性',
   INDIVIDUAL_ORG_NO_INVITE: '个人组织不支持邀请成员',
   MODEL_DISABLE_WOULD_LEAVE_PURPOSE_UNAVAILABLE: '停用后该用途将没有可用模型，请先启用备用模型',
+  Forbidden: '您没有执行该操作的权限',
+  Unauthorized: '登录已过期，请重新登录',
 }
 
 // 模型 & 成本中心：用途环节中文名（与前端 PURPOSE_META 保持一致）
