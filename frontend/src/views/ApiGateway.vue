@@ -56,8 +56,7 @@
                 </span>
                 <span
                   class="key-del"
-                  :class="{ 'is-disabled': !deleteEnabled }"
-                  :title="deleteEnabled ? '删除' : '演示环境已禁用删除'"
+                  title="删除"
                   @click="onDeleteKey(key)"
                 >
                   ✗
@@ -92,14 +91,12 @@
 
 <script setup>
 import { onMounted, ref, computed } from 'vue'
-import { API_KEY_DELETE_ENABLED } from '../config/uiPolicy'
 import { listApiKeys, createApiKey, enableApiKey, deleteApiKey } from '../api/apikey'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 
 const toast = useToast()
 
-const deleteEnabled = API_KEY_DELETE_ENABLED
 const activeApi = ref('/search')
 const apiKeys = ref([])
 const apiKeyLoading = ref(false)
@@ -178,7 +175,6 @@ async function onToggleKey(key) {
 }
 
 async function onDeleteKey(key) {
-  if (!deleteEnabled) return
   const ok = await confirmDialog({
     title: '删除 API Key',
     message: `确定删除 API Key「${key.keyName}」？`,

@@ -73,8 +73,7 @@
               <button
                 v-if="canWrite"
                 class="link-btn danger"
-                :disabled="!deleteEnabled"
-                :title="deleteEnabled ? '删除文档' : '演示环境已禁用删除'"
+                title="删除文档"
                 @click="onDeleteDoc(doc)"
               >
                 删除
@@ -99,11 +98,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
 import DocumentStatusBadge from '../components/DocumentStatusBadge.vue'
-import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
 import { listKb } from '../api/kb'
 import { deleteDocument, downloadDocument, listDocuments, reprocessDocument } from '../api/document'
-
-const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import { documentDetailRoute, parsePositiveId } from '../composables/useDocumentNav'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
@@ -188,7 +184,6 @@ async function onReprocessDoc(doc) {
 }
 
 async function onDeleteDoc(doc) {
-  if (!deleteEnabled) return
   const ok = await confirmDialog({
     title: '删除文档',
     message: `确定删除文档「${doc.filename}」？`,

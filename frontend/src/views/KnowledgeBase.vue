@@ -216,8 +216,7 @@
                     <span
                       v-if="canAdminKb(kb)"
                       class="link-action danger"
-                      :class="{ 'is-disabled': !kbDeleteEnabled }"
-                      :title="kbDeleteEnabled ? '删除知识库' : '演示环境已禁用删除'"
+                      title="删除知识库"
                       @click.stop="onDeleteKb(kb)"
                     >
                       删除
@@ -292,8 +291,7 @@
                               <span
                                 v-if="canWriteKb(kb)"
                                 class="link-action danger"
-                                :class="{ 'is-disabled': !deleteEnabled }"
-                                :title="deleteEnabled ? '删除文档' : '演示环境已禁用删除'"
+                                title="删除文档"
                                 @click.stop="onDeleteDoc(doc)"
                               >
                                 删除
@@ -505,7 +503,6 @@
 <script setup>
 import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { KB_DOCUMENT_DELETE_ENABLED, KNOWLEDGE_BASE_DELETE_ENABLED } from '../config/uiPolicy'
 import { createKb, deleteKb, listKb, listKbPaged, updateKb, getVisibilityImpact, changeVisibility } from '../api/kb'
 import { listOrgs } from '../api/org'
 import {
@@ -536,8 +533,6 @@ import {
 
 const toast = useToast()
 
-const kbDeleteEnabled = KNOWLEDGE_BASE_DELETE_ENABLED
-const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import {
   docStatusClass,
   docStatusLabel,
@@ -1030,7 +1025,6 @@ async function onUpdateKb() {
 }
 
 async function onDeleteKb(kb) {
-  if (!kbDeleteEnabled) return
   const ok = await confirmDialog({
     title: '删除知识库',
     message: `确定删除知识库「${kb.name}」？`,
@@ -1282,7 +1276,6 @@ async function onReprocessDoc(doc) {
 }
 
 async function onDeleteDoc(doc) {
-  if (!deleteEnabled) return
   const ok = await confirmDialog({
     title: '删除文档',
     message: `确定删除文档「${doc.filename}」？`,
