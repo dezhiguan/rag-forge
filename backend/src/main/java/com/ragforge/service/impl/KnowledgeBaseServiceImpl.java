@@ -424,7 +424,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     com.ragforge.model.entity.Organization org =
         kb.getOrgId() == null ? null : organizationMapper.selectById(kb.getOrgId());
     boolean individual = org != null && "INDIVIDUAL".equals(org.getType());
-    Set<String> allowed = individual ? Set.of("PRIVATE", "PUBLIC") : Set.of("PRIVATE", "ORG", "PUBLIC");
+    // 团队组织不允许 PUBLIC（避免误把企业资料公开）；仅个人库可公开。
+    Set<String> allowed = individual ? Set.of("PRIVATE", "PUBLIC") : Set.of("PRIVATE", "ORG");
     if (!allowed.contains(v)) {
       throw new BizException(400, "KB_VISIBILITY_INVALID");
     }

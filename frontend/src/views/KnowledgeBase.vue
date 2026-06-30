@@ -645,10 +645,10 @@ const VIS_LABELS = {
   ORG: '组织可见（全体成员可读）',
   PUBLIC: '公开（全平台所有组织可读）',
 }
-// 编辑模态的可见性选项：团队库 PRIVATE/ORG/PUBLIC；个人库 PRIVATE/PUBLIC。
+// 编辑模态的可见性选项：团队库 PRIVATE/ORG（不允许公开）；个人库 PRIVATE/PUBLIC。
 const editVisibilityOptions = computed(() => {
   const isTeam = manageableOrgs.value?.some((o) => o.id === editForm.value.orgId)
-  const vals = isTeam ? ['PRIVATE', 'ORG', 'PUBLIC'] : ['PRIVATE', 'PUBLIC']
+  const vals = isTeam ? ['PRIVATE', 'ORG'] : ['PRIVATE', 'PUBLIC']
   return vals.map((v) => ({ value: v, label: VIS_LABELS[v] }))
 })
 const answerModes = ['OFF', 'PREVIEW', 'ON']
