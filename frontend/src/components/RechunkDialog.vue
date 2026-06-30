@@ -173,6 +173,13 @@ const textLength = computed(() => {
 
 const semanticDisabled = computed(() => textLength.value < SEMANTIC_MIN_TEXT)
 
+// 「按标题分块」(MARKDOWN_HEADING) 只支持 Markdown 文档；非 .md 文件后端会判 INVALID_STRATEGY。
+const isMarkdownDoc = computed(() => {
+  const type = (props.doc?.fileType || '').toLowerCase()
+  const name = (props.doc?.filename || '').toLowerCase()
+  return type.includes('markdown') || type === 'md' || name.endsWith('.md') || name.endsWith('.markdown')
+})
+
 const currentDominantStrategy = computed(() => {
   const list = props.chunks || []
   if (!list.length) return 'MARKDOWN_HEADING'
@@ -189,11 +196,13 @@ const currentDominantStrategy = computed(() => {
 })
 
 function resolveInitialStrategy() {
+  // 只在「可用(未禁用)」策略里选默认，避免默认落到对当前文档不适用的策略（如 .txt 选中按标题分块）
+  const enabled = strategyOptions.value.filter((item) => !item.disabled).map((item) => item.value)
+  const fallback = enabled.includes('FIXED_WINDOW') ? 'FIXED_WINDOW' : enabled[0] || 'FIXED_WINDOW'
   const current = currentDominantStrategy.value
-  if (current === 'IMAGE_PIPELINE') return 'MARKDOWN_HEADING'
-  const selectable = strategyOptions.value.map((item) => item.value)
-  if (selectable.includes(current)) return current
-  return 'MARKDOWN_HEADING'
+  if (current === 'IMAGE_PIPELINE') return fallback
+  if (enabled.includes(current)) return current
+  return fallback
 }
 
 function resetFormState() {
@@ -206,9 +215,10 @@ const strategyOptions = computed(() => [
   {
     value: 'MARKDOWN_HEADING',
     label: '按标题分块',
-    recommended: true,
-    description: '按 H1/H2/H3 标题层级切分，适合 Markdown / 结构化文档',
-    disabled: false,
+    recommended: isMarkdownDoc.value,
+    description: '按 H1/H2/H3 标题层级切分，仅适合 Markdown 文档',
+    disabled: !isMarkdownDoc.value,
+    disabledReason: '「按标题分块」仅支持 Markdown 文档（.md），当前文件不适用',
   },
   {
     value: 'FIXED_WINDOW',
@@ -253,7 +263,9 @@ const chunkOverlapFieldError = computed(() => chunkOverlapError(chunkOverlap.val
 
 const submitDisabled = computed(() => {
   if (documentType.value === 'image') return false
-  if (selectedStrategy.value === 'SEMANTIC' && semanticDisabled.value) return true
+  // 选中的策略若对当前文档不可用（语义文本太短、按标题分块非 Markdown 等），禁止提交
+  const selected = strategyOptions.value.find((o) => o.value === selectedStrategy.value)
+  if (selected?.disabled) return true
   if (showFixedParams.value && !isChunkParamsValid(chunkSize.value, chunkOverlap.value)) return true
   return false
 })

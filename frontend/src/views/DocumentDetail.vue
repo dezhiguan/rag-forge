@@ -207,7 +207,7 @@
         <div v-else-if="isFailedDoc" class="processing-panel failed">
           <div class="processing-title">处理失败</div>
           <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
-          <p class="processing-error">{{ doc.errorMsg || '未知错误' }}</p>
+          <p class="processing-error">{{ translateErrorCode(doc.errorMsg) || doc.errorMsg || '未知错误' }}</p>
           <button v-if="canWrite" class="btn-primary btn-retry" :disabled="retrying" @click="confirmReprocess">
             {{ retrying ? '提交中…' : '重新处理' }}
           </button>
@@ -303,6 +303,7 @@ import RechunkDialog from '../components/RechunkDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rechunkDocument } from '../api/document'
 import { getKb } from '../api/kb'
+import { translateErrorCode } from '../api/error-messages'
 import { navigateBackFromDocument } from '../composables/useDocumentNav'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import {

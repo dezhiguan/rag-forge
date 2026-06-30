@@ -22,6 +22,9 @@ export const ERROR_MESSAGES = {
   KB_VISIBILITY_PUBLIC_REASON_REQUIRED: '设为公开需填写原因（将记入审计）',
   KB_VISIBILITY_HAS_DEPENDENCIES: '该库被其他组织的密钥或评测引用，收紧前请确认影响',
   KB_VISIBILITY_REQUIRED: '请选择可见性',
+  INVALID_STRATEGY: '所选分块策略不适用于当前文档（例如「按标题分块」仅支持 Markdown 文档）。请改用「固定窗口」或「递归切分」等策略重新分块。',
+  SEMANTIC_REQUIRES_LONG_TEXT: '文本不足 2000 字，无法使用语义分块，请改用其他策略。',
+  NO_CHUNKER_STRATEGY_AVAILABLE: '没有可用的分块策略，请更换策略后重试。',
 }
 
 export function translateErrorCode(code) {
