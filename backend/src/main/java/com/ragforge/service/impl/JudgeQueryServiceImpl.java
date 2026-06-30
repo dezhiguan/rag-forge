@@ -168,6 +168,9 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     }
 
     return rowsByKb.entrySet().stream()
+        // 跳过库已删除（id 在 knowledge_bases 中查不到名字）的孤儿指标，
+        // 避免"知识库排行"出现裸 id（test/perf 库跑完 eval 后被删，指标仍残留）。
+        .filter(entry -> kbNames.containsKey(entry.getKey()))
         .map(
             entry -> {
               Long kb = entry.getKey();
