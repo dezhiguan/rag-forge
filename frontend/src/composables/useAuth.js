@@ -74,7 +74,9 @@ export function useAuth() {
       state.accessToken = token
       state.user = user
       const claims = parseJwtClaims(token)
-      const role = user?.ragRole || user?.rag_role || claims?.rag_role || null
+      // 登录响应的 user 常不带 ragRole，claims 也可能没有；任何已登录用户至少是 USER，
+      // 兜底为 USER 让 scopes 立即含 rag:dashboard:read，避免跳首页被守卫拦到 /403。
+      const role = user?.ragRole || user?.rag_role || claims?.rag_role || 'USER'
       state.ragRole = role
       state.scopes = resolveScopes(user, claims, role)
     },
@@ -85,6 +87,9 @@ export function useAuth() {
       if (me?.displayName) {
         state.user = { ...(state.user || {}), displayName: me.displayName }
       }
+      // /me 返回真实角色后重算 scopes：setSession 时 role 可能还是兜底 USER，
+      // 这里据实补全（如 ADMIN/KB_EDITOR），保证菜单/路由权限正确。
+      state.scopes = resolveScopes(state.user, parseJwtClaims(state.accessToken), state.ragRole)
     },
     clearSession() {
       state.accessToken = null

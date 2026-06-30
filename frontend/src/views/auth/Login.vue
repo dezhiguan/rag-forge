@@ -300,9 +300,10 @@ async function finishLogin({ accessToken, user }) {
     return
   }
   setSession(accessToken, user)
-  await loadMe()
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
   router.replace(redirect.startsWith('/') ? redirect : '/')
+  // /me（capabilities/显示名）后台补全，不阻塞跳转——避免慢或卡住的 /me 拖住登录
+  loadMe()
 }
 
 function onForgotPassword() {
