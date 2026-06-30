@@ -666,7 +666,7 @@ const editVisibilityOptions = computed(() => {
   return vals.map((v) => ({ value: v, label: VIS_LABELS[v] }))
 })
 const answerModes = ['OFF', 'PREVIEW', 'ON']
-const answerModels = ['qwen-plus', 'qwen-max']
+const answerModels = ['qwen-plus']
 
 const editChunkSizeError = computed(() => chunkSizeError(editForm.value.chunkSize))
 const editChunkOverlapError = computed(() =>
