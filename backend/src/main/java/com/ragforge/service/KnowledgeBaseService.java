@@ -17,6 +17,10 @@ public interface KnowledgeBaseService {
   /** 按当前登录主体做行级过滤的列表，每行附 myPermission。 */
   List<KnowledgeBaseVO> listVisibleToCurrentUser();
 
+  /** 同上但后端分页 + 按名称模糊搜索（keyword 为空则全量分页）。 */
+  com.ragforge.common.PageResult<KnowledgeBaseVO> listVisiblePaged(
+      String keyword, int page, int size);
+
   KnowledgeBaseVO getById(Long id);
 
   KnowledgeBase update(Long id, UpdateKbDTO dto);

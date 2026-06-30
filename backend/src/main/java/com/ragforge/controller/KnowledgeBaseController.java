@@ -44,6 +44,15 @@ public class KnowledgeBaseController {
     return Result.ok(knowledgeBaseService.listVisibleToCurrentUser());
   }
 
+  /** 知识库管理列表：后端分页 + 名称模糊搜索。 */
+  @GetMapping("/page")
+  public Result<com.ragforge.common.PageResult<KnowledgeBaseVO>> listPaged(
+      @RequestParam(required = false) String keyword,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "10") int size) {
+    return Result.ok(knowledgeBaseService.listVisiblePaged(keyword, page, size));
+  }
+
   @GetMapping("/{id}")
   @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER') and @kbAccessGuard.canRead(#id)")
   public Result<KnowledgeBaseVO> getById(@PathVariable Long id) {

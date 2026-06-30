@@ -202,7 +202,7 @@ class DocumentServiceImplTest {
     when(documentMapper.selectById(3L)).thenReturn(doc);
     when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
 
-    assertThat(documentService.listByKb(1L, 1, 10).getList()).hasSize(1);
+    assertThat(documentService.listByKb(1L, 1, 10, null).getList()).hasSize(1);
     assertThat(documentService.getById(3L).getKbName()).isEqualTo("kb-1");
   }
 

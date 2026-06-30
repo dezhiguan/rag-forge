@@ -95,8 +95,9 @@ public class DocumentController {
   public Result<PageResult<DocumentVO>> listByKb(
       @PathVariable Long kbId,
       @RequestParam(defaultValue = "1") @Min(1) int page,
-      @RequestParam(defaultValue = "20") @Min(1) int size) {
-    return Result.ok(documentService.listByKb(kbId, page, size));
+      @RequestParam(defaultValue = "20") @Min(1) int size,
+      @RequestParam(required = false) String keyword) {
+    return Result.ok(documentService.listByKb(kbId, page, size, keyword));
   }
 
   @GetMapping("/documents/{id}")

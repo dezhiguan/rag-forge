@@ -25,7 +25,21 @@
       </div>
 
       <div class="docs-panel">
+        <div class="doc-toolbar">
+          <div class="doc-search" :class="{ has: docKeyword }">
+            <span class="doc-search-ico">🔍</span>
+            <input
+              v-model="docKeyword"
+              type="text"
+              placeholder="搜索文档名称"
+              @keyup.enter="onDocSearchNow"
+            />
+            <span v-if="docKeyword" class="doc-search-clear" @click="clearDocSearch">✕</span>
+          </div>
+          <span class="doc-search-count">{{ docKeyword ? `匹配 ${total} 个` : `共 ${total} 个文档` }}</span>
+        </div>
         <div v-if="loading && !docs.length" class="empty">加载文档中...</div>
+        <div v-else-if="!docs.length && docKeyword" class="empty">未找到匹配「{{ docKeyword }}」的文档</div>
         <div v-else-if="!docs.length" class="empty">暂无文档，请从知识库管理页上传</div>
         <div v-else class="doc-list">
           <article v-for="doc in docs" :key="doc.id" class="doc-row">
@@ -103,6 +117,8 @@ const page = ref(1)
 const size = 20
 const total = ref(0)
 const loading = ref(false)
+const docKeyword = ref('')
+let docSearchTimer = null
 
 const kbId = computed(() => parsePositiveId(route.params.kbId))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size)))
@@ -125,13 +141,27 @@ async function loadDocs(nextPage = 1) {
   }
   loading.value = true
   try {
-    const res = await listDocuments(kbId.value, nextPage, size)
+    const res = await listDocuments(kbId.value, nextPage, size, docKeyword.value.trim() || undefined)
     docs.value = res.data?.list ?? []
     total.value = res.data?.total ?? 0
     page.value = res.data?.page ?? nextPage
   } finally {
     loading.value = false
   }
+}
+
+watch(docKeyword, () => {
+  clearTimeout(docSearchTimer)
+  docSearchTimer = setTimeout(() => loadDocs(1), 250)
+})
+function onDocSearchNow() {
+  clearTimeout(docSearchTimer)
+  loadDocs(1)
+}
+function clearDocSearch() {
+  docKeyword.value = ''
+  clearTimeout(docSearchTimer)
+  loadDocs(1)
 }
 
 function goDoc(id) {
@@ -300,6 +330,15 @@ watch(kbId, (nextKbId, prevKbId) => {
 .docs-panel {
   padding: 14px;
 }
+
+.doc-toolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.doc-search { position: relative; }
+.doc-search input { height: 38px; width: 320px; max-width: 60vw; padding: 0 34px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; background: #fff; outline: none; transition: .15s; }
+.doc-search input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft, #eff4ff); }
+.doc-search-ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+.doc-search-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer; font-size: 12px; }
+.doc-search-clear:hover { color: var(--slate); }
+.doc-search-count { font-size: 12.5px; color: var(--text-muted); }
 
 .doc-list {
   display: grid;

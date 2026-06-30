@@ -18,7 +18,7 @@ public interface DocumentService {
 
   DocumentVO replaceDocument(Long kbId, MultipartFile file, Long existingDocId);
 
-  PageResult<DocumentVO> listByKb(Long kbId, int page, int size);
+  PageResult<DocumentVO> listByKb(Long kbId, int page, int size, String keyword);
 
   DocumentDetailVO getById(Long id);
 

@@ -197,15 +197,17 @@ public class DocumentServiceImpl implements DocumentService {
   }
 
   @Override
-  public PageResult<DocumentVO> listByKb(Long kbId, int page, int size) {
+  public PageResult<DocumentVO> listByKb(Long kbId, int page, int size, String keyword) {
     requireActiveKb(kbId);
 
     Page<Document> mpPage = new Page<>(page, size);
+    String kw = keyword == null ? null : keyword.trim();
     IPage<Document> result =
         documentMapper.selectPage(
             mpPage,
             new LambdaQueryWrapper<Document>()
                 .eq(Document::getKbId, kbId)
+                .like(kw != null && !kw.isEmpty(), Document::getFilename, kw)
                 .orderByDesc(Document::getCreatedAt));
 
     List<DocumentVO> list = result.getRecords().stream().map(this::toDocumentVO).toList();

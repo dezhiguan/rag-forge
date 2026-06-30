@@ -6,6 +6,8 @@ export const listKb = (adminOverrideReason) =>
   request.get('/kb', adminOverrideReason
     ? { headers: { 'X-Admin-Override': 'true', 'X-Admin-Override-Reason': adminOverrideReason } }
     : undefined)
+// 管理列表：服务端分页 + 名称模糊搜索（{ page, size, keyword }）
+export const listKbPaged = (params) => request.get('/kb/page', { params })
 export const createKb = (data) => request.post('/kb', data)
 export const getKb = (id) => request.get(`/kb/${id}`)
 export const updateKb = (id, data) => request.put(`/kb/${id}`, data)

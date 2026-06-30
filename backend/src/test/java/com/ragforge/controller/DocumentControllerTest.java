@@ -502,7 +502,8 @@ class DocumentControllerTest {
   void listByKb_returnsPagedDocuments() throws Exception {
     DocumentVO doc = new DocumentVO();
     doc.setId(5L);
-    when(documentService.listByKb(1L, 1, 20)).thenReturn(PageResult.of(1, 1, 20, List.of(doc)));
+    when(documentService.listByKb(eq(1L), eq(1), eq(20), any()))
+        .thenReturn(PageResult.of(1, 1, 20, List.of(doc)));
 
     mockMvc
         .perform(get("/api/v1/kb/1/documents"))

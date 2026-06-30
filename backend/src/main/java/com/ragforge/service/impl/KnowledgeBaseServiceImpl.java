@@ -357,6 +357,25 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     return kb;
   }
 
+  @Override
+  public com.ragforge.common.PageResult<KnowledgeBaseVO> listVisiblePaged(
+      String keyword, int page, int size) {
+    int p = page < 1 ? 1 : page;
+    int s = size < 1 ? 10 : Math.min(size, 100);
+    List<KnowledgeBaseVO> all = listVisibleToCurrentUser();
+    String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+    List<KnowledgeBaseVO> filtered =
+        kw.isEmpty()
+            ? all
+            : all.stream()
+                .filter(vo -> vo.getName() != null && vo.getName().toLowerCase().contains(kw))
+                .toList();
+    int from = Math.min((p - 1) * s, filtered.size());
+    int to = Math.min(from + s, filtered.size());
+    return com.ragforge.common.PageResult.of(
+        filtered.size(), p, s, new java.util.ArrayList<>(filtered.subList(from, to)));
+  }
+
   // ============ 可见性变更（P0 权限+审计 / P1 依赖预检 / P2 放开治理） ============
 
   @Override

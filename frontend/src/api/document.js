@@ -160,9 +160,9 @@ export const replaceDocument = (kbId, docId, file) => {
   return request.post(`/kb/${id}/documents/replace/${docId}`, formData)
 }
 
-export const listDocuments = (kbId, page = 1, size = 20) => {
+export const listDocuments = (kbId, page = 1, size = 20, keyword) => {
   const id = assertKbId(kbId)
-  return request.get(`/kb/${id}/documents`, { params: { page, size } })
+  return request.get(`/kb/${id}/documents`, { params: { page, size, keyword: keyword || undefined } })
 }
 
 export const getDocument = (id) => request.get(`/documents/${id}`)

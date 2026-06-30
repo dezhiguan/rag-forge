@@ -15,11 +15,28 @@
             <span class="bg-ic">🛡</span>{{ adminViewAll ? '查看全部·已留痕' : '查看全部 · 平台管理员' }}
           </button>
         </div>
+        <div class="toolbar-right">
+          <div class="kb-search" :class="{ has: kbKeyword }">
+            <span class="kb-search-ico">🔍</span>
+            <input
+              v-model="kbKeyword"
+              type="text"
+              placeholder="搜索知识库名称"
+              @keyup.enter="onSearchNow"
+            />
+            <span v-if="kbKeyword" class="kb-search-clear" @click="clearSearch">✕</span>
+          </div>
+        </div>
       </div>
 
       <div v-if="loadingKb" class="state-hint">
         <div class="state-icon">⏳</div>
         <div class="state-title">加载中...</div>
+      </div>
+      <div v-else-if="!kbList.length && kbKeyword" class="state-hint">
+        <div class="state-icon">🔍</div>
+        <div class="state-title">未找到匹配「{{ kbKeyword }}」的知识库</div>
+        <div class="state-desc">换个关键词，或<span class="link-action" @click="clearSearch">清除搜索</span></div>
       </div>
       <div v-else-if="!kbList.length" class="state-hint">
         <div class="state-icon">📁</div>
@@ -157,7 +174,7 @@
               </tr>
             </thead>
             <tbody>
-              <template v-for="kb in pagedKbList" :key="kb.id">
+              <template v-for="kb in kbList" :key="kb.id">
                 <tr class="kb-row" @click="toggleKb(kb.id)">
                   <td>
                     <div class="kb-cell">
@@ -292,10 +309,10 @@
             </tbody>
           </table>
           <div v-if="kbTotalPages > 1" class="kb-pager">
-            <span class="kb-pager-info">共 {{ kbList.length }} 个 · 第 {{ kbPage }}/{{ kbTotalPages }} 页</span>
+            <span class="kb-pager-info">共 {{ kbTotal }} 个 · 第 {{ kbPage }}/{{ kbTotalPages }} 页</span>
             <div class="kb-pager-btns">
-              <button class="pager-btn" :disabled="kbPage <= 1" @click="kbPage--">上一页</button>
-              <button class="pager-btn" :disabled="kbPage >= kbTotalPages" @click="kbPage++">下一页</button>
+              <button class="pager-btn" :disabled="kbPage <= 1" @click="goPage(kbPage - 1)">上一页</button>
+              <button class="pager-btn" :disabled="kbPage >= kbTotalPages" @click="goPage(kbPage + 1)">下一页</button>
             </div>
           </div>
         </div>
@@ -489,7 +506,7 @@
 import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KB_DOCUMENT_DELETE_ENABLED, KNOWLEDGE_BASE_DELETE_ENABLED } from '../config/uiPolicy'
-import { createKb, deleteKb, listKb, updateKb, getVisibilityImpact, changeVisibility } from '../api/kb'
+import { createKb, deleteKb, listKb, listKbPaged, updateKb, getVisibilityImpact, changeVisibility } from '../api/kb'
 import { listOrgs } from '../api/org'
 import {
   deleteDocument,
@@ -542,18 +559,15 @@ const showAdminViewAll = computed(() => ragRole.value === 'ADMIN' && isPlatform.
 const adminViewAll = ref(false)
 const adminOverrideReason = ref('')
 
-const kbList = ref([])
-// 知识库列表分页（默认 10 条/页，客户端分页）
+const kbList = ref([]) // 当前页（服务端分页返回）
+const allKbs = ref([]) // 全量（仅供上传下拉/默认上传目标用）
+// 知识库列表分页（服务端分页，10 条/页）+ 名称模糊搜索
 const KB_PAGE_SIZE = 10
 const kbPage = ref(1)
-const kbTotalPages = computed(() => Math.max(1, Math.ceil(kbList.value.length / KB_PAGE_SIZE)))
-const pagedKbList = computed(() => {
-  const start = (kbPage.value - 1) * KB_PAGE_SIZE
-  return kbList.value.slice(start, start + KB_PAGE_SIZE)
-})
-watch(kbTotalPages, (n) => {
-  if (kbPage.value > n) kbPage.value = n
-})
+const kbTotal = ref(0)
+const kbKeyword = ref('')
+const kbTotalPages = computed(() => Math.max(1, Math.ceil(kbTotal.value / KB_PAGE_SIZE)))
+let kbSearchTimer = null
 const loadingKb = ref(false)
 const expandedKbId = ref(null)
 
@@ -582,7 +596,7 @@ function canAdminKb(kb) {
   return kb?.myPermission === 'admin'
 }
 // 只能上传到自己有写权限的库
-const uploadableKbs = computed(() => kbList.value.filter(canWriteKb))
+const uploadableKbs = computed(() => allKbs.value.filter(canWriteKb))
 
 const showCreate = ref(false)
 const showEdit = ref(false)
@@ -690,16 +704,51 @@ async function toggleAdminViewAll() {
 async function loadKbs() {
   loadingKb.value = true
   try {
+    // 全量列表：仅用于上传下拉/默认上传目标（写权限库通常很少）
     const res = await listKb(adminViewAll.value ? adminOverrideReason.value : undefined)
-    kbList.value = res.data ?? []
-    kbPage.value = 1
-    // 默认上传目标取第一个「可写」的库（不是第一个可见库，避免默认选到只读公共库）
+    allKbs.value = res.data ?? []
     if ((!uploadKbId.value || !uploadableKbs.value.some((kb) => kb.id === uploadKbId.value)) && uploadableKbs.value.length) {
       uploadKbId.value = uploadableKbs.value[0].id
     }
+    // 展示表格：服务端分页 + 搜索，回到第 1 页
+    await loadKbPage(1)
   } finally {
     loadingKb.value = false
   }
+}
+
+/** 拉取当前页（服务端分页 + 名称模糊搜索）。 */
+async function loadKbPage(page) {
+  const res = await listKbPaged({
+    page,
+    size: KB_PAGE_SIZE,
+    keyword: kbKeyword.value.trim() || undefined,
+  })
+  const data = res.data ?? {}
+  kbList.value = data.list ?? []
+  kbTotal.value = data.total ?? 0
+  kbPage.value = data.page ?? page
+}
+
+function goPage(page) {
+  const target = Math.max(1, Math.min(page, kbTotalPages.value))
+  if (target === kbPage.value) return
+  loadKbPage(target)
+}
+
+// 输入即筛（防抖 250ms），搜索回到第 1 页
+watch(kbKeyword, () => {
+  clearTimeout(kbSearchTimer)
+  kbSearchTimer = setTimeout(() => loadKbPage(1), 250)
+})
+function onSearchNow() {
+  clearTimeout(kbSearchTimer)
+  loadKbPage(1)
+}
+function clearSearch() {
+  kbKeyword.value = ''
+  clearTimeout(kbSearchTimer)
+  loadKbPage(1)
 }
 
 function applyStatusToDoc(kbId, docId, status) {
@@ -1549,6 +1598,14 @@ onMounted(async () => {
   border-top: 1px solid var(--border);
 }
 .kb-pager-info { font-size: 12.5px; color: var(--text-muted); }
+.top-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.toolbar-right { margin-left: auto; }
+.kb-search { position: relative; }
+.kb-search input { height: 36px; width: 240px; padding: 0 32px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; background: #fff; outline: none; transition: .15s; }
+.kb-search input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft, #eff4ff); }
+.kb-search-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+.kb-search-clear { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer; font-size: 12px; }
+.kb-search-clear:hover { color: var(--slate); }
 .kb-pager-btns { display: flex; gap: 8px; }
 .pager-btn {
   height: 30px;
