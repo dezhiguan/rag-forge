@@ -64,7 +64,9 @@ class KnowledgeBaseControllerTest {
   @Test
   void create_returnsKnowledgeBaseVo() throws Exception {
     KnowledgeBase kb = sampleKb(1L);
+    KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
     when(knowledgeBaseService.create(any(CreateKbDTO.class))).thenReturn(kb);
+    when(knowledgeBaseService.getById(1L)).thenReturn(vo);
 
     mockMvc
         .perform(
@@ -82,7 +84,7 @@ class KnowledgeBaseControllerTest {
   @Test
   void listAll_returnsKnowledgeBaseList() throws Exception {
     KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(sampleKb(2L));
-    when(knowledgeBaseService.listAll()).thenReturn(List.of(vo));
+    when(knowledgeBaseService.listVisibleToCurrentUser()).thenReturn(List.of(vo));
 
     mockMvc
         .perform(get("/api/v1/kb"))
@@ -122,7 +124,9 @@ class KnowledgeBaseControllerTest {
     ArgumentCaptor<CreateKbDTO> requestCaptor = ArgumentCaptor.forClass(CreateKbDTO.class);
     KnowledgeBase kb = sampleKb(6L);
     kb.setAnswerMode("ON");
+    KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
     when(knowledgeBaseService.create(any(CreateKbDTO.class))).thenReturn(kb);
+    when(knowledgeBaseService.getById(6L)).thenReturn(vo);
 
     mockMvc
         .perform(

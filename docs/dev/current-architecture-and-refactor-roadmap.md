@@ -285,7 +285,7 @@ PerformanceProbe
 1. 架构文档与当前实现不一致。
 2. Reranker 方案口径不一致。
 3. 检索策略逻辑没有抽到统一服务。
-4. 评测实验室仍有演示型弱标注问题。
+4. 评测实验室仍有示例型弱标注问题。
 5. 文档处理 pipeline 缺少写入补偿和数据校准。
 6. 缺少标准化监控指标。
 7. API Gateway 页面可能与真实接口不一致。
@@ -387,7 +387,7 @@ RetrievalService.search(SearchCommand command) -> SearchResponse
 
 ---
 
-## 10. 当前版本推荐面试讲法
+## 10. 当前版本能力概述
 
 ```text
 RAGForge 是我做的 RAG 检索基础设施服务。

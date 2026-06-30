@@ -9,7 +9,7 @@
 - 后端启动参数：`--spring.flyway.validate-on-migrate=false`
 - 历史阻塞与修复：
   - 不带临时参数启动时，Flyway V28 checksum mismatch 阻止本地 API 启动。
-  - 修复前 `/api/v1/documents` 上传在 `IngestService.afterCommit -> DocumentProcessProducer.send` 阶段依赖 RocketMQ producer；云 NameServer `8.148.217.153:9876` 超时，导致 Playwright 依赖上传的用例在准备阶段失败。
+  - 修复前 `/api/v1/documents` 上传在 `IngestService.afterCommit -> DocumentProcessProducer.send` 阶段依赖 RocketMQ producer；云 NameServer `{开发ECS-IP}:9876` 超时，导致 Playwright 依赖上传的用例在准备阶段失败。
   - 修复后本地 `.env` 使用 `RAGFORGE_DOCUMENT_PROCESS_DISPATCH_MODE=inline`，上传注册后异步 inline 处理文档，不启动本地 MQ、不依赖云 MQ，`t10rw-e2e-13...spec.ts` 已通过。
 
 | 编号 | 实际结果 | 证据文件 | 备注 |

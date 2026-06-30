@@ -1,3 +1,5 @@
+> 🕰️ **历史归档** — 单主机多副本(docker-compose)形态。应用层现已迁移到 **k3s**(`api` 3 副本 + `worker`/`judge`,同镜像按 `RAGFORGE_ROLE` 区分),请以 [`deployment-architecture.md`](deployment-architecture.md) 为准。
+
 # RAGForge App Replica Deployment
 
 This document describes the app-layer replica deployment shape.
@@ -15,7 +17,7 @@ This is single-host multi-replica deployment. It can improve same-host request c
 The app deployment still targets one host:
 
 ```text
-RAGFORGE_APP_HOST=8.138.191.228
+RAGFORGE_APP_HOST={应用层公网IP}
 RAGFORGE_APP_USER=root
 RAGFORGE_APP_PORT=22
 ```
@@ -29,7 +31,7 @@ RAGFORGE_APP_HEALTH_PORTS=8080 8081 8082
 Nginx upstreams should point to Server 2 local SSH tunnel ports:
 
 ```text
-RAGFORGE_BACKEND_UPSTREAMS=172.19.40.32:19080,172.19.40.32:19081,172.19.40.32:19082
+RAGFORGE_BACKEND_UPSTREAMS={入口层内网IP}:19080,{入口层内网IP}:19081,{入口层内网IP}:19082
 ```
 
 If this secret is unset, the committed `nginx.conf` already uses the same tunnel upstreams.
@@ -37,7 +39,7 @@ If this secret is unset, the committed `nginx.conf` already uses the same tunnel
 Existing ingress secrets are still required:
 
 ```text
-RAGFORGE_INGRESS_HOST=8.163.63.222
+RAGFORGE_INGRESS_HOST={入口层公网IP}
 RAGFORGE_INGRESS_USER=root
 RAGFORGE_INGRESS_PORT=22
 RAGFORGE_INGRESS_SSH_KEY=<private key>

@@ -8,7 +8,9 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,16 +31,21 @@ import com.ragforge.pipeline.cleaner.L3PiiMaskCleaner;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
+import com.ragforge.security.RagAuthContext;
+import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.LlmService;
 import com.ragforge.storage.ObjectStorage;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -85,6 +92,11 @@ class AnswerServiceTest {
         });
   }
 
+  @AfterEach
+  void tearDown() {
+    RagAuthContextHolder.clear();
+  }
+
   @Test
   void normalFlow_linksCitations() {
     mockKb("ON");
@@ -97,6 +109,87 @@ class AnswerServiceTest {
 
     assertThat(response.getCitations()).hasSize(2);
     assertThat(response.getCitations()).extracting("id").containsExactly(1, 2);
+    assertThat(response.getGuardRailResult()).isEqualTo("PASS");
+  }
+
+  @Test
+  void normalFlow_recordsModelUsageAndPrincipalInLog() {
+    RagAuthContextHolder.set(
+        new RagAuthContext(7L, "KB_VIEWER", Set.of(16L), Set.of(), Set.of(), "USER", "user-7"));
+    mockKb("ON");
+    when(retrievalService.retrieve(anyString(), anyList(), any(), eq("hybrid"), eq(0.7), eq(10), eq(10), any()))
+        .thenReturn(output(List.of(hit(1, "TEXT"))));
+    when(llmService.streamGenerate(any(LlmGenerateRequest.class), anyInt(), any()))
+        .thenReturn(new LlmService.StreamResult("广州 Java 常见 Spring Boot[1]", 101, 21, 55));
+
+    AnswerResponse response = answerService.answerBlocking(request());
+
+    assertThat(response.getLlmModel()).isEqualTo("qwen-max");
+    verify(modelUsageRecorder)
+        .record(
+            argThat(
+                event ->
+                    "qwen-max".equals(event.modelCode())
+                        && event.inputTokens() == 101
+                        && event.outputTokens() == 21
+                        && event.latencyMs() == 55
+                        && event.success()));
+    ArgumentCaptor<AnswerLog> captor = ArgumentCaptor.forClass(AnswerLog.class);
+    verify(answerLogMapper).insertAnswerLog(captor.capture());
+    assertThat(captor.getValue().getPrincipalId()).isEqualTo("user-7");
+  }
+
+  @Test
+  void noRetrievalResults_returnsNotFoundAnswerWithoutCallingLlm() {
+    mockKb("ON");
+    when(retrievalService.retrieve(anyString(), anyList(), any(), eq("hybrid"), eq(0.7), eq(10), eq(10), any()))
+        .thenReturn(output(List.of()));
+
+    AnswerResponse response = answerService.answerBlocking(request());
+
+    assertThat(response.getAnswer()).isEqualTo("未在知识库中找到相关内容");
+    assertThat(response.getCitations()).isEmpty();
+    assertThat(response.getGuardRailResult()).isEqualTo("PASS");
+    verify(llmService, never()).streamGenerate(any(), anyInt(), any());
+    verify(modelUsageRecorder, never()).record(any());
+  }
+
+  @Test
+  void missingKnowledgeBase_throws404() {
+    when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of());
+
+    assertThatThrownBy(() -> answerService.answerBlocking(request()))
+        .isInstanceOf(BizException.class)
+        .extracting("code")
+        .isEqualTo(404);
+  }
+
+  @Test
+  void validateRequest_rejectsBlankQueryAndEmptyKbIds() {
+    AnswerRequest blankQuery = request();
+    blankQuery.setQuery("  ");
+    assertThatThrownBy(() -> answerService.answerBlocking(blankQuery))
+        .isInstanceOf(BizException.class)
+        .hasMessage("QUERY_REQUIRED");
+
+    AnswerRequest noKb = request();
+    noKb.setKbIds(List.of());
+    assertThatThrownBy(() -> answerService.answerBlocking(noKb))
+        .isInstanceOf(BizException.class)
+        .hasMessage("KB_IDS_REQUIRED");
+  }
+
+  @Test
+  void answerLogFailure_doesNotAffectAnswer() {
+    mockKb("ON");
+    when(retrievalService.retrieve(anyString(), anyList(), any(), eq("hybrid"), eq(0.7), eq(10), eq(10), any()))
+        .thenReturn(output(List.of(hit(1, "TEXT"))));
+    when(llmService.streamGenerate(any(LlmGenerateRequest.class), anyInt(), any()))
+        .thenReturn(new LlmService.StreamResult("广州 Java 常见 Spring Boot[1]", 100, 20, 50));
+    doThrow(new RuntimeException("log down")).when(answerLogMapper).insertAnswerLog(any());
+
+    AnswerResponse response = answerService.answerBlocking(request());
+
     assertThat(response.getGuardRailResult()).isEqualTo("PASS");
   }
 

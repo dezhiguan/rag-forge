@@ -383,6 +383,124 @@ class DocumentPipelineServiceTest {
   }
 
   @Test
+  void processDocument_pdfInObjectStorageDownloadsTempFileAndParsesWithTika() throws Exception {
+    Document doc = document(14L, 10L, "remote.pdf");
+    doc.setStorageBucket("bucket");
+    doc.setStorageKey("tenant/kb/remote.pdf");
+    KnowledgeBase kb = knowledgeBase(10L);
+    List<Chunk> chunks = List.of(new Chunk(0, "remote text", 11));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(140L, 0));
+
+    when(documentMapper.selectById(14L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(objectStorage.get("bucket", "tenant/kb/remote.pdf"))
+        .thenReturn(new ByteArrayInputStream("%PDF".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    when(documentParser.parse(anyString(), eq("application/pdf")))
+        .thenReturn(new ParseResult("remote text", 1L, 1));
+    when(chunkingService.split(eq(doc), eq(kb), eq("remote text"))).thenReturn(chunkingResult(chunks));
+    when(embeddingService.embedBatch(List.of("remote text"))).thenReturn(vectors);
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(eq(14L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(14L);
+
+    verify(objectStorage).get("bucket", "tenant/kb/remote.pdf");
+    verify(documentParser).parse(anyString(), eq("application/pdf"));
+    verify(documentPipelineService).updateStatus(14L, "COMPLETED");
+  }
+
+  @Test
+  void processDocument_imageContentTypeThrows415() {
+    Document doc = document(15L, 10L, "image.png");
+    doc.setFileType("image/png");
+    when(documentMapper.selectById(15L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(15L))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(415))
+        .hasMessageContaining("IMAGE_CONTENT_NOT_SUPPORTED");
+
+    verify(documentPipelineService).updateStatusWithError(eq(15L), eq("FAILED"), anyString());
+  }
+
+  @Test
+  void processDocument_unsupportedContentTypeThrows415() {
+    Document doc = document(16L, 10L, "archive.zip");
+    doc.setFileType("application/zip");
+    when(documentMapper.selectById(16L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(knowledgeBase(10L));
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(16L))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(415))
+        .hasMessageContaining("UNSUPPORTED_CONTENT_TYPE");
+  }
+
+  @Test
+  void processDocument_embeddedImageBelowMinBytesIsSkipped() throws Exception {
+    Document doc = document(17L, 10L, "mixed.pdf");
+    KnowledgeBase kb = knowledgeBase(10L);
+    kb.setImageProcessingMode("ON");
+    multimodalProperties.getEmbedded().setMinImageBytes(10 * 1024);
+    List<Chunk> chunks = List.of(new Chunk(0, "text", 4));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> insertedText = List.of(chunkEntity(170L, 0));
+
+    when(documentMapper.selectById(17L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString()))
+        .thenReturn(new ParseResult("text", 1L, 1, List.of("text"), List.of(extractedImage(1))));
+    when(chunkingService.split(eq(doc), eq(kb), eq("text"))).thenReturn(chunkingResult(chunks));
+    when(embeddingService.embedBatch(List.of("text"))).thenReturn(vectors);
+    doReturn(insertedText)
+        .when(documentPipelineService)
+        .insertChunks(eq(17L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
+    when(esIndexService.indexChunks(insertedText, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(17L);
+
+    verify(imagePipelineSupport, never()).processSingleImage(any(), any(), any(), any(), anyInt(), any());
+    verify(documentPipelineService).updateDocumentChunkCount(17L, 1);
+  }
+
+  @Test
+  void processDocument_embeddedImageInsertFailureSkipsImageChunksAndCompletes() throws Exception {
+    Document doc = document(18L, 10L, "mixed.pdf");
+    KnowledgeBase kb = knowledgeBase(10L);
+    kb.setImageProcessingMode("ON");
+    List<Chunk> chunks = List.of(new Chunk(0, "text", 4));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> insertedText = List.of(chunkEntity(180L, 0));
+    DocumentChunk imageChunk = chunkEntity(181L, 1);
+    imageChunk.setChunkModality("IMAGE");
+
+    when(documentMapper.selectById(18L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString()))
+        .thenReturn(new ParseResult("text", 1L, 1, List.of("text"), List.of(extractedImage(2))));
+    when(chunkingService.split(eq(doc), eq(kb), eq("text"))).thenReturn(chunkingResult(chunks));
+    when(embeddingService.embedBatch(List.of("text"))).thenReturn(vectors);
+    doReturn(insertedText)
+        .when(documentPipelineService)
+        .insertChunks(eq(18L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
+    when(esIndexService.indexChunks(insertedText, doc)).thenReturn(true);
+    when(imagePipelineSupport.processSingleImage(any(), any(), eq(doc), any(ImageChunkContext.class), eq(1), anyString()))
+        .thenReturn(List.of(imageChunk));
+    when(imagePipelineService.insertImageChunks(anyList())).thenThrow(new RuntimeException("pg down"));
+
+    documentPipelineService.processDocument(18L);
+
+    verify(imagePipelineService).insertImageChunks(anyList());
+    verify(esIndexService, never()).indexChunks(List.of(imageChunk), doc);
+    verify(documentPipelineService).updateDocumentChunkCount(18L, 1);
+    verify(documentPipelineService).updateStatus(18L, "COMPLETED");
+  }
+
+  @Test
   void insertChunks_batchesLargeInput() throws Exception {
     List<Chunk> chunks = new ArrayList<>();
     List<float[]> vectors = new ArrayList<>();

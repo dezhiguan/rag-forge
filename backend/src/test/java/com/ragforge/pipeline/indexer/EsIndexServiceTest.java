@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,9 +70,38 @@ class EsIndexServiceTest {
   }
 
   @Test
+  void init_fallsBackToStandardAnalyzerWhenIkAnalyzerMissing() throws Exception {
+    BooleanResponse exists = mock(BooleanResponse.class);
+    when(exists.value()).thenReturn(false);
+    when(indicesClient.exists(any(ExistsRequest.class))).thenReturn(exists);
+    when(indicesClient.create(any(co.elastic.clients.elasticsearch.indices.CreateIndexRequest.class)))
+        .thenThrow(new RuntimeException("unknown analyzer [ik_max_word]"))
+        .thenReturn(mock(CreateIndexResponse.class));
+
+    esIndexService.init();
+
+    verify(indicesClient, times(2))
+        .create(any(co.elastic.clients.elasticsearch.indices.CreateIndexRequest.class));
+  }
+
+  @Test
+  void init_swallowsIndexCreationFailure() throws Exception {
+    BooleanResponse exists = mock(BooleanResponse.class);
+    when(exists.value()).thenReturn(false);
+    when(indicesClient.exists(any(ExistsRequest.class))).thenReturn(exists);
+    when(indicesClient.create(any(co.elastic.clients.elasticsearch.indices.CreateIndexRequest.class)))
+        .thenThrow(new RuntimeException("cluster unavailable"));
+
+    esIndexService.init();
+
+    verify(indicesClient).create(any(co.elastic.clients.elasticsearch.indices.CreateIndexRequest.class));
+  }
+
+  @Test
   void indexChunks_emptyInput_returnsTrue() {
     assertThat(esIndexService.indexChunks(List.of(), document(1L))).isTrue();
     assertThat(esIndexService.indexChunks(null, document(1L))).isTrue();
+    assertThat(esIndexService.indexChunks(List.of(chunk(1L, 1L, 100L, "skip")), null)).isTrue();
   }
 
   @Test
@@ -100,6 +130,29 @@ class EsIndexServiceTest {
   }
 
   @Test
+  void indexChunks_bulkClientFailure_returnsFalse() throws Exception {
+    when(client.bulk(any(co.elastic.clients.elasticsearch.core.BulkRequest.class)))
+        .thenThrow(new RuntimeException("bulk down"));
+
+    assertThat(esIndexService.indexChunks(List.of(chunk(12L, 2L, 100L, "fail")), document(2L)))
+        .isFalse();
+  }
+
+  @Test
+  void indexChunks_moreThanBatchSize_sendsMultipleBulks() throws Exception {
+    BulkResponse response = BulkResponse.of(b -> b.errors(false).items(List.of()).took(1L));
+    when(client.bulk(any(co.elastic.clients.elasticsearch.core.BulkRequest.class))).thenReturn(response);
+    List<DocumentChunk> chunks =
+        java.util.stream.LongStream.rangeClosed(1, 55)
+            .mapToObj(id -> chunk(id, 3L, 100L, "chunk-" + id))
+            .toList();
+
+    assertThat(esIndexService.indexChunks(chunks, document(3L))).isTrue();
+
+    verify(client, times(2)).bulk(any(co.elastic.clients.elasticsearch.core.BulkRequest.class));
+  }
+
+  @Test
   void countByDocId_returnsCountOrFallback() throws Exception {
     CountResponse response =
         CountResponse.of(c -> c.count(7L).shards(s -> s.failed(0).successful(1).total(1)));
@@ -122,6 +175,60 @@ class EsIndexServiceTest {
   void deleteByDocId_nullOrKbId_isSafe() {
     esIndexService.deleteByDocId(null);
     esIndexService.deleteByKbId(null);
+  }
+
+  @Test
+  void deleteByDocId_withNonNullId_callsDeleteByQueryAndRefresh() throws Exception {
+    var dbqResponse = mock(co.elastic.clients.elasticsearch.core.DeleteByQueryResponse.class);
+    when(client.deleteByQuery(any(java.util.function.Function.class))).thenReturn(dbqResponse);
+    var refreshResponse = mock(co.elastic.clients.elasticsearch.indices.RefreshResponse.class);
+    when(indicesClient.refresh(any(java.util.function.Function.class))).thenReturn(refreshResponse);
+
+    esIndexService.deleteByDocId(42L);
+
+    verify(client).deleteByQuery(any(java.util.function.Function.class));
+    verify(indicesClient).refresh(any(java.util.function.Function.class));
+  }
+
+  @Test
+  void deleteByDocId_whenClientFails_swallowsException() throws Exception {
+    when(client.deleteByQuery(any(java.util.function.Function.class)))
+        .thenThrow(new RuntimeException("ES unavailable"));
+
+    esIndexService.deleteByDocId(99L);  // must not throw
+  }
+
+  @Test
+  void deleteByKbId_withNonNullId_callsDeleteByQueryAndRefresh() throws Exception {
+    var dbqResponse = mock(co.elastic.clients.elasticsearch.core.DeleteByQueryResponse.class);
+    when(client.deleteByQuery(any(java.util.function.Function.class))).thenReturn(dbqResponse);
+    var refreshResponse = mock(co.elastic.clients.elasticsearch.indices.RefreshResponse.class);
+    when(indicesClient.refresh(any(java.util.function.Function.class))).thenReturn(refreshResponse);
+
+    esIndexService.deleteByKbId(100L);
+
+    verify(client).deleteByQuery(any(java.util.function.Function.class));
+  }
+
+  @Test
+  void deleteByKbId_whenClientFails_swallowsException() throws Exception {
+    when(client.deleteByQuery(any(java.util.function.Function.class)))
+        .thenThrow(new RuntimeException("ES down"));
+
+    esIndexService.deleteByKbId(55L);  // must not throw
+  }
+
+  @Test
+  void indexChunks_withImageChunk_setsModalityField() throws Exception {
+    BulkResponse response = BulkResponse.of(b -> b.errors(false).items(List.of()).took(1L));
+    when(client.bulk(any(co.elastic.clients.elasticsearch.core.BulkRequest.class))).thenReturn(response);
+
+    DocumentChunk imageChunk = chunk(20L, 5L, 200L, "image data");
+    imageChunk.setChunkModality("IMAGE");
+    Document doc = document(5L);
+    doc.setFileType("jpg");
+
+    assertThat(esIndexService.indexChunks(List.of(imageChunk), doc)).isTrue();
   }
 
   private static Document document(long id) {

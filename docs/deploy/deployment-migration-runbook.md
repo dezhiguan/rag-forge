@@ -1,3 +1,5 @@
+> 🕰️ **历史归档** — docker-compose 三层时代的部署/切流 Runbook。其中 `ragforge.net /api/ → <入口层>:19080` 等端口**已与现网不符**(现网走应用层 k3s NodePort `31090`)。当前部署以 [`deployment-architecture.md`](deployment-architecture.md) 为准。
+
 # 三层架构最终部署 Runbook
 
 适用于 RAGForge + CareerMate 生产环境首次部署与切流。按真实执行顺序操作。
@@ -6,22 +8,22 @@
 
 | 层级 | 公网 IP | 私网 IP | 服务 |
 |------|---------|---------|------|
-| Server 1 数据层 | 8.163.30.216 | 172.25.90.183 | PostgreSQL、Elasticsearch、Redis、RocketMQ |
-| Server 2 入口层 | 8.163.63.222 | 172.19.40.32 | Nginx、RAGForge 前端、CareerMate 前端 |
-| Server 3 应用层 | 8.138.191.228 | 172.25.90.184 | RAGForge backend `:8080/:8081/:8082`、CareerMate backend `:18080/:18081/:18082` |
+| Server 1 数据层 | {数据层公网IP} | {数据层内网IP} | PostgreSQL、Elasticsearch、Redis、RocketMQ |
+| Server 2 入口层 | {入口层公网IP} | {入口层内网IP} | Nginx、RAGForge 前端、CareerMate 前端 |
+| Server 3 应用层 | {应用层公网IP} | {应用层内网IP} | RAGForge backend `:8080/:8081/:8082`、CareerMate backend `:18080/:18081/:18082` |
 
 说明：
 
 - **Server 1 数据层保持不动**，仅做健康检查与安全组确认。
 - **Reranker** 为预留服务，当前不默认启动，连通性检查不包含 `:8001`。
-- **jd-crawler / interview-crawler** 尚未开发，不在本轮部署范围。
-- **不要把 Server 1 数据端口暴露到公网**；仅允许 Server 3 私网 `172.25.90.184` 访问。
+- **jd-crawler 等数据采集器** 尚未开发，不在本轮部署范围。
+- **不要把 Server 1 数据端口暴露到公网**；仅允许 Server 3 私网 `{应用层内网IP}` 访问。
 
 ---
 
 ## A. Server 1 检查（数据层）
 
-在 Server 1（`172.25.90.183`）确认中间件已启动：
+在 Server 1（`{数据层内网IP}`）确认中间件已启动：
 
 ```bash
 docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | \
@@ -74,7 +76,7 @@ docker exec ragforge-redis redis-cli INFO memory | grep -E 'used_memory_human|ma
 
 ### 安全组 / 防火墙
 
-Server 1 **入方向**仅允许来源 `172.25.90.184/32`（Server 3 应用层）访问上表端口。
+Server 1 **入方向**仅允许来源 `{应用层内网IP}/32`（Server 3 应用层）访问上表端口。
 
 **禁止**将 5432 / 9200 / 6379 / 9876 / 10909 / 10911 / 10912 对公网开放。
 
@@ -82,7 +84,7 @@ Server 1 **入方向**仅允许来源 `172.25.90.184/32`（Server 3 应用层）
 
 ## B. Server 3 初始化（应用层）
 
-在 Server 3（`8.138.191.228` / `172.25.90.184`）执行。
+在 Server 3（`{应用层公网IP}` / `{应用层内网IP}`）执行。
 
 ### B.1 安装必要工具
 
@@ -169,7 +171,7 @@ chmod 600 /opt/shared/env/ragforge.env
 
 ## C. Server 2 初始化（入口层）
 
-在 Server 2（`8.163.63.222` / `172.19.40.32`）执行。
+在 Server 2（`{入口层公网IP}` / `{入口层内网IP}`）执行。
 
 ```bash
 mkdir -p /opt/rag-forge/frontend/dist/careerforge
@@ -180,11 +182,11 @@ mkdir -p /opt/rag-forge/frontend/dist/careerforge
 | 域名 | 路径 | 目标 |
 |------|------|------|
 | `ragforge.net` | `/` | RAGForge 静态：`/usr/share/nginx/html/` |
-| `ragforge.net` | `/api/` | `http://172.19.40.32:19080/19081/19082` |
+| `ragforge.net` | `/api/` | `http://{入口层内网IP}:19080/19081/19082` |
 | `careerforge.cn` | `/` | CareerForge 静态：`/usr/share/nginx/html/careerforge/` |
-| `careerforge.cn` | `/api/` | `careermate_backend` → `172.19.40.32:18080/18081/18082` |
+| `careerforge.cn` | `/api/` | `careermate_backend` → `{入口层内网IP}:18080/18081/18082` |
 
-裸 IP `8.163.63.222` 仍保留旧路径（`/careermate/`、`/careermate-api/`）便于迁移期访问。
+裸 IP `{入口层公网IP}` 仍保留旧路径（`/careermate/`、`/careermate-api/`）便于迁移期访问。
 
 启动或重启入口层（仅 Nginx + 前端，无 backend 容器）：
 
@@ -208,7 +210,7 @@ docker compose -f docker-compose-ingress.yml ps
 ### 在 Server 3 执行（→ Server 1 数据层）
 
 ```bash
-HOST=172.25.90.183
+HOST={数据层内网IP}
 for p in 5432 9200 6379 9876 10909 10911 10912; do
   nc -vz -w 3 "$HOST" "$p"
 done
@@ -217,8 +219,8 @@ done
 ### 在 Server 2 执行（→ Server 3 应用层）
 
 ```bash
-nc -vz -w 3 172.25.90.184 8080
-nc -vz -w 3 172.25.90.184 18080 18081 18082
+nc -vz -w 3 {应用层内网IP} 8080
+nc -vz -w 3 {应用层内网IP} 18080 18081 18082
 ```
 
 全部 `succeeded` 后再继续部署。
@@ -267,16 +269,16 @@ for p in 18080 18081 18082; do curl -fsS "http://127.0.0.1:${p}/api/health"; don
 ### Server 2 → Server 3（内网）
 
 ```bash
-curl -fsS http://172.19.40.32:19080/api/v1/health
-for p in 18080 18081 18082; do curl -fsS "http://172.19.40.32:${p}/api/health"; done
+curl -fsS http://{入口层内网IP}:19080/api/v1/health
+for p in 18080 18081 18082; do curl -fsS "http://{入口层内网IP}:${p}/api/health"; done
 ```
 
 ### 公网入口
 
 ```bash
-curl -fsS http://8.163.63.222/api/v1/health
-curl -fsS http://8.163.63.222/careermate-api/health
-curl -fsS http://8.163.63.222/careermate/ | head
+curl -fsS http://{入口层公网IP}/api/v1/health
+curl -fsS http://{入口层公网IP}/careermate-api/health
+curl -fsS http://{入口层公网IP}/careermate/ | head
 ```
 
 ---
@@ -329,12 +331,12 @@ docker compose -f docker-compose-ingress.yml exec nginx nginx -s reload
 
 | Secret | 说明 |
 |--------|------|
-| `RAGFORGE_INGRESS_HOST` | Server 2 SSH 目标（如 `root@8.163.63.222`） |
-| `RAGFORGE_APP_HOST` | Server 3 SSH 目标（如 `root@8.138.191.228`） |
+| `RAGFORGE_INGRESS_HOST` | Server 2 SSH 目标（如 `root@{入口层公网IP}`） |
+| `RAGFORGE_APP_HOST` | Server 3 SSH 目标（如 `root@{应用层公网IP}`） |
 | `RAGFORGE_INGRESS_SSH_KEY` | Server 2 SSH 私钥 |
 | `RAGFORGE_APP_SSH_KEY` | Server 3 SSH 私钥 |
-| `RAGFORGE_INGRESS_KNOWN_HOSTS` | `ssh-keyscan 8.163.63.222` 输出 |
-| `RAGFORGE_APP_KNOWN_HOSTS` | `ssh-keyscan 8.138.191.228` 输出 |
+| `RAGFORGE_INGRESS_KNOWN_HOSTS` | `ssh-keyscan {入口层公网IP}` 输出 |
+| `RAGFORGE_APP_KNOWN_HOSTS` | `ssh-keyscan {应用层公网IP}` 输出 |
 | `RAGFORGE_INGRESS_DIR` | 可选，默认 `/opt/rag-forge`（Server 2） |
 | `RAGFORGE_APP_DIR` | 可选，默认 `/opt/rag-forge`（Server 3） |
 
@@ -346,11 +348,11 @@ docker compose -f docker-compose-ingress.yml exec nginx nginx -s reload
 
 | Secret | 说明 |
 |--------|------|
-| `CAREERMATE_APP_HOST` | Server 3 主机（如 `8.138.191.228`） |
+| `CAREERMATE_APP_HOST` | Server 3 主机（如 `{应用层公网IP}`） |
 | `CAREERMATE_APP_USER` | Server 3 SSH 用户 |
 | `CAREERMATE_APP_SSH_KEY` | Server 3 SSH 私钥 |
 | `CAREERMATE_APP_PORT` | 可选，默认 `22` |
-| `CAREERMATE_INGRESS_HOST` | Server 2 主机（如 `8.163.63.222`） |
+| `CAREERMATE_INGRESS_HOST` | Server 2 主机（如 `{入口层公网IP}`） |
 | `CAREERMATE_INGRESS_USER` | Server 2 SSH 用户 |
 | `CAREERMATE_INGRESS_SSH_KEY` | Server 2 SSH 私钥 |
 | `CAREERMATE_INGRESS_PORT` | 可选，默认 `22` |
@@ -371,8 +373,8 @@ docker compose -f docker-compose-backend.yml stop backend-1 backend-2 backend-3
 
 # 3. rsync（先 --dry-run）
 rsync -avzn --progress \
-  root@8.163.63.222:/var/lib/docker/volumes/rag-forge_files_data/_data/ \
-  root@8.138.191.228:/var/lib/docker/volumes/rag-forge_files_data/_data/
+  root@{入口层公网IP}:/var/lib/docker/volumes/rag-forge_files_data/_data/ \
+  root@{应用层公网IP}:/var/lib/docker/volumes/rag-forge_files_data/_data/
 
 # 4. 重启
 docker compose "${COMPOSE[@]}" up -d
@@ -385,15 +387,15 @@ docker compose "${COMPOSE[@]}" up -d
 ## J. 请求链路确认
 
 ```text
-用户 → ragforge.net (8.163.63.222 Nginx)
+用户 → ragforge.net ({入口层公网IP} Nginx)
   /      → RAGForge frontend
-  /api/  → 172.19.40.32:19080/19081/19082
+  /api/  → {入口层内网IP}:19080/19081/19082
 
-用户 → careerforge.cn (8.163.63.222 Nginx)
+用户 → careerforge.cn ({入口层公网IP} Nginx)
   /      → CareerForge frontend
-  /api/  → careermate_backend (172.19.40.32:18080/18081/18082)
+  /api/  → careermate_backend ({入口层内网IP}:18080/18081/18082)
 
-Server 3 → 172.25.90.183 (数据层)
+Server 3 → {数据层内网IP} (数据层)
   PostgreSQL :5432 / ES :9200 / Redis :6379 / RocketMQ :9876
 ```
 

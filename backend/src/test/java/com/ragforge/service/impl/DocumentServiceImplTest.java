@@ -211,6 +211,7 @@ class DocumentServiceImplTest {
     Document doc = doc(3L, 1L, "a.pdf", "COMPLETED");
     when(documentMapper.selectById(3L)).thenReturn(doc);
     DocumentChunk chunk = new DocumentChunk();
+    chunk.setId(30L);
     chunk.setChunkIndex(0);
     chunk.setContent("chunk");
     chunk.setTokenCount(4);

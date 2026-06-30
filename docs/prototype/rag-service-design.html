@@ -301,9 +301,9 @@
         <!-- Recent activity -->
         <div style="background:var(--light);border-radius:8px;padding:12px;font-size:11px;">
           <div style="font-weight:600;margin-bottom:6px;">最近操作</div>
-          <div style="color:var(--text-muted);">12:30 知识库「面试题库」索引重建完成</div>
+          <div style="color:var(--text-muted);">12:30 知识库「技术文档库」索引重建完成</div>
           <div style="color:var(--text-muted);">11:45 评测实验「Hybrid+Reranker」完成，Top3: 89%</div>
-          <div style="color:var(--red);">10:20 文档「某公司面经.pdf」解析失败 — <span style="color:var(--blue);">重试</span></div>
+          <div style="color:var(--red);">10:20 文档「某公司技术资料.pdf」解析失败 — <span style="color:var(--blue);">重试</span></div>
         </div>
       </div>
     </div>
@@ -349,7 +349,7 @@
         <tr><th>知识库</th><th>文档</th><th>Chunk</th><th>Embedding</th><th>BM25</th><th>状态</th><th>操作</th></tr>
         <tr><td style="font-weight:600;">🧑 求职者简历库</td><td>3</td><td>420</td><td>text-embedding-3</td><td>✓</td><td><span class="badge green">可用</span></td><td style="color:var(--blue);">详情 · 检索</td></tr>
         <tr><td style="font-weight:600;">💼 岗位 JD 库</td><td>156</td><td>8,200</td><td>text-embedding-3</td><td>✓</td><td><span class="badge green">可用</span></td><td style="color:var(--blue);">详情 · 检索</td></tr>
-        <tr><td style="font-weight:600;">📝 面试题库</td><td>420</td><td>18,500</td><td>text-embedding-3</td><td>✓</td><td><span class="badge amber">重建中</span></td><td style="color:var(--blue);">查看任务</td></tr>
+        <tr><td style="font-weight:600;">📝 技术文档库</td><td>420</td><td>18,500</td><td>text-embedding-3</td><td>✓</td><td><span class="badge amber">重建中</span></td><td style="color:var(--blue);">查看任务</td></tr>
         <tr><td style="font-weight:600;">🏢 公司信息库</td><td>89</td><td>6,100</td><td>text-embedding-3</td><td>✓</td><td><span class="badge green">可用</span></td><td style="color:var(--blue);">详情 · 检索</td></tr>
         <tr><td style="font-weight:600;">📚 行业知识库</td><td>312</td><td>12,300</td><td>text-embedding-3</td><td>✓</td><td><span class="badge green">可用</span></td><td style="color:var(--blue);">详情 · 检索</td></tr>
         <tr><td style="font-weight:600;">📋 求职策略库</td><td>300</td><td>6,580</td><td>text-embedding-3</td><td>✓</td><td><span class="badge red">失败 2</span></td><td style="color:var(--red);">重试</td></tr>
@@ -501,8 +501,8 @@
       <table style="font-size:10px;">
         <tr><th>问题</th><th>失败原因</th><th>优化建议</th><th>操作</th></tr>
         <tr><td>"AI工程师需要掌握哪些框架？"</td><td><span class="badge amber">召回太少</span> Top1 未命中</td><td>提高 TopK，降低相似度阈值</td><td style="color:var(--blue);">去调试 →</td></tr>
-        <tr><td>"分布式系统面试一般怎么问？"</td><td><span class="badge red">Chunk切碎</span> 上下文不完整</td><td>调整分块策略，增大重叠</td><td style="color:var(--blue);">去调试 →</td></tr>
-        <tr><td>"字节跳动的面试流程有几轮？"</td><td><span class="badge amber">文档缺失</span> 知识库无此信息</td><td>补充面经文档</td><td style="color:var(--blue);">去上传 →</td></tr>
+        <tr><td>"分布式系统一般怎么设计？"</td><td><span class="badge red">Chunk切碎</span> 上下文不完整</td><td>调整分块策略，增大重叠</td><td style="color:var(--blue);">去调试 →</td></tr>
+        <tr><td>"某公司的技术规范有哪些？"</td><td><span class="badge amber">文档缺失</span> 知识库无此信息</td><td>补充技术文档</td><td style="color:var(--blue);">去上传 →</td></tr>
       </table>
     </div>
   </div>

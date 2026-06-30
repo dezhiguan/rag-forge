@@ -123,7 +123,7 @@ KB answer_mode 校验
 真实部署目标是单节点 K3s：
 
 ```text
-node: 8.138.191.228
+node: {应用层公网IP}
 namespace: ragforge
 ```
 

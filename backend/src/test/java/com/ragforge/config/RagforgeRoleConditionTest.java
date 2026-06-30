@@ -11,6 +11,7 @@ import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.AnswerLogMapper;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.JudgeResultMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.judge.JudgeScorer;
 import com.ragforge.mq.DocumentProcessConsumer;
@@ -121,6 +122,11 @@ class RagforgeRoleConditionTest {
     @Bean
     DocumentMapper documentMapper() {
       return mock(DocumentMapper.class);
+    }
+
+    @Bean
+    KnowledgeBaseMapper knowledgeBaseMapper() {
+      return mock(KnowledgeBaseMapper.class);
     }
 
     @Bean

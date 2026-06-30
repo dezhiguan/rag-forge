@@ -1544,7 +1544,7 @@ public class JudgeCostGuard {
 | 阶段 3 | J3 | 3 | AnswerService 接 MQ，但 Consumer 还没有 |
 | 阶段 4 | J4 | 5 | **完整闭环跑通**：调 /answer → MQ → JudgeWorker → DeepSeek → 写库 |
 | 阶段 5 | J5 | 6.5 | API 返回看板数据 |
-| 阶段 6 | J6 | 8.5 | **可演示**：前端看板能看到数字 |
+| 阶段 6 | J6 | 8.5 | **可验证**：前端看板能看到数字 |
 | 阶段 7 | J7 | 9.5 | 完整可持续运行 |
 
 ## 关键风险提醒

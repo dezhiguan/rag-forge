@@ -17,6 +17,7 @@ import com.ragforge.service.RetrievalLogService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
 import com.ragforge.search.VectorSearchService;
+import com.ragforge.storage.ChunkImageResolver;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ class SearchControllerTest {
   @Mock private VectorSearchService vectorSearchService;
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private RetrievalLogService retrievalLogService;
+  @Mock private ChunkImageResolver chunkImageResolver;
 
   private MockMvc mockMvc;
 
@@ -48,7 +50,7 @@ class SearchControllerTest {
         standaloneSetup(
                 new SearchController(
                     retrievalService, vectorSearchService, kbAccessGuard, retrievalLogService,
-                    org.mockito.Mockito.mock(com.ragforge.storage.ChunkImageResolver.class)))
+                    chunkImageResolver))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .setValidator(validator)
@@ -146,6 +148,72 @@ class SearchControllerTest {
             isNull(),
             isNull(),
             isNull());
+  }
+
+  @Test
+  void search_noAccessibleKbs_returnsEmptyResult() throws Exception {
+    when(kbAccessGuard.filterReadable(List.of(99L))).thenReturn(Set.of());
+
+    mockMvc
+        .perform(
+            post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"Java\",\"kbIds\":[99]}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.results").isArray())
+        .andExpect(jsonPath("$.data.results").isEmpty());
+  }
+
+  @Test
+  void searchByImage_blankImage_returns400() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/search/by-image")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryImageBase64\":\"\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value(400));
+  }
+
+  @Test
+  void searchByImage_noAccessibleKbs_returnsEmpty() throws Exception {
+    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of());
+
+    mockMvc
+        .perform(
+            post("/api/v1/search/by-image")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryImageBase64\":\"aGVsbG8=\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.results").isEmpty());
+  }
+
+  @Test
+  void searchByImage_withResults_mapsResponse() throws Exception {
+    SearchResult hit = new SearchResult();
+    hit.setChunkId(55L);
+    hit.setContent("photo content");
+    hit.setChunkModality("IMAGE");
+
+    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(17L));
+    when(chunkImageResolver.presignedUrls(List.of(55L))).thenReturn(java.util.Map.of());
+    when(vectorSearchService.searchImage(
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyList(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.anyInt(),
+            org.mockito.ArgumentMatchers.any()))
+        .thenReturn(List.of(hit));
+
+    mockMvc
+        .perform(
+            post("/api/v1/search/by-image")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryImageBase64\":\"aGVsbG8=\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.results[0].chunkId").value(55))
+        .andExpect(jsonPath("$.data.strategy").value("image-vector"));
   }
 
   @Test

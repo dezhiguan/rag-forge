@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -13,8 +14,11 @@ import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.dto.CreateEvalDatasetDTO;
 import com.ragforge.model.entity.EvalDataset;
 import com.ragforge.model.entity.KnowledgeBase;
+import com.ragforge.security.OrgContextHolder;
+import com.ragforge.security.RagAuthContextHolder;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -29,6 +33,12 @@ class EvalDatasetServiceImplTest {
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
 
   @InjectMocks private EvalDatasetServiceImpl evalDatasetService;
+
+  @AfterEach
+  void tearDown() {
+    OrgContextHolder.clear();
+    RagAuthContextHolder.clear();
+  }
 
   @Test
   void listAll_mapsEntities() {
@@ -67,6 +77,56 @@ class EvalDatasetServiceImplTest {
     assertThatThrownBy(() -> evalDatasetService.create(dto))
         .isInstanceOf(BizException.class)
         .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
+  }
+
+  @Test
+  void create_deletedKb_throws404() {
+    KnowledgeBase deleted = activeKb(10L);
+    deleted.setStatus("deleted");
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(deleted);
+
+    CreateEvalDatasetDTO dto = new CreateEvalDatasetDTO();
+    dto.setName("ds");
+    dto.setKbId(10L);
+
+    assertThatThrownBy(() -> evalDatasetService.create(dto))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
+    verify(evalDatasetMapper, never()).insert(any(EvalDataset.class));
+  }
+
+  @Test
+  void listAll_withOrgScopeReturnsEmptyWithoutQueryingDatasetsWhenNoKbInScope() {
+    OrgContextHolder.set(7L);
+    when(knowledgeBaseMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+
+    var list = evalDatasetService.listAll();
+
+    assertThat(list).isEmpty();
+    verify(evalDatasetMapper, never()).selectList(any(LambdaQueryWrapper.class));
+  }
+
+  @Test
+  void getById_datasetOutsideCurrentOrg_throws403() {
+    OrgContextHolder.set(7L);
+    when(evalDatasetMapper.selectById(9L)).thenReturn(dataset(9L, "foreign", 99L));
+    when(knowledgeBaseMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(activeKb(10L)));
+
+    assertThatThrownBy(() -> evalDatasetService.getById(9L))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(403))
+        .hasMessageContaining("EVAL_RESOURCE_NOT_IN_ORG");
+  }
+
+  @Test
+  void requireDataset_datasetInCurrentOrg_passes() {
+    OrgContextHolder.set(7L);
+    when(evalDatasetMapper.selectById(9L)).thenReturn(dataset(9L, "local", 10L));
+    when(knowledgeBaseMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(activeKb(10L)));
+
+    evalDatasetService.requireDataset(9L);
+
+    verify(evalDatasetMapper).selectById(9L);
   }
 
   @Test

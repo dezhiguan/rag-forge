@@ -484,7 +484,7 @@
     <section id="deployment">
       <h2>3. 当前部署约束</h2>
       <p>
-        现有部署采用两台云服务器：数据与检索层集中在 4C8G ECS，应用入口层集中在 2C4G 轻量服务器。这个部署对于演示、轻量生产和中等规模知识库是可用的，但在万级文档导入和混合检索压测时，需要重点控制 ES、PG、RocketMQ 和 Java 后端的资源竞争。
+        现有部署采用两台云服务器：数据与检索层集中在 4C8G ECS，应用入口层集中在 2C4G 轻量服务器。这个部署对于验证、轻量生产和中等规模知识库是可用的，但在万级文档导入和混合检索压测时，需要重点控制 ES、PG、RocketMQ 和 Java 后端的资源竞争。
       </p>
       <table>
         <thead>
@@ -500,15 +500,15 @@
           <tr>
             <td>ECS 云服务器</td>
             <td>4 vCPU / 8 GiB / 40 GiB 系统盘</td>
-            <td>8.163.30.216</td>
-            <td>172.25.90.183</td>
+            <td>{数据层公网IP}</td>
+            <td>{数据层内网IP}</td>
             <td>PostgreSQL、pgvector、Elasticsearch、Redis、RocketMQ</td>
           </tr>
           <tr>
             <td>轻量级服务器</td>
             <td>2 vCPU / 4 GiB / 50 GiB 系统盘</td>
-            <td>8.163.63.222</td>
-            <td>172.19.40.32</td>
+            <td>{入口层公网IP}</td>
+            <td>{入口层内网IP}</td>
             <td>Nginx、前端服务、RAG Java 后端；后续可能部署 AI 求职 Agent 前后端</td>
           </tr>
         </tbody>

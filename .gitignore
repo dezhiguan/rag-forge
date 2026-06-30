@@ -69,8 +69,8 @@ temp/
 # Project specific
 # =========================
 tasks.md
-docs/tasks.md
-docs/cursor-prompts.md
+docs/dev/tasks.md
+docs/dev/cursor-prompts.md
 
 # Uploaded documents (local runtime storage only, not for version control)
 data/files/*

@@ -1,106 +1,92 @@
-# RAGForge - AI 开发上下文恢复指南
+# RAGForge — AI 开发上下文恢复指南
 
-> 每次新会话开始，Claude Code 会自动加载本文件。
-> 本文件是项目的"记忆锚点"，保持精简，详细内容链接到 docs/ 目录。
+> 每次新会话开始,Claude Code 会自动加载本文件。
+> 本文件是项目的"记忆锚点",保持精简,详细内容链接到 `docs/`。
+> **以 `docs/architecture.md` 为权威架构文档,以本仓库当前代码为最终事实。**
 
 ---
 
 ## 项目身份
 
-- **项目名称**：RAGForge - 企业级 RAG 知识引擎
-- **项目定位**：RAG 基础设施层，为 CareerMate（AI 求职 Agent）提供知识检索 API
-- **技术栈**：Java 17 + Spring Boot 3.2 + PostgreSQL/pgvector + Elasticsearch + RocketMQ
-- **前端**：Vue 3 + Vite（6 个管理后台页面）
-- **目标部署**：阿里云 ECS
-- **目的**：简历展示 + 面试演示
+- **项目名称**:RAGForge — RAG 知识引擎
+- **定位**:RAG 基础设施层,为 [CareerMate(AI 求职 Agent)](https://github.com/dezhiguan/careermate) 等上层应用提供知识检索 / RAG 应答 / MCP API
+- **线上**:https://ragforge.net (已上线运行)
+- **后端**:Java 21 + Spring Boot 3.5.15 + MyBatis-Plus
+- **数据**:PostgreSQL + pgvector(`vl_vector` 2560 维)、Elasticsearch 8.15(BM25)、RocketMQ、Redis
+- **AI**:Spring AI 1.0(MCP WebMVC SSE);模型走 DashScope + DeepSeek(见下)
+- **前端**:Vue 3 + Vite + Element Plus(纯 JavaScript)
+- **部署**:k3s 单节点(应用层),数据层独立机,入口层 Nginx
 
 ## 项目位置
 
-`/Users/amy/CursorProject/rag-forge/`
+`/Users/amy/CursorProject/rag-forge/`(GitHub: `dezhiguan/rag-forge`)
 
-## 架构师
+## 架构师与协作模式
 
-@guandezhi，Java 技术栈，该项目从 0 到 1 开发。
+- 架构师 @guandezhi(Java 技术栈,该项目 0→1)。架构师负责架构设计 / 需求 / 数据库 / API / 任务拆分 / Cursor prompt;**具体代码由 Cursor 执行**,本会话主要维护架构与文档、审核代码。
+- 重大架构变更需同步更新 `docs/architecture.md` 与本文件。
 
-## 开发模式
+## 核心架构决策(速查 · 以代码为准)
 
-- **架构师**（本会话）负责：架构设计、需求分析、数据库设计、API 设计、任务拆分、Cursor prompt 编写
-- **Cursor** 负责：具体代码实现，按照 prompt 逐个任务执行
-- **本仓库不直接写代码**，只维护架构文档和任务 prompt
+### 模型(按 Purpose)
+| Purpose | 模型 | 供应商 | 说明 |
+|------|------|------|------|
+| EMBEDDING | `qwen3-vl-embedding` | DashScope | 文本+图片统一 **2560 维** |
+| REWRITE | `qwen-turbo` | DashScope | Query 改写(支持动态选型) |
+| ANSWER | `qwen-plus` | DashScope | RAG 应答 / 调试台(支持动态选型) |
+| RERANK | `qwen3-rerank` | DashScope | 仅 `full` 策略 |
+| OCR | `qwen-vl-ocr` | DashScope | 图片管道可选 |
+| JUDGE | `deepseek-v4-flash` | DeepSeek | LLM-as-Judge 评测 |
 
-## 项目结构
+> ⚠️ 历史误区(已纠正):早期文档写的 text-embedding-v4 / DeepSeek-V3 改写 / 本地 bge-reranker 微服务**均已不是现状**。rerank 走 DashScope 在线,`reranker/`(jina)线上未部署。
+
+### 中间件
+- PostgreSQL + pgvector:业务数据 + 向量(`document_chunks.vl_vector vector(2560)`)
+- Elasticsearch 8.15 + IK:BM25 关键词检索(IK 缺失回退 standard)
+- RocketMQ:文档处理异步管道(topic `ragforge-document-process`,group `ragforge-doc-process-group`)
+- Redis:认证撤销、API Key 限流、ShedLock
+- 文件存储:节点本地 `hostPath /data/files`(OSS 抽象已就绪,默认本地盘)
+
+### 检索链路(5 策略,统一 `RetrievalService`)
+```
+vector(默认) / keyword / hybrid(RRF) / rewrite(改写+多路向量) / full(改写+混合+rerank)
+```
+每策略独立并发限流 + 超时;`full` 默认并发=1,是唯一调用 rerank 的策略。
+
+### 向量索引现状(重要)
+`vl_vector` 为 2560 维 > pgvector 0.8 索引上限 2000,**当前无 HNSW,向量检索走顺序扫描**。切换见 `backend/src/main/resources/db/manual/V27__vl_unified_vector.sql`。
+
+### 数据库
+Flyway `V1..V51`(baseline=26,out-of-order),核心表 ~26 张:knowledge_bases / documents / document_chunks / retrieval_logs / kb_acl / answer_logs / clean_profiles / eval_* / judge_* / model_config / model_usage_daily / organizations / org_members / api_keys / revoked_jtis / admin_access_audit 等。
+
+### 认证与权限
+Auth Gateway 颁发 JWT(RS256),后端自研 `JwtVerifier`(JWKS 验签,非 nimbus)。角色为字符串约定 `ADMIN / KB_EDITOR / KB_VIEWER / SERVICE_ACCOUNT`。KB 访问统一过 `KbAccessGuard`。组织模型为 GitHub 式个人+组织(已移除 tenant)。
+
+### 部署(k3s)
+`ragforge` 命名空间,同一 backend 镜像按 `RAGFORGE_ROLE` 起 `api`(3)/ `worker`(1,MQ consumer)/ `judge`(1,LLM-as-Judge)+ `frontend`(2)。入口:域名 → 入口层 Nginx → 应用层 NodePort 31090。详见 `docs/deploy/deployment-architecture.md`。
+
+## 文档结构(已按 原型/开发/测试/部署 归类)
 
 ```
-rag-forge/
-├── CLAUDE.md              ← 本文件（自动加载）
-├── docs/
-│   ├── architecture.md    ← 完整架构设计文档（权威参考）
-│   └── tasks.md           ← 任务追踪（当前进度、状态）
-├── backend/               ← Spring Boot（Cursor 生成）
-├── reranker/               ← Python 微服务（Cursor 生成）
-├── frontend/              ← Vue 3 前端（已有 6 页面 mockup）
-└── docker-compose.yml     ← 部署编排（Cursor 生成）
+docs/
+├── architecture.md          # 权威架构(优先读)
+├── CHANGELOG.md             # 版本演进时间线(V4→V5→V6 + 认证/权限 V1→V2)
+├── INDEX.md                 # 文档索引导航
+├── prototype/               # 早期设计稿与原型(历史)
+├── dev/                     # 实现说明、任务、路线、设计规格
+├── test/                    # 测试计划、用例、验收、排障
+└── deploy/                  # 部署、运维、监控(以 deployment-architecture.md 为准)
 ```
 
 ## 恢复上下文的步骤
 
-### 新会话开始时，按以下顺序加载：
-
-1. **先读本文件**（自动加载）
-2. **读 docs/architecture.md** —— 完整架构，所有技术决策都在里面
-3. **读 docs/tasks.md** —— 当前进度，哪些完成了、哪些在做、哪些没开始
-4. **用 git log / git diff** —— 看最近实际改了什么代码
-
-### 快速恢复命令
-
-```
-读一下 docs/architecture.md 和 docs/tasks.md，然后告诉我当前项目状态
-```
-
-## 核心架构决策（速查）
-
-### 3 个模型
-| 模型 | 用途 | 调用方 |
-|------|------|--------|
-| text-embedding-v4 (DashScope) | 文档块→1024维向量 | 异步管道 Embedder |
-| DeepSeek-V3 | Query改写 + 调试台 + 评测 | Java HTTP 调用 |
-| bge-reranker-v2-m3 | 召回精排 | Python 微服务 → Java HTTP 调用 |
-
-### 中间件
-- PostgreSQL 15 + pgvector：业务数据 + 向量存储
-- Elasticsearch 8.x + ik分词器：BM25 关键词检索
-- RocketMQ 5.x：文档处理异步管道
-- 文件存储：本地磁盘 /data/files/（Docker Volume）
-
-### 完整检索链路
-```
-Query改写(DeepSeek) → 双路召回(pgvector + ES BM25) → RRF融合 → Reranker精排 → 返回TopK
-```
-
-### 文档处理管道（异步）
-```
-上传 → 存磁盘 → RocketMQ → Consumer: 解析(Tika) → 分块 → Embedding → PG入库 → ES索引 → 完成
-```
-
-### 数据库：9 张表
-knowledge_bases, documents, document_chunks(含vector(1024)), retrieval_logs, eval_datasets, eval_questions, eval_experiments, eval_results, api_keys
-
-### API 接口
-知识库 CRUD、文档上传/管理、POST /api/v1/search（核心检索）、评测数据集/实验、系统指标
-
-### 前端：6 个页面
-驾驶舱(/)、知识库管理(/knowledge)、文档详情(/document/:id)、检索调试台(/debug)、评测实验室(/eval)、API网关(/api)
-
-## 当前开发阶段
-
-**架构设计阶段** —— Cursor 代码开发尚未开始。
-
-下一步：架构师正在编写 18 个 Cursor 开发 prompt，完成后逐个交给 Cursor 实现。
+1. 读本文件(自动加载)
+2. 读 `docs/architecture.md` —— 权威架构
+3. 读 `docs/dev/tasks.md` 与 `docs/CHANGELOG.md` —— 进度与演进
+4. `git log` / `git diff` —— 看最近实际改了什么代码
 
 ## 协作规则
 
-1. 每次开发前，先读 `docs/tasks.md` 确认当前进度
-2. 每完成一个任务，更新 `docs/tasks.md` 中的状态
-3. 遇到架构问题，参考 `docs/architecture.md`，不要偏离原始设计
-4. 重大架构变更必须更新 `docs/architecture.md` 和本文件
-5. 每次提交代码时，commit message 中标注对应的任务编号
+1. 改动以**当前代码为最终事实**,文档若与代码冲突,先核代码再改文档。
+2. 重大架构变更必须同步 `docs/architecture.md` 与本文件。
+3. 提交代码时 commit message 标注对应任务编号;**不要提交测试文件**(测试仅本地验证),合并前后端均需编译通过(后端 `mvn test-compile`,前端 `npm run build`)。
