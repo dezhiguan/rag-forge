@@ -382,6 +382,8 @@
 | KB-CRUD-10 | 删除二次确认 | P-OWNER | 点删除 | 有确认弹窗，取消不删 |
 | KB-CRUD-11 | 创建后立即可用于检索 | P-OWNER | 建库后去检索台 | 新库出现在可选范围 |
 | KB-CRUD-12 | 切组织后建库归属正确 | P-SUPER | 切到 B 建库 | 归属 B，不串到 A |
+| KB-CRUD-13 | 上传接口收到非 multipart 友好报错 | P-OWNER | 用 JSON 请求 multipart 上传路由 | 返回 **415**（需 multipart/form-data）而非 500 |
+| KB-CRUD-14 | 真实 multipart 越权上传仍 403 | P-MEMBER | multipart 上传到他组织库 | 403（KB 写权限校验正常） |
 
 ## KB-VIS 可见性与公开库
 
@@ -740,6 +742,26 @@
 | DV-DOC-11 | MCP 适用客户端说明 | P-OWNER | 看 MCP tab | 列出适用客户端 |
 | DV-DOC-12 | 普通成员可见文档/MCP | P-MEMBER | 进开发者中心 | 可见（下放后），凭证按 org admin |
 
+## DV-AUTH 鉴权口径与用量回归（X-API-Key / lastUsedAt / 友好报错）
+
+> 背景：API key 鉴权头为 **`X-API-Key`**（`Authorization: Bearer` 被 JWT 占用，不可用于 API key）；
+> 拦截器白名单实际为 `/search`、`/answer`、`/documents`、`/mcp/**`；调用后更新 `last_used_at`（60s 节流）。
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DV-AUTH-01 | 文档鉴权头为 X-API-Key | P-OWNER | 看接入信息/MCP 认证 | 显示 `X-API-Key: <API key>`，**非 Bearer** |
+| DV-AUTH-02 | cURL 示例用 X-API-Key | P-OWNER | 看 cURL | `-H "X-API-Key: <API key>"` |
+| DV-AUTH-03 | MCP 配置 headers 用 X-API-Key | P-OWNER | 看 mcpServers | `"headers": { "X-API-Key": "<API key>" }` |
+| DV-AUTH-04 | X-API-Key 调 /search 成功 | — | 带 X-API-Key 调 /search | 200，返回本组织（+公开）结果 |
+| DV-AUTH-05 | Bearer 调 /search 被拒 | — | `Authorization: Bearer <api key>` 调 /search | 401（Bearer 归 JWT，不认 API key） |
+| DV-AUTH-06 | 核心接口列表与实际白名单一致 | P-OWNER | 看核心接口 | 仅列 `/search`、`/answer`、`/documents`，不含走不通的 `/kb` |
+| DV-AUTH-07 | /kb 用 API key 不在白名单 | — | X-API-Key 调 GET /kb | 401/拒绝（设计如此，文档不再宣称可用） |
+| DV-AUTH-08 | 调用后 last_used_at 更新 | P-OWNER | 用 key 调一次 /search，再看列表 | last_used_at 从 null → 最近时间 |
+| DV-AUTH-09 | last_used_at 60s 节流 | — | 60s 内多次调用 | 不频繁写库，时间在节流窗口内稳定 |
+| DV-AUTH-10 | 多 key 各自独立更新 | P-OWNER | 用 key A、key B 各调一次 | 两者 last_used_at 各自更新，不串 |
+| DV-AUTH-11 | 越权操作他组织 key 友好报错 | P-MEMBER | 改/删他组织 key | 提示「只有组织所有者或管理员才能执行此操作」（非裸 NOT_ORG_ADMIN） |
+| DV-AUTH-12 | 失效/错误 key 调用 | — | 用已删除/错误 key 调 /search | 401，提示明确 |
+
 ---
 
 # 模块九：性能诊断（/perf-probe）
@@ -796,6 +818,26 @@
 | PF-STAT-10 | 统计与逐条明细一致 | P-OWNER | 核对 | 聚合统计与逐条数据可对账 |
 | PF-STAT-11 | 单位毫秒一致 | P-OWNER | 看单位 | 统一 ms，无 s/ms 混用 |
 | PF-STAT-12 | 切组织后统计清空/独立 | P-SUPER | A→B | 不残留 A 的压测统计 |
+
+## PF-PERM 组织角色判权（直达/刷新回归）
+
+> 背景：`orgRoles` 路由（性能诊断、评测实验室）在**直达/刷新/外链**进入时，组织 myRole 可能尚未加载；
+> 路由守卫已改为「orgRoles 路由且组织未就绪 → 先 await load() 再判权」，避免误判 /403。
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| PF-PERM-01 | 直达 /perf-probe 不误判 403 | P-OWNER | 浏览器直接打开/刷新 /perf-probe | 正常进入页面，**不被路由到 /403** |
+| PF-PERM-02 | 团队 ADMIN 直达可进 | P-ADMIN | 直达 /perf-probe | 正常进入 |
+| PF-PERM-03 | 个人组织 owner 直达可进 | P-PERSONAL | 直达 /perf-probe | 正常进入（个人组织 owner=OWNER） |
+| PF-PERM-04 | 普通成员直达正确 403 | P-MEMBER | 直达 /perf-probe | 路由到 /403（orgRoles 不含 MEMBER），提示准确 |
+| PF-PERM-05 | 直达 /eval 同机制不误判 | P-OWNER | 直达 /eval | 正常进入（同为 orgRoles 路由） |
+| PF-PERM-06 | 点击侧栏进入一致 | P-OWNER | 从首页点「性能诊断」 | 与直达结果一致，可进入 |
+| PF-PERM-07 | 组织加载失败兜底 | P-OWNER | 模拟组织接口失败后直达 | 不卡死；按 canAccessRoute 兜底判定，不白屏 |
+| PF-PERM-08 | 切组织后权限随之变化 | P-SUPER | 从有权组织切到仅 MEMBER 的组织再进 | 失去入口/直达 403，口径一致 |
+| PF-PERM-09 | 破玻璃超管直达可进 | P-SUPER-PLAT | 全平台视图直达 /perf-probe | 可进入（ragRole=ADMIN 放行） |
+| PF-PERM-10 | 403 页面提示文案准确 | P-MEMBER | 被拦到 /403 | 提示「无访问权限」而非误导性文案 |
+| PF-PERM-11 | 登录后跳转目标为 orgRoles 路由 | P-OWNER | 未登录直达 /perf-probe→登录 | 登录后跳回 /perf-probe 且可进入（组织已加载） |
+| PF-PERM-12 | 刷新保持可进入 | P-OWNER | 在 /perf-probe 刷新多次 | 每次都正常进入，无偶发 403 |
 
 ---
 
