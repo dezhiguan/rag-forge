@@ -364,8 +364,8 @@
           </label>
           <label class="field field-toggle">
             <span class="toggle-head">
-              <input type="checkbox" v-model="kbForm.imageModeOn" />
               <span class="toggle-title">多模态处理</span>
+              <input type="checkbox" v-model="kbForm.imageModeOn" />
             </span>
             <span class="toggle-hint">
               开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
@@ -485,8 +485,8 @@
           </div>
           <label class="field field-toggle">
             <span class="toggle-head">
-              <input type="checkbox" v-model="editForm.imageModeOn" />
               <span class="toggle-title">多模态处理</span>
+              <input type="checkbox" v-model="editForm.imageModeOn" />
             </span>
             <span class="toggle-hint">
               开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
