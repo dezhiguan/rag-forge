@@ -61,7 +61,8 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { resetPasswordConfirm, resetPasswordInit, resetPasswordVerify } from '../../api/auth'
+import { refreshAccessToken, resetPasswordConfirm, resetPasswordInit, resetPasswordVerify } from '../../api/auth'
+import { loadMe } from '../../api/account'
 import { useAuth } from '../../composables/useAuth'
 
 const router = useRouter()
@@ -124,8 +125,17 @@ async function handleConfirm() {
       reset_ticket: state.resetTicket,
       new_password: form.newPassword,
     })
-    setSession(res.accessToken, res.user)
     clearResetTicket()
+    // 改密会 bump 后端 session_version，使 confirm 返回的 token 一出生即过期；
+    // 改用已轮换的 refresh cookie 换取 session_version 正确的新 token，再进首页。
+    try {
+      const fresh = await refreshAccessToken()
+      setSession(fresh.accessToken, fresh.user || res.user)
+    } catch {
+      // 兜底：refresh 不可用时退回 confirm 返回的 token（退化为旧行为）
+      setSession(res.accessToken, res.user)
+    }
+    loadMe() // 后台补全 capabilities/显示名，不阻塞跳转
     step.value = 3
     setTimeout(() => router.replace('/'), 450)
   } catch (e) {
