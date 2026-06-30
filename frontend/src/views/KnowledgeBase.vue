@@ -1362,10 +1362,7 @@ function statusClass(status) {
 
 onMounted(async () => {
   await loadKbs()
-  if (kbList.value.length) {
-    expandedKbId.value = kbList.value[0].id
-    await loadDocs(kbList.value[0].id)
-  }
+  // 默认全部合上，由用户点击展开（含第一个库）
   // 从驾驶舱「新建知识库」深链进入：自动打开创建弹窗，并清掉 query 防刷新重弹
   if (route.query.create) {
     openCreate()
