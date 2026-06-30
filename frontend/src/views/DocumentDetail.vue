@@ -16,11 +16,15 @@
         <header class="doc-header">
           <div class="doc-header-main">
             <div class="doc-title-group">
-              <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
+              <div class="doc-title-badges">
+                <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
+                <span v-if="!canWrite" class="ro-tag" title="只读知识库，你仅有查看与下载权限">只读</span>
+              </div>
               <h1 class="doc-title">{{ doc.filename }}</h1>
             </div>
             <div class="doc-header-actions">
               <button
+                v-if="canWrite"
                 type="button"
                 class="link-btn"
                 :disabled="!canRechunk || rechunking"
@@ -39,6 +43,7 @@
                 {{ showCleanPanel ? '收起清洗对比' : '清洗对比' }}
               </button>
               <button
+                v-if="canWrite"
                 type="button"
                 class="link-btn danger"
                 :disabled="!deleteEnabled"
@@ -204,7 +209,7 @@
           <div class="processing-title">处理失败</div>
           <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
           <p class="processing-error">{{ doc.errorMsg || '未知错误' }}</p>
-          <button class="btn-primary btn-retry" :disabled="retrying" @click="confirmReprocess">
+          <button v-if="canWrite" class="btn-primary btn-retry" :disabled="retrying" @click="confirmReprocess">
             {{ retrying ? '提交中…' : '重新处理' }}
           </button>
         </div>
@@ -299,6 +304,7 @@ import RechunkDialog from '../components/RechunkDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { KB_DOCUMENT_DELETE_ENABLED } from '../config/uiPolicy'
 import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rechunkDocument } from '../api/document'
+import { getKb } from '../api/kb'
 
 const deleteEnabled = KB_DOCUMENT_DELETE_ENABLED
 import { navigateBackFromDocument } from '../composables/useDocumentNav'
@@ -317,6 +323,10 @@ const rechunking = ref(false)
 const showRechunkDialog = ref(false)
 const showCleanPanel = ref(false)
 const doc = ref(null)
+// 写权限：以所属 KB 的 myPermission(admin|write|read) 为准。
+// 只读库隐藏重新分块/重新处理/删除等写操作，保留清洗对比这类纯查看能力（后端也会 403 兜底）。
+const kbPermission = ref(null)
+const canWrite = computed(() => kbPermission.value === 'write' || kbPermission.value === 'admin')
 const chunks = ref([])
 const chunkPage = ref(1)
 const chunkSize = 20
@@ -477,12 +487,28 @@ async function loadDetail() {
     const id = route.params.id
     const res = await getDocument(id)
     doc.value = res.data ?? null
+    await loadKbPermission()
     resetChunks()
     if (normalizeDocStatus(doc.value?.parseStatus) === 'completed') {
       await loadChunksPage(1)
     }
   } finally {
     loading.value = false
+  }
+}
+
+async function loadKbPermission() {
+  const kbId = doc.value?.kbId
+  if (!kbId) {
+    kbPermission.value = null
+    return
+  }
+  try {
+    const res = await getKb(kbId)
+    kbPermission.value = res.data?.myPermission ?? null
+  } catch {
+    // 拿不到权限时按只读处理，宁可少给写入口（后端仍有 403 兜底）
+    kbPermission.value = null
   }
 }
 
@@ -758,6 +784,24 @@ function piiLabel(key) {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+}
+
+.doc-title-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ro-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: var(--radius-full, 999px);
+  background: rgba(148, 163, 184, 0.18);
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .link-btn {

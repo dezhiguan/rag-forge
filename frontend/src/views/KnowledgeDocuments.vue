@@ -37,6 +37,7 @@
             <span v-if="docKeyword" class="doc-search-clear" @click="clearDocSearch">✕</span>
           </div>
           <span class="doc-search-count">{{ docKeyword ? `匹配 ${total} 个` : `共 ${total} 个文档` }}</span>
+          <span v-if="kb && !canWrite" class="ro-tag" title="只读知识库，你仅有查看与下载权限">只读</span>
         </div>
         <div v-if="loading && !docs.length" class="empty">加载文档中...</div>
         <div v-else-if="!docs.length && docKeyword" class="empty">未找到匹配「{{ docKeyword }}」的文档</div>
@@ -68,8 +69,9 @@
               >
                 下载
               </button>
-              <button v-if="doc.parseStatus === 'failed'" class="link-btn" @click="onReprocessDoc(doc)">重试</button>
+              <button v-if="canWrite && doc.parseStatus === 'failed'" class="link-btn" @click="onReprocessDoc(doc)">重试</button>
               <button
+                v-if="canWrite"
                 class="link-btn danger"
                 :disabled="!deleteEnabled"
                 :title="deleteEnabled ? '删除文档' : '演示环境已禁用删除'"
@@ -122,6 +124,13 @@ let docSearchTimer = null
 
 const kbId = computed(() => parsePositiveId(route.params.kbId))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size)))
+
+// 写权限：以后端返回的 myPermission(admin|write|read) 为准。
+// 只读库(read / 公共库访客)隐藏删除、重试等写操作，仅保留查看与下载（后端也会 403 兜底）。
+const canWrite = computed(() => {
+  const p = kb.value?.myPermission
+  return p === 'write' || p === 'admin'
+})
 
 const breadcrumbItems = computed(() => [
   { label: '知识库管理', to: '/knowledge' },
@@ -339,6 +348,7 @@ watch(kbId, (nextKbId, prevKbId) => {
 .doc-search-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer; font-size: 12px; }
 .doc-search-clear:hover { color: var(--slate); }
 .doc-search-count { font-size: 12.5px; color: var(--text-muted); }
+.ro-tag { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: var(--radius-full, 999px); background: rgba(148, 163, 184, 0.18); color: #64748b; font-size: 11px; font-weight: 700; border: 1px solid rgba(148, 163, 184, 0.25); }
 
 .doc-list {
   display: grid;
