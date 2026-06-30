@@ -183,6 +183,16 @@
                         <span class="kb-name-row">
                           <strong>{{ kb.name }}</strong>
                           <span
+                            v-if="kb.visibility === 'PUBLIC'"
+                            class="kb-tag kb-tag-pub"
+                            data-test="kb-public-badge"
+                          >公开</span>
+                        </span>
+                        <span
+                          v-if="kb.orgId || kb.visibility === 'ORG'"
+                          class="kb-meta-row"
+                        >
+                          <span
                             v-if="kb.orgId"
                             class="kb-tag kb-tag-org"
                             title="组织库"
@@ -193,11 +203,6 @@
                             class="kb-tag kb-tag-orgvis"
                             data-test="kb-orgvis-badge"
                           >组织可见</span>
-                          <span
-                            v-else-if="kb.visibility === 'PUBLIC'"
-                            class="kb-tag kb-tag-pub"
-                            data-test="kb-public-badge"
-                          >公开</span>
                         </span>
                         <div v-if="kb.description" class="desc">{{ kb.description }}</div>
                       </div>
@@ -1731,6 +1736,7 @@ onMounted(async () => {
   padding: 1px 9px;
 }
 .kb-name-row { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kb-meta-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .kb-tag {
   display: inline-block;
   font-size: 11px;
