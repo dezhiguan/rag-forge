@@ -72,11 +72,30 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
       if (keyRecord.getOrgId() != null) {
         OrgContextHolder.set(keyRecord.getOrgId());
       }
+      touchLastUsed(keyRecord);
       return true;
     }
 
     writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "Invalid API Key");
     return false;
+  }
+
+  /** 更新 last_used_at（节流：每把 key 最多每 60s 写一次，避免热点路径频繁写库）。 */
+  private void touchLastUsed(ApiKey keyRecord) {
+    try {
+      java.time.LocalDateTime now = java.time.LocalDateTime.now();
+      java.time.LocalDateTime last = keyRecord.getLastUsedAt();
+      if (last != null && last.isAfter(now.minusSeconds(60))) {
+        return;
+      }
+      ApiKey patch = new ApiKey();
+      patch.setId(keyRecord.getId());
+      patch.setLastUsedAt(now);
+      apiKeyMapper.updateById(patch);
+      keyRecord.setLastUsedAt(now);
+    } catch (Exception ignore) {
+      // 更新失败不影响主流程
+    }
   }
 
   private void writeJsonError(HttpServletResponse response, int httpStatus, int code, String msg)

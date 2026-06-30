@@ -15,6 +15,13 @@ export const ERROR_MESSAGES = {
   LOAD_FAILED: '数据加载失败，请刷新重试',
   NETWORK_ERROR: '网络连接失败，请检查网络后重试',
   INVALID_KB_ID: '请输入有效的知识库 ID（数字）',
+  NOT_ORG_ADMIN: '只有组织的所有者或管理员才能执行此操作',
+  NOT_ORG_OWNER: '只有组织所有者才能执行此操作',
+  MODEL_TOGGLE_REQUIRES_PLATFORM_VIEW: '启停模型需切换到「全平台视图」（平台管理员）',
+  KB_VISIBILITY_INVALID: '该可见性不适用于此知识库（团队库仅私有/组织可见，个人库仅私有/公开）',
+  KB_VISIBILITY_PUBLIC_REASON_REQUIRED: '设为公开需填写原因（将记入审计）',
+  KB_VISIBILITY_HAS_DEPENDENCIES: '该库被其他组织的密钥或评测引用，收紧前请确认影响',
+  KB_VISIBILITY_REQUIRED: '请选择可见性',
 }
 
 export function translateErrorCode(code) {

@@ -6,7 +6,7 @@ import { loadMe } from '../api/account'
 export function installRouteGuards(router) {
   router.beforeEach(async (to) => {
     const { isAuthenticated, ragRole, scopes, setSession } = useAuth()
-    const { current } = useOrg()
+    const { current, load, state: orgState } = useOrg()
     if (to.meta.public) {
       if (to.name === 'Login' && isAuthenticated.value) return { path: '/' }
       return true
@@ -22,6 +22,15 @@ export function installRouteGuards(router) {
     }
     if (to.path === '/403') {
       return true
+    }
+    // 组织维度路由：直达(刷新/外链)时组织 myRole 可能尚未加载，先确保就绪再判权，
+    // 否则会把有权限的 OWNER/ADMIN 误判到 /403。
+    if (to.meta?.orgRoles && !orgState.loaded) {
+      try {
+        await load({ isAdmin: ragRole.value === 'ADMIN' })
+      } catch {
+        /* 组织加载失败不阻断，交由 canAccessRoute 兜底 */
+      }
     }
     if (!canAccessRoute(to.meta, ragRole.value, scopes.value, current.value?.myRole)) {
       return { path: '/403' }

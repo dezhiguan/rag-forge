@@ -63,6 +63,16 @@ public class GlobalExceptionHandler {
                 RelayUploadLimits.RELAY_UPLOAD_LIMIT_MB));
   }
 
+  /** 上传接口收到非 multipart 请求（如误用 JSON）：返回 415 而非 500。 */
+  @ExceptionHandler({
+    org.springframework.web.multipart.MultipartException.class,
+    org.springframework.web.HttpMediaTypeNotSupportedException.class
+  })
+  public ResponseEntity<Result<Void>> handleUnsupportedMediaType(Exception ex) {
+    return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+        .body(Result.fail(415, "该接口需使用 multipart/form-data 上传文件"));
+  }
+
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
   public ResponseEntity<Result<Void>> handleMethodNotSupported(
       HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {

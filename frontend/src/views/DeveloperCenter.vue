@@ -78,16 +78,15 @@
           <div class="sec-title">⚙️ 接入信息</div>
           <div class="sec-hint">把以下信息配置到你的客户端 / 服务端。</div>
           <div class="kv"><span class="k">Base URL</span><span class="v">{{ baseUrl }}<span class="copy" @click="copy($event, baseUrl)">复制</span></span></div>
-          <div class="kv"><span class="k">认证方式</span><span class="v">Authorization: Bearer &lt;API key&gt;</span></div>
+          <div class="kv"><span class="k">认证方式</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
           <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定，无需传 X-Org-Id</span></div>
         </div>
         <div class="card card-pad">
           <div class="sec-title">🔗 核心接口</div>
-          <div class="sec-hint">均按当前组织上下文过滤数据。</div>
-          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/search</span><span class="ep-desc">混合检索</span></div>
-          <div class="ep"><span class="m m-get">GET</span><span class="ep-path">/kb</span><span class="ep-desc">本组织知识库列表</span></div>
-          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/kb/&#123;id&#125;/documents</span><span class="ep-desc">上传文档入库</span></div>
-          <div class="ep"><span class="m m-get">GET</span><span class="ep-path">/kb/&#123;id&#125;</span><span class="ep-desc">知识库详情</span></div>
+          <div class="sec-hint">凭 API key（X-API-Key）调用，均按 key 绑定的组织过滤数据。</div>
+          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/search</span><span class="ep-desc">混合检索（向量+BM25+精排）</span></div>
+          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/answer</span><span class="ep-desc">RAG 应答</span></div>
+          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/documents</span><span class="ep-desc">上传文档入库</span></div>
         </div>
       </div>
       <div class="card card-pad mt16">
@@ -104,7 +103,7 @@
           <div class="sec-hint">把 RAGForge 作为 MCP Server 接入支持 MCP 的客户端。</div>
           <div class="kv"><span class="k">协议</span><span class="v">MCP (streamable HTTP)</span></div>
           <div class="kv"><span class="k">Server URL</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
-          <div class="kv"><span class="k">认证</span><span class="v">Authorization: Bearer &lt;API key&gt;</span></div>
+          <div class="kv"><span class="k">认证</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
           <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定</span></div>
         </div>
         <div class="card card-pad">
@@ -179,12 +178,12 @@ const baseUrl = `${PUBLIC_BASE}/api/v1`
 const mcpUrl = `${PUBLIC_BASE}/mcp`
 const curlText =
   `curl ${baseUrl}/search \\\n` +
-  `  -H "Authorization: Bearer <API key>" \\\n` +
+  `  -H "X-API-Key: <API key>" \\\n` +
   `  -H "Content-Type: application/json" \\\n` +
   `  -d '{ "query": "Java 高并发经验", "strategy": "hybrid", "topK": 5 }'`
 const mcpText =
   `{\n  "mcpServers": {\n    "ragforge": {\n      "url": "${mcpUrl}",\n` +
-  `      "headers": {\n        "Authorization": "Bearer <API key>"\n      }\n    }\n  }\n}`
+  `      "headers": {\n        "X-API-Key": "<API key>"\n      }\n    }\n  }\n}`
 const mcpTools = [
   { ico: '🔍', name: 'search_knowledge', desc: '在本组织知识库内混合检索，返回带引用的片段' },
   { ico: '📚', name: 'list_knowledge_bases', desc: '列出本组织可访问的知识库' },
