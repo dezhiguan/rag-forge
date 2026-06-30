@@ -1,10 +1,12 @@
 package com.ragforge.controller;
 
 import com.ragforge.common.Result;
+import com.ragforge.model.dto.ChangeVisibilityDTO;
 import com.ragforge.model.dto.CreateKbDTO;
 import com.ragforge.model.dto.UpdateKbDTO;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.vo.KnowledgeBaseVO;
+import com.ragforge.model.vo.VisibilityImpactVo;
 import com.ragforge.service.KnowledgeBaseService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -52,6 +55,23 @@ public class KnowledgeBaseController {
   public Result<KnowledgeBaseVO> update(
       @PathVariable Long id, @Valid @RequestBody UpdateKbDTO dto) {
     KnowledgeBase kb = knowledgeBaseService.update(id, dto);
+    return Result.ok(KnowledgeBaseVO.fromEntity(kb));
+  }
+
+  /** P1：可见性变更影响预检（收紧前看哪些他组织 key 会断链）。 */
+  @GetMapping("/{id}/visibility/impact")
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','USER') and @kbAccessGuard.canAdmin(#id)")
+  public Result<VisibilityImpactVo> visibilityImpact(
+      @PathVariable Long id, @RequestParam String target) {
+    return Result.ok(knowledgeBaseService.visibilityImpact(id, target));
+  }
+
+  /** P0/P1/P2：修改可见性（仅 KB 管理员；依赖预检；审计留痕）。 */
+  @PutMapping("/{id}/visibility")
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','USER') and @kbAccessGuard.canAdmin(#id)")
+  public Result<KnowledgeBaseVO> changeVisibility(
+      @PathVariable Long id, @Valid @RequestBody ChangeVisibilityDTO dto) {
+    KnowledgeBase kb = knowledgeBaseService.changeVisibility(id, dto);
     return Result.ok(KnowledgeBaseVO.fromEntity(kb));
   }
 

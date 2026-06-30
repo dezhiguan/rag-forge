@@ -10,3 +10,7 @@ export const createKb = (data) => request.post('/kb', data)
 export const getKb = (id) => request.get(`/kb/${id}`)
 export const updateKb = (id, data) => request.put(`/kb/${id}`, data)
 export const deleteKb = (id) => request.delete(`/kb/${id}`)
+// 可见性变更（P1 预检 + P0/P2 变更）
+export const getVisibilityImpact = (id, target) =>
+  request.get(`/kb/${id}/visibility/impact`, { params: { target } })
+export const changeVisibility = (id, data) => request.put(`/kb/${id}/visibility`, data)

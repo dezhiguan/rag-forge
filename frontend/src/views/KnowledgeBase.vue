@@ -372,6 +372,17 @@
             <span>描述</span>
             <textarea v-model="editForm.description" rows="3" placeholder="可选" />
           </label>
+          <label class="field">
+            <span>可见性</span>
+            <select v-model="editForm.visibility" data-test="kb-edit-visibility">
+              <option v-for="opt in editVisibilityOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <small v-if="editForm.visibility !== editForm.originalVisibility" class="vis-hint">
+              保存时将单独确认可见性变更（{{ VIS_LABELS[editForm.originalVisibility] }} → {{ VIS_LABELS[editForm.visibility] }}）
+            </small>
+          </label>
           <div class="edit-grid">
             <label class="field" :class="{ invalid: editChunkSizeError }">
               <span class="field-label-with-hint">
@@ -478,7 +489,7 @@
 import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KB_DOCUMENT_DELETE_ENABLED, KNOWLEDGE_BASE_DELETE_ENABLED } from '../config/uiPolicy'
-import { createKb, deleteKb, listKb, updateKb } from '../api/kb'
+import { createKb, deleteKb, listKb, updateKb, getVisibilityImpact, changeVisibility } from '../api/kb'
 import { listOrgs } from '../api/org'
 import {
   deleteDocument,
@@ -625,6 +636,20 @@ const editForm = ref({
   answerMode: 'ON',
   answerModel: '',
   imageModeOn: false,
+  orgId: null,
+  visibility: 'PRIVATE',
+  originalVisibility: 'PRIVATE',
+})
+const VIS_LABELS = {
+  PRIVATE: '私有（仅组织管理员）',
+  ORG: '组织可见（全体成员可读）',
+  PUBLIC: '公开（全平台所有组织可读）',
+}
+// 编辑模态的可见性选项：团队库 PRIVATE/ORG/PUBLIC；个人库 PRIVATE/PUBLIC。
+const editVisibilityOptions = computed(() => {
+  const isTeam = manageableOrgs.value?.some((o) => o.id === editForm.value.orgId)
+  const vals = isTeam ? ['PRIVATE', 'ORG', 'PUBLIC'] : ['PRIVATE', 'PUBLIC']
+  return vals.map((v) => ({ value: v, label: VIS_LABELS[v] }))
 })
 const answerModes = ['OFF', 'PREVIEW', 'ON']
 const answerModels = ['qwen-plus', 'qwen-max']
@@ -838,6 +863,7 @@ async function onCreateKb() {
 }
 
 function openEdit(kb) {
+  const vis = (kb.visibility || 'PRIVATE').toUpperCase()
   editForm.value = {
     id: kb.id,
     name: kb.name || '',
@@ -847,8 +873,69 @@ function openEdit(kb) {
     answerMode: kb.answerMode || 'ON',
     answerModel: kb.answerModel || '',
     imageModeOn: (kb.imageProcessingMode || '').toUpperCase() === 'ON',
+    orgId: kb.orgId ?? null,
+    visibility: vis,
+    originalVisibility: vis,
   }
   showEdit.value = true
+}
+
+const VIS_RANK = { PRIVATE: 0, ORG: 1, PUBLIC: 2 }
+
+/** 可见性变更确认流：放开→PUBLIC 需原因(P2)；从 PUBLIC 收紧需预检依赖(P1)。返回是否已处理成功。 */
+async function applyVisibilityChange(id, oldVis, newVis) {
+  const narrowing = VIS_RANK[newVis] < VIS_RANK[oldVis]
+  // P2：放开到全平台 —— 强确认 + 必填原因
+  if (newVis === 'PUBLIC') {
+    const reason = await confirmDialog({
+      title: '公开到全平台',
+      message: `「${editForm.value.name}」将对平台所有组织可读。`,
+      detail: '公开后全部历史文档立即对所有组织可见且可被检索，且很难真正收回。请填写公开原因（留审计）。',
+      input: true,
+      inputPlaceholder: '公开原因，如：作为平台公共知识共享',
+      confirmText: '确认公开',
+      cancelText: '取消',
+      variant: 'danger',
+    })
+    if (!reason) return false
+    await changeVisibility(id, { visibility: newVis, reason })
+    return true
+  }
+  // P1：从 PUBLIC 收紧 —— 预检他组织依赖
+  if (narrowing && oldVis === 'PUBLIC') {
+    const impact = (await getVisibilityImpact(id, newVis))?.data || {}
+    const keys = impact.crossOrgApiKeys || []
+    if (keys.length > 0 || impact.evalDatasetCount > 0) {
+      const lines = []
+      if (keys.length > 0) {
+        lines.push(`将断开 ${keys.length} 个他组织 API key：`)
+        keys.slice(0, 5).forEach((k) => lines.push(`· ${k.orgName || '组织' + k.orgId} / ${k.keyName}`))
+        if (keys.length > 5) lines.push(`…等共 ${keys.length} 个`)
+      }
+      if (impact.evalDatasetCount > 0) lines.push(`另有 ${impact.evalDatasetCount} 个评测数据集建在本库上。`)
+      const ok = await confirmDialog({
+        title: '收紧可见性会断开他组织依赖',
+        message: `「${editForm.value.name}」收紧后，以下依赖将失去访问：`,
+        detail: lines.join('\n'),
+        confirmText: '仍然收紧',
+        cancelText: '取消',
+        variant: 'danger',
+      })
+      if (!ok) return false
+      await changeVisibility(id, { visibility: newVis, force: true })
+      return true
+    }
+  }
+  // 其余（PRIVATE↔ORG 等同组织内变更）：直接确认
+  const ok = await confirmDialog({
+    title: '修改可见性',
+    message: `将「${editForm.value.name}」的可见性改为「${VIS_LABELS[newVis]}」？`,
+    confirmText: '确认',
+    cancelText: '取消',
+  })
+  if (!ok) return false
+  await changeVisibility(id, { visibility: newVis })
+  return true
 }
 
 async function onUpdateKb() {
@@ -874,6 +961,18 @@ async function onUpdateKb() {
       answerModel: editForm.value.answerModel || undefined,
       imageProcessingMode: editForm.value.imageModeOn ? 'ON' : 'OFF',
     })
+    // 可见性单独走确认流（权限+依赖预检+审计在后端）
+    const newVis = editForm.value.visibility
+    if (newVis && newVis !== editForm.value.originalVisibility) {
+      const done = await applyVisibilityChange(editForm.value.id, editForm.value.originalVisibility, newVis)
+      if (!done) {
+        // 用户取消可见性变更：其余字段已保存，回退选择并保持弹窗
+        editForm.value.visibility = editForm.value.originalVisibility
+        await loadKbs()
+        return
+      }
+      toast.success('可见性已更新')
+    }
     showEdit.value = false
     await loadKbs()
   } finally {

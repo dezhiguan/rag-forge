@@ -39,7 +39,28 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
   private final com.ragforge.mapper.OrganizationMapper organizationMapper;
   private final com.ragforge.service.OrgService orgService;
+  private final com.ragforge.mapper.ApiKeyMapper apiKeyMapper;
+  private final com.ragforge.mapper.EvalDatasetMapper evalDatasetMapper;
+  private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
   private volatile ListCache listCache;
+
+  private static final org.slf4j.Logger AUDIT =
+      org.slf4j.LoggerFactory.getLogger("ragforge.audit");
+
+  /** 可见性开放度：数值越大越开放（PUBLIC=2 > ORG=1 > PRIVATE=0）。 */
+  private static int visibilityRank(String v) {
+    if (v == null) {
+      return 0;
+    }
+    switch (v.trim().toUpperCase()) {
+      case "PUBLIC":
+        return 2;
+      case "ORG":
+        return 1;
+      default:
+        return 0;
+    }
+  }
 
   @Override
   @Transactional
@@ -334,6 +355,154 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     knowledgeBaseMapper.updateById(kb);
     invalidateListCache();
     return kb;
+  }
+
+  // ============ 可见性变更（P0 权限+审计 / P1 依赖预检 / P2 放开治理） ============
+
+  @Override
+  public com.ragforge.model.vo.VisibilityImpactVo visibilityImpact(Long id, String target) {
+    KnowledgeBase kb = requireActiveKb(id);
+    String current = normalizeVisibility(kb);
+    String tgt = validateTargetVisibility(kb, target);
+    return buildImpact(kb, current, tgt);
+  }
+
+  @Override
+  @Transactional
+  public KnowledgeBase changeVisibility(Long id, com.ragforge.model.dto.ChangeVisibilityDTO dto) {
+    KnowledgeBase kb = requireActiveKb(id);
+    String current = normalizeVisibility(kb);
+    String target = validateTargetVisibility(kb, dto.getVisibility());
+    if (current.equals(target)) {
+      return kb; // 幂等，无变更
+    }
+
+    boolean narrowing = visibilityRank(target) < visibilityRank(current);
+    com.ragforge.model.vo.VisibilityImpactVo impact = buildImpact(kb, current, target);
+
+    // P1：收紧且存在阻断性依赖（他组织 key）时，需前端确认后 force 才放行。
+    if (narrowing && impact.isHasBlockingDependencies() && !dto.isForce()) {
+      throw new BizException(409, "KB_VISIBILITY_HAS_DEPENDENCIES");
+    }
+    // P2：放开到全平台需带原因（治理留痕）。
+    if ("PUBLIC".equals(target) && !StringUtils.hasText(dto.getReason())) {
+      throw new BizException(400, "KB_VISIBILITY_PUBLIC_REASON_REQUIRED");
+    }
+
+    Long actor =
+        com.ragforge.security.RagAuthContextHolder.get() != null
+            ? com.ragforge.security.RagAuthContextHolder.get().userId()
+            : null;
+    kb.setVisibility(target);
+    kb.setUpdatedAt(LocalDateTime.now());
+    knowledgeBaseMapper.updateById(kb);
+    invalidateListCache();
+
+    // P0/P2 审计：留痕 旧→新、操作人、组织、原因、受影响依赖。
+    AUDIT.info(
+        "kb_visibility_change kbId={} orgId={} byUser={} from={} to={} narrowing={} "
+            + "crossOrgKeys={} evalDatasets={} forced={} reason={}",
+        kb.getId(),
+        kb.getOrgId(),
+        actor,
+        current,
+        target,
+        narrowing,
+        impact.getCrossOrgApiKeys() == null ? 0 : impact.getCrossOrgApiKeys().size(),
+        impact.getEvalDatasetCount(),
+        dto.isForce(),
+        StringUtils.hasText(dto.getReason()) ? dto.getReason() : "-");
+    return kb;
+  }
+
+  /** 校验目标可见性合法性：个人组织 PRIVATE/PUBLIC；团队组织 PRIVATE/ORG/PUBLIC。 */
+  private String validateTargetVisibility(KnowledgeBase kb, String target) {
+    if (!StringUtils.hasText(target)) {
+      throw new BizException(400, "KB_VISIBILITY_REQUIRED");
+    }
+    String v = target.trim().toUpperCase();
+    com.ragforge.model.entity.Organization org =
+        kb.getOrgId() == null ? null : organizationMapper.selectById(kb.getOrgId());
+    boolean individual = org != null && "INDIVIDUAL".equals(org.getType());
+    Set<String> allowed = individual ? Set.of("PRIVATE", "PUBLIC") : Set.of("PRIVATE", "ORG", "PUBLIC");
+    if (!allowed.contains(v)) {
+      throw new BizException(400, "KB_VISIBILITY_INVALID");
+    }
+    return v;
+  }
+
+  private String normalizeVisibility(KnowledgeBase kb) {
+    return StringUtils.hasText(kb.getVisibility())
+        ? kb.getVisibility().trim().toUpperCase()
+        : "PRIVATE";
+  }
+
+  /** 计算变更影响：收紧时哪些他组织 key 会断链、本库上有多少评测集。 */
+  private com.ragforge.model.vo.VisibilityImpactVo buildImpact(
+      KnowledgeBase kb, String current, String target) {
+    com.ragforge.model.vo.VisibilityImpactVo vo = new com.ragforge.model.vo.VisibilityImpactVo();
+    vo.setCurrent(current);
+    vo.setTarget(target);
+    boolean narrowing = visibilityRank(target) < visibilityRank(current);
+    vo.setNarrowing(narrowing);
+    vo.setWillOpenToPlatform("PUBLIC".equals(target));
+
+    // 评测集（信息提示）
+    Long evalCount =
+        evalDatasetMapper.selectCount(
+            new LambdaQueryWrapper<com.ragforge.model.entity.EvalDataset>()
+                .eq(com.ragforge.model.entity.EvalDataset::getKbId, kb.getId()));
+    vo.setEvalDatasetCount(evalCount == null ? 0 : evalCount.intValue());
+
+    // 他组织 key：仅当从 PUBLIC 收紧时，他组织的引用会真正断链。
+    List<com.ragforge.model.vo.VisibilityImpactVo.KeyRef> crossOrg = new java.util.ArrayList<>();
+    if ("PUBLIC".equals(current) && narrowing) {
+      List<com.ragforge.model.entity.ApiKey> keys =
+          apiKeyMapper.selectList(
+              new LambdaQueryWrapper<com.ragforge.model.entity.ApiKey>()
+                  .ne(com.ragforge.model.entity.ApiKey::getOrgId, kb.getOrgId()));
+      java.util.Map<Long, String> orgNames = new java.util.HashMap<>();
+      for (com.ragforge.model.entity.ApiKey key : keys) {
+        if (key.getOrgId() == null || !keyReferencesKb(key, kb.getId())) {
+          continue;
+        }
+        com.ragforge.model.vo.VisibilityImpactVo.KeyRef ref =
+            new com.ragforge.model.vo.VisibilityImpactVo.KeyRef();
+        ref.setId(key.getId());
+        ref.setKeyName(key.getKeyName());
+        ref.setOrgId(key.getOrgId());
+        ref.setOrgName(
+            orgNames.computeIfAbsent(
+                key.getOrgId(),
+                oid -> {
+                  com.ragforge.model.entity.Organization o = organizationMapper.selectById(oid);
+                  return o == null ? null : o.getName();
+                }));
+        crossOrg.add(ref);
+      }
+    }
+    vo.setCrossOrgApiKeys(crossOrg);
+    vo.setHasBlockingDependencies(!crossOrg.isEmpty());
+    return vo;
+  }
+
+  /** key 是否显式引用了该 KB（allowedKbIds 为空=全部，不算显式引用）。 */
+  private boolean keyReferencesKb(com.ragforge.model.entity.ApiKey key, Long kbId) {
+    String raw = key.getAllowedKbIds();
+    if (!StringUtils.hasText(raw)) {
+      return false;
+    }
+    try {
+      List<?> ids = objectMapper.readValue(raw, List.class);
+      for (Object v : ids) {
+        if (v != null && Long.valueOf(String.valueOf(v).trim()).equals(kbId)) {
+          return true;
+        }
+      }
+    } catch (Exception ignore) {
+      // 解析失败按未引用处理，避免误报阻断
+    }
+    return false;
   }
 
   @Override
