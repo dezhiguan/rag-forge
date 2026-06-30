@@ -600,9 +600,11 @@ const openHint = ref(null)
 // 我加入的全部组织（含个人组织 personal/type=INDIVIDUAL）。
 const allMyOrgs = ref([])
 // 我作为 OWNER/ADMIN 的组织（可在其下建库）。一切皆组织：个人组织也在内，
-// 统一以"组织：xxx"呈现，建库归属默认预选个人组织。
+// 统一以"组织：xxx"呈现；个人组织排第一位（默认项，组织多时更顺手）。
 const manageableOrgs = computed(() =>
-  allMyOrgs.value.filter((o) => o.myRole === 'OWNER' || o.myRole === 'ADMIN'),
+  allMyOrgs.value
+    .filter((o) => o.myRole === 'OWNER' || o.myRole === 'ADMIN')
+    .sort((a, b) => (b.personal ? 1 : 0) - (a.personal ? 1 : 0)),
 )
 // 我的个人组织（personal/type=INDIVIDUAL，恒存在且唯一），作为建库归属默认项。
 const personalOrg = computed(() => allMyOrgs.value.find((o) => o.personal) || null)
