@@ -173,7 +173,7 @@ const canManage = computed(() => {
 const orgName = computed(() => current.value?.name || '当前组织')
 // 对外公开的线上域名（开发者按此接入，非本地 dev 地址）。接口/MCP 文档全平台一致，
 // 组织由 API key 自动绑定，调用方无需传 X-Org-Id —— 故文档为静态、不随组织变。
-const PUBLIC_BASE = 'https://api.ragforge.net'
+const PUBLIC_BASE = 'https://ragforge.net'
 const baseUrl = `${PUBLIC_BASE}/api/v1`
 const mcpUrl = `${PUBLIC_BASE}/mcp`
 const curlText =

@@ -68,7 +68,7 @@ public class SecurityConfig {
                     .hasRole("METRICS_READER")
                     .requestMatchers("/api/v1/.well-known/ragforge-admin-backend-jwks.json").permitAll()
                     .requestMatchers("/api/v1/events/**").permitAll()
-                    .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/documents", "/api/v1/internal/**", "/mcp/**", "/sse", "/sse/**")
+                    .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/documents", "/api/v1/internal/**", "/mcp", "/mcp/**", "/sse", "/sse/**")
                     .access(
                         (authentication, context) ->
                             new AuthorizationDecision(

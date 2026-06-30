@@ -31,7 +31,8 @@ public class RagForgeMcpTools {
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KbAccessGuard kbAccessGuard;
 
-    @Tool(description = """
+    @Tool(name = "search_knowledge",
+            description = """
         搜索 RAGForge 知识库，返回最相关的文本片段。
         支持混合检索（向量 + 关键词）。
         适合用于：简历分析、JD 匹配、面试题参考、行业知识查询。
