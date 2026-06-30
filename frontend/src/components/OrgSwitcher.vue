@@ -17,11 +17,12 @@
           :key="o.id ?? 'personal'"
           class="org-opt"
           :class="{ active: o.id === current.id }"
+          :title="nameOf(o)"
           @click="select(o)"
         >
           <span class="org-ava sm" :style="{ background: avatarColor(o) }">{{ initial(o) }}</span>
           <span class="org-meta">
-            <span class="org-name">{{ nameOf(o) }}</span>
+            <span class="org-name" :title="nameOf(o)">{{ nameOf(o) }}</span>
             <span class="org-sub">{{ o.personal ? '个人组织' : roleLabel(o.myRole) }}</span>
           </span>
           <span class="check">{{ o.id === current.id ? '✓' : '' }}</span>
