@@ -598,24 +598,34 @@ const showEdit = ref(false)
 const submittingKb = ref(false)
 const openHint = ref(null)
 
+// 我加入的全部组织（含个人组织 personal/type=INDIVIDUAL）。
+const allMyOrgs = ref([])
 // 我作为 OWNER/ADMIN 的「团队」组织（可在其下建组织库）。
-// 排除个人组织（personal / type=INDIVIDUAL）：它就是"个人（我自己）"那一项，
-// 不再作为普通"组织：xxx"重复出现（建库归属选"个人"时后端会自动落到个人组织）。
-const manageableOrgs = ref([])
+// 排除个人组织：它就是"个人（我自己）"那一项，不再作为普通"组织：xxx"重复出现
+// （建库归属选"个人"时后端会自动落到个人组织）。
+const manageableOrgs = computed(() =>
+  allMyOrgs.value.filter(
+    (o) => (o.myRole === 'OWNER' || o.myRole === 'ADMIN') && !o.personal,
+  ),
+)
 async function loadManageableOrgs() {
   try {
     const res = await listOrgs()
-    const orgs = res?.data || res || []
-    manageableOrgs.value = orgs.filter(
-      (o) => (o.myRole === 'OWNER' || o.myRole === 'ADMIN') && !o.personal,
-    )
+    allMyOrgs.value = res?.data || res || []
   } catch (e) {
-    manageableOrgs.value = []
+    allMyOrgs.value = []
   }
 }
-// 可见性选项随归属变化：个人库 PRIVATE/PUBLIC；组织库 PRIVATE/ORG
+// 归属是否为「团队」组织——以组织的 personal 标记为准（个人组织 personal=true，
+// 个人库可见性只能 PRIVATE/PUBLIC；团队库只能 PRIVATE/ORG）。orgId 为空＝个人（我自己）。
+function isTeamOwnership(orgId) {
+  if (orgId == null) return false
+  const org = allMyOrgs.value.find((o) => o.id === orgId)
+  return !!org && !org.personal
+}
+// 可见性选项随归属变化：个人库 PRIVATE/PUBLIC；团队库 PRIVATE/ORG
 const visibilityOptions = computed(() =>
-  kbForm.value.orgId
+  isTeamOwnership(kbForm.value.orgId)
     ? [
         { value: 'PRIVATE', label: '私有（仅组织管理员）' },
         { value: 'ORG', label: '组织可见（全体成员可读）' },
@@ -660,8 +670,7 @@ const VIS_LABELS = {
 }
 // 编辑模态的可见性选项：团队库 PRIVATE/ORG（不允许公开）；个人库 PRIVATE/PUBLIC。
 const editVisibilityOptions = computed(() => {
-  const isTeam = manageableOrgs.value?.some((o) => o.id === editForm.value.orgId)
-  const vals = isTeam ? ['PRIVATE', 'ORG'] : ['PRIVATE', 'PUBLIC']
+  const vals = isTeamOwnership(editForm.value.orgId) ? ['PRIVATE', 'ORG'] : ['PRIVATE', 'PUBLIC']
   return vals.map((v) => ({ value: v, label: VIS_LABELS[v] }))
 })
 const answerModes = ['OFF', 'PREVIEW', 'ON']
