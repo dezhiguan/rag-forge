@@ -56,15 +56,17 @@
         <div class="card card-pad cred-block">
           <h3>绑定 / 更换邮箱</h3>
           <input class="input" v-model.trim="emailInput" type="email" placeholder="you@example.com" />
+          <p v-if="emailInput && !emailValid" class="field-hint-error">邮箱格式不正确，例如 you@example.com</p>
           <input class="input" v-model="emailPassword" type="password" placeholder="当前密码（已设置密码时需校验）" />
-          <button class="btn btn-primary" :disabled="busy.email" @click="doBindEmail">提交</button>
+          <button class="btn btn-primary" :disabled="busy.email || !emailValid" @click="doBindEmail">提交</button>
         </div>
 
         <div class="card card-pad cred-block">
           <h3>设置 / 修改密码</h3>
           <input class="input" v-model="pwd.oldPassword" type="password" placeholder="原密码（首次设置可留空）" />
           <input class="input" v-model="pwd.newPassword" type="password" placeholder="新密码：至少 8 位，含字母与数字" />
-          <button class="btn btn-primary" :disabled="busy.pwd" @click="doSetPassword">提交</button>
+          <p v-if="pwd.newPassword && !passwordValid" class="field-hint-error">密码至少 8 位，且需同时包含字母和数字</p>
+          <button class="btn btn-primary" :disabled="busy.pwd || !passwordValid" @click="doSetPassword">提交</button>
         </div>
       </section>
     </div>
@@ -72,7 +74,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProfile, updateProfile, setPassword, bindEmail, setUsername, loadMe } from '../api/account'
 import { useToast } from '../composables/useToast'
@@ -91,6 +93,13 @@ const usernameInput = ref('')
 const emailInput = ref('')
 const emailPassword = ref('')
 const busy = reactive({ pwd: false, username: false, email: false })
+
+// 前端格式校验
+const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((emailInput.value || '').trim()))
+const passwordValid = computed(() => {
+  const s = pwd.newPassword || ''
+  return s.length >= 8 && /[A-Za-z]/.test(s) && /\d/.test(s)
+})
 
 onMounted(async () => {
   try {
@@ -125,6 +134,10 @@ async function saveProfile() {
 async function doSetPassword() {
   if (!pwd.newPassword) {
     toast.error('请输入新密码')
+    return
+  }
+  if (!passwordValid.value) {
+    toast.error('新密码至少 8 位，且需同时包含字母和数字')
     return
   }
   busy.pwd = true
@@ -162,6 +175,10 @@ async function doSetUsername() {
 async function doBindEmail() {
   if (!emailInput.value) {
     toast.error('请输入邮箱')
+    return
+  }
+  if (!emailValid.value) {
+    toast.error('邮箱格式不正确，请输入有效邮箱')
     return
   }
   busy.email = true
@@ -230,5 +247,6 @@ textarea.input { height: auto; min-height: 84px; padding: 9px 12px; line-height:
 
 .cred-block h3 { font-size: 14px; color: var(--navy); margin: 0 0 12px; }
 .cred-block .input { margin-bottom: 10px; }
+.field-hint-error { margin: -4px 0 10px; font-size: 12px; color: #dc2626; line-height: 1.4; }
 .cred-block .btn { margin-top: 2px; }
 </style>
