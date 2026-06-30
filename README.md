@@ -1,20 +1,21 @@
-# RAGForge
+# RAGForge · RAG 知识引擎
 
-> **RAG knowledge engine** — document ingestion, multimodal embedding, hybrid retrieval, reranking, RAG answering, quality evaluation and unified auth, exposed as a clean API and an MCP server.
->
-> 🔗 **Live Demo:** https://ragforge.net
->
-> **What it is:** RAGForge 不是聊天应用,而是一层**可追溯的检索基础设施**。它的核心输出是 `query → chunks + scores + citations + 分段耗时`,上层 Agent / 问答系统按需取用。
->
-> **Highlights**
-> - 🔍 5 种检索策略:`vector` / `keyword` / `hybrid (RRF)` / `rewrite` / `full (+rerank)`
-> - 🖼️ 多模态统一向量空间(文本 + 图片同空间,DashScope `qwen3-vl-embedding`)
-> - 💬 RAG 应答(`/api/v1/answer`,SSE 流式,带引用)
-> - 🧪 检索质量评测 + **LLM-as-Judge** 自动打分(DeepSeek)
-> - 🔐 统一认证(Auth Gateway 颁发 JWT/JWKS)+ 知识库级 ACL + API Key + MCP Server
-> - 📊 模型注册表 & 成本中心(按模型/组织计量计价)
->
-> **Stack:** Java 21 · Spring Boot 3.5 · PostgreSQL + pgvector · Elasticsearch · RocketMQ · Redis · Spring AI (MCP) · Vue 3 · 部署于 k3s。
+<p align="left">
+  <a href="README.md">简体中文</a> ·
+  <a href="README.en.md">English</a>
+</p>
+
+> 面向 RAG 应用的知识检索基础设施 —— 文档导入、多模态向量化、混合检索、重排、RAG 应答、质量评测与统一认证;输出可追溯的检索结果(`query → chunks + scores + citations`),以干净的 REST API 与 MCP Server 供上层 Agent 调用。
+
+[![Live Site](https://img.shields.io/badge/Live%20Site-ragforge.net-2EA043?logo=googlechrome&logoColor=white)](https://ragforge.net)
+[![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://adoptium.net/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.x-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![Elasticsearch](https://img.shields.io/badge/Elasticsearch-8.15-005571?logo=elasticsearch&logoColor=white)](https://www.elastic.co/)
+[![RocketMQ](https://img.shields.io/badge/RocketMQ-5.x-D77310?logo=apacherocketmq&logoColor=white)](https://rocketmq.apache.org/)
+[![MCP](https://img.shields.io/badge/MCP-Spring%20AI%201.0-6DB33F?logo=spring&logoColor=white)](https://docs.spring.io/spring-ai/reference/)
+[![LLM](https://img.shields.io/badge/LLM-DashScope%20%2F%20DeepSeek-FF6A00)](https://dashscope.aliyun.com/)
+[![Deploy](https://img.shields.io/badge/Deploy-k3s%20%2B%20ACR-326CE5?logo=kubernetes&logoColor=white)](docs/deploy/deployment-architecture.md)
 
 ---
 
@@ -236,7 +237,7 @@ rag-forge/
 - **UploadWizard(`/uploads/wizard`)** — 文档上传向导。
 - **DocumentDetail(`/document/:id`)** — 文档解析状态与分块结果。
 - **DebugConsole(`/debug`)** — 检索策略调试。
-- **AnswerPlayground(`/answer`)** — RAG 应答演练(流式 + 引用)。
+- **AnswerPlayground(`/answer`)** — RAG 应答(流式 + 引用)。
 - **EvaluationLab(`/eval`)/ EvaluationQuality(`/evaluation/quality`)** — 评测集与 LLM-as-Judge 质量看板。
 - **ModelCostCenter(`/models`)** — 模型注册与成本看板。
 - **DeveloperCenter(`/api`)** — API Key 与外部调用管理。
@@ -381,7 +382,7 @@ SSE 订阅端点 `/sse`,消息端点 `/mcp/message`,均按调用方可读 KB 范
 
 ## 当前状态
 
-RAGForge 已上线运行(见 [Live Demo](https://ragforge.net)),核心的导入、(多模态)索引、检索、RAG 应答、调试、评测、LLM-as-Judge、API Key、统一认证、组织权限和 k3s 部署链路均已跑通。
+RAGForge 已上线运行(见[线上环境](https://ragforge.net)),核心的导入、(多模态)索引、检索、RAG 应答、调试、评测、LLM-as-Judge、API Key、统一认证、组织权限和 k3s 部署链路均已跑通。
 
 当前线上验证规模(参考):
 
