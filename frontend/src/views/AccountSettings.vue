@@ -133,8 +133,9 @@ async function doSetPassword() {
     toast.success('密码已更新')
     pwd.oldPassword = ''
     pwd.newPassword = ''
-  } catch {
-    /* ignore */
+  } catch (e) {
+    // authClient 拦截器不自动 toast，凭证操作必须自行提示，否则失败时静默无反馈
+    toast.error(e?.message || '密码更新失败')
   } finally {
     busy.pwd = false
   }
@@ -151,8 +152,8 @@ async function doSetUsername() {
     me.username = usernameInput.value
     await loadMe()
     toast.success('用户名已更新')
-  } catch {
-    /* ignore */
+  } catch (e) {
+    toast.error(e?.message || '用户名更新失败')
   } finally {
     busy.username = false
   }
@@ -166,11 +167,12 @@ async function doBindEmail() {
   busy.email = true
   try {
     await bindEmail({ email: emailInput.value, password: emailPassword.value || undefined })
-    me.email = emailInput.value
     emailPassword.value = ''
-    toast.success('邮箱已绑定')
-  } catch {
-    /* ignore */
+    await loadMe()
+    me.email = emailInput.value
+    toast.success('邮箱已更新')
+  } catch (e) {
+    toast.error(e?.message || '邮箱更新失败')
   } finally {
     busy.email = false
   }
