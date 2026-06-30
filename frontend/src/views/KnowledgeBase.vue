@@ -363,12 +363,12 @@
             </select>
           </label>
           <label class="field field-toggle">
-            <span>多模态处理</span>
-            <span class="toggle-row">
+            <span class="toggle-head">
               <input type="checkbox" v-model="kbForm.imageModeOn" />
-              <span class="toggle-hint">
-                开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
-              </span>
+              <span class="toggle-title">多模态处理</span>
+            </span>
+            <span class="toggle-hint">
+              开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
             </span>
           </label>
           <div class="modal-actions">
@@ -484,12 +484,12 @@
             </label>
           </div>
           <label class="field field-toggle">
-            <span>多模态处理</span>
-            <span class="toggle-row">
+            <span class="toggle-head">
               <input type="checkbox" v-model="editForm.imageModeOn" />
-              <span class="toggle-hint">
-                开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
-              </span>
+              <span class="toggle-title">多模态处理</span>
+            </span>
+            <span class="toggle-hint">
+              开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
             </span>
           </label>
           <div class="modal-actions">
@@ -1895,9 +1895,10 @@ onMounted(async () => {
 .modal-title { font-size: 16px; margin-bottom: 16px; }
 .field { display: block; margin-bottom: 14px; }
 .field span { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
-.field-toggle .toggle-row { display: inline-flex; align-items: flex-start; gap: 10px; margin-bottom: 0; }
-.field-toggle .toggle-row input[type="checkbox"] { width: 16px; height: 16px; margin-top: 1px; flex: 0 0 auto; cursor: pointer; }
-.field-toggle .toggle-hint { display: inline; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.field-toggle .toggle-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.field-toggle .toggle-head input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: 0 0 auto; cursor: pointer; }
+.field-toggle .toggle-title { display: inline; font-size: 13px; color: var(--slate); font-weight: 500; margin: 0; }
+.field-toggle .toggle-hint { display: block; font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 0; }
 
 .field-label-with-hint {
   display: inline-flex !important;
