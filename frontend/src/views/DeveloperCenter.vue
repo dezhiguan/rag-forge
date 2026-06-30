@@ -184,11 +184,11 @@ const curlText =
 const mcpText =
   `{\n  "mcpServers": {\n    "ragforge": {\n      "url": "${mcpUrl}",\n` +
   `      "headers": {\n        "X-API-Key": "<API key>"\n      }\n    }\n  }\n}`
+// 与后端 RagForgeMcpTools 的 @Tool 定义保持一致（工具名即客户端可调用名）
 const mcpTools = [
-  { ico: '🔍', name: 'search_knowledge', desc: '在本组织知识库内混合检索，返回带引用的片段' },
-  { ico: '📚', name: 'list_knowledge_bases', desc: '列出本组织可访问的知识库' },
-  { ico: '📄', name: 'get_document', desc: '按 id 读取文档原文/分块' },
-  { ico: '➕', name: 'ingest_document', desc: '上传文档进入本组织知识库（需写权限密钥）' },
+  { ico: '🔍', name: 'search_knowledge', desc: '在可访问知识库内混合检索（向量+关键词），返回相关片段' },
+  { ico: '📚', name: 'listKnowledgeBases', desc: '列出可访问的知识库（含名称、文档数、片段数）' },
+  { ico: '💬', name: 'answerWithCitations', desc: '用知识库回答问题，返回带引用的答案（含图片 URL）' },
 ]
 
 function fmt(s) {
