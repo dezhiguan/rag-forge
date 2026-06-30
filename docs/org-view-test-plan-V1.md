@@ -269,15 +269,463 @@
 
 ---
 
-## 附：后续模块占位（本期不展开）
+# 模块三：驾驶舱（/）
 
-| 模块 | 前缀 | 状态 |
-|---|---|---|
-| 驾驶舱 | DB | 待补 |
-| 知识库管理 | KB | 待补 |
-| 检索调试台 | SE | 待补 |
-| 应答调试台 | AN | 待补 |
-| 评测实验室 | EV | 待补 |
-| 开发者中心 | DV | 待补 |
+接口：`GET /metrics/dashboard` → 资产 `DashboardMetricsVO`(kbCount/documentCount/chunkCount)、最近动态 `DashboardActivityVO`、趋势 `DashboardTrendPointVO`。
+口径：**资产按本组织自有库统计**（"别人的公开库不计入你的资产"）；动态/趋势按本组织；破玻璃=全平台。
 
-> 维护约定：新增模块沿用「角色 / 数据前置 / 断言基线（求和一致性·组织隔离·公开库·破玻璃·空态·边界·切换一致）」七项通用维度，保证全平台用例口径统一。
+## DB-AS 资产统计正确性
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DB-AS-01 | 知识库数=本组织自有库数 | P-OWNER | 看 kbCount | 等于组织 A 自有 KB 数（不含他组织、**不含别人的公开库**） |
+| DB-AS-02 | 文档数=本组织各库文档之和 | P-OWNER | 看 documentCount | == 组织 A 各库文档求和 |
+| DB-AS-03 | 切片数=本组织各库切片之和 | P-OWNER | 看 chunkCount | == 组织 A 各库切片求和 |
+| DB-AS-04 | 公开库（他组织创建）不计入资产 | P-OWNER | 存在他组织公开库时看资产 | 资产数不含他组织公开库的文档/切片 |
+| DB-AS-05 | 本组织自建的公开库计入资产 | P-OWNER | A 自建 KB-PUB | KB-PUB 计入 A 的资产 |
+| DB-AS-06 | 空组织资产全 0 | P-MEMBER(组织C) | 看资产 | kb/doc/chunk 全 0，无 NaN |
+| DB-AS-07 | 切组织资产变化 | P-SUPER | A→B | 三项资产随组织变 |
+| DB-AS-08 | 组织 A 资产不含 B | P-OWNER | 比对已知值 | 严格等于 A |
+| DB-AS-09 | 破玻璃资产为全平台 | P-SUPER-PLAT | 全平台视图 | 资产 ≥ 各组织，约等于全平台总量 |
+| DB-AS-10 | 删除库后资产实时减少 | P-OWNER | 删一个库再看 | 资产相应减少，无脏缓存 |
+| DB-AS-11 | 入库中文档的计数口径 | P-OWNER | 有处理中文档 | 文档/切片计数口径明确（已完成 vs 全部）一致可解释 |
+| DB-AS-12 | 资产为非负整数 | P-OWNER | 看数值 | 均为非负整数，无负数/小数 |
+
+## DB-AC 最近动态与失败重试权限
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DB-AC-01 | 动态仅含本组织 | P-OWNER | 看最近动态列表 | 只含组织 A 的文档/操作，无 B |
+| DB-AC-02 | 动态按时间倒序 | P-OWNER | 看排序 | 最新在前 |
+| DB-AC-03 | 失败文档可重试（本组织 admin） | P-OWNER | 看失败项 | 显示可重试入口，retryable=true |
+| DB-AC-04 | 平台视图失败动态只读不可重试 | P-SUPER-PLAT | 全平台看失败项 | 提示"需该组织管理员处理"，retryable=false |
+| DB-AC-05 | 普通成员对失败项的权限 | P-MEMBER | 看失败项 | 按角色：无写权限则不显示重试/点击无效 |
+| DB-AC-06 | 越权重试他组织文档 | P-OWNER | 构造重试 B 的 docId | 403/不可见 |
+| DB-AC-07 | 空组织动态空状态 | P-MEMBER(组织C) | 看动态 | 空列表 + 友好空状态 |
+| DB-AC-08 | 动态文案与状态映射 | P-OWNER | 看各状态 | 解析中/成功/失败 文案与状态正确映射 |
+| DB-AC-09 | 切组织动态刷新 | P-SUPER | A→B | 动态列表整体刷新为 B |
+| DB-AC-10 | 动态条目跳转正确 | P-OWNER | 点动态项 | 跳到对应文档详情，id 一致且属本组织 |
+| DB-AC-11 | 动态数量上限 | P-OWNER | 大量操作后看 | 限制条数（如最近 N 条），不无限增长 |
+| DB-AC-12 | 破玻璃动态含多组织 | P-SUPER-PLAT | 全平台看 | 含跨组织动态，标注归属可辨 |
+
+## DB-TR 趋势图
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DB-TR-01 | 趋势按本组织统计 | P-OWNER | 看趋势 | 数据点仅本组织口径 |
+| DB-TR-02 | 趋势点与时间轴对应 | P-OWNER | 看 x 轴 | 每日/每周一点，无缺漏/重复 |
+| DB-TR-03 | 趋势求和与资产/动态一致 | P-OWNER | 交叉核对 | 趋势累计与对应总量可解释一致 |
+| DB-TR-04 | 空组织趋势全 0 | P-MEMBER(组织C) | 看趋势 | 全 0 平线，不报错 |
+| DB-TR-05 | 切组织趋势刷新 | P-SUPER | A→B | 趋势整体刷新 |
+| DB-TR-06 | 组织 A 趋势不含 B | P-OWNER | 比对 | 严格本组织 |
+| DB-TR-07 | 破玻璃趋势为全平台 | P-SUPER-PLAT | 全平台 | 聚合趋势 ≥ 各组织 |
+| DB-TR-08 | 趋势 count 非负整数 | P-OWNER | 看 count | 非负整数 |
+| DB-TR-09 | 时间范围切换趋势变化 | P-OWNER | 切范围 | 点数/数值随范围变 |
+| DB-TR-10 | 跨月/跨年边界归集 | P-OWNER | 跨边界区间 | 正确落点，无错月 |
+| DB-TR-11 | 趋势 tooltip 数值正确 | P-OWNER | hover 点 | tooltip 数值与数据点一致 |
+| DB-TR-12 | 趋势与时区一致 | P-OWNER | 当天数据 | 按统一时区归日，不偏移 |
+
+## DB-ORG 组织视角隔离 / 切换 / 破玻璃
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DB-ORG-01 | 普通成员可进驾驶舱 | P-MEMBER | 访问 / | 可进入，看本组织 |
+| DB-ORG-02 | 个人组织 owner 看个人口径 | P-PERSONAL | 进驾驶舱 | 仅个人组织资产 |
+| DB-ORG-03 | 三态切换正确 | P-SUPER | A→B→个人 | 资产/动态/趋势全量刷新 |
+| DB-ORG-04 | 进全平台视图看聚合 | P-SUPER-PLAT | 切全平台 | 全平台聚合 |
+| DB-ORG-05 | 退全平台回组织口径 | P-SUPER | 切回 A | 立即回 A，无残留 |
+| DB-ORG-06 | 无组织上下文不泄漏 | 构造无 X-Org-Id 非破玻璃 | 调 dashboard | 返回空/0，不泄漏全平台 |
+| DB-ORG-07 | 资产口径"公开库不计入"专项 | P-OWNER & P-ORGB | A 看含 B 公开库时 | A 资产不含 B 的公开库（区别于质量/成本"公开库纳入"，资产是自有口径） |
+| DB-ORG-08 | 三区块联动一致 | P-SUPER | 切组织后 | 资产/动态/趋势同属一个组织 |
+| DB-ORG-09 | 破玻璃聚合≥各组织 | P-SUPER-PLAT | 对比 | 全平台 ≥ A、≥ B |
+| DB-ORG-10 | 切组织竞态不串数据 | P-SUPER | 连切 A→B | 最终为 B，无 A 迟到覆盖 |
+| DB-ORG-11 | 资产 vs 质量/成本口径差异专项 | P-OWNER | 对照三处对公开库处理 | 驾驶舱资产=自有口径；质量/成本=本组织∪公开（口径差异符合设计，非 bug） |
+| DB-ORG-12 | 刷新保持当前组织 | P-OWNER | 刷新页面 | 仍为当前组织上下文（localStorage） |
+
+---
+
+# 模块四：知识库管理（/knowledge）
+
+接口：列表（org ∪ 公开，分页 10/页）、创建/编辑/删除、可见性（PRIVATE/PUBLIC）、文档列表。
+口径：列出本组织库 + 公开库；新建库绑定当前组织；写操作按 KB 访问权限。
+
+## KB-LS 列表与分页
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-LS-01 | 列出本组织库 + 公开库 | P-OWNER | 看列表 | 含 A 自有库 + 公开库；不含 B 私有库 |
+| KB-LS-02 | 默认每页 10 条 | P-OWNER | 库 >10 时看分页 | 首页 10 条 |
+| KB-LS-03 | 翻页正确 | P-OWNER | 点下一页 | 第 2 页内容正确，无重复/遗漏 |
+| KB-LS-04 | 末页与边界 | P-OWNER | 翻到末页 | 末页条数正确，禁用"下一页" |
+| KB-LS-05 | 重新加载回第 1 页 | P-OWNER | 刷新/重载 | kbPage 重置为 1 |
+| KB-LS-06 | 删除后分页夹紧 | P-OWNER | 末页删到空 | 自动回退到有效页（watch 夹紧） |
+| KB-LS-07 | 他组织私有库不可见 | P-MEMBER | 检查列表 | 无 KB-B1 |
+| KB-LS-08 | 公开库标识 | P-OWNER | 看公开库 | 有"公开"标识，与私有区分 |
+| KB-LS-09 | 空组织列表空态 | P-MEMBER(组织C) | 看列表 | 空状态（仅公开库，若有） |
+| KB-LS-10 | 切组织列表刷新且回第 1 页 | P-SUPER | A→B | 列表换为 B 口径，页码重置 |
+| KB-LS-11 | 列表每项统计（文档/切片）正确 | P-OWNER | 看每项计数 | 与该库实际一致 |
+| KB-LS-12 | 破玻璃列出全平台库 | P-SUPER-PLAT | 全平台 | 列出全平台库 |
+
+## KB-CRUD 创建 / 编辑 / 删除
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-CRUD-01 | 新建库绑定当前组织 | P-OWNER | 在组织 A 建库 | 库 org_id=A，出现在 A 列表 |
+| KB-CRUD-02 | 个人组织建库归属个人 | P-PERSONAL | 建库 | 归属个人组织 |
+| KB-CRUD-03 | 编辑库名/描述 | P-OWNER | 改名保存 | 持久化，列表刷新 |
+| KB-CRUD-04 | 删除库级联清理 | P-OWNER | 删库 | 库及其文档/切片清理，资产减少 |
+| KB-CRUD-05 | 越权编辑他组织库 | P-MEMBER | 构造改 B 的库 | 403 |
+| KB-CRUD-06 | 越权删除他组织库 | P-MEMBER | 构造删 B 的库 | 403 |
+| KB-CRUD-07 | 无写权限成员建库 | P-MEMBER(仅读) | 尝试建库 | 按角色拒绝或不显示入口 |
+| KB-CRUD-08 | 重名库处理 | P-OWNER | 建同名库 | 按规则（允许/拒绝）一致，无脏数据 |
+| KB-CRUD-09 | 必填校验 | P-OWNER | 空名提交 | 前后端校验拦截 |
+| KB-CRUD-10 | 删除二次确认 | P-OWNER | 点删除 | 有确认弹窗，取消不删 |
+| KB-CRUD-11 | 创建后立即可用于检索 | P-OWNER | 建库后去检索台 | 新库出现在可选范围 |
+| KB-CRUD-12 | 切组织后建库归属正确 | P-SUPER | 切到 B 建库 | 归属 B，不串到 A |
+
+## KB-VIS 可见性与公开库
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-VIS-01 | 设为公开后他组织可见 | P-OWNER→P-ORGB | A 设 KB-PUB 公开 | B 的列表/检索可见 KB-PUB |
+| KB-VIS-02 | 设为私有后他组织不可见 | P-OWNER→P-ORGB | A 改回私有 | B 不再可见 |
+| KB-VIS-03 | 公开库仅创建组织可编辑 | P-ORGB | B 尝试编辑 A 的公开库 | 403（公开=可读不可写） |
+| KB-VIS-04 | 公开库被他组织检索 | P-ORGB | B 检索 KB-PUB | 可检索到内容 |
+| KB-VIS-05 | 公开库计入质量/成本但不计资产 | P-OWNER | 交叉核对 | 符合口径差异（DB-ORG-11） |
+| KB-VIS-06 | 可见性切换即时生效 | P-OWNER | 切换可见性 | 他组织视角即时变化 |
+| KB-VIS-07 | 默认可见性 | P-OWNER | 新建库 | 默认 PRIVATE（按设计） |
+| KB-VIS-08 | 公开库删除影响 | P-OWNER | 删除被引用公开库 | 引用方优雅降级，不 500 |
+| KB-VIS-09 | 可见性图标/文案 | P-OWNER | 看标识 | PUBLIC/PRIVATE 标识正确 |
+| KB-VIS-10 | 越权改可见性 | P-MEMBER | 构造改 B 库可见性 | 403 |
+| KB-VIS-11 | 公开库列表去重 | P-OWNER | A 自有公开库 | 不重复出现（自有 + 公开两条件去重） |
+| KB-VIS-12 | 破玻璃全可见 | P-SUPER-PLAT | 全平台 | 私有/公开全可见 |
+
+## KB-ORG 访问控制与组织隔离
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-ORG-01 | 普通成员可进知识库 | P-MEMBER | 访问 /knowledge | 可进，看本组织 + 公开 |
+| KB-ORG-02 | 直接访问他组织库详情 | P-MEMBER | 构造 /knowledge/{B库}/documents | 403 |
+| KB-ORG-03 | 文档列表按库隔离 | P-OWNER | 看某库文档 | 仅该库文档 |
+| KB-ORG-04 | 越权访问他组织文档 | P-MEMBER | 构造他组织 docId | 403 |
+| KB-ORG-05 | 三态切换列表正确 | P-SUPER | A→B→个人 | 列表口径正确切换 |
+| KB-ORG-06 | 上传文档绑定库与组织 | P-OWNER | 上传到 A 的库 | 文档归属正确 |
+| KB-ORG-07 | 越权上传到他组织库 | P-MEMBER | 构造上传到 B 库 | 403 |
+| KB-ORG-08 | 无组织上下文列表 | 无 X-Org-Id 非破玻璃 | 看列表 | 仅公开库或空，不泄漏私有 |
+| KB-ORG-09 | KB 成员/权限维度（若有） | P-OWNER | 配置库成员 | 权限按设定生效 |
+| KB-ORG-10 | 破玻璃跨组织管理 | P-SUPER-PLAT | 全平台 | 可见全平台库（读），写需谨慎口径 |
+| KB-ORG-11 | 切组织竞态 | P-SUPER | 连切 | 无迟到响应串库 |
+| KB-ORG-12 | 刷新保持组织 | P-OWNER | 刷新 | 组织上下文保持 |
+
+---
+
+# 模块五：检索调试台（/debug）
+
+接口：`POST /search`、`POST /search/by-image`。范围受 `KbAccessGuard`；检索日志按组织/KB 归属。
+
+## SE-RUN 检索执行与策略
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| SE-RUN-01 | hybrid 策略返回结果 | P-OWNER | 选 hybrid 检索 | 返回融合排序结果 |
+| SE-RUN-02 | 纯向量策略 | P-OWNER | vector 策略 | 仅向量召回 |
+| SE-RUN-03 | 纯 BM25 策略 | P-OWNER | bm25 策略 | 仅关键词召回 |
+| SE-RUN-04 | 结果含 rerank 分 | P-OWNER | 看结果项 | 有 rerank score，排序与分数一致 |
+| SE-RUN-05 | 空查询校验 | P-OWNER | 提交空 query | 前后端拦截，不发无效请求 |
+| SE-RUN-06 | 超长 query | P-OWNER | 超长输入 | 截断/正常处理，不 500 |
+| SE-RUN-07 | 无结果命中 | P-OWNER | 查冷门词 | 返回空结果 + 空态 UI |
+| SE-RUN-08 | 结果 chunk 内容/来源正确 | P-OWNER | 看命中片段 | 片段属所选库，来源标注正确 |
+| SE-RUN-09 | 图片检索 by-image | P-OWNER | 上传图检索 | 返回多模态结果（若启用） |
+| SE-RUN-10 | 检索耗时展示 | P-OWNER | 看耗时 | 展示召回/精排耗时，合理非负 |
+| SE-RUN-11 | 特殊字符/注入 query | P-OWNER | 含特殊符号 | 安全处理，无注入/报错 |
+| SE-RUN-12 | 重复检索结果稳定 | P-OWNER | 同 query 多次 | 结果稳定可复现 |
+
+## SE-KB KB 选择与范围隔离
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| SE-KB-01 | 可选库=本组织 + 公开 | P-OWNER | 看 KB 下拉 | 含 A 库 + 公开库，不含 B 私有 |
+| SE-KB-02 | 选本组织库检索 | P-OWNER | 选 KB-A1 | 仅在该库检索 |
+| SE-KB-03 | 选公开库检索 | P-OWNER | 选 KB-PUB | 正常检索公开库 |
+| SE-KB-04 | 越权检索他组织库 | P-MEMBER | 构造 kbIds=[B库] | 403 KB_ACCESS_DENIED |
+| SE-KB-05 | 多库联合检索 | P-OWNER | 选多个本组织库 | 跨库融合结果 |
+| SE-KB-06 | 混入他组织库的请求 | P-MEMBER | kbIds=[A库,B库] | 整体 403 或仅返回有权库（按设计），绝不泄漏 B |
+| SE-KB-07 | 不选库默认范围 | P-OWNER | 不选库直接搜 | 按默认（全本组织可读库）或提示选择 |
+| SE-KB-08 | 空组织无可选库 | P-MEMBER(组织C) | 看下拉 | 空/仅公开库 |
+| SE-KB-09 | 切组织可选库刷新 | P-SUPER | A→B | 下拉换为 B 库 |
+| SE-KB-10 | 检索日志归属本组织 | P-OWNER | 检索后查日志 | retrieval_log org/KB 归属正确 |
+| SE-KB-11 | 删除库后不可再选 | P-OWNER | 删库后看下拉 | 该库消失 |
+| SE-KB-12 | 破玻璃可选全平台库 | P-SUPER-PLAT | 全平台 | 可选全平台库 |
+
+## SE-PARAM 参数与结果正确性
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| SE-PARAM-01 | topK 生效 | P-OWNER | 设 topK=5 | 最多返回 5 条 |
+| SE-PARAM-02 | topK 边界=1 | P-OWNER | topK=1 | 返回 1 条 |
+| SE-PARAM-03 | topK 超大 | P-OWNER | topK=1000 | 返回可用上限，不报错 |
+| SE-PARAM-04 | 向量权重调节 | P-OWNER | 调 vectorWeight | 排序随权重变化（可观测） |
+| SE-PARAM-05 | 权重边界 0/1 | P-OWNER | weight=0、1 | 退化为纯 BM25 / 纯向量 |
+| SE-PARAM-06 | 非法参数回退 | P-OWNER | topK=0/负 | 钳制/默认，不报错 |
+| SE-PARAM-07 | 分数归一化区间 | P-OWNER | 看分数 | 在合理区间，无越界 |
+| SE-PARAM-08 | 结果排序与分数一致 | P-OWNER | 核对 | 降序，无错位 |
+| SE-PARAM-09 | RRF 融合正确性 | P-OWNER | hybrid 对照单路 | 融合结果合理，含两路贡献 |
+| SE-PARAM-10 | 参数持久/重置 | P-OWNER | 调参后重置 | 重置回默认 |
+| SE-PARAM-11 | 结果高亮/片段定位 | P-OWNER | 看命中 | 命中词/片段定位正确 |
+| SE-PARAM-12 | 并发检索互不串 | P-OWNER | 快速多次不同 query | 结果对应各自 query，无错配 |
+
+---
+
+# 模块六：应答调试台（/answer）
+
+接口：`POST /answer`（RAG 应答）。范围受 KbAccessGuard；应答成本/用量按组织归属。
+
+## AN-RUN 应答生成
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| AN-RUN-01 | 正常生成应答 | P-OWNER | 提问 | 返回答案文本 |
+| AN-RUN-02 | 答案带引用来源 | P-OWNER | 看引用 | 列出来源 chunk，属所选库 |
+| AN-RUN-03 | 空问题校验 | P-OWNER | 空输入 | 拦截 |
+| AN-RUN-04 | 无相关上下文 | P-OWNER | 问库外问题 | 答"无依据/不知道"，不幻觉编造 |
+| AN-RUN-05 | 流式/分段输出 | P-OWNER | 看输出 | 流式正常，无截断错乱 |
+| AN-RUN-06 | 超长问题 | P-OWNER | 超长输入 | 正常处理或截断 |
+| AN-RUN-07 | 引用可点击溯源 | P-OWNER | 点引用 | 跳到对应片段，属本组织库 |
+| AN-RUN-08 | 答案与检索结果一致 | P-OWNER | 对照 | 答案基于检索片段，无凭空来源 |
+| AN-RUN-09 | 重复提问稳定性 | P-OWNER | 同问多次 | 答案大致稳定，无崩溃 |
+| AN-RUN-10 | 特殊字符/注入 | P-OWNER | 注入式提问 | 安全处理 |
+| AN-RUN-11 | 多轮上下文（若支持） | P-OWNER | 连续追问 | 上下文连贯或按设计无状态 |
+| AN-RUN-12 | 生成失败优雅降级 | P-OWNER | 制造 LLM 失败 | 友好报错，不白屏 |
+
+## AN-KB KB 范围与隔离
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| AN-KB-01 | 可选库=本组织 + 公开 | P-OWNER | 看下拉 | 含 A + 公开，不含 B 私有 |
+| AN-KB-02 | 选本组织库应答 | P-OWNER | 选 KB-A1 | 基于该库应答 |
+| AN-KB-03 | 越权选他组织库 | P-MEMBER | kbIds=[B库] | 403 |
+| AN-KB-04 | 公开库应答 | P-OWNER | 选 KB-PUB | 正常应答 |
+| AN-KB-05 | 混入他组织库 | P-MEMBER | [A库,B库] | 不泄漏 B，整体 403 或过滤 |
+| AN-KB-06 | 空组织无可选库 | P-MEMBER(组织C) | 看下拉 | 空/仅公开 |
+| AN-KB-07 | 切组织可选库刷新 | P-SUPER | A→B | 下拉换 B |
+| AN-KB-08 | 答案引用不含他组织 | P-OWNER | 看引用 | 引用片段全属本组织/公开库 |
+| AN-KB-09 | 应答日志归属本组织 | P-OWNER | 查 answer_log | org/KB 归属正确 |
+| AN-KB-10 | 删除库后不可选 | P-OWNER | 删库 | 下拉消失 |
+| AN-KB-11 | 破玻璃可选全平台 | P-SUPER-PLAT | 全平台 | 可选全平台库 |
+| AN-KB-12 | 无组织上下文 | 无 X-Org-Id 非破玻璃 | 应答 | 仅公开或拒绝，不泄漏私有 |
+
+## AN-COST 应答成本与用量归属
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| AN-COST-01 | 应答产生的用量计入本组织 | P-OWNER | 应答后看模型&成本 | 本组织成本/Token/调用相应增加 |
+| AN-COST-02 | 他组织成本不受影响 | P-OWNER | 对照 B | B 成本不变 |
+| AN-COST-03 | Token 统计含输入+输出 | P-OWNER | 核对 | 与应答实际 token 一致 |
+| AN-COST-04 | 失败应答的计数口径 | P-OWNER | 制造失败 | failed 计数正确，不计成功 |
+| AN-COST-05 | 用量按用途归类（ANSWER） | P-OWNER | 看成本明细 | 归到 ANSWER 用途 |
+| AN-COST-06 | 改写产生的用量（REWRITE） | P-OWNER | 触发改写 | 归到 REWRITE 用途 |
+| AN-COST-07 | 个人组织应答成本独立 | P-PERSONAL | 应答后看成本 | 计入个人组织 |
+| AN-COST-08 | 破玻璃聚合含本次 | P-SUPER-PLAT | 全平台看 | 含本次应答用量 |
+| AN-COST-09 | 成本归属与日志一致 | P-OWNER | 交叉核对 | answer_log 与 model_usage 口径一致 |
+| AN-COST-10 | 高并发应答计量不丢 | P-OWNER | 并发应答 | 用量累计无丢失/无重复 |
+| AN-COST-11 | 成本即时反映（或延迟可解释） | P-OWNER | 应答后刷新成本 | 按聚合周期反映，口径明确 |
+| AN-COST-12 | 切组织后成本归属正确 | P-SUPER | 切 B 应答 | 计入 B 不计 A |
+
+---
+
+# 模块七：评测实验室（/eval）
+
+接口：数据集 `/eval/datasets`、题目 `/eval/datasets/{id}/questions`、实验 `/eval/experiments`。
+口径：**已逐条组织隔离**（资源所属 KB 必须在 本组织 ∪ 公开）；nav 仅组织 OWNER/ADMIN 可见。
+
+## EV-DS 数据集管理与隔离
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| EV-DS-01 | 列表仅含本组织数据集 | P-OWNER | 看数据集列表 | 仅 A（含公开库的）数据集，无 B |
+| EV-DS-02 | 创建数据集绑定本组织 KB | P-OWNER | 用 KB-A1 建 | 成功，归属 A |
+| EV-DS-03 | 创建用他组织 KB 被拒 | P-OWNER | kbId=KB-B1 建 | 403 EVAL_RESOURCE_NOT_IN_ORG |
+| EV-DS-04 | 创建用公开库 | P-OWNER | kbId=KB-PUB | 成功（公开库纳入范围） |
+| EV-DS-05 | getById 他组织数据集越权 | P-OWNER | GET /eval/datasets/{B的id} | 403 |
+| EV-DS-06 | 删除他组织数据集越权 | P-OWNER | 删 B 的数据集 | 403 |
+| EV-DS-07 | 编辑本组织数据集 | P-OWNER | 改名 | 成功 |
+| EV-DS-08 | 空组织数据集空列表 | P-OWNER(组织C) | 看列表 | 空 |
+| EV-DS-09 | 切组织数据集刷新 | P-SUPER | A→B | 列表换 B |
+| EV-DS-10 | 普通成员不可见评测入口 | P-MEMBER | 看侧栏 | 无"评测实验室"（orgRoles OWNER/ADMIN） |
+| EV-DS-11 | 个人组织 owner 可用评测 | P-PERSONAL | 进评测 | 可见可用（个人组织 owner） |
+| EV-DS-12 | 破玻璃可见全平台数据集 | P-SUPER-PLAT | 全平台 | 列出全平台 |
+
+## EV-QS 题目管理
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| EV-QS-01 | 列题目校验数据集归属 | P-OWNER | 列本组织数据集题目 | 成功 |
+| EV-QS-02 | 列他组织数据集题目越权 | P-OWNER | {B数据集}/questions | 403（经 requireDataset 隔离） |
+| EV-QS-03 | 新增题目 | P-OWNER | 加题 | 成功，questionCount+1 |
+| EV-QS-04 | 批量导入题目 | P-OWNER | batchCreate | 全部入库，计数正确 |
+| EV-QS-05 | 他组织数据集加题越权 | P-OWNER | 给 B 数据集加题 | 403 |
+| EV-QS-06 | 期望 chunk/片段字段 | P-OWNER | 填期望命中 | 正确保存 |
+| EV-QS-07 | 空题目校验 | P-OWNER | 空提交 | 拦截 |
+| EV-QS-08 | 删除题目计数 | P-OWNER | 删题 | questionCount-1 |
+| EV-QS-09 | 题目数与列表一致 | P-OWNER | 核对 | count == 行数 |
+| EV-QS-10 | 大批量题目分页/性能 | P-OWNER | 大量题 | 分页正常，不卡死 |
+| EV-QS-11 | 切组织题目归属 | P-SUPER | 切 B | 题目随数据集隔离 |
+| EV-QS-12 | 破玻璃跨组织题目 | P-SUPER-PLAT | 全平台 | 可见 |
+
+## EV-EXP 实验运行与结果
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| EV-EXP-01 | 跑实验校验数据集归属 | P-OWNER | 跑本组织数据集 | 成功 |
+| EV-EXP-02 | 跑他组织数据集越权 | P-OWNER | runExperiment(B数据集) | 403 |
+| EV-EXP-03 | 实验列表仅本组织 | P-OWNER | 看 listRecent | 仅 A 的实验 |
+| EV-EXP-04 | 实验详情 getDetail 越权 | P-OWNER | /experiments/{B的id} | 403 |
+| EV-EXP-05 | 实验结果指标正确 | P-OWNER | 看结果 | 命中率/分数等与样本一致 |
+| EV-EXP-06 | 实验对比（多策略） | P-OWNER | 对比两次实验 | 对比数据正确 |
+| EV-EXP-07 | 实验产生成本计入本组织 | P-OWNER | 跑后看成本 | 本组织成本增加（或归 org_id=0 评测口径，按设计核对） |
+| EV-EXP-08 | 空数据集跑实验 | P-OWNER | 无题数据集 | 友好提示，不崩 |
+| EV-EXP-09 | 实验运行中状态 | P-OWNER | 看进度 | 状态流转正确 |
+| EV-EXP-10 | 实验失败处理 | P-OWNER | 制造失败 | 优雅报错 |
+| EV-EXP-11 | 切组织实验隔离 | P-SUPER | A→B | 实验列表/详情隔离 |
+| EV-EXP-12 | 破玻璃全平台实验 | P-SUPER-PLAT | 全平台 | 可见全平台实验 |
+
+---
+
+# 模块八：开发者中心（/api）
+
+三 tab：API 凭证 / 接口文档 / MCP 接入。
+口径：key 绑定当前组织；接口文档/MCP 为静态全局（key 自动绑定组织，**无需 X-Org-Id**）；平台治理=破玻璃定向搜索 + 吊销。
+
+## DV-KEY API 凭证生命周期
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DV-KEY-01 | 列表仅含本组织 key | P-OWNER | 看 key 列表 | 仅 A 的 key，无 B |
+| DV-KEY-02 | 创建 key 绑定当前组织 | P-OWNER | 建 key | key.org_id=A，掩码展示 |
+| DV-KEY-03 | 平台视图列表为空（定向治理） | P-SUPER-PLAT | 全平台看列表 | 不浏览全部（Option B：返回空，靠 governance 搜索） |
+| DV-KEY-04 | 改 key 名 | P-OWNER | PATCH 改名 | 成功 |
+| DV-KEY-05 | 启用/停用 key | P-OWNER | toggle enable | 状态切换，停用后不可用 |
+| DV-KEY-06 | 删除 key | P-OWNER | DELETE | 删除，列表移除 |
+| DV-KEY-07 | 越权操作他组织 key | P-MEMBER | 改/删 B 的 key | 403 NOT_ORG_ADMIN/不可见 |
+| DV-KEY-08 | 非组织管理员建 key | P-MEMBER | 尝试建 key | 按 org admin 规则拒绝 |
+| DV-KEY-09 | key 掩码展示 | P-OWNER | 看 keyMasked | sk-xxxx****yyyy，不全明文 |
+| DV-KEY-10 | 切组织 key 列表刷新 | P-SUPER | A→B | 列表换 B 的 key |
+| DV-KEY-11 | 删除组织级联删 key | P-SUPER-PLAT | 删组织 A | A 的 key 一并删除 |
+| DV-KEY-12 | lastUsedAt 更新 | P-OWNER | 用 key 调一次 API | last_used_at 更新 |
+
+## DV-REVEAL 创建后明文展示
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DV-REVEAL-01 | 创建后弹窗明文一次 | P-OWNER | 建 key | 弹窗显示完整明文 key |
+| DV-REVEAL-02 | 关闭后不再可见 | P-OWNER | 关弹窗再看列表 | 仅掩码，明文不再出现 |
+| DV-REVEAL-03 | 复制按钮可用 | P-OWNER | 点复制 | 复制完整明文 |
+| DV-REVEAL-04 | 明文不入列表接口 | P-OWNER | 查列表响应 | 列表接口不返回明文 |
+| DV-REVEAL-05 | 弹窗前缀/掩码一致 | P-OWNER | 对照 | 明文前后缀与列表掩码一致 |
+| DV-REVEAL-06 | 刷新页面明文消失 | P-OWNER | 刷新 | 明文不可恢复 |
+| DV-REVEAL-07 | 多次创建各自明文 | P-OWNER | 连建两把 | 各自明文正确，不串 |
+| DV-REVEAL-08 | 弹窗安全提示 | P-OWNER | 看弹窗 | 有"仅此一次"提示 |
+| DV-REVEAL-09 | 明文不写日志 | — | 查后端日志 | 不打印完整明文 |
+| DV-REVEAL-10 | 取消创建不生成 | P-OWNER | 取消流程 | 不产生残留 key |
+| DV-REVEAL-11 | 弹窗 ESC/遮罩关闭 | P-OWNER | 关弹窗 | 正常关闭 |
+| DV-REVEAL-12 | 创建失败无明文 | P-OWNER | 制造失败 | 不显示明文，报错友好 |
+
+## DV-GOV 平台治理（破玻璃）
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DV-GOV-01 | 治理搜索需破玻璃 | P-SUPER（未破玻璃） | 调 governance | 拒绝/不可用 |
+| DV-GOV-02 | 破玻璃按前缀搜索 | P-SUPER-PLAT | 搜 key 前缀 | 命中对应 key（跨组织） |
+| DV-GOV-03 | 按名称搜索 | P-SUPER-PLAT | 搜 keyName | 命中 |
+| DV-GOV-04 | 搜索词 <3 字符拒绝 | P-SUPER-PLAT | 搜 2 字符 | 拒绝（防全量拉取） |
+| DV-GOV-05 | 结果上限 50 | P-SUPER-PLAT | 宽泛搜索 | 最多 50 条 |
+| DV-GOV-06 | 吊销需理由 | P-SUPER-PLAT | 吊销不填理由 | 拒绝 |
+| DV-GOV-07 | 吊销写审计 | P-SUPER-PLAT | 吊销 key | 记 ragforge.audit api_key_breakglass_revoke |
+| DV-GOV-08 | 吊销后 key 失效 | P-SUPER-PLAT | 吊销后用该 key | 调用被拒 |
+| DV-GOV-09 | 组织用户无治理入口 | P-OWNER | 看页面 | 无治理 tab/接口 403 |
+| DV-GOV-10 | 治理不浏览全部 | P-SUPER-PLAT | 不搜索直接看 | 不展示全量 key（定向治理） |
+| DV-GOV-11 | 吊销他组织 key 记录归属 | P-SUPER-PLAT | 吊销 B 的 key | 审计含组织/操作人 |
+| DV-GOV-12 | 退破玻璃治理不可用 | P-SUPER | 退出全平台视图 | 治理接口拒绝 |
+
+## DV-DOC 接口文档 / MCP（静态全局）
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| DV-DOC-01 | 接口文档组织归属为"自动绑定" | P-OWNER | 看接口文档 | "由 API key 自动绑定，无需传 X-Org-Id" |
+| DV-DOC-02 | cURL 示例不含 X-Org-Id | P-OWNER | 看 cURL | 无 X-Org-Id 头 |
+| DV-DOC-03 | MCP 配置不含 X-Org-Id | P-OWNER | 看 MCP 配置 | headers 仅 Authorization |
+| DV-DOC-04 | 文档跨组织一致（静态） | P-OWNER vs P-ORGB | 两组织看文档 | 内容相同（静态全局） |
+| DV-DOC-05 | Base URL 为线上域名 | P-OWNER | 看 Base URL | api.ragforge.net |
+| DV-DOC-06 | 复制按钮可用 | P-OWNER | 点复制 | 复制正确内容 |
+| DV-DOC-07 | key 自动绑定组织（行为验证） | P-OWNER | 用 A 的 key 调 /search | 仅返回 A（+公开）数据，无需传组织头 |
+| DV-DOC-08 | 他组织 key 隔离 | P-ORGB | 用 B 的 key 调 | 仅 B 数据 |
+| DV-DOC-09 | 停用 key 调用被拒 | P-OWNER | 停用后调 | 401/403 |
+| DV-DOC-10 | 文档 tab 切换正常 | P-OWNER | 切三 tab | 无错乱 |
+| DV-DOC-11 | MCP 适用客户端说明 | P-OWNER | 看 MCP tab | 列出适用客户端 |
+| DV-DOC-12 | 普通成员可见文档/MCP | P-MEMBER | 进开发者中心 | 可见（下放后），凭证按 org admin |
+
+---
+
+# 模块九：性能诊断（/perf-probe）
+
+复用 `listKb`（本组织 ∪ 公开）与 `search`（KbAccessGuard 兜底）批量压测；nav 仅组织 OWNER/ADMIN 可见。
+
+## PF-RUN 压测执行
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| PF-RUN-01 | 单次压测执行 | P-OWNER | 跑一轮 | 返回逐次耗时 |
+| PF-RUN-02 | 多次循环压测 | P-OWNER | 设循环次数 | 按次数执行 |
+| PF-RUN-03 | 间隔参数生效 | P-OWNER | 设 intervalMs | 按间隔节流 |
+| PF-RUN-04 | 间隔边界钳制 | P-OWNER | interval=0/超大 | 钳制到 0–5000 |
+| PF-RUN-05 | 压测中止 | P-OWNER | 中途停止 | 可中止，结果保留已完成部分 |
+| PF-RUN-06 | 多策略压测 | P-OWNER | hybrid/vector/bm25 | 各策略分别统计 |
+| PF-RUN-07 | 空 query 校验 | P-OWNER | 空输入 | 拦截 |
+| PF-RUN-08 | 压测不阻塞 UI | P-OWNER | 跑长压测 | UI 可响应，进度更新 |
+| PF-RUN-09 | 失败请求计入统计 | P-OWNER | 制造失败 | 失败计数正确 |
+| PF-RUN-10 | 压测结果可导出/查看 | P-OWNER | 看结果 | 数据完整可读 |
+| PF-RUN-11 | 重复压测稳定 | P-OWNER | 多轮 | 数据合理可复现 |
+| PF-RUN-12 | 大循环不内存泄漏 | P-OWNER | 大次数 | 不卡死/不崩 |
+
+## PF-KB KB 范围与隔离
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| PF-KB-01 | 可选库=本组织 + 公开 | P-OWNER | 看下拉 | 含 A + 公开，不含 B |
+| PF-KB-02 | 压测本组织库 | P-OWNER | 选 KB-A1 | 正常压测 |
+| PF-KB-03 | 越权压测他组织库 | P-OWNER(若构造) | kbIds=[B库] | 403（search 兜底） |
+| PF-KB-04 | 公开库压测 | P-OWNER | 选 KB-PUB | 正常 |
+| PF-KB-05 | 切组织可选库刷新 | P-SUPER | A→B | 下拉换 B |
+| PF-KB-06 | 空组织无可选库 | P-OWNER(组织C) | 看下拉 | 空/仅公开 |
+| PF-KB-07 | 压测产生检索日志归属 | P-OWNER | 压测后查日志 | 归属本组织 |
+| PF-KB-08 | 压测成本计入本组织 | P-OWNER | 压测后看成本 | 本组织检索成本增加 |
+| PF-KB-09 | 删除库后不可选 | P-OWNER | 删库 | 下拉消失 |
+| PF-KB-10 | 破玻璃可选全平台库 | P-SUPER-PLAT | 全平台 | 可选全平台库 |
+| PF-KB-11 | 多库压测范围正确 | P-OWNER | 选多库 | 仅压测所选本组织库 |
+| PF-KB-12 | 普通成员无性能诊断入口 | P-MEMBER | 看侧栏 | 无（orgRoles OWNER/ADMIN） |
+
+## PF-STAT 延迟统计正确性
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| PF-STAT-01 | p50/p95/avg 计算正确 | P-OWNER | 看统计 | 与逐次耗时分布吻合 |
+| PF-STAT-02 | 统计非负 | P-OWNER | 看数值 | 均 ≥0 |
+| PF-STAT-03 | p95 ≥ p50 | P-OWNER | 对比 | p95 ≥ p50 ≥ min |
+| PF-STAT-04 | 单次样本统计 | P-OWNER | 跑 1 次 | 统计退化合理（p50=p95=该次） |
+| PF-STAT-05 | 召回/精排分段耗时 | P-OWNER | 看分段 | 各段耗时合理，和≈总耗时 |
+| PF-STAT-06 | 失败次数不计入耗时均值 | P-OWNER | 含失败 | 均值口径明确（仅成功或标注） |
+| PF-STAT-07 | 统计随策略区分 | P-OWNER | 多策略 | 各策略独立统计 |
+| PF-STAT-08 | 异常大延迟离群处理 | P-OWNER | 含离群点 | p95 体现，均值不被误导（口径一致） |
+| PF-STAT-09 | 清空/重置统计 | P-OWNER | 重置 | 统计清零 |
+| PF-STAT-10 | 统计与逐条明细一致 | P-OWNER | 核对 | 聚合统计与逐条数据可对账 |
+| PF-STAT-11 | 单位毫秒一致 | P-OWNER | 看单位 | 统一 ms，无 s/ms 混用 |
+| PF-STAT-12 | 切组织后统计清空/独立 | P-SUPER | A→B | 不残留 A 的压测统计 |
+
+---
+
+## 附：维护约定
+
+- 新增模块沿用「**角色** / **数据前置** / **断言基线**」三段式；断言基线七项贯穿全部用例：
+  1. 求和一致性　2. 组织隔离　3. 公开库纳入（注意驾驶舱**资产**为自有口径的例外）　4. 破玻璃聚合　5. 空态健壮　6. 边界与精度　7. 切换一致性与竞态。
+- 编号前缀：质量看板 QD、模型&成本 MC、驾驶舱 DB、知识库 KB、检索 SE、应答 AN、评测 EV、开发者中心 DV、性能 PF。
+- **口径差异提醒**：驾驶舱资产 = 本组织自有库（公开库他组织不计入）；质量看板 / 成本 / 检索 / 应答 / 评测 = 本组织 ∪ 公开库。此为设计差异，非缺陷，用例中已分别标注。
