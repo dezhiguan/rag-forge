@@ -417,6 +417,82 @@
 | KB-ORG-11 | 切组织竞态 | P-SUPER | 连切 | 无迟到响应串库 |
 | KB-ORG-12 | 刷新保持组织 | P-OWNER | 刷新 | 组织上下文保持 |
 
+## KB-VE 可见性编辑（P0 权限+审计 / P1 收紧依赖预检 / P2 放开治理 · 多视角验证）
+
+> 接口：`GET /kb/{id}/visibility/impact?target=`、`PUT /kb/{id}/visibility`（body: visibility/reason/force）。
+> 规则：开放度 **PUBLIC > ORG > PRIVATE**；**团队库仅 PRIVATE/ORG（不可公开）**，**个人库 PRIVATE/PUBLIC**。
+> 重点：每条尽量「改完后切到另一视角验证是否真的生效/失效」。
+
+### 权限与入口（P0）
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-VE-01 | KB 管理员可见可见性编辑入口 | P-OWNER/P-ADMIN | 打开编辑模态 | 出现「可见性」下拉，可改 |
+| KB-VE-02 | 普通成员无编辑入口 | P-MEMBER | 看 KB 行 | 无「编辑」入口 |
+| KB-VE-03 | 普通成员直调接口越权 | P-MEMBER | 直接 PUT /kb/{本组织库}/visibility | 403（canAdmin 拦截） |
+| KB-VE-04 | 他组织用户改可见性越权 | P-ORGB | PUT /kb/{A的库}/visibility | 403 |
+| KB-VE-05 | 个人库 owner 可改自己的 | P-PERSONAL | 改个人库可见性 | 成功 |
+| KB-VE-06 | 破玻璃超管可改（canAdmin） | P-SUPER-PLAT | 改任意库可见性 | 成功，审计记操作人 |
+
+### 合法值与「团队不可公开」
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-VE-07 | 团队库编辑下拉仅 PRIVATE/ORG | P-OWNER | 看团队库可见性下拉 | **无「公开」选项** |
+| KB-VE-08 | 个人库编辑下拉 PRIVATE/PUBLIC | P-PERSONAL | 看个人库下拉 | 有「公开」，无 ORG |
+| KB-VE-09 | 团队库强行设 PUBLIC 被拒 | P-OWNER | 直接 PUT visibility=PUBLIC（团队库） | 400 KB_VISIBILITY_INVALID |
+| KB-VE-10 | 个人库强行设 ORG 被拒 | P-PERSONAL | PUT visibility=ORG（个人库） | 400 KB_VISIBILITY_INVALID |
+| KB-VE-11 | 改成相同可见性幂等 | P-OWNER | target=当前值 | 无变更（no-op），不写多余审计 |
+| KB-VE-12 | 非法/空 visibility 校验 | P-OWNER | 空或乱值 | 400，不报 500 |
+
+### P2 放开（个人库 → PUBLIC）多视角
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-VE-13 | →PUBLIC 弹强确认并必填原因 | P-PERSONAL | PRIVATE→PUBLIC 保存 | 弹窗含"对所有组织可见且难收回"，必须填原因 |
+| KB-VE-14 | →PUBLIC 不填原因后端拒绝 | P-PERSONAL | PUT visibility=PUBLIC 无 reason | 400 KB_VISIBILITY_PUBLIC_REASON_REQUIRED |
+| KB-VE-15 | →PUBLIC 成功写审计 | P-PERSONAL | 公开后查日志 | ragforge.audit kb_visibility_change from=PRIVATE to=PUBLIC reason=… byUser=… |
+| KB-VE-16 | **多视角**：公开后他组织可见 | P-PERSONAL→切 P-ORGB | A 公开个人库后切 B 视角 | B 的知识库列表/检索可见该库 |
+| KB-VE-17 | **多视角**：公开后计入他组织检索/质量范围 | P-ORGB | B 检索该公开库 | 可检索；B 的质量/成本口径纳入该库 |
+| KB-VE-18 | 公开取消则不生效 | P-PERSONAL | 弹窗取消 | 可见性保持 PRIVATE，他组织仍不可见 |
+
+### P1 收紧（个人库 PUBLIC → 私有）依赖预检 · 多视角
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-VE-19 | impact 列出他组织引用 key | P-PERSONAL | 先让 B 用 key 绑该公开库，再 GET impact?target=PRIVATE | crossOrgApiKeys 含 B 的 key（id/keyName/orgName） |
+| KB-VE-20 | impact 列出评测集数 | P-PERSONAL | B 在该公开库建评测集后看 impact | evalDatasetCount > 0 |
+| KB-VE-21 | impact 同组织 key 不算阻断 | P-PERSONAL | 仅本组织 key 引用 | 不计入 crossOrgApiKeys，hasBlockingDependencies=false |
+| KB-VE-22 | 有阻断依赖未 force 被拒 | P-PERSONAL | PUT PRIVATE force=false | 409 KB_VISIBILITY_HAS_DEPENDENCIES |
+| KB-VE-23 | 前端展示影响清单再 force | P-PERSONAL | 收紧触发弹窗→确认 | 列出将断开的 B 的 key，确认后 force=true 成功 |
+| KB-VE-24 | 无依赖收紧直接成功 | P-PERSONAL | 无他组织引用时收紧 | 直接成功，无 409 |
+| KB-VE-25 | **多视角**：收紧后他组织失效 | P-PERSONAL→切 P-ORGB | 收紧后切 B | B 列表/检索不再见该库 |
+| KB-VE-26 | **多视角**：收紧后 B 的 key 调用失配 | P-ORGB | 用 B 引用该库的 key 调 /search | 不再命中该库内容 |
+| KB-VE-27 | 收紧后他组织评测集受限 | P-ORGB | B 访问建在该库的评测集 | 仅本库组织管理员可用，B 受限/403 |
+| KB-VE-28 | allowedKbIds 子串不误报 | P-PERSONAL | 库 id=1，存在引用 11 的 key | impact 不把引用 11 的 key 误判为引用 1 |
+
+### 团队组织内 PRIVATE ↔ ORG · 多视角
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-VE-29 | PRIVATE→ORG 普通成员变可读 | P-OWNER 改 → 切 P-MEMBER | 团队库 PRIVATE→ORG 后切成员视角 | 成员从不可读变**可读**该库 |
+| KB-VE-30 | ORG→PRIVATE 普通成员变不可读 | P-OWNER 改 → 切 P-MEMBER | 团队库 ORG→PRIVATE 后切成员 | 成员从可读变**不可读**（403/不可见） |
+| KB-VE-31 | 组织内变更走普通确认 | P-OWNER | PRIVATE↔ORG 保存 | 普通确认弹窗（非跨组织强确认，无 impact 预检） |
+| KB-VE-32 | 组织内变更不影响他组织 | P-OWNER → 切 P-ORGB | 团队库改 ORG | B 始终不可见（团队库本就不跨组织） |
+| KB-VE-33 | ORG→PRIVATE 管理员仍可读 | P-ADMIN | 收紧为 PRIVATE 后自己看 | 组织管理员仍可读（PRIVATE=仅管理员） |
+| KB-VE-34 | 组织内变更写审计 | P-OWNER | 查日志 | ragforge.audit 记 from/to/byUser |
+
+### 一致性与边界
+
+| 编号 | 用例名称 | 角色 | 步骤要点 | 预期结果 |
+|---|---|---|---|---|
+| KB-VE-35 | 取消可见性变更其余字段已存 | P-OWNER | 改名+改可见性，可见性弹窗取消 | 名称已保存，可见性回退原值，弹窗按设计处理 |
+| KB-VE-36 | 变更后列表标识即时刷新 | P-OWNER | 改可见性后看列表徽章 | 徽章（私有/组织可见/公开）即时更新 |
+| KB-VE-37 | 变更即时生效到检索范围 | P-OWNER | 改后去检索台看可选库 | 可选范围随可见性即时变化 |
+| KB-VE-38 | 已删除库改可见性 | P-OWNER | 对已删库 PUT visibility | 404，不报 500 |
+| KB-VE-39 | 并发改可见性 | P-OWNER | 两端同时改 | 最终一致，无脏写 |
+| KB-VE-40 | 审计字段完整性 | — | 查每条 kb_visibility_change | 含 kbId/orgId/byUser/from/to/narrowing/crossOrgKeys/forced/reason |
+
 ---
 
 # 模块五：检索调试台（/debug）
