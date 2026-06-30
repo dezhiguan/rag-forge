@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.when;
 
 import com.ragforge.common.BizException;
@@ -161,7 +162,7 @@ class IngestServiceImplTest {
     assertThat(result.getStatus()).isEqualTo(IngestResult.Status.CREATED);
     verifyNoInteractions(mqProducer);
     runAfterCommit();
-    verify(mqProducer).send(eq(99L));
+    verify(mqProducer, timeout(1000)).send(eq(99L));
   }
 
   @Test
@@ -182,7 +183,7 @@ class IngestServiceImplTest {
     runAfterCommit();
     verify(esIndexService).deleteByDocId(eq(10L));
     verify(objectStorage).delete(eq("old-bucket"), eq("old-key"));
-    verify(mqProducer).send(eq(10L));
+    verify(mqProducer, timeout(1000)).send(eq(10L));
   }
 
   @Test

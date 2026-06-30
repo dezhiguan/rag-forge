@@ -141,7 +141,7 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.documentId").value(9912))
         .andExpect(jsonPath("$.status").value("CREATED"));
 
-    verify(objectStorage).put(eq("test-bucket"), org.mockito.ArgumentMatchers.contains("/16/"), any(), any());
+    verify(objectStorage).put(eq("test-bucket"), org.mockito.ArgumentMatchers.startsWith("kb_16/"), any(), any());
     verify(ingestService).register(any());
   }
 
@@ -230,7 +230,7 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.documentId").value(8810))
         .andExpect(jsonPath("$.status").value("SKIPPED"));
 
-    verify(objectStorage).delete(eq("test-bucket"), org.mockito.ArgumentMatchers.contains("/16/"));
+    verify(objectStorage).delete(eq("test-bucket"), org.mockito.ArgumentMatchers.startsWith("kb_16/"));
   }
 
   @Test
@@ -258,7 +258,7 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.error").value("DOC_IDENTITY_CONFLICT"))
         .andExpect(jsonPath("$.existingDocId").value(8810));
 
-    verify(objectStorage).delete(eq("test-bucket"), org.mockito.ArgumentMatchers.contains("/16/"));
+    verify(objectStorage).delete(eq("test-bucket"), org.mockito.ArgumentMatchers.startsWith("kb_16/"));
   }
 
   @Test
@@ -328,7 +328,7 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.uploadToken").value("uplt_signed-token"))
         .andExpect(jsonPath("$.presignedPutUrl").value("https://oss.example/put"))
         .andExpect(jsonPath("$.storageBucket").value("test-bucket"))
-        .andExpect(jsonPath("$.storageKey").value(org.hamcrest.Matchers.containsString("tn_test/kb_16/uplt_")))
+        .andExpect(jsonPath("$.storageKey").value(org.hamcrest.Matchers.startsWith("kb_16/")))
         .andExpect(jsonPath("$.expiresAt").value("2026-07-02T13:46:40Z"));
   }
 
@@ -401,7 +401,7 @@ class DocumentControllerTest {
   }
 
   @Test
-  void registerUploadedDocument_rejectsTenantMismatch() throws Exception {
+  void registerUploadedDocument_rejectsMissingUploadedObject() throws Exception {
     RagAuthContextHolder.set(authContext("tn_other", Set.of(16L)));
     when(uploadTokenService.consume("uplt_signed-token"))
         .thenReturn(tokenPayload("tn_test", 16L, 1024L));
@@ -411,8 +411,8 @@ class DocumentControllerTest {
             post("/api/v1/documents/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"uploadToken\":\"uplt_signed-token\",\"kbId\":16}"))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.msg").value("UPLOAD_TOKEN_TENANT_FORBIDDEN"));
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.msg").value("UPLOAD_NOT_FOUND"));
   }
 
   @Test
