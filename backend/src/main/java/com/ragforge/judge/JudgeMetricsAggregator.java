@@ -77,6 +77,8 @@ public class JudgeMetricsAggregator {
             FROM judge_results jr
             CROSS JOIN LATERAL UNNEST(jr.kb_ids) AS k(kb_id)
             WHERE jr.created_at >= NOW() - INTERVAL '7 days'
+              -- 只聚合仍存在的知识库，避免已删库(test/perf 跑完即删)在排行里留下孤儿指标
+              AND k.kb_id IN (SELECT id FROM knowledge_bases)
             GROUP BY DATE(jr.created_at), k.kb_id, jr.tenant_id
 
             UNION ALL
