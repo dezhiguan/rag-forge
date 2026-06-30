@@ -1890,10 +1890,12 @@ onMounted(async () => {
   border-radius: var(--radius-md);
   padding: 24px;
   width: min(420px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
 }
-.modal-title { font-size: 16px; margin-bottom: 16px; }
-.field { display: block; margin-bottom: 14px; }
+.modal-title { font-size: 16px; margin-bottom: 14px; }
+.field { display: block; margin-bottom: 12px; }
 .field span { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
 .field-toggle .toggle-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .field-toggle .toggle-head input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: 0 0 auto; cursor: pointer; }
@@ -2015,7 +2017,16 @@ onMounted(async () => {
 .field select:hover {
   border-color: #94a3b8;
 }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  padding: 12px 0 4px;
+}
 .edit-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
