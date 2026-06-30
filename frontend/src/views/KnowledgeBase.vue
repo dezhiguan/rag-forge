@@ -324,6 +324,7 @@
       <div v-if="showCreate" class="modal-mask" @click.self="showCreate = false">
         <div class="modal">
           <h3 class="modal-title">创建知识库</h3>
+          <div class="modal-body">
           <label class="field">
             <span>名称 *</span>
             <input v-model="kbForm.name" type="text" placeholder="例如：产品文档库" />
@@ -371,6 +372,7 @@
               开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
             </span>
           </label>
+          </div>
           <div class="modal-actions">
             <button class="btn btn-secondary" @click="showCreate = false">取消</button>
             <button class="btn btn-primary" :disabled="submittingKb" @click="onCreateKb">
@@ -383,6 +385,7 @@
       <div v-if="showEdit" class="modal-mask" @click.self="showEdit = false">
         <div class="modal">
           <h3 class="modal-title">编辑知识库</h3>
+          <div class="modal-body">
           <label class="field">
             <span>名称 *</span>
             <input v-model="editForm.name" type="text" placeholder="知识库名称" />
@@ -492,6 +495,7 @@
               开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
             </span>
           </label>
+          </div>
           <div class="modal-actions">
             <button class="btn btn-secondary" @click="showEdit = false">取消</button>
             <button class="btn btn-primary" :disabled="submittingKb" @click="onUpdateKb">
@@ -1883,17 +1887,31 @@ onMounted(async () => {
   z-index: 1000;
 }
 .modal {
+  display: flex;
+  flex-direction: column;
   background: #fff;
-  border-radius: var(--radius-md);
-  padding: 24px;
-  width: min(420px, 92vw);
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+  border-radius: 14px;
+  width: min(440px, 92vw);
+  max-height: 88vh;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
 }
-.modal-title { font-size: 16px; margin-bottom: 14px; }
-.field { display: block; margin-bottom: 12px; }
-.field span { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.modal-title {
+  flex: 0 0 auto;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--slate);
+  margin: 0;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 18px 24px 6px;
+}
+.field { display: block; margin-bottom: 16px; }
+.field span { display: block; font-size: 12.5px; font-weight: 500; color: var(--slate); margin-bottom: 6px; }
 .field-toggle .toggle-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .field-toggle .toggle-head input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: 0 0 auto; cursor: pointer; }
 .field-toggle .toggle-title { display: inline; font-size: 13px; color: var(--slate); font-weight: 500; margin: 0; }
@@ -1973,14 +1991,15 @@ onMounted(async () => {
 .field input, .field textarea {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 9px 12px;
   font-size: 13px;
   font-family: inherit;
   background: #fff;
   color: var(--text);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.field input::placeholder, .field textarea::placeholder { color: #9aa6b6; }
 .field input:focus, .field textarea:focus, .field select:focus {
   outline: none;
   border-color: var(--primary);
@@ -1999,8 +2018,8 @@ onMounted(async () => {
 .field select {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 32px 8px 10px;
+  border-radius: 8px;
+  padding: 9px 32px 9px 12px;
   font-size: 13px;
   font-family: inherit;
   background: #fff url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
@@ -2015,14 +2034,14 @@ onMounted(async () => {
   border-color: #94a3b8;
 }
 .modal-actions {
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 16px;
-  position: sticky;
-  bottom: 0;
+  margin: 0;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
   background: #fff;
-  padding: 12px 0 4px;
 }
 .edit-grid {
   display: grid;
