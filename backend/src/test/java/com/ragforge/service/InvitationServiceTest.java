@@ -201,6 +201,21 @@ class InvitationServiceTest {
 
     assertThat(invitation.getStatus()).isEqualTo("REVOKED");
     verify(invitationMapper).updateById(invitation);
+    // 撤销后应通知被邀请方并推送，让其待处理邀请实时移除
+    verify(notificationMapper).update(any(Notification.class), any());
+    verify(notificationPusher).pushUnread(88L);
+  }
+
+  @Test
+  void revoke_pendingInvitation_withNullInvitee_skipsPush() {
+    OrgInvitation invitation = invitation(35L, 16L, null, "MEMBER", "PENDING");
+    when(orgMemberMapper.isOrgAdmin(16L, 7L)).thenReturn(true);
+    when(invitationMapper.selectById(35L)).thenReturn(invitation);
+
+    invitationService.revoke(16L, 35L);
+
+    assertThat(invitation.getStatus()).isEqualTo("REVOKED");
+    verify(notificationPusher, never()).pushUnread(any(Long.class));
   }
 
   @Test

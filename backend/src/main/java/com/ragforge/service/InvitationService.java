@@ -202,6 +202,12 @@ public class InvitationService {
     inv.setStatus("REVOKED");
     inv.setUpdatedAt(LocalDateTime.now());
     invitationMapper.updateById(inv);
+    // 撤销后同步被邀请方：标记其邀请通知已读并推送，让 B 端「待处理邀请」免刷新实时移除。
+    Long invitee = inv.getInviteeUserId();
+    if (invitee != null) {
+      markInviteNotificationsRead(invitationId, invitee);
+      pushAfterCommit(invitee);
+    }
   }
 
   private OrgInvitation requirePendingForMe(Long invitationId, Long uid) {
