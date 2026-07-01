@@ -133,13 +133,13 @@
           <div class="pipeline-step" :class="stepClass('parsing')">
             <span class="step-icon">📥</span>
             <span class="step-label">解析</span>
-            <span class="step-sub">PDF→Text</span>
+            <span class="step-sub">多格式 + OCR</span>
           </div>
           <span class="pipe-arrow" :class="stepClass('parsing')">→</span>
           <div class="pipeline-step" :class="stepClass('chunking')">
             <span class="step-icon">✂️</span>
             <span class="step-label">分块</span>
-            <span class="step-sub">512 tokens</span>
+            <span class="step-sub">多策略切分</span>
           </div>
           <span class="pipe-arrow" :class="stepClass('chunking')">→</span>
           <div class="pipeline-step" :class="stepClass('embedding')">
