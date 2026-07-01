@@ -3,6 +3,7 @@ package com.ragforge.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -293,8 +294,9 @@ class KnowledgeBaseServiceImplTest {
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(1L, 2L, 3L));
     when(knowledgeBaseMapper.selectList(any(LambdaQueryWrapper.class)))
         .thenReturn(List.of(owned, publicKb, hidden));
-    when(kbAclMapper.findWritableKbIds(7L)).thenReturn(List.of(2L));
-    when(organizationMapper.selectBatchIds(Set.of(100L, 999L)))
+    lenient().when(kbAclMapper.findWritableKbIds(7L)).thenReturn(List.of(2L));
+    lenient()
+        .when(organizationMapper.selectBatchIds(any()))
         .thenReturn(List.of(org(100L, "personal"), org(999L, "other")));
     when(documentMapper.selectMaps(any()))
         .thenReturn(List.of(Map.of("kb_id", 1L, "cnt", 3), Map.of("kb_id", 2L, "cnt", 4)));
@@ -303,12 +305,11 @@ class KnowledgeBaseServiceImplTest {
 
     List<KnowledgeBaseVO> vos = knowledgeBaseService.listVisibleToCurrentUser();
 
-    assertThat(vos).extracting(KnowledgeBaseVO::getId).containsExactly(1L, 2L);
+    // 模型 Y：仅当前组织(100)的库保留；他组织的 PUBLIC(2L)/ORG(3L) 不再穿透。
+    assertThat(vos).extracting(KnowledgeBaseVO::getId).containsExactly(1L);
     assertThat(vos.get(0).getMyPermission()).isEqualTo("admin");
     assertThat(vos.get(0).getDocCount()).isEqualTo(3);
     assertThat(vos.get(0).getChunkCount()).isEqualTo(30);
-    assertThat(vos.get(1).getMyPermission()).isEqualTo("write");
-    assertThat(vos.get(1).getOrgName()).isEqualTo("other");
   }
 
   @Test

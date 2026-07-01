@@ -102,15 +102,15 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
     boolean individual = "INDIVIDUAL".equals(org.getType());
     if (individual) {
-      // 个人组织：仅本人；保留"个人库可公开"的语义（PRIVATE/PUBLIC）。
+      // 模型 Y：个人组织仅本人、仅 PRIVATE（移除全域公开）。
       if (creatorId == null || !creatorId.equals(org.getCreatedByUserId())) {
         throw new BizException(403, "NOT_ORG_OWNER");
       }
-      if (!"PRIVATE".equals(v) && !"PUBLIC".equals(v)) {
+      if (!"PRIVATE".equals(v)) {
         throw new BizException(400, "KB_VISIBILITY_INVALID");
       }
     } else {
-      // 团队组织：仅 OWNER/ADMIN；不允许直接 PUBLIC，避免误把企业资料公开。
+      // 团队组织：仅 OWNER/ADMIN；仅 PRIVATE/ORG（不允许全域公开）。
       if (creatorId == null || creatorId == 0L || !orgMemberMapper.isOrgAdmin(orgId, creatorId)) {
         throw new BizException(403, "NOT_ORG_ADMIN");
       }
@@ -193,9 +193,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     if (orgId == null) {
       return kbs; // 未指定当前组织：兼容不过滤
     }
-    return kbs.stream()
-        .filter(kb -> orgId.equals(kb.getOrgId()) || "PUBLIC".equals(kb.getVisibility()))
-        .toList();
+    // 模型 Y：严格按当前组织过滤（不再让 PUBLIC 库跨组织穿透显示）。
+    return kbs.stream().filter(kb -> orgId.equals(kb.getOrgId())).toList();
   }
 
   /** 批量回填组织库的组织名（个人库不受影响）。 */
@@ -443,8 +442,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     com.ragforge.model.entity.Organization org =
         kb.getOrgId() == null ? null : organizationMapper.selectById(kb.getOrgId());
     boolean individual = org != null && "INDIVIDUAL".equals(org.getType());
-    // 团队组织不允许 PUBLIC（避免误把企业资料公开）；仅个人库可公开。
-    Set<String> allowed = individual ? Set.of("PRIVATE", "PUBLIC") : Set.of("PRIVATE", "ORG");
+    // 模型 Y：移除全域公开。个人组织仅 PRIVATE；团队组织 PRIVATE/ORG。
+    Set<String> allowed = individual ? Set.of("PRIVATE") : Set.of("PRIVATE", "ORG");
     if (!allowed.contains(v)) {
       throw new BizException(400, "KB_VISIBILITY_INVALID");
     }

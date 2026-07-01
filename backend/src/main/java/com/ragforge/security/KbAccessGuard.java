@@ -30,7 +30,6 @@ public class KbAccessGuard {
   private final OrgMemberMapper orgMemberMapper;
   private final RagforgeMetrics metrics;
 
-  private static final String PUBLIC_VISIBILITY = "PUBLIC";
   private static final String ORG_VISIBILITY = "ORG";
 
   public boolean canRead(Long kbId) {
@@ -48,7 +47,8 @@ public class KbAccessGuard {
     if (kb == null || isSystem(kb)) {
       return false;
     }
-    if (isOwner(kb, context) || isPublic(kb)) {
+    // 模型 Y：移除全域公开(PUBLIC)——不再有"任何人可读公开库"的跨组织放行。
+    if (isOwner(kb, context)) {
       return true;
     }
     if (canReadOrgKb(kb, context)) {
@@ -150,10 +150,10 @@ public class KbAccessGuard {
               .map(KnowledgeBase::getId)
               .toList());
     }
-    // 默认（含未破玻璃的 ADMIN）：自有库 ∪ public 库 ∪ 组织可见库 ∪ (claims/acl 授权库)
+    // 模型 Y：默认（含未破玻璃的 ADMIN）= 自有库 ∪ 组织可见库 ∪ (claims/acl/key 授权库)。
+    // 不再并入全站 PUBLIC —— 跨组织共享改由 API Key 授权(readableKbIds)实现。
     Set<Long> ids = new LinkedHashSet<>(readableKbIds(context));
     ids.addAll(ownedKbIds(context));
-    ids.addAll(publicKbIds());
     ids.addAll(orgReadableKbIds(context));
     return ids;
   }
@@ -223,25 +223,10 @@ public class KbAccessGuard {
             .toList());
   }
 
-  private Set<Long> publicKbIds() {
-    return new LinkedHashSet<>(
-        knowledgeBaseMapper.selectList(
-                new LambdaQueryWrapper<KnowledgeBase>()
-                    .eq(KnowledgeBase::getVisibility, PUBLIC_VISIBILITY)
-                    .ne(KnowledgeBase::getKbType, SYSTEM_KB_TYPE))
-            .stream()
-            .map(KnowledgeBase::getId)
-            .toList());
-  }
-
   private boolean isOwner(KnowledgeBase kb, RagAuthContext context) {
     return kb.getOwnerUserId() != null
         && context.userId() != null
         && kb.getOwnerUserId().equals(context.userId());
-  }
-
-  private boolean isPublic(KnowledgeBase kb) {
-    return PUBLIC_VISIBILITY.equalsIgnoreCase(kb.getVisibility());
   }
 
   private boolean isSystem(KnowledgeBase kb) {

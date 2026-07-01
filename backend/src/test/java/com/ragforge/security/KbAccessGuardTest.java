@@ -173,18 +173,18 @@ class KbAccessGuardTest {
   }
 
   @Test
-  void allReadableKbIds_combinesClaimsOwnedPublicAndOrgKbs() {
+  void allReadableKbIds_combinesClaimsOwnedAndOrgKbs_noPublic() {
+    // 模型 Y：不再并入全站 PUBLIC。可读集 = claims(授权) ∪ 自有 ∪ 组织可见。
     when(knowledgeBaseMapper.selectList(any()))
         .thenReturn(
-            List.of(kb(61L, 7L, null, "PRIVATE", "USER")),
-            List.of(kb(62L, 99L, null, "PUBLIC", "USER")),
-            List.of(kb(63L, 99L, 301L, "ORG", "USER")),
-            List.of(kb(64L, 99L, 302L, "PRIVATE", "USER")));
+            List.of(kb(61L, 7L, null, "PRIVATE", "USER")), // owned
+            List.of(kb(63L, 99L, 301L, "ORG", "USER")), // member org 301 的 ORG 可见
+            List.of(kb(64L, 99L, 302L, "PRIVATE", "USER"))); // admin org 302 任意
     when(orgMemberMapper.findMemberOrgIds(7L)).thenReturn(List.of(301L));
     when(orgMemberMapper.findAdminOrgIds(7L)).thenReturn(List.of(302L));
     RagAuthContextHolder.set(new RagAuthContext(7L, "KB_VIEWER", Set.of(60L), Set.of(), Set.of(), "user", "7"));
 
-    assertThat(guard.allReadableKbIds()).containsExactly(60L, 61L, 62L, 63L, 64L);
+    assertThat(guard.allReadableKbIds()).containsExactly(60L, 61L, 63L, 64L);
   }
 
   @Test
@@ -200,11 +200,12 @@ class KbAccessGuardTest {
   }
 
   @Test
-  void canRead_publicKb_returnsTrue() {
+  void canRead_publicKb_noLongerGloballyReadable() {
+    // 模型 Y：移除全域公开——非 owner、非本组织、无授权的用户不能读他人"公开"库。
     when(knowledgeBaseMapper.selectById(70L)).thenReturn(kb(70L, 99L, null, "PUBLIC", "USER"));
     RagAuthContextHolder.set(new RagAuthContext(7L, "KB_VIEWER", Set.of(), Set.of(), Set.of(), "user", "7"));
 
-    assertThat(guard.canRead(70L)).isTrue();
+    assertThat(guard.canRead(70L)).isFalse();
   }
 
   @Test
