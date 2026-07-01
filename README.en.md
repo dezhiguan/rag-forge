@@ -43,7 +43,7 @@ Upstream agents, Q&A systems or business apps can call RAGForge to fetch candida
 - **Unified auth & permissions** — admin APIs use Bearer JWT issued by the Auth Gateway (RS256 + JWKS verification); supports password / SMS-code login, token refresh, logout, logout-everywhere and password reset; roles `ADMIN` / `KB_EDITOR` / `KB_VIEWER` / `SERVICE_ACCOUNT`; KB access is controlled at fine grain via `kb_acl`, JWT claims and the organization model; session-revocation / password-change events are synced over an HMAC webhook with a Redis revocation list.
 - **Organization model** — GitHub-style "personal + organization" collaboration (the earlier tenant model has been removed); KBs are owned by `owner_user_id` / `org_id`, with org invitations and notifications.
 - **API key management** — controlled access for external systems and MCP tools, with enable/disable, service-account context, KB scope (`allowed_kb_ids`) and per-minute Redis rate limiting.
-- **MCP Server** — built on Spring AI MCP (WebMVC SSE), exposing three tools: `searchKnowledgeBase`, `listKnowledgeBases`, `answerWithCitations`.
+- **MCP Server** — built on Spring AI MCP (WebMVC SSE), exposing three tools: `search_knowledge`, `list_knowledge_bases`, `answer_with_citations`.
 - **Model registry & cost center** — models are registered centrally (`model_config`) and metered/priced per model and per organization (`model_usage_daily`); rewrite and answer support runtime model resolution with fallback.
 - **Metadata-filtered retrieval** — requests support `filter.chunkType` and similar parameters.
 - **Direct text ingestion** — `POST /api/v1/documents` (text channel) ingests already-parsed text directly, avoiding a second parse.

@@ -75,7 +75,9 @@ public class RagForgeMcpTools {
         }
     }
 
-    @Tool(description = "列出 RAGForge 中所有可用的知识库，包含名称、文档数、片段数等信息")
+    @Tool(
+            name = "list_knowledge_bases",
+            description = "列出 RAGForge 中所有可用的知识库，包含名称、文档数、片段数等信息")
     public String listKnowledgeBases() {
         try {
             List<KnowledgeBase> kbs =
@@ -108,7 +110,7 @@ public class RagForgeMcpTools {
         }
     }
 
-    @Tool(name = "answerWithCitations",
+    @Tool(name = "answer_with_citations",
             description = "用 RAGForge 知识库回答问题，返回带引用的答案（含图片 URL）")
     public AnswerResponse answer(
             @ToolParam(description = "用户问题") String query,

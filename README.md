@@ -65,7 +65,7 @@ query -> chunks + scores + citations + metadata + 分段耗时(rewrite/vector/ke
 - **统一认证与权限**:后台接口使用 Auth Gateway 颁发的 Bearer JWT(RS256 + JWKS 校验);支持账号密码/短信验证码登录、刷新令牌、退出、全端退出、密码重置;角色 `ADMIN` / `KB_EDITOR` / `KB_VIEWER` / `SERVICE_ACCOUNT`;知识库通过 `kb_acl`、JWT claims 和组织模型做细粒度读写控制;Auth Gateway 的会话撤销/密码变更事件经 HMAC webhook 同步,Redis 维护撤销名单。
 - **组织模型**:GitHub 式"个人 + 组织"协作(已移除早期 tenant 多租户),知识库归属 `owner_user_id` / `org_id`,支持组织邀请与通知。
 - **API Key 管理**:为外部系统和 MCP 工具提供受控调用,支持启停、服务账号上下文、知识库范围(`allowed_kb_ids`)和 Redis 分钟级限流。
-- **MCP Server**:基于 Spring AI MCP(WebMVC SSE),暴露 `searchKnowledgeBase`、`listKnowledgeBases`、`answerWithCitations` 三个工具。
+- **MCP Server**:基于 Spring AI MCP(WebMVC SSE),暴露 `search_knowledge`、`list_knowledge_bases`、`answer_with_citations` 三个工具。
 - **模型注册表 & 成本中心**:模型统一注册(`model_config`),按模型/组织维度计量计价(`model_usage_daily`);改写与应答支持运行时动态选型与 fallback。
 - **元数据过滤检索**:检索请求支持 `filter.chunkType` 等参数。
 - **文本直传接口**:`POST /api/v1/documents`(text 通道)已解析文本直接入库,避免二次解析。
