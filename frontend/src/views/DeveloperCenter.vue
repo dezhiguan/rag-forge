@@ -109,9 +109,7 @@
         <div class="card card-pad">
           <div class="sec-title">🤝 适用客户端</div>
           <div class="sec-hint">凡支持 MCP 的客户端均可接入。</div>
-          <div class="ep"><span class="m m-post">Claude</span><span class="ep-path">Claude Desktop / Code</span></div>
-          <div class="ep"><span class="m m-post">Cursor</span><span class="ep-path">Cursor</span></div>
-          <div class="ep"><span class="m m-post">Codex</span><span class="ep-path">Codex</span></div>
+          <div class="ep"><span class="m m-post">智能体</span><span class="ep-path">Claude Code、Cursor、Codex</span></div>
           <div class="ep"><span class="m m-get">Agent</span><span class="ep-path">CareerMate</span></div>
           <div class="ep"><span class="m m-get">SDK</span><span class="ep-path">任意 MCP Client</span></div>
         </div>
