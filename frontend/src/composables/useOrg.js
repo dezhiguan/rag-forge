@@ -86,3 +86,13 @@ export function useOrg() {
     },
   }
 }
+
+// 接受组织邀请后（NotificationBell 发出 membership-changed）免整页刷新地重载组织列表，
+// 让组织切换器立即出现新加入的组织。模块级注册一次即可（ES 模块单例）。
+if (typeof window !== 'undefined') {
+  window.addEventListener('ragforge:membership-changed', () => {
+    useOrg()
+      .load()
+      .catch(() => {})
+  })
+}

@@ -122,7 +122,7 @@ class JudgeQueryServiceImplTest {
   }
 
   @Test
-  void byKb_scopedRowsLoadsNames() {
+  void byKb_scopedRowsLoadsNamesAndSkipsOrphanKb() {
     LocalDate today = LocalDate.now();
     when(jdbcTemplate.queryForList(
             anyString(),
@@ -133,14 +133,15 @@ class JudgeQueryServiceImplTest {
             List.of(
                 kbMetricsRow(16L, today.minusDays(1), 2, "0.40"),
                 kbMetricsRow(17L, today.minusDays(1), 1, "0.80")));
+    // kb-17 名字查不到（库已删除的孤儿指标）：应被跳过，避免排行出现裸 id。
     when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb(16L, "kb-16")));
 
     List<KbSliceVo> result = service.byKb(7, Set.of(16L, 17L));
 
-    assertThat(result).hasSize(2);
+    assertThat(result).hasSize(1);
     assertThat(result.getFirst().getKbId()).isEqualTo(16L);
     assertThat(result.getFirst().getKbName()).isEqualTo("kb-16");
-    assertThat(result.get(1).getKbName()).isEqualTo("17");
+    assertThat(result.getFirst().getSampleCount()).isEqualTo(2);
   }
 
   @Test

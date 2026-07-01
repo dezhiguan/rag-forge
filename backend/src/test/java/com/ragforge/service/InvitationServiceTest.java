@@ -17,12 +17,15 @@ import com.ragforge.model.entity.Notification;
 import com.ragforge.model.entity.OrgInvitation;
 import com.ragforge.model.entity.OrgMember;
 import com.ragforge.model.entity.Organization;
+import com.ragforge.notification.NotificationPusher;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,7 @@ class InvitationServiceTest {
   @Mock private OrgMemberMapper orgMemberMapper;
   @Mock private OrganizationMapper organizationMapper;
   @Mock private AuthGatewayProxyClient gatewayClient;
+  @Mock private NotificationPusher notificationPusher;
 
   @InjectMocks private InvitationService invitationService;
 
@@ -193,6 +197,112 @@ class InvitationServiceTest {
     invitationService.revoke(16L, 34L);
 
     verify(invitationMapper, never()).updateById(invitation);
+  }
+
+  @Test
+  void accept_withInviter_insertsAcceptedReceiptAndPushes() {
+    OrgInvitation invitation = invitation(40L, 16L, 7L, "MEMBER", "PENDING");
+    invitation.setInviterUserId(88L);
+    when(invitationMapper.selectById(40L)).thenReturn(invitation);
+    when(orgMemberMapper.isMember(16L, 7L)).thenReturn(false);
+    when(notificationMapper.selectCount(any())).thenReturn(0L);
+    when(organizationMapper.selectById(16L)).thenReturn(organization(16L, "TEAM"));
+
+    invitationService.accept(40L);
+
+    ArgumentCaptor<Notification> receipt = ArgumentCaptor.forClass(Notification.class);
+    verify(notificationMapper).insert(receipt.capture());
+    assertThat(receipt.getValue().getUserId()).isEqualTo(88L);
+    assertThat(receipt.getValue().getType()).isEqualTo("ORG_INVITE_ACCEPTED");
+    assertThat(receipt.getValue().getRefId()).isEqualTo(40L);
+    assertThat(receipt.getValue().getBody()).contains("Acme");
+    verify(notificationPusher).pushUnread(88L);
+  }
+
+  @Test
+  void accept_withInviter_skipsReceiptWhenAlreadyExists() {
+    OrgInvitation invitation = invitation(41L, 16L, 7L, "MEMBER", "PENDING");
+    invitation.setInviterUserId(88L);
+    when(invitationMapper.selectById(41L)).thenReturn(invitation);
+    when(orgMemberMapper.isMember(16L, 7L)).thenReturn(false);
+    when(notificationMapper.selectCount(any())).thenReturn(1L);
+
+    invitationService.accept(41L);
+
+    verify(notificationMapper, never()).insert(any(Notification.class));
+    verify(notificationPusher, never()).pushUnread(any(Long.class));
+  }
+
+  @Test
+  void accept_withoutInviter_skipsReceipt() {
+    OrgInvitation invitation = invitation(42L, 16L, 7L, "MEMBER", "PENDING");
+    when(invitationMapper.selectById(42L)).thenReturn(invitation);
+    when(orgMemberMapper.isMember(16L, 7L)).thenReturn(false);
+
+    invitationService.accept(42L);
+
+    verify(notificationMapper, never()).insert(any(Notification.class));
+    verify(notificationPusher, never()).pushUnread(any(Long.class));
+  }
+
+  @Test
+  void decline_withInviter_insertsDeclinedReceipt() {
+    OrgInvitation invitation = invitation(43L, 16L, 7L, "MEMBER", "PENDING");
+    invitation.setInviterUserId(88L);
+    when(invitationMapper.selectById(43L)).thenReturn(invitation);
+    when(notificationMapper.selectCount(any())).thenReturn(0L);
+    when(organizationMapper.selectById(16L)).thenReturn(organization(16L, "TEAM"));
+
+    invitationService.decline(43L);
+
+    ArgumentCaptor<Notification> receipt = ArgumentCaptor.forClass(Notification.class);
+    verify(notificationMapper).insert(receipt.capture());
+    assertThat(receipt.getValue().getUserId()).isEqualTo(88L);
+    assertThat(receipt.getValue().getType()).isEqualTo("ORG_INVITE_DECLINED");
+    assertThat(receipt.getValue().getRefId()).isEqualTo(43L);
+    verify(notificationPusher).pushUnread(88L);
+  }
+
+  @Test
+  void accept_withActiveTransaction_pushesOnlyAfterCommit() {
+    OrgInvitation invitation = invitation(45L, 16L, 7L, "MEMBER", "PENDING");
+    invitation.setInviterUserId(88L);
+    when(invitationMapper.selectById(45L)).thenReturn(invitation);
+    when(orgMemberMapper.isMember(16L, 7L)).thenReturn(false);
+    when(notificationMapper.selectCount(any())).thenReturn(0L);
+    when(organizationMapper.selectById(16L)).thenReturn(organization(16L, "TEAM"));
+
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      invitationService.accept(45L);
+
+      // 事务提交前不得推送（防脏未读数）
+      verify(notificationPusher, never()).pushUnread(any(Long.class));
+
+      // 模拟事务提交
+      for (TransactionSynchronization s : TransactionSynchronizationManager.getSynchronizations()) {
+        s.afterCommit();
+      }
+      verify(notificationPusher).pushUnread(88L);
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
+  }
+
+  @Test
+  void accept_withInviter_usesFallbackOrgNameWhenOrgMissing() {
+    OrgInvitation invitation = invitation(44L, 16L, 7L, "MEMBER", "PENDING");
+    invitation.setInviterUserId(88L);
+    when(invitationMapper.selectById(44L)).thenReturn(invitation);
+    when(orgMemberMapper.isMember(16L, 7L)).thenReturn(false);
+    when(notificationMapper.selectCount(any())).thenReturn(0L);
+    when(organizationMapper.selectById(16L)).thenReturn(null);
+
+    invitationService.accept(44L);
+
+    ArgumentCaptor<Notification> receipt = ArgumentCaptor.forClass(Notification.class);
+    verify(notificationMapper).insert(receipt.capture());
+    assertThat(receipt.getValue().getBody()).contains("组织");
   }
 
   private static Organization organization(Long id, String type) {

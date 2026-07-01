@@ -11,6 +11,7 @@ import com.ragforge.model.entity.Notification;
 import com.ragforge.model.entity.OrgInvitation;
 import com.ragforge.model.entity.OrgMember;
 import com.ragforge.model.entity.Organization;
+import com.ragforge.notification.NotificationPusher;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import java.time.LocalDateTime;
@@ -19,21 +20,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** 组织邀请：按手机号解析（网关）→ PENDING + 站内通知 → 接受写 org_members。 */
 @Service
 @RequiredArgsConstructor
 public class InvitationService {
 
+  private static final Logger log = LoggerFactory.getLogger(InvitationService.class);
+
   private static final int EXPIRE_DAYS = 7;
+  private static final String TYPE_INVITE_ACCEPTED = "ORG_INVITE_ACCEPTED";
+  private static final String TYPE_INVITE_DECLINED = "ORG_INVITE_DECLINED";
 
   private final OrgInvitationMapper invitationMapper;
   private final NotificationMapper notificationMapper;
   private final OrgMemberMapper orgMemberMapper;
   private final OrganizationMapper organizationMapper;
   private final AuthGatewayProxyClient gatewayClient;
+  private final NotificationPusher notificationPusher;
 
   private Long currentUserId() {
     RagAuthContext ctx = RagAuthContextHolder.get();
@@ -158,6 +168,7 @@ public class InvitationService {
     inv.setUpdatedAt(LocalDateTime.now());
     invitationMapper.updateById(inv);
     markInviteNotificationsRead(invitationId, uid);
+    notifyInviter(inv, TYPE_INVITE_ACCEPTED, "已接受");
   }
 
   /** 拒绝邀请。 */
@@ -169,6 +180,7 @@ public class InvitationService {
     inv.setUpdatedAt(LocalDateTime.now());
     invitationMapper.updateById(inv);
     markInviteNotificationsRead(invitationId, uid);
+    notifyInviter(inv, TYPE_INVITE_DECLINED, "已拒绝");
   }
 
   /** 撤销邀请（发起组织的管理者）。 */
@@ -217,6 +229,61 @@ public class InvitationService {
             .eq(Notification::getType, "ORG_INVITE")
             .eq(Notification::getRefId, invitationId)
             .isNull(Notification::getReadAt));
+  }
+
+  /**
+   * 给发起方回写一条回执通知（"XX 已接受/拒绝加入 组织"）。 复用邀请上已有的 inviterUserId；发起方缺失（历史脏数据/已注销）时安全跳过，不中断主流程。
+   * 同一 (inviterUserId, type, invitationId) 仅一条，保证重复点击/重试幂等。落库后在事务提交时推送 SSE。
+   */
+  private void notifyInviter(OrgInvitation inv, String type, String action) {
+    Long inviter = inv.getInviterUserId();
+    if (inviter == null) {
+      return;
+    }
+    Long existing =
+        notificationMapper.selectCount(
+            new LambdaQueryWrapper<Notification>()
+                .eq(Notification::getUserId, inviter)
+                .eq(Notification::getType, type)
+                .eq(Notification::getRefId, inv.getId()));
+    if (existing != null && existing > 0) {
+      return;
+    }
+    Organization org = organizationMapper.selectById(inv.getOrgId());
+    String orgName = org == null ? "组织" : org.getName();
+    Notification n = new Notification();
+    n.setUserId(inviter);
+    n.setType(type);
+    n.setTitle(String.format("邀请%s", action));
+    n.setBody(String.format("%s %s加入「%s」", inv.getInviteePhone(), action, orgName));
+    n.setRefId(inv.getId());
+    n.setCreatedAt(LocalDateTime.now());
+    notificationMapper.insert(n);
+    pushAfterCommit(inviter);
+  }
+
+  /** 事务提交后再推送未读数：回滚场景不推，避免脏未读数。无活动事务时（如单测）直接推。 */
+  private void pushAfterCommit(Long userId) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              safePush(userId);
+            }
+          });
+    } else {
+      safePush(userId);
+    }
+  }
+
+  private void safePush(Long userId) {
+    try {
+      notificationPusher.pushUnread(userId);
+    } catch (Exception ex) {
+      // 推送仅为触达增强，失败不影响主业务；未读数最终以接口查询为准
+      log.warn("notify inviter push failed for user {}: {}", userId, ex.getMessage());
+    }
   }
 
   private Map<String, Object> toView(OrgInvitation inv) {
