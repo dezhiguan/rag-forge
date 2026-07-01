@@ -89,6 +89,7 @@
     <li><a href="#s8">迁移与兼容</a></li>
     <li><a href="#s9">分期落地路线</a></li>
     <li><a href="#s10">待决策项</a></li>
+    <li><a href="#s11">组织切换数据联动 — 专项测试用例</a></li>
   </ol>
 </div>
 
@@ -286,9 +287,73 @@ scope_mode = KB_LIST  → allowed_kb_ids(已校验属于本组织)
   <div class="opts"><b>全部做</b>:Key 哈希存储(仅创建时返回明文)+ 过期时间 + 限流 fail-closed。</div>
 </div>
 
+<!-- 11 -->
+<h2 id="s11"><span class="n">11</span>组织切换数据联动 — 专项测试用例</h2>
+<p>针对"切换当前组织时,各页面按组织维度的统计/列表是否正确刷新、不串组织、不残留旧组织数据"做全覆盖测试。执行方式:Playwright(切换组织 → 断言数据变化)。前置:同一人构造为 <b>组织A</b> 与 <b>组织B</b> 的成员/管理员,两组织各有不同的库/文档/评测/成本数据;另备超管账号。</p>
+
+<div class="callout c-amber">
+  <div class="t">现状机制(测试基线)</div>
+  组织切换主入口 <code>OrgSwitcher</code> 采用 <b>整页硬刷新</b>(<code>window.location.reload()</code>)让全站带新 <code>X-Org-Id</code> 重新取数;请求头由拦截器每次从 localStorage 注入。因此<b>正常从侧边栏切换时所有页面都会刷新</b>。<b>但</b>多数页面<b>未做</b> <code>watch(currentOrgId)</code>,完全依赖这次 reload;仅 <code>ModelCostCenter</code>/<code>DeveloperCenter</code>(watch currentOrgId)与 <code>Organizations</code>(watch org.id)是响应式联动。存在**不 reload 的次要切换路径**(见 §11.3),会暴露"切换不刷新"。
+</div>
+
+<h3>11.1 各 tab 组织维度数据 — 覆盖矩阵</h3>
+<table>
+  <tr><th>Tab / 页面</th><th>按组织维度的数据项</th><th>切换后应刷新</th><th>现状刷新方式</th></tr>
+  <tr><td>驾驶舱 Dashboard</td><td>资产规模/检索质量/运行健康/成本/Token/检索趋势/入库健康度/组织成员/最近操作</td><td>全部</td><td>仅 reload(无 watch)⚠</td></tr>
+  <tr><td>操作记录(驾驶舱内"最近操作")</td><td>recentActivities</td><td>是</td><td>同 Dashboard ⚠</td></tr>
+  <tr><td>知识库管理</td><td>知识库列表/分页/上传下拉库</td><td>是</td><td>仅 reload(无 watch)⚠</td></tr>
+  <tr><td>检索调试台</td><td>可选知识库范围</td><td>是</td><td>仅 reload(无 watch)⚠</td></tr>
+  <tr><td>应答调试台</td><td>可选知识库 + 默认选中 kbId</td><td>是</td><td>仅 reload(无 watch,风险最高)⚠</td></tr>
+  <tr><td>性能诊断</td><td>知识库下拉(诊断结果为临时)</td><td>是</td><td>仅 reload(整体重置,最干净)</td></tr>
+  <tr><td>评测实验室</td><td>数据集/实验回放(avgMrr/avgLatency)/题目</td><td>是</td><td>仅 reload(datasetId 有归属守卫)</td></tr>
+  <tr><td>质量看板</td><td>综合质量/faithfulness/context precision/answer relevance/趋势/知识库排行/最差 case/成本/抽样配置</td><td>是</td><td>reload;<b>kbId 筛选跨组织残留 → 403(缺陷)</b>⚠</td></tr>
+  <tr><td>模型 &amp; 成本</td><td>成本 KPI/7 日趋势/模型排名/成本明细/用量</td><td>是</td><td>✅ watch(currentOrgId) + reload 双保险</td></tr>
+  <tr><td>开发者中心</td><td>API key 列表 + 创建表单可选库</td><td>是</td><td>✅ watch(currentOrgId) + reload</td></tr>
+  <tr><td>组织管理</td><td>成员/邀请/组织名下知识库计数</td><td>是</td><td>✅ watch(org.id) 响应式</td></tr>
+  <tr><td>模型启停 / API key 治理搜索</td><td>平台级(非组织维度)</td><td>否(不随组织变)</td><td>仅超管破玻璃</td></tr>
+</table>
+
+<h3>11.2 用例:每个 tab 切 A→B 数据联动(正/反两侧)</h3>
+<table>
+  <tr><th>ID</th><th>用例</th><th>步骤</th><th>预期</th><th>优先级</th></tr>
+  <tr><td>OS-01</td><td>切换机制:整页刷新 + 头更新</td><td>侧边栏从 A 切到 B,抓包</td><td>触发整页加载;后续请求头 <code>X-Org-Id=B</code>(个人组织无头;平台视图 <code>X-Admin-Override</code>)</td><td>P0</td></tr>
+  <tr><td>OS-02</td><td>驾驶舱统计随组织变</td><td>A 记下资产规模/成本/趋势 → 切 B</td><td>各 KPI 更新为 B 的口径,无 A 残留</td><td>P0</td></tr>
+  <tr><td>OS-03</td><td>驾驶舱"组织成员/最近操作"随组织</td><td>切换</td><td>成员数、最近操作列表切到 B 的</td><td>P1</td></tr>
+  <tr><td>OS-04</td><td>知识库列表随组织</td><td>A 列表 → 切 B</td><td>只显示 B 的库,不含 A 的(§2.2 严格作用域)</td><td>P0</td></tr>
+  <tr><td>OS-05</td><td>检索调试台可选库随组织</td><td>切换后打开范围选择器</td><td>只列 B 的可见库,无 A 残留</td><td>P1</td></tr>
+  <tr><td>OS-06</td><td>应答调试台可选库 + 默认 kbId 随组织</td><td>A 默认选中某库 → 切 B</td><td>下拉为 B 的库;默认 kbId 不是 A 的失效库</td><td>P1</td></tr>
+  <tr><td>OS-07</td><td>性能诊断下拉随组织 + 结果重置</td><td>A 跑一次诊断 → 切 B</td><td>库下拉为 B;诊断结果清空(临时态重置)</td><td>P2</td></tr>
+  <tr><td>OS-08</td><td>评测实验室数据集/实验随组织</td><td>A 数据集列表 → 切 B</td><td>切到 B 的数据集/实验统计;A 的 datasetId 深链不误展开(归属守卫)</td><td>P1</td></tr>
+  <tr><td>OS-09</td><td>质量看板全部统计随组织</td><td>A 的 KPI/排行/最差case/成本 → 切 B</td><td>全部刷新为 B</td><td>P1</td></tr>
+  <tr><td>OS-10</td><td>模型&amp;成本随组织(含 watch)</td><td>切换(经 reload 与不经 reload 两种)</td><td>成本/用量/排名刷新为 B;因有 watch,即使不 reload 也应更新</td><td>P1</td></tr>
+  <tr><td>OS-11</td><td>开发者中心 key 列表随组织</td><td>A 的 key 列表 → 切 B</td><td>只显示 B 的 key(watch 生效);创建表单可选库为 B 的</td><td>P0</td></tr>
+  <tr><td>OS-12</td><td>组织管理成员/库计数随组织</td><td>A→B(含不 reload 的 switchTo)</td><td>成员/邀请/组织库计数刷新(watch org.id)</td><td>P1</td></tr>
+  <tr><td>OS-13</td><td>平台视图=全平台口径</td><td>切"全平台视图"(破玻璃)</td><td>Dashboard/成本/质量等为全平台聚合;记审计</td><td>P1</td></tr>
+  <tr><td>OS-14</td><td>退出平台视图回本组织口径</td><td>从平台视图切回组织 A</td><td>数据回到 A 的口径,不再是全平台</td><td>P1</td></tr>
+  <tr><td>OS-15</td><td>个人组织 ↔ 企业组织切换</td><td>个人组织 → 企业 A</td><td>请求头由"无 X-Org-Id"变为 <code>X-Org-Id=A</code>;数据随之切换</td><td>P1</td></tr>
+</table>
+
+<h3>11.3 缺陷/脆弱点专项(深挖)</h3>
+<table>
+  <tr><th>ID</th><th>关注点</th><th>场景</th><th>预期(应为)</th><th>优先级</th></tr>
+  <tr><td>OS-B1</td><td><b>质量看板 kbId 跨组织残留</b></td><td>在 A 用某库做知识库筛选(kbId 进 URL)→ 侧边栏切到 B(reload 保留 URL)</td><td><b>不应带 A 的 kbId 查询 B 而报 403</b>;应在切换/加载时清除或校验 kbId 归属当前组织,看板正常展示 B 全量</td><td>P0(现状缺陷)</td></tr>
+  <tr><td>OS-B2</td><td>非 reload 切换路径不刷新</td><td>经 <code>Organizations.switchTo</code> / <code>OrgList.enter</code> / 收到 <code>ragforge:membership-changed</code> 改组织后,停留在 Dashboard/知识库/检索台/应答台(未 reload、未重挂)</td><td>页面数据应联动刷新为新组织;当前这些页无 <code>watch(currentOrgId)</code> → 断言此路径下是否残留旧组织数据(暴露漏点)</td><td>P1</td></tr>
+  <tr><td>OS-B3</td><td>应答台失效默认 kbId</td><td>非 reload 切换到 B 后,应答台默认 kbId 仍指向 A 的库</td><td>提交应答应校验/重置 kbId;不得用他组织失效库(否则 403 或空)</td><td>P1</td></tr>
+  <tr><td>OS-B4</td><td>快速连续切换脏状态</td><td>A→B→A 快速切换 + 并发请求</td><td>最终数据与当前组织一致,无旧组织数据闪现/错位</td><td>P2</td></tr>
+  <tr><td>OS-B5</td><td>切换后行级权限重算</td><td>切到 MEMBER 身份组织</td><td>列表行的编辑/删除按钮按新组织 myPermission 重算(见 §2.2)</td><td>P1</td></tr>
+  <tr><td>OS-B6</td><td>回退到个人组织的隐式切换</td><td>删除当前组织 / membership-changed 使 currentId 回退个人组织</td><td>页面数据切到个人组织口径,不残留原组织</td><td>P2</td></tr>
+  <tr><td>OS-B7</td><td>模型启停不随组织</td><td>切换组织</td><td>模型启停仍是平台级(仅超管破玻璃),不因组织变化而变;组织内只读</td><td>P2</td></tr>
+  <tr><td>OS-B8</td><td>缓存/keep-alive 残留</td><td>路由 fullPath 不变但组织变(如同页)</td><td>无 keep-alive 残留旧组织数据(App.vue 按 fullPath key,应重挂)</td><td>P2</td></tr>
+</table>
+
+<div class="callout c-blue">
+  <div class="t">建议(供实现参考,非测试项)</div>
+  为消除对 <code>location.reload()</code> 的隐性强耦合,建议给 Dashboard / 知识库 / 检索台 / 应答台补 <code>watch(currentOrgId)</code> 主动刷新;并在质量看板切换/加载时清除或校验 <code>kbId</code> 归属,修复 OS-B1 的 403 缺陷。
+</div>
+
 <div class="foot">
-  基于对当前 <code>main</code> 分支代码(ApiKey / ApiKeyInterceptor / KbAccessGuard / OrgService / KnowledgeBaseServiceImpl / RagForgeMcpTools 等)的核实结论撰写,以代码为最终事实。评审通过后同步 <code>docs/architecture.md</code> 并拆分 Cursor 任务。<br>
-  编制 2026-07-01 · 最后更新 2026-07-02 · 定版 v1.0
+  基于对当前 <code>main</code> 分支代码(ApiKey / ApiKeyInterceptor / KbAccessGuard / OrgService / KnowledgeBaseServiceImpl / RagForgeMcpTools / OrgSwitcher / Dashboard / EvaluationQuality / ModelCostCenter / DeveloperCenter 等)的核实结论撰写,以代码为最终事实。评审通过后同步 <code>docs/architecture.md</code> 并拆分 Cursor 任务。<br>
+  编制 2026-07-01 · 最后更新 2026-07-02 · 定版 v1.0(§11 组织切换数据联动测试补充)
 </div>
 
 </div>
