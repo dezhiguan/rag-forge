@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.config.ApiKeyProperties;
 import com.ragforge.mapper.ApiKeyMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.ApiKey;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,12 @@ class ApiKeyInterceptorRateLimitTest {
 
   private ApiKeyInterceptor newInterceptor(StringRedisTemplate redis) {
     return new ApiKeyInterceptor(
-        mock(ApiKeyMapper.class), new ApiKeyProperties(), new ObjectMapper(), redis, List.of());
+        mock(ApiKeyMapper.class),
+        new ApiKeyProperties(),
+        new ObjectMapper(),
+        redis,
+        List.of(),
+        mock(KnowledgeBaseMapper.class));
   }
 
   private ApiKey keyWithLimit(int limit) {
@@ -47,9 +53,10 @@ class ApiKeyInterceptorRateLimitTest {
   }
 
   @Test
-  void failOpenWhenRedisThrows() {
+  void failClosedWhenRedisThrows() {
+    // D-E 定稿：Redis 异常时 fail-closed(拒绝)，避免限流被绕过。
     StringRedisTemplate redis = mock(StringRedisTemplate.class);
     when(redis.opsForValue()).thenThrow(new RuntimeException("redis down"));
-    assertThat(newInterceptor(redis).consumeRateLimit(keyWithLimit(100))).isTrue();
+    assertThat(newInterceptor(redis).consumeRateLimit(keyWithLimit(100))).isFalse();
   }
 }

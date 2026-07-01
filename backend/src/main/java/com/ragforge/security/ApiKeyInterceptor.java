@@ -7,14 +7,20 @@ import com.ragforge.common.Result;
 import com.ragforge.config.ApiKeyProperties;
 import com.ragforge.web.TraceIds;
 import com.ragforge.mapper.ApiKeyMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.ApiKey;
+import com.ragforge.model.entity.KnowledgeBase;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -39,6 +45,7 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
   private final ObjectMapper objectMapper;
   private final StringRedisTemplate redisTemplate;
   private final List<DevApiKeyConfig> devApiKeyConfigs;
+  private final KnowledgeBaseMapper knowledgeBaseMapper;
 
   @Override
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
@@ -63,6 +70,12 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     }
     ApiKey keyRecord = apiKey != null ? findValidApiKey(apiKey) : null;
     if (keyRecord != null) {
+      // 过期校验：expires_at 非空且已过 → 拒绝。
+      if (keyRecord.getExpiresAt() != null
+          && keyRecord.getExpiresAt().isBefore(LocalDateTime.now())) {
+        writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "API Key expired");
+        return false;
+      }
       if (!consumeRateLimit(keyRecord)) {
         writeJsonError(response, 429, 429, "API Key rate limit exceeded");
         return false;
@@ -122,11 +135,36 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
   }
 
   private ApiKey findValidApiKey(String apiKey) {
+    // hash 优先：按 SHA-256(key) 命中；未命中回退明文（兼容尚未回填 hash 的存量 key）。
+    String hash = sha256Hex(apiKey);
+    ApiKey byHash =
+        apiKeyMapper.selectOne(
+            new LambdaQueryWrapper<ApiKey>()
+                .eq(ApiKey::getKeyHash, hash)
+                .eq(ApiKey::getEnabled, true)
+                .last("LIMIT 1"));
+    if (byHash != null) {
+      return byHash;
+    }
     return apiKeyMapper.selectOne(
         new LambdaQueryWrapper<ApiKey>()
             .eq(ApiKey::getApiKey, apiKey)
             .eq(ApiKey::getEnabled, true)
             .last("LIMIT 1"));
+  }
+
+  static String sha256Hex(String s) {
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      byte[] digest = md.digest(s.getBytes(StandardCharsets.UTF_8));
+      StringBuilder sb = new StringBuilder(64);
+      for (byte b : digest) {
+        sb.append(String.format("%02x", b));
+      }
+      return sb.toString();
+    } catch (Exception e) {
+      return "";
+    }
   }
 
   private DevApiKeyConfig findDevApiKey(String apiKey) {
@@ -139,15 +177,42 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
   private RagAuthContext contextFrom(ApiKey apiKey) {
     String principalType = normalizePrincipalType(apiKey.getPrincipalType());
     String principalId = hasText(apiKey.getPrincipalId()) ? apiKey.getPrincipalId() : "sa:" + apiKey.getKeyName();
-    Set<Long> allowedKbIds = longSet(apiKey.getAllowedKbIds());
+    Set<Long> readable = resolveReadableKbIds(apiKey);
+    // 本期只做 READ：写集为空（无写接口接受 key）。READ_WRITE 开放后再据 access_level 赋值。
+    Set<Long> writable = Set.of();
     return new RagAuthContext(
         null,
         "SERVICE_ACCOUNT",
-        allowedKbIds,
-        allowedKbIds,
+        readable,
+        writable,
         stringSet(apiKey.getScopes()),
         principalType,
         principalId);
+  }
+
+  /** 按 scope_mode 解析 key 可读的 KB 集合。ORG_ALL=本组织全部非删除库；KB_LIST=授权白名单。 */
+  private Set<Long> resolveReadableKbIds(ApiKey apiKey) {
+    String scopeMode = apiKey.getScopeMode();
+    if ("KB_LIST".equals(scopeMode)) {
+      return longSet(apiKey.getAllowedKbIds());
+    }
+    // ORG_ALL（默认）：本组织下的全部非删除库。
+    Long orgId = apiKey.getOrgId();
+    if (orgId == null) {
+      return Set.of();
+    }
+    try {
+      List<KnowledgeBase> kbs =
+          knowledgeBaseMapper.selectList(
+              new LambdaQueryWrapper<KnowledgeBase>()
+                  .eq(KnowledgeBase::getOrgId, orgId)
+                  .ne(KnowledgeBase::getStatus, "deleted")
+                  .select(KnowledgeBase::getId));
+      return kbs.stream().map(KnowledgeBase::getId).collect(Collectors.toCollection(LinkedHashSet::new));
+    } catch (Exception e) {
+      log.warn("resolveReadableKbIds(ORG_ALL) failed for org {}, using empty set", orgId, e);
+      return Set.of();
+    }
   }
 
   private void installContext(HttpServletRequest request, RagAuthContext context, String apiKey) {
@@ -226,7 +291,8 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
       return false;
     }
     long nowMinute = System.currentTimeMillis() / 60_000L;
-    String key = RATE_LIMIT_PREFIX + apiKey.getApiKey() + ":" + nowMinute;
+    // 用 key id 作计数键（稳定、不落明文）。
+    String key = RATE_LIMIT_PREFIX + apiKey.getId() + ":" + nowMinute;
     try {
       Long count = redisTemplate.opsForValue().increment(key);
       if (count != null && count == 1L) {
@@ -234,9 +300,9 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
       }
       return count == null || count <= limit;
     } catch (Exception e) {
-      // fail-open：Redis 异常时不阻断业务，放行并告警，避免限流组件拖垮整个 API
-      log.warn("Rate limit check via Redis failed, allowing request", e);
-      return true;
+      // fail-closed：Redis 异常时拒绝，避免限流失效被绕过（D-E 定稿）。
+      log.warn("Rate limit check via Redis failed, rejecting request (fail-closed)", e);
+      return false;
     }
   }
 }

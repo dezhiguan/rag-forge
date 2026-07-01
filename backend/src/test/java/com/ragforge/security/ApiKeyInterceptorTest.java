@@ -35,6 +35,7 @@ class ApiKeyInterceptorTest {
   @Mock private StringRedisTemplate redisTemplate;
   @Mock private HttpServletRequest request;
   @Mock private HttpServletResponse response;
+  @Mock private com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
   private ApiKeyProperties apiKeyProperties;
   private ApiKeyInterceptor interceptor;
@@ -45,7 +46,8 @@ class ApiKeyInterceptorTest {
     SecurityContextHolder.clearContext();
     apiKeyProperties = new ApiKeyProperties();
     interceptor =
-        new ApiKeyInterceptor(apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate, List.of());
+        new ApiKeyInterceptor(
+            apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate, List.of(), knowledgeBaseMapper);
   }
 
   private StringWriter stubResponseWriter() throws Exception {
@@ -68,7 +70,12 @@ class ApiKeyInterceptorTest {
   void devKey_allowsOnlyWhenDevConfigPresent() throws Exception {
     interceptor =
         new ApiKeyInterceptor(
-            apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate, List.of(new DevApiKeyConfig()));
+            apiKeyMapper,
+            apiKeyProperties,
+            new ObjectMapper(),
+            redisTemplate,
+            List.of(new DevApiKeyConfig()),
+            knowledgeBaseMapper);
     when(request.getRequestURI()).thenReturn("/api/v1/search");
     when(request.getHeader("X-API-Key")).thenReturn("sk-ragforge-dev");
 
@@ -183,5 +190,48 @@ class ApiKeyInterceptorTest {
     verify(response, never()).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
     interceptor.afterCompletion(request, response, new Object(), null);
     assertThat(RagAuthContextHolder.get()).isNull();
+  }
+
+  @Test
+  void expiredApiKey_rejectedWith401() throws Exception {
+    StringWriter responseBody = stubResponseWriter();
+    when(request.getRequestURI()).thenReturn("/api/v1/search");
+    when(request.getHeader("X-API-Key")).thenReturn("sk-test");
+
+    ApiKey keyRecord = new ApiKey();
+    keyRecord.setApiKey("sk-test");
+    keyRecord.setRateLimit(100);
+    keyRecord.setExpiresAt(java.time.LocalDateTime.now().minusMinutes(1)); // 已过期
+    when(apiKeyMapper.selectOne(any())).thenReturn(keyRecord);
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isFalse();
+    verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    assertThat(responseBody.toString()).contains("expired");
+    assertThat(RagAuthContextHolder.get()).isNull();
+  }
+
+  @Test
+  void kbListKey_readableIsAllowedKbIds() throws Exception {
+    when(request.getRequestURI()).thenReturn("/api/v1/search");
+    when(request.getHeader("X-API-Key")).thenReturn("sk-test");
+
+    ApiKey keyRecord = new ApiKey();
+    keyRecord.setApiKey("sk-test");
+    keyRecord.setRateLimit(100);
+    keyRecord.setScopeMode("KB_LIST");
+    keyRecord.setAllowedKbIds("[16,17]");
+    when(apiKeyMapper.selectOne(any())).thenReturn(keyRecord);
+    ValueOperations<String, String> ops = mock(ValueOperations.class);
+    when(redisTemplate.opsForValue()).thenReturn(ops);
+    when(ops.increment(anyString())).thenReturn(1L);
+
+    boolean allowed = interceptor.preHandle(request, response, new Object());
+
+    assertThat(allowed).isTrue();
+    assertThat(RagAuthContextHolder.get().readableKbIds()).containsExactlyInAnyOrder(16L, 17L);
+    // 本期 READ：写集为空
+    assertThat(RagAuthContextHolder.get().writableKbIds()).isEmpty();
   }
 }

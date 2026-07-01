@@ -47,7 +47,12 @@ class ApiAndExceptionTest {
 
     ApiKeyInterceptor interceptor =
         new ApiKeyInterceptor(
-            apiKeyMapper, apiKeyProperties, new ObjectMapper(), redisTemplate, List.of());
+            apiKeyMapper,
+            apiKeyProperties,
+            new ObjectMapper(),
+            redisTemplate,
+            List.of(),
+            org.mockito.Mockito.mock(com.ragforge.mapper.KnowledgeBaseMapper.class));
 
     mockMvc =
         standaloneSetup(new HealthController(), new KnowledgeBaseController(knowledgeBaseService))
