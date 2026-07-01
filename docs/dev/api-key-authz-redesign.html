@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAGForge 多租户隔离与 API Key 授权设计</title>
+<style>
+  :root{
+    --navy:#0f172a; --slate:#1e293b; --muted:#64748b; --border:#e2e8f0;
+    --primary:#2563eb; --primary-soft:#eff4ff;
+    --red:#dc2626; --red-soft:#fef2f2; --amber:#b45309; --amber-soft:#fffbeb;
+    --green:#15803d; --green-soft:#ecfdf5; --bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--slate);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    line-height:1.7;font-size:15px}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 28px 80px}
+  header.doc-head{border-bottom:2px solid var(--navy);padding-bottom:20px;margin-bottom:8px}
+  h1{font-size:26px;color:var(--navy);margin:0 0 8px;font-weight:800;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:14px}
+  .meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--muted)}
+  .meta b{color:var(--slate)}
+  h2{font-size:20px;color:var(--navy);margin:44px 0 14px;padding-top:14px;border-top:1px solid var(--border);font-weight:700}
+  h2 .n{display:inline-block;min-width:30px;color:var(--primary)}
+  h3{font-size:16px;color:var(--slate);margin:26px 0 10px;font-weight:700}
+  h4{font-size:14px;color:var(--slate);margin:16px 0 6px}
+  p{margin:10px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{background:#f1f5f9;color:var(--navy);font-weight:700;font-size:12.5px}
+  tr:last-child td{border-bottom:none}
+  code{font-family:"SFMono-Regular",Consolas,Menlo,monospace;font-size:12.5px;background:#f1f5f9;padding:1px 6px;border-radius:5px;color:#334155}
+  pre{background:var(--navy);color:#e2e8f0;padding:14px 16px;border-radius:10px;overflow-x:auto;font-size:12.5px;line-height:1.55}
+  pre code{background:none;color:inherit;padding:0}
+  .callout{border-radius:10px;padding:14px 16px;margin:16px 0;border:1px solid;font-size:14px}
+  .callout .t{font-weight:700;margin-bottom:4px}
+  .c-red{background:var(--red-soft);border-color:#fecaca;color:#7f1d1d}
+  .c-amber{background:var(--amber-soft);border-color:#fde68a;color:#78350f}
+  .c-green{background:var(--green-soft);border-color:#bbf7d0;color:#14532d}
+  .c-blue{background:var(--primary-soft);border-color:#bfdbfe;color:#1e3a8a}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;vertical-align:middle}
+  .p0{background:#fee2e2;color:#991b1b}.p1{background:#ffedd5;color:#9a3412}.p2{background:#e0e7ff;color:#3730a3}
+  .done{background:#dcfce7;color:#166534}.todo{background:#fef9c3;color:#854d0e}
+  ul{margin:8px 0 8px 2px;padding-left:20px}
+  li{margin:5px 0}
+  .toc{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 20px;margin:20px 0}
+  .toc a{color:var(--primary);text-decoration:none;font-size:13.5px}
+  .toc a:hover{text-decoration:underline}
+  .toc ol{margin:6px 0;padding-left:22px}
+  .decide{background:#fff;border:1px solid var(--border);border-left:4px solid var(--primary);border-radius:8px;padding:12px 16px;margin:12px 0}
+  .decide.d-done{border-left-color:var(--green)}
+  .decide .q{font-weight:700;color:var(--navy)}
+  .decide .opts{font-size:13.5px;color:var(--muted);margin-top:4px}
+  .foot{margin-top:50px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12.5px}
+  .diagram{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin:14px 0;font-family:"SFMono-Regular",Consolas,Menlo,monospace;font-size:12.5px;white-space:pre;overflow-x:auto;color:#334155;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <h1>RAGForge 多租户隔离与 API Key 授权设计</h1>
+  <div class="sub">组织隔离模型 · 超管定位 · API Key 授权 · CareerMate 接入落地</div>
+  <div class="meta">
+    <span>编制日期:<b>2026-07-01</b></span>
+    <span>最后更新:<b>2026-07-02</b></span>
+    <span>状态:<b>定版 v1.0(D0/D-A~D-E 全部已定)</b></span>
+    <span>评审人:<b>架构师 @guandezhi</b></span>
+  </div>
+</header>
+
+<div class="callout c-green">
+  <div class="t">✔ 已定核心方向(2026-07-01)</div>
+  <b>采用「纯多租户 SaaS 隔离」(原模型 Y)</b>:组织=硬边界;<b>移除"全域公开"</b>,可见性只剩 私有 / 组织内公开,个人组织仅私有;
+  <b>超管=纯平台运营方</b>(不拥有/发布业务内容,保留审计式破玻璃);外部应用(CareerMate)通过 <b>API Key 授权</b>消费指定组织的知识库,而非靠公开。
+</div>
+
+<div class="toc">
+  <b>目录</b>
+  <ol>
+    <li><a href="#s1">现状与问题</a></li>
+    <li><a href="#s2">目标模型:纯多租户 SaaS 隔离</a></li>
+    <li><a href="#s3">超级管理员定位</a></li>
+    <li><a href="#s4">API Key 授权模型</a></li>
+    <li><a href="#s5">CareerMate 接入落地</a></li>
+    <li><a href="#s6">数据模型变更</a></li>
+    <li><a href="#s7">鉴权链路与前端改造</a></li>
+    <li><a href="#s8">迁移与兼容</a></li>
+    <li><a href="#s9">分期落地路线</a></li>
+    <li><a href="#s10">待决策项</a></li>
+  </ol>
+</div>
+
+<!-- 1 -->
+<h2 id="s1"><span class="n">1</span>现状与问题</h2>
+<p>REST(<code>/api/v1/search·answer·documents</code>)与 MCP(<code>/mcp·/sse</code>)对外接入,共用 <code>RagAuthContext</code> + <code>KbAccessGuard</code> 判权。经核实,当前存在以下问题:</p>
+<table>
+  <tr><th>#</th><th>问题(以代码为准)</th><th>级别</th></tr>
+  <tr><td>1</td><td>对 API Key 而言 <code>org_id</code> 不是隔离维度:服务账号 <code>userId=null</code>,org/ACL 分支全短路,可读集 = <code>allowed_kb_ids ∪ 全站 PUBLIC</code>,与 Key 的 org 无关</td><td><span class="pill p1">P1</span></td></tr>
+  <tr><td>2</td><td>跨组织 PUBLIC 全局可读:任一有效 Key / 用户可读全站所有 PUBLIC 库;个人组织可随手把库设 PUBLIC → 违规内容广播、难治理</td><td><span class="pill p1">P1</span></td></tr>
+  <tr><td>3</td><td>新建 Key <code>allowed_kb_ids</code> 为空且创建接口不支持指定 → 开箱只能读公共库,授权私有库须直接改库</td><td><span class="pill p1">P1</span></td></tr>
+  <tr><td>4</td><td>Key 读写不分(读集=写集),无只读/读写分级;<code>scopes</code> 为死字段(无强制)</td><td><span class="pill p1">P1</span></td></tr>
+  <tr><td>5</td><td>开发者中心文案"按 key 绑定的组织过滤数据"与实现不符</td><td><span class="pill p0">P0</span></td></tr>
+  <tr><td>6</td><td>Key 明文入库、无 hash、无过期;限流 fail-open</td><td><span class="pill p2">P2</span></td></tr>
+  <tr><td>7</td><td>组织切换未严格作用域:切到某组织时,自己拥有的 PUBLIC 库仍穿透显示,且带 owner 级编辑/删除,产生"MEMBER 却能编辑自己公开库"的割裂</td><td><span class="pill p1">P1</span></td></tr>
+</table>
+<p class="sub">选择模型 Y 后,#2 / #7 因"移除全域公开"而自然消解;#1/#3/#4/#6 由 API Key 授权改造解决;#5 为纯文案。</p>
+
+<!-- 2 -->
+<h2 id="s2"><span class="n">2</span>目标模型:纯多租户 SaaS 隔离</h2>
+<div class="diagram">组织 = 硬边界(租户隔离)
+    组织 A 的库 ──▶ 仅 A 的成员 / A 的 API Key 可见
+    组织 B 的库 ──▶ 仅 B 的成员 / B 的 API Key 可见
+    (无跨组织"全域公开";外部应用通过被授权的 API Key 消费指定组织的库)</div>
+
+<h3>2.1 可见性收敛</h3>
+<table>
+  <tr><th>可见性</th><th>语义</th><th>谁可读</th></tr>
+  <tr><td><code>PRIVATE</code></td><td>私有</td><td>owner / 组织 OWNER·ADMIN / ACL / 被授权 Key</td></tr>
+  <tr><td><code>ORG</code></td><td>组织内可见</td><td>本组织成员 + 本组织 Key</td></tr>
+  <tr><td style="text-decoration:line-through;color:var(--muted)">PUBLIC</td><td colspan="2"><b>移除</b>(全域公开不再存在;跨组织共享改由 API Key 授权实现)</td></tr>
+</table>
+<p><b>各主体建库可选可见性:</b></p>
+<table>
+  <tr><th>主体</th><th>可选</th></tr>
+  <tr><td>个人组织(单人)</td><td><b>仅 PRIVATE</b></td></tr>
+  <tr><td>企业组织 OWNER / ADMIN</td><td>PRIVATE / ORG</td></tr>
+  <tr><td>企业 MEMBER</td><td>—(无建库/改可见性权限)</td></tr>
+</table>
+
+<h3>2.2 组织切换 = 严格作用域 + 权限联动(修 #7)</h3>
+<ul>
+  <li>切到某组织时,知识库列表<b>只显示该组织的库</b>;不再穿透显示自己在别处的库。</li>
+  <li>行级"编辑/删除"仍按对该库的真实权限(<code>myPermission</code>),但因列表已锁定当前组织,不会再出现"MEMBER 却见到并能编辑自己个人库"的割裂。</li>
+  <li><b>权限必须随组织切换整体联动</b>:切换组织时,前端要<b>重新拉取/重算当前组织角色</b>(OWNER/ADMIN/MEMBER),并让<b>所有受权限门控的 UI 一起刷新</b> —— 菜单(性能诊断/评测实验室等按当前组织角色显隐)、按钮(创建知识库/编辑/删除/邀请成员/生成 API Key)、以及列表内容,都要以"切换后的组织"重新判定,不能残留上一个组织的状态。</li>
+</ul>
+<div class="callout c-amber">
+  <div class="t">联动实现要点</div>
+  组织切换器变更 <code>currentOrgId</code> 时:①更新请求头(<code>X-Org-Id</code>);②重新获取该组织下的 <code>myRole</code> 与能力;③触发依赖组织的页面数据与按钮/菜单重渲染(响应式驱动,而非仅切换显示)。避免"切了组织但按钮还按旧组织角色显示"的错位。
+</div>
+
+<!-- 3 -->
+<h2 id="s3"><span class="n">3</span>超级管理员定位:纯平台运营方</h2>
+<table>
+  <tr><th>能力</th><th>是否保留</th></tr>
+  <tr><td>拥有 / 发布业务知识库</td><td><b>❌ 去掉</b>(内容归各组织;超管的个人内容以普通用户身份建私有库,与"超管"帽子分离)</td></tr>
+  <tr><td><b>全平台视图下的"创建组织 / 创建知识库 / 上传"入口</b></td><td><b>❌ 隐藏</b>——切到超管全平台视图(isPlatform)时,这些写入口一律不显示;该视角只做俯视/治理。<span class="pill todo">现状:创建知识库/创建组织按钮未做 isPlatform 门控,待修</span></td></tr>
+  <tr><td>日常随意跨组织访问</td><td><b>❌ 去掉</b>(现状已需显式破玻璃)</td></tr>
+  <tr><td>审计式破玻璃(<code>X-Admin-Override</code> + 填原因 + 记 <code>admin_access_audit</code>)</td><td><b>✅ 保留</b>——用于排障 / 合规 / <b>违规内容下架</b></td></tr>
+</table>
+<div class="callout c-blue">
+  破玻璃是 SaaS 做合规与内容治理的标配,不能砍:要能下架违规内容,平台方就必须有一条受控、可审计的跨组织通道。"纯隔离"指的是<b>数据按组织硬隔离 + 超管不碰业务内容</b>,而非"超管零跨组织能力"。
+</div>
+
+<!-- 4 -->
+<h2 id="s4"><span class="n">4</span>API Key 授权模型</h2>
+<p>API Key 定位为<b>组织级凭证(服务账号)</b>,供外部应用/服务接入。改造目标:最小权限 + 显式授权 + org 真正参与隔离。</p>
+<h3>4.1 Key 的可配置属性(创建时确定)</h3>
+<table>
+  <tr><th>属性</th><th>取值</th><th>说明</th></tr>
+  <tr><td><code>scope_mode</code></td><td><code>ORG_ALL</code>(默认) / <code>KB_LIST</code></td><td><b>默认 ORG_ALL</b>=读本组织全部库;KB_LIST=指定 KB 列表(落 <code>allowed_kb_ids</code>,创建时校验归属本组织)</td></tr>
+  <tr><td><code>access_level</code></td><td><code>READ</code>(本期仅此) / <s>READ_WRITE</s></td><td>本期<b>只做 READ</b>(search/answer);READ_WRITE 暂不开放(无写接口),字段保留占位</td></tr>
+  <tr><td><code>expires_at</code></td><td>日期 / 永不过期</td><td>到期自动失效</td></tr>
+</table>
+<h3>4.2 可读集重定义(org 参与过滤)</h3>
+<pre><code>// 服务账号可读集(KbAccessGuard,改用 Key 的 org_id 而非 userId)
+scope_mode = ORG_ALL  → 本组织(org_id)下所有库 ∪ 本组织 ORG 可见库
+scope_mode = KB_LIST  → allowed_kb_ids(已校验属于本组织)
+// 移除"无差别并入全站 PUBLIC";写集仅 READ_WRITE 才非空</code></pre>
+<h3>4.3 安全基线【本期全做】</h3>
+<ul>
+  <li><b>哈希存储</b>:Key 仅创建时返回一次明文,入库存 hash(如 SHA-256)+ 展示用前缀;鉴权按 hash 比对。</li>
+  <li><b>过期时间</b>:支持 <code>expires_at</code>,到期自动失效。</li>
+  <li><b>限流 fail-closed</b>:Redis 不可用时按保守阈值拒绝,不再 fail-open 放行。</li>
+  <li><code>scopes</code> 死字段:以 <code>access_level</code> 表达读/写后,<b>废弃</b> scopes 以简化模型。</li>
+</ul>
+
+<!-- 5 -->
+<h2 id="s5"><span class="n">5</span>CareerMate 接入落地</h2>
+<div class="callout c-amber">
+  <div class="t">两拨"用户"必须分清</div>
+  <b>RAGForge 用户</b>(组织成员,管理知识)与 <b>CareerMate 终端用户</b>(CareerMate 自己的账号体系)是两套。RAGForge <b>不认识</b> CareerMate 的终端用户。
+</div>
+
+<h3>5.1 访问模型:应用级授权(不是"加入组织",也不是"天然有权限")</h3>
+<div class="diagram">CareerMate 终端用户 ──登录──▶ CareerMate 后端 ──(持 1 把 API Key)──▶ RAGForge「求职组织」的库
+                                              ▲ 从求职组织签发,授权到 JD/薪资/面试/公司库(只读)</div>
+<ul>
+  <li>CareerMate 后端持<b>一把</b>组织级 API Key,代所有终端用户查询;</li>
+  <li>CareerMate 终端用户<b>无需 RAGForge 账号、无需加入组织</b> —— 通过 CareerMate 后端间接访问(类比"App 用一把 key 调用云服务,终端用户不各自注册")。</li>
+</ul>
+
+<h3>5.2 建一个专门的「求职组织」持有共享数据</h3>
+<div class="diagram">新建 TEAM 组织「求职数据」
+   ├── JD库 / 薪资库 / 面试题库 / 公司库   →  PRIVATE(或 ORG),公共参考数据
+   └── CareerMate API Key(从本组织签发,scope=KB_LIST 授权这几个库,READ)</div>
+<p>不放在超管个人组织:超管应是纯运营方,个人组织是单人私有语义,均不适合当"数据提供方"。</p>
+<div class="callout c-blue">
+  <div class="t">约定:谁来建/拥有这个「求职组织」</div>
+  由一个<b>业务/运营负责人以普通用户账号</b>创建并担任 <b>OWNER</b> —— <b>不是超管</b>(超管纯治理、不拥有内容),<b>也不是终端用户</b>(平台官方数据不归个人)。该 OWNER 负责:维护公共参考库、签发 CareerMate 的 API Key、管理组织成员。<br>
+  关键是<b>用哪个账号/角色</b>而非"哪个人":同一自然人可同时持有超管账号(治理)与运营账号(数据组织 OWNER),两顶帽子分离。
+</div>
+
+<h3>5.3 共享参考数据 vs 个人数据(边界)</h3>
+<table>
+  <tr><th>库</th><th>性质</th><th>本期处理</th></tr>
+  <tr><td>JD / 薪资 / 面试题 / 公司库</td><td>公共参考(所有求职者通用)</td><td>✅ 放「求职组织」,一把只读 Key(ORG_ALL)共享</td></tr>
+  <tr><td>个人简历等</td><td>每个终端用户私有</td><td><b>本期不纳入 RAGForge</b>,由 CareerMate 侧自管(见 §10 D-B 已定)</td></tr>
+</table>
+<p class="sub">→ 本期 RAGForge 只承担"公共参考知识"的供给;终端用户个人数据的隔离留待将来按需再设计,不进本期共享组织。</p>
+
+<!-- 6 -->
+<h2 id="s6"><span class="n">6</span>数据模型变更</h2>
+<pre><code>ALTER TABLE api_keys
+  ADD COLUMN scope_mode   VARCHAR(16) NOT NULL DEFAULT 'ORG_ALL',   -- ORG_ALL(默认) | KB_LIST
+  ADD COLUMN access_level VARCHAR(16) NOT NULL DEFAULT 'READ',      -- READ(本期仅此);READ_WRITE 暂不开放
+  ADD COLUMN expires_at   TIMESTAMPTZ NULL,
+  ADD COLUMN key_hash     VARCHAR(64) NULL,
+  ADD COLUMN key_prefix   VARCHAR(16) NULL;
+
+-- knowledge_bases.visibility 值域收敛为 PRIVATE | ORG(移除 PUBLIC)
+-- 存量 PUBLIC 迁移见 §8</code></pre>
+
+<!-- 7 -->
+<h2 id="s7"><span class="n">7</span>鉴权链路与前端改造</h2>
+<h3>7.1 后端</h3>
+<ul>
+  <li><code>applyOwnership</code> / <code>validateTargetVisibility</code>:个人组织仅 PRIVATE;团队组织 PRIVATE/ORG;<b>移除任何 PUBLIC 通道</b>。</li>
+  <li><code>KbAccessGuard</code>:服务账号按 Key 的 <code>org_id</code> + <code>scope_mode</code> 解析可读集;删除"并入全站 PUBLIC";<code>canRead</code> 去掉 <code>isPublic</code> 分支。</li>
+  <li>KB 列表 <code>filterByOrgContext</code>:严格锁定当前组织(去掉 PUBLIC 穿透)。</li>
+</ul>
+<h3>7.2 前端改造(页面/组件)</h3>
+<div class="diagram">⓪ 超管全平台视图(isPlatform)             隐藏一切"创建/写入"入口:创建知识库、创建组织、上传文档等一律不显示(治理视角只读)
+① 开发者中心 DeveloperCenter.vue           创建 Key 弹窗:访问范围/可访问库/读写级别/有效期;列表加前缀·级别·到期;修正"按组织过滤"文案
+② 知识库管理 KnowledgeBase.vue             可见性下拉:个人库仅"私有"、团队库"私有/组织内公开";移除"公开"选项
+③ 知识库列表                               严格按当前组织显示(切组织=换作用域),消除跨组织穿透
+④ 检索/应答调试台                          范围选择器仅列当前组织可见库
+⑤ 平台管理·治理(超管)                     破玻璃查看 + 违规内容下架 + 审计(为内容治理保留)
+⑥ 组织切换器(全局)                        切换即重算 myRole/能力,联动刷新菜单·按钮·列表(见 §2.2)</div>
+
+<!-- 8 -->
+<h2 id="s8"><span class="n">8</span>迁移与兼容</h2>
+<ul>
+  <li><b>存量 job 库(现状:owner=超管、在超管个人组织 org 64、PUBLIC)</b>:①建「求职数据」组织;②将这 5 个库 <code>org_id</code> 迁至该组织(目前无"换组织"接口,走一次性 SQL);③可见性改 PRIVATE/ORG;④发 CareerMate Key 授权这些库。<b>先建好授权,再收 PUBLIC,避免 CareerMate 中断。</b></li>
+  <li><b>其它存量 PUBLIC 库</b>:非上述用途的一律降级 PRIVATE 或按 owner 组织归位;孤儿/测试库清理。</li>
+  <li><b>存量 Key</b>:新建默认 <code>ORG_ALL</code>,但<b>存量迁移为 <code>KB_LIST</code> + 现有 <code>allowed_kb_ids</code> + READ</b>(保留其原有窄范围,避免迁移意外放大权限);在用集成不断。</li>
+  <li><b>明文→hash</b>:双写过渡,鉴权先 hash 再回退明文,灰度后删明文列。</li>
+</ul>
+
+<!-- 9 -->
+<h2 id="s9"><span class="n">9</span>分期落地路线</h2>
+<table>
+  <tr><th>阶段</th><th>内容</th></tr>
+  <tr><td><span class="pill p0">P0</span></td><td>修正开发者中心文案;前端可见性下拉移除"公开"</td></tr>
+  <tr><td><span class="pill p1">P1</span></td><td>后端收敛可见性(移除 PUBLIC)+ KbAccessGuard 去 public 分支 + 列表严格按组织;建「求职组织」+ 迁移 5 个库 + 发 CareerMate Key</td></tr>
+  <tr><td><span class="pill p1">P1</span></td><td>API Key 授权改造:scope_mode(默认 ORG_ALL)/ access_level(仅 READ)/ expires_at + org 参与过滤 + 创建表单;超管全平台视图隐藏创建/写入口</td></tr>
+  <tr><td><span class="pill p1">P1</span></td><td>凭证安全基线(D-E 全做):Key 哈希存储 + 过期 + 限流 fail-closed;废弃 scopes 死字段</td></tr>
+  <tr><td><span class="pill p2">P2</span></td><td>超管违规内容下架 / 治理端点(举报→审核→下架→审计)</td></tr>
+</table>
+
+<!-- 10 -->
+<h2 id="s10"><span class="n">10</span>待决策项</h2>
+<div class="decide d-done">
+  <div class="q">D0. 组织模型 <span class="pill done">已定</span></div>
+  <div class="opts">采用<b>纯多租户 SaaS 隔离(模型 Y)</b>:移除全域公开、超管纯运营方、外部应用走 API Key 授权。</div>
+</div>
+<div class="decide d-done">
+  <div class="q">D-A. CareerMate 接入方式 <span class="pill done">已定</span></div>
+  <div class="opts">专门「求职组织」持有公共参考库 + 应用级 API Key(KB_LIST 授权);终端用户不加入组织、不需 RAGForge 账号。</div>
+</div>
+<div class="decide d-done">
+  <div class="q">D-B. CareerMate 终端用户"个人数据(简历)"隔离 <span class="pill done">已定</span></div>
+  <div class="opts"><b>本期不纳入</b>:RAGForge 只提供公共参考库(JD/薪资/面试/公司);个人简历等数据由 CareerMate 侧自管,不进 RAGForge 共享组织。</div>
+</div>
+<div class="decide d-done">
+  <div class="q">D-C. API Key 默认 scope_mode <span class="pill done">已定</span></div>
+  <div class="opts"><b>默认 ORG_ALL</b>(Key 读本组织全部库);KB_LIST 作为更细粒度的可选项。CareerMate Key 从「求职组织」签发,ORG_ALL 即覆盖该组织全部共享库。</div>
+</div>
+<div class="decide d-done">
+  <div class="q">D-D. 是否开放 READ_WRITE 级 Key <span class="pill done">已定</span></div>
+  <div class="opts"><b>暂不开放写</b>:当前无写接口接受 Key,本期只做 READ。<code>access_level</code> 字段保留占位,将来确有回写需求(如采集入库)再开放并严格限 org + 写集。</div>
+</div>
+<div class="decide d-done">
+  <div class="q">D-E. 凭证安全基线 <span class="pill done">已定</span></div>
+  <div class="opts"><b>全部做</b>:Key 哈希存储(仅创建时返回明文)+ 过期时间 + 限流 fail-closed。</div>
+</div>
+
+<div class="foot">
+  基于对当前 <code>main</code> 分支代码(ApiKey / ApiKeyInterceptor / KbAccessGuard / OrgService / KnowledgeBaseServiceImpl / RagForgeMcpTools 等)的核实结论撰写,以代码为最终事实。评审通过后同步 <code>docs/architecture.md</code> 并拆分 Cursor 任务。<br>
+  编制 2026-07-01 · 最后更新 2026-07-02 · 定版 v1.0
+</div>
+
+</div>
+</body>
+</html>
