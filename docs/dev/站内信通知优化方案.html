@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAGForge 站内信通知优化方案（评审稿）</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --card2:#1d212b; --line:#2a2f3a;
+    --fg:#e6e8ec; --muted:#9aa3b2; --accent:#4c8dff; --good:#37c871;
+    --warn:#f0a63a; --bad:#ff5c5c; --chip:#232834;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    line-height:1.7;font-size:15px}
+  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 96px}
+  header.doc{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:8px}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:14px}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .chip{background:var(--chip);border:1px solid var(--line);color:var(--muted);
+    padding:3px 10px;border-radius:20px;font-size:12px}
+  h2{font-size:19px;margin:40px 0 12px;padding-left:12px;border-left:3px solid var(--accent)}
+  h3{font-size:15px;margin:22px 0 8px;color:#cfd6e2}
+  p{margin:10px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;margin:14px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:var(--card2);color:#cfd6e2;font-weight:600}
+  td code,p code,li code{background:#0b0d11;border:1px solid var(--line);border-radius:5px;
+    padding:1px 6px;font-size:13px;color:#e2c08d;font-family:"SF Mono",Menlo,Consolas,monospace}
+  .tag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:12px;font-weight:600}
+  .t-good{background:rgba(55,200,113,.15);color:var(--good);border:1px solid rgba(55,200,113,.3)}
+  .t-bad{background:rgba(255,92,92,.15);color:var(--bad);border:1px solid rgba(255,92,92,.3)}
+  .t-warn{background:rgba(240,166,58,.15);color:var(--warn);border:1px solid rgba(240,166,58,.3)}
+  .t-accent{background:rgba(76,141,255,.15);color:var(--accent);border:1px solid rgba(76,141,255,.3)}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  .callout{border-left:3px solid var(--warn);background:rgba(240,166,58,.07);
+    padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+  .callout.good{border-color:var(--good);background:rgba(55,200,113,.07)}
+  .callout.accent{border-color:var(--accent);background:rgba(76,141,255,.07)}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0;font-size:13px}
+  .node{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+  .arrow{color:var(--accent);font-weight:700}
+  .rec{display:inline-block;background:rgba(76,141,255,.15);border:1px solid rgba(76,141,255,.35);
+    color:#a9c6ff;font-size:12px;padding:1px 8px;border-radius:6px;margin-left:6px}
+  .phase{display:flex;gap:14px;margin:12px 0}
+  .phase .num{flex:0 0 34px;height:34px;border-radius:50%;background:var(--accent);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .phase .body{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+  .muted{color:var(--muted)}
+  .foot{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+  .kbd{font-size:12px;color:var(--muted)}
+  .decision{font-size:14px}
+  .decision td:first-child{white-space:nowrap;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>站内信通知 · 优化方案（评审稿）</h1>
+  <div class="sub">RAGForge · 组织邀请（Invitation）通知链路补全与实时触达</div>
+  <div class="meta">
+    <span class="chip">模块：Notification / Invitation</span>
+    <span class="chip">范围：backend + frontend</span>
+    <span class="chip">状态：待架构评审</span>
+    <span class="chip">拟制日期：2026-07-01</span>
+    <span class="chip">版本：v1.0（定稿）</span>
+  </div>
+</header>
+
+<div class="callout accent">
+  <strong>本文定位：</strong>执行前的设计稿。只做架构与接口/数据设计，不含业务代码实现。执行方待定，评审通过后再据此生成执行提示词。
+</div>
+
+<h2>0. 文档信息</h2>
+<table class="decision">
+  <tbody>
+    <tr><td>拟制人</td><td>@guandezhi（架构）</td><td>拟制日期</td><td>2026-07-01</td></tr>
+    <tr><td>当前版本</td><td>v1.0（定稿）</td><td>状态</td><td>已定稿，待生成执行提示词并落地</td></tr>
+    <tr><td>执行方</td><td>待定（评审通过后据此生成执行提示词）</td><td>预计工期</td><td>P0 约 1 人日 / P1 约 1–2 人日</td></tr>
+  </tbody>
+</table>
+<h3>修订记录</h3>
+<table>
+  <thead><tr><th>版本</th><th>日期</th><th>修订人</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>v0.1</td><td>2026-07-01</td><td>@guandezhi</td><td>初稿：现状走查、数据回写方案、触达选型、分阶段与验收标准</td></tr>
+    <tr><td>v0.2</td><td>2026-07-01</td><td>@guandezhi</td><td>决策：触达机制采用 SSE；铃铛合并为统一未读数、点开分区展示</td></tr>
+    <tr><td>v1.0</td><td>2026-07-01</td><td>@guandezhi</td><td>定稿：回执不做跳转；SSE 心跳 25s + Nginx 超时对齐；多副本 Redis Pub/Sub 本期即做。全部决策点关闭</td></tr>
+  </tbody>
+</table>
+
+<!-- 1 -->
+<h2>1. 现状与问题</h2>
+<p>两轮代码走查后，邀请通知链路存在两处断点，一处硬缺口。核心症结：<strong>通知只在"发起邀请"那一刻落库一次，之后再无任何服务端 → 客户端的推送或回写。</strong></p>
+
+<table>
+  <thead>
+    <tr><th>事件</th><th>后端是否落库通知</th><th>接收方能否感知</th><th>问题定级</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>A 邀请 B</td>
+      <td><span class="tag t-good">有</span> 给 B insert 一条 <code>ORG_INVITE</code></td>
+      <td><span class="tag t-warn">需刷新</span> 前端仅挂载时拉一次，无轮询/推送</td>
+      <td class="muted">体验缺陷</td>
+    </tr>
+    <tr>
+      <td>B 接受 / 拒绝</td>
+      <td><span class="tag t-bad">无</span> 完全未给 A 回写</td>
+      <td><span class="tag t-bad">无从感知</span> 连数据都不存在</td>
+      <td><span class="tag t-bad">硬缺口</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>关键代码事实</h3>
+<ul>
+  <li><code>InvitationService.accept()</code>（L145-161）只做三件事：插入 <code>org_members</code>、邀请状态置 <code>ACCEPTED</code>、把<strong>接受者自己</strong>那条通知标已读。<strong>无任何指向发起方的 insert。</strong></li>
+  <li>邀请表 <code>OrgInvitation.inviterUserId</code> 发起时已写入（L86），但在 <code>accept/decline</code> 流程<strong>从未被读取</strong> —— 回写所需数据一直都在，只是没人用。</li>
+  <li>前端 <code>NotificationBell.vue</code>：唯一取数在 <code>watch(isAuthenticated,…,{immediate:true})</code>（L78），无 <code>setInterval</code>、无 <code>WebSocket</code>、无 <code>SSE</code>；接受后 <code>window.location.reload()</code> 只刷新接受者自己。</li>
+  <li>后端全库 <code>grep WebSocket</code> 零命中；<code>unreadCount()</code> 接口前端根本没被调用。</li>
+</ul>
+
+<!-- 2 -->
+<h2>2. 优化目标</h2>
+<div class="card">
+  <ol>
+    <li><strong>补数据（P0）：</strong>B 接受 / 拒绝邀请后，服务端给发起方 A 落库一条回执通知（"B 已接受/拒绝加入 XX 组织"）。</li>
+    <li><strong>接链路（P0）：</strong>铃铛角标合并为<strong>统一未读数</strong>（邀请 + 通知）、接通 <code>unread-count</code>，点开分区展示，让"未读数"真实可用。</li>
+    <li><strong>做触达（P1）：</strong>通过 <strong>SSE</strong> 让新通知无需手动刷新即秒级出现在接收方界面。</li>
+    <li><strong>补对称（P1）：</strong><code>decline</code> 与 <code>accept</code> 同等处理，消除"拒绝"这个感知黑洞。</li>
+  </ol>
+</div>
+<div class="callout">
+  <strong>优先级判断：</strong>P0 两项是"信息根本不存在 / 显示错数据"的正确性问题，纯后端 + 前端小改，必做且成本低；P1 触达采用 SSE（单向实时、依赖现成），可独立排期。<strong>不上 WebSocket —— 对单向通知场景是过度设计。</strong>
+</div>
+
+<!-- 3 -->
+<h2>3. 数据模型设计</h2>
+<p>复用现有 <code>notifications</code> 表，不新增表。仅扩展通知类型枚举：</p>
+<table>
+  <thead><tr><th>type（枚举）</th><th>触发时机</th><th>收件人</th><th>refId</th><th>状态</th></tr></thead>
+  <tbody>
+    <tr><td><code>ORG_INVITE</code></td><td>A 发起邀请</td><td>被邀请方 B</td><td>invitationId</td><td class="muted">现有</td></tr>
+    <tr><td><code>ORG_INVITE_ACCEPTED</code></td><td>B 接受</td><td>发起方 A（inviterUserId）</td><td>invitationId</td><td><span class="tag t-accent">新增</span></td></tr>
+    <tr><td><code>ORG_INVITE_DECLINED</code></td><td>B 拒绝</td><td>发起方 A（inviterUserId）</td><td>invitationId</td><td><span class="tag t-accent">新增</span></td></tr>
+  </tbody>
+</table>
+<h3>回执通知字段约定</h3>
+<ul>
+  <li><code>userId</code> = <code>inv.inviterUserId</code>（复用已有死字段，本方案让它"活"起来）</li>
+  <li><code>title / content</code> = "{接受者昵称} 已接受加入 {组织名} 的邀请"（拒绝同理）</li>
+  <li><code>refId</code> = invitationId；<code>readAt</code> = null（未读）</li>
+  <li><strong>幂等：</strong>同一 invitationId + 同一 type 只允许一条回执，避免重复点击/重试产生多条（见 §5 幂等要求）</li>
+</ul>
+
+<!-- 4 -->
+<h2>4. 总体方案（三层）</h2>
+
+<h3>第一层 · 数据回写（P0，纯后端）</h3>
+<div class="flow">
+  <span class="node">B 点击接受</span><span class="arrow">→</span>
+  <span class="node">accept() 原有三步</span><span class="arrow">→</span>
+  <span class="node"><strong>新增：</strong>给 inviterUserId insert 回执通知</span><span class="arrow">→</span>
+  <span class="node">A 的 unread-count +1</span>
+</div>
+<p>改动点集中在 <code>InvitationService.accept()</code> 与 <code>decline()</code> 末尾，复用现有 <code>notificationMapper</code>。<strong>不改接口签名、不改前端接受逻辑。</strong></p>
+
+<h3>第二层 · 前端角标与面板（统一未读数 + 分区展示）<span class="tag t-good">已定</span></h3>
+<p><strong>角标：</strong>铃铛当前错误地显示"待处理邀请数(pending)"。改为<strong>统一未读数</strong> = 待处理邀请 + 未读通知（回执等）之和，数据源接通 <code>unread-count</code>。</p>
+<p><strong>面板：</strong>点开铃铛后<strong>分区展示</strong>，用户一眼分清「需要我操作的」和「仅告知的」：</p>
+<table class="decision">
+  <thead><tr><th>分区</th><th>内容</th><th>可操作项</th></tr></thead>
+  <tbody>
+    <tr><td>① 待处理邀请</td><td>别人邀请我加入组织（PENDING）</td><td>接受 / 拒绝</td></tr>
+    <tr><td>② 通知</td><td>回执类（<code>ORG_INVITE_ACCEPTED/DECLINED</code>）等只读消息</td><td>标记已读 / 全部已读</td></tr>
+  </tbody>
+</table>
+<div class="callout accent">
+  <strong>口径统一：</strong>角标数字与面板两区未读之和一致；任一区被消费（接受邀请 / 标记已读）后，角标同步递减。
+</div>
+
+<h3>第三层 · 实时触达 —— 采用 SSE <span class="tag t-good">已定</span></h3>
+<p>放弃轮询，直接走 <strong>SSE（Server-Sent Events）</strong>：后端按用户维持一条长连接，通知落库即 push，前端 <code>EventSource</code> 收到后刷新未读数/列表，<strong>无需手动刷新、无轮询空转</strong>。选它的理由：</p>
+<ul>
+  <li>站内通知是<strong>纯服务端 → 客户端单向</strong>场景，SSE 恰好匹配，比 WebSocket 轻。</li>
+  <li>rag-forge 已引入 <strong>Spring AI MCP WebMVC-SSE</strong> 依赖，SSE 技术栈是现成的，接入成本低。</li>
+  <li>浏览器原生 <code>EventSource</code> 自带断线重连，前端实现简单。</li>
+</ul>
+<table class="decision">
+  <thead><tr><th>方案</th><th>结论</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>SSE</td><td><span class="tag t-good">✔ 采用</span></td><td>单向实时、依赖现成、原生重连</td></tr>
+    <tr><td>前端轮询</td><td><span class="tag t-warn">降级备选</span></td><td>仅当 SSE 因网关/代理不可用时作为 fallback</td></tr>
+    <tr><td>WebSocket/STOMP</td><td><span class="tag t-bad">✘ 不采用</span></td><td>双向能力对单向通知过度设计</td></tr>
+  </tbody>
+</table>
+<div class="callout accent">
+  <strong>SSE 关键设计点（供评审）：</strong>
+  <ul style="margin:6px 0 0">
+    <li><strong>连接维度：</strong>按 userId 维持 emitter（一个用户可多标签页 → 多 emitter，用 <code>ConcurrentHashMap&lt;userId, List&lt;Emitter&gt;&gt;</code> 管理）。</li>
+    <li><strong>鉴权：</strong>SSE 端点复用 JWT 鉴权，连接建立时校验用户身份。</li>
+    <li><strong>推送时机：</strong>通知 insert 成功后（同事务提交后）向对应 userId 的 emitter 推 <code>unread-count</code> 变更事件。</li>
+    <li><strong>心跳与超时（已定）：</strong>服务端每 <strong>25s</strong> 发一次心跳（comment/ping）保活；<code>SseEmitter</code> 服务端 timeout 设 <strong>30min</strong>，到时正常结束、由前端 <code>EventSource</code> 自动重连兜底。</li>
+    <li><strong>入口层（已定）：</strong>Nginx 对 SSE 路由 <code>proxy_buffering off</code> + <code>proxy_http_version 1.1</code> + <code>proxy_read_timeout 300s</code>（&gt; 心跳间隔即可），避免入口掐断长连接。</li>
+    <li><strong>多副本（本期即做）：</strong>api 3 副本，SSE 连接落单副本；推送经 <strong>Redis Pub/Sub</strong> 广播，命中持有该 userId emitter 的副本再下发（复用现有 Redis）。</li>
+  </ul>
+</div>
+
+<!-- 5 -->
+<h2>5. 后端改动点与约束</h2>
+<table>
+  <thead><tr><th>文件 / 位置</th><th>改动</th></tr></thead>
+  <tbody>
+    <tr><td><code>InvitationService.accept()</code> L145-161 末尾</td><td>读取 <code>inv.getInviterUserId()</code>，insert 一条 <code>ORG_INVITE_ACCEPTED</code> 回执（幂等）</td></tr>
+    <tr><td><code>InvitationService.decline()</code></td><td>对称新增 <code>ORG_INVITE_DECLINED</code> 回执（幂等）</td></tr>
+    <tr><td>通知类型枚举 / 常量</td><td>新增两个 type 常量</td></tr>
+    <tr><td>新增 SSE 端点（如 <code>GET /api/v1/notifications/stream</code>）</td><td><code>SseEmitter</code>：按 userId 维持连接、JWT 鉴权、心跳保活；提供统一的 <code>NotificationPusher</code> 供落库后调用</td></tr>
+    <tr><td>通知 insert 落点（<code>accept/decline</code> 等）</td><td>事务提交后调用 <code>NotificationPusher.push(userId, unreadCount)</code></td></tr>
+    <tr><td>多副本广播（Redis Pub/Sub）</td><td>推送事件经 Redis 广播，命中持有该 userId emitter 的副本再下发（复用现有 Redis）</td></tr>
+    <tr><td><code>NotificationBell.vue</code> L37-44 / L78</td><td>角标改用统一 <code>unread-count</code>；面板分区；建立 <code>EventSource</code> 订阅 <code>/stream</code>，收到事件即刷新（去掉 accept 后的整页 <code>reload</code>）</td></tr>
+  </tbody>
+</table>
+<h3>硬性约束（执行禁止项）</h3>
+<ul>
+  <li><strong>幂等：</strong>回写前先查 <code>(refId=invitationId, type=…, userId=inviterUserId)</code> 是否已存在，存在则跳过，禁止产生重复通知。</li>
+  <li>回执 insert 必须在 <code>accept/decline</code> 的<strong>同一事务</strong>内，随主流程一起提交/回滚。</li>
+  <li>发起方已注销 / <code>inviterUserId</code> 为空时安全跳过，不得抛异常中断接受主流程。</li>
+  <li>禁止改动 <code>accept/decline</code> 的接口签名与返回结构。</li>
+  <li>禁止引入 WebSocket/STOMP —— 触达统一走 SSE。</li>
+  <li><strong>SSE 推送必须在事务提交之后</strong>，不得在事务内推送（否则回滚后会推出脏未读数）。</li>
+  <li>SSE 端点须做 emitter 生命周期管理：<code>onCompletion / onTimeout / onError</code> 时从 map 移除，防止内存泄漏。</li>
+  <li>推送失败（连接已断）不得影响主业务；SSE 仅为触达增强，未读数<strong>最终以接口查询为准</strong>（前端连上后先拉一次做对齐）。</li>
+</ul>
+
+<!-- 6 -->
+<h2>6. 分阶段落地</h2>
+<div class="phase"><div class="num">1</div><div class="body">
+  <strong>P0 · 数据回写</strong>（后端）—— accept/decline 回写发起方通知 + 类型枚举 + 幂等 + 同事务。<span class="muted">交付后：A 刷新即可在铃铛看到"B 已接受/拒绝"。</span>
+  <div class="muted" style="margin-top:6px">工期约 0.5 人日 · 目标日期 2026-07-02</div>
+</div></div>
+<div class="phase"><div class="num">2</div><div class="body">
+  <strong>P0 · 统一未读数 + 分区面板</strong>（前端）—— 角标接通 <code>unread-count</code>（邀请 + 通知合计）；点开面板分「待处理邀请 / 通知」两区展示。
+  <div class="muted" style="margin-top:6px">工期约 0.5–1 人日 · 目标日期 2026-07-03</div>
+</div></div>
+<div class="phase"><div class="num">3</div><div class="body">
+  <strong>P1 · SSE 后端</strong> —— 新增 <code>/notifications/stream</code> 端点（<code>SseEmitter</code> + JWT + 心跳 + emitter 生命周期管理）；<code>NotificationPusher</code> 在落库后推送；多副本经 Redis Pub/Sub 广播。
+  <div class="muted" style="margin-top:6px">工期约 1–1.5 人日 · 目标日期 2026-07-04</div>
+</div></div>
+<div class="phase"><div class="num">4</div><div class="body">
+  <strong>P1 · SSE 前端</strong> —— <code>EventSource</code> 订阅 <code>/stream</code>，收到事件即刷新未读数/列表；连上先拉一次做对齐；去掉 accept 后整页 <code>reload</code>。Nginx 放开 SSE 长连接（<code>proxy_buffering off</code>、超时放宽）。
+  <div class="muted" style="margin-top:6px">工期约 0.5–1 人日 · 目标日期 2026-07-04</div>
+</div></div>
+
+<!-- 7 -->
+<h2>7. 验收标准（Playwright）</h2>
+<div class="card">
+  <ul>
+    <li>A 邀请 B → B 接受 → <strong>A 刷新页面，铃铛角标 +1</strong>，通知列表出现"B 已接受加入 XX 组织"。</li>
+    <li>A 邀请 B → B 拒绝 → A 侧出现对应的"已拒绝"回执。</li>
+    <li>B 重复点击接受 / 接口重试 → A 侧回执<strong>仅一条</strong>（幂等验证）。</li>
+    <li>角标 = 待处理邀请 + 未读通知之和；点开面板分两区展示；任一区被消费后角标同步递减。</li>
+    <li>点击回执标记已读后，<code>unread-count</code> 相应递减。</li>
+    <li>（P1·SSE）A 保持页面不动，B 接受后 A 端<strong>无需手动刷新</strong>，角标自动 +1（秒级）。</li>
+    <li>（P1·SSE）断网后重连，<code>EventSource</code> 自动恢复；重连后前端拉一次 <code>unread-count</code> 与服务端对齐。</li>
+    <li>（P1·SSE）多标签页登录同一用户，各标签页均能收到推送。</li>
+    <li>发起方为空 / 已注销场景下，B 接受流程正常完成、不报错。</li>
+  </ul>
+</div>
+
+<!-- 8 -->
+<h2>8. 决策记录（全部关闭）</h2>
+<table>
+  <thead><tr><th>#</th><th>问题</th><th>决策</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>触达机制</td><td><span class="tag t-good">SSE</span> —— 后端 SseEmitter 落库即推，前端 EventSource；轮询仅作降级 fallback，不上 WebSocket</td></tr>
+    <tr><td>2</td><td>铃铛角标形态</td><td><span class="tag t-good">合并为统一未读数</span>（邀请 + 通知合计），点开后分「待处理邀请 / 通知」两区展示</td></tr>
+    <tr><td>3</td><td>回执通知点击跳转</td><td><span class="tag t-good">本期不做</span> —— 回执仅做只读展示 + 标记已读</td></tr>
+    <tr><td>4</td><td>SSE 心跳与超时</td><td><span class="tag t-good">已定</span> —— 心跳 25s；SseEmitter 30min；Nginx <code>proxy_read_timeout 300s</code> + <code>proxy_buffering off</code> + <code>http_version 1.1</code></td></tr>
+    <tr><td>5</td><td>多副本 Redis Pub/Sub</td><td><span class="tag t-good">本期即做</span> —— api 3 副本下跨副本广播必需，复用现有 Redis</td></tr>
+  </tbody>
+</table>
+<div class="callout good">
+  <strong>定稿状态：</strong>全部决策点已关闭，本方案冻结为 v1.0，可据此生成执行提示词并落地。
+</div>
+
+<div class="foot">
+  <p><strong>定稿说明：</strong>全部决策点已关闭（见 §8），本方案冻结为 v1.0。下一步据此生成执行提示词（含字段设计、幂等要求、SSE 生命周期与禁止项、Playwright 验收），执行方待定。</p>
+  <p class="kbd">文档：rag-forge/docs/dev/站内信通知优化方案.html · 版本 v1.0 · 2026-07-01</p>
+</div>
+
+</div>
+</body>
+</html>
