@@ -84,7 +84,8 @@ class ApiAndExceptionTest {
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value(401))
             .andExpect(jsonPath("$.msg").value("Invalid API Key"))
-            .andExpect(jsonPath("$.traceId").exists())
+            // 新契约：错误体不再携带 traceId，改由 X-Trace-Id 响应头承载。
+            .andExpect(jsonPath("$.traceId").doesNotExist())
             .andExpect(header().exists("X-Trace-Id"))
             .andReturn();
 

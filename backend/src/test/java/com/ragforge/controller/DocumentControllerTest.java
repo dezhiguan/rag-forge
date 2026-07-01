@@ -364,7 +364,9 @@ class DocumentControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"uploadToken\":\"uplt_replay\",\"kbId\":16}"))
         .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.msg").value("TOKEN_INVALID"));
+        // 新契约：机器码在 errorCode，msg 为中文用户提示。
+        .andExpect(jsonPath("$.errorCode").value("TOKEN_INVALID"))
+        .andExpect(jsonPath("$.msg").value("登录状态已失效，请重新登录"));
   }
 
   @Test

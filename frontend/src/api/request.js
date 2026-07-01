@@ -107,7 +107,11 @@ export function translateError(payload) {
   if (typeof payload === 'string') {
     return translateDynamicCode(payload) || ERROR_CODE_LABELS[payload] || payload
   }
-  const code = payload.msg || payload.error || payload.code
+  // 机器码优先取 errorCode（新契约）；后端已把 msg 本地化为中文时，msg 与 errorCode 不同 → 直接展示 msg。
+  const code = payload.errorCode || payload.msg || payload.error || payload.code
+  if (payload.errorCode && payload.msg && payload.msg !== payload.errorCode) {
+    return payload.msg
+  }
   const dynamic = translateDynamicCode(code)
   if (dynamic) return dynamic
   if (code && ERROR_CODE_LABELS[code]) return ERROR_CODE_LABELS[code]

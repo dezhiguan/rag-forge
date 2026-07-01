@@ -29,11 +29,15 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(BizException.class)
   public void handleBizException(BizException ex, HttpServletResponse response) throws IOException {
+    // ex.getMessage() 是机器码 → errorCode；msg 翻成中文用户提示；错误体不带 traceId（保留在响应头供排查）。
+    String errorCode = ex.getMessage();
     Result<Map<String, Object>> body =
-        new Result<>(ex.getCode(), ex.getMessage(), ex.getData(), TraceIds.current());
+        new Result<>(
+            ex.getCode(), ErrorMessages.toChinese(errorCode), errorCode, ex.getData(), null);
     response.setStatus(ex.getCode());
     response.setContentType("application/json");
     response.setCharacterEncoding("UTF-8");
+    response.setHeader(TraceIds.HEADER_TRACE_ID, TraceIds.current());
     OBJECT_MAPPER.writeValue(response.getWriter(), body);
   }
 
@@ -85,7 +89,8 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
   public ResponseEntity<Result<Void>> handleAccessDenied(Exception ex) {
-    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Result.fail(403, "Forbidden"));
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(Result.error(403, "FORBIDDEN", "无权访问，请联系管理员"));
   }
 
   // 前端偶发把 NaN / 空串作为 path/query 数字参数传过来（例如 /kb/NaN/documents），
@@ -108,6 +113,7 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(Exception.class)
   public ResponseEntity<Result<Void>> handleException(Exception ex) {
     log.error("Unhandled exception", ex);
-    return ResponseEntity.internalServerError().body(Result.fail(500, "Internal Server Error"));
+    return ResponseEntity.internalServerError()
+        .body(Result.error(500, "INTERNAL_ERROR", "服务暂时异常，请稍后重试"));
   }
 }

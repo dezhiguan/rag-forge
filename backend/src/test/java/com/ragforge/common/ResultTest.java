@@ -2,6 +2,7 @@ package com.ragforge.common;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.AfterEach;
@@ -52,21 +53,25 @@ class ResultTest {
   }
 
   @Test
-  void failIncludesTraceId() {
+  void failOmitsTraceIdFromBody() {
+    // 新契约：失败响应体不再携带 traceId（改由 X-Trace-Id 响应头承载）。
     MDC.put("traceId", "error-trace-456");
 
     Result<Void> result = Result.fail(401, "Unauthorized");
 
     assertEquals(401, result.getCode());
     assertEquals("Unauthorized", result.getMsg());
-    assertEquals("error-trace-456", result.getTraceId());
+    assertNull(result.getErrorCode());
+    assertNull(result.getTraceId());
   }
 
   @Test
-  void failGeneratesTraceIdWhenMdcMissing() {
-    Result<Void> result = Result.fail("error");
+  void errorCarriesErrorCodeAndChineseMsgWithoutTraceId() {
+    Result<Void> result = Result.error(400, "ORG_SLUG_INVALID", "组织标识不合法");
 
-    assertNotNull(result.getTraceId());
-    assertTrue(result.getTraceId().startsWith("rf-"));
+    assertEquals(400, result.getCode());
+    assertEquals("ORG_SLUG_INVALID", result.getErrorCode());
+    assertEquals("组织标识不合法", result.getMsg());
+    assertNull(result.getTraceId());
   }
 }

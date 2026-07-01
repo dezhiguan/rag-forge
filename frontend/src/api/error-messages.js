@@ -37,7 +37,11 @@ export function translateErrorPayload(payload) {
   if (typeof payload === 'string') {
     return translateErrorCode(payload) || payload
   }
-  const code = payload.msg || payload.error || payload.code
+  // 机器码优先取 errorCode；后端已把 msg 本地化为中文（与 errorCode 不同）→ 直接展示。
+  if (payload.errorCode && payload.msg && payload.msg !== payload.errorCode) {
+    return payload.msg
+  }
+  const code = payload.errorCode || payload.msg || payload.error || payload.code
   if (typeof code === 'string' && ERROR_MESSAGES[code]) {
     return ERROR_MESSAGES[code]
   }
@@ -82,7 +86,12 @@ export function resolveHttpError(error, context = {}) {
     return translateErrorPayload(data) || ERROR_MESSAGES.JUDGE_RESULT_NOT_FOUND
   }
 
-  if (status === 409 && (data?.msg === 'REPLAY_ALREADY_RUNNING' || url.includes('/replay'))) {
+  if (
+    status === 409 &&
+    (data?.errorCode === 'REPLAY_ALREADY_RUNNING' ||
+      data?.msg === 'REPLAY_ALREADY_RUNNING' ||
+      url.includes('/replay'))
+  ) {
     return ERROR_MESSAGES.REPLAY_ALREADY_RUNNING
   }
 
