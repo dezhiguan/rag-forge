@@ -1,5 +1,6 @@
 package com.ragforge.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.ragforge.web.TraceIds;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -13,9 +14,14 @@ public class Result<T> {
   private int code;
   /** 用户可读消息：成功为 "success"，失败为中文提示。 */
   private String msg;
-  /** 机器可读错误码（如 ORG_SLUG_INVALID）；成功为 null，供前端分支判断。 */
+  /** 机器可读错误码（如 ORG_SLUG_INVALID）；为 null 时不出现在 JSON，供前端分支判断。 */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   private String errorCode;
+
   private T data;
+
+  /** 链路追踪 id：仅成功响应携带；失败响应为 null 且不出现在 body（改由 X-Trace-Id 响应头承载）。 */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   private String traceId;
 
   public static <T> Result<T> ok(T data) {

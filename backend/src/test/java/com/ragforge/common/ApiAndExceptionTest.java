@@ -89,8 +89,9 @@ class ApiAndExceptionTest {
             .andExpect(header().exists("X-Trace-Id"))
             .andReturn();
 
+    // 新契约：traceId 只在响应头，不在错误体。
     org.junit.jupiter.api.Assertions.assertNotNull(result.getResponse().getHeader("X-Trace-Id"));
     JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
-    org.junit.jupiter.api.Assertions.assertNotNull(body.get("traceId").asText());
+    org.junit.jupiter.api.Assertions.assertNull(body.get("traceId"));
   }
 }
