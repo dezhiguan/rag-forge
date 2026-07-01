@@ -433,7 +433,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     return kb;
   }
 
-  /** 校验目标可见性合法性：个人组织 PRIVATE/PUBLIC；团队组织 PRIVATE/ORG/PUBLIC。 */
+  /** 校验目标可见性合法性：个人组织仅 PRIVATE；团队组织 PRIVATE/ORG（已移除全域公开 PUBLIC）。 */
   private String validateTargetVisibility(KnowledgeBase kb, String target) {
     if (!StringUtils.hasText(target)) {
       throw new BizException(400, "KB_VISIBILITY_REQUIRED");

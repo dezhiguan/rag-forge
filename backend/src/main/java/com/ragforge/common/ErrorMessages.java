@@ -53,6 +53,24 @@ public final class ErrorMessages {
           Map.entry("KB_NOT_FOUND", "知识库不存在"),
           Map.entry("KB_IDS_REQUIRED", "请至少选择一个知识库"),
           Map.entry("QUERY_REQUIRED", "请输入您的问题"),
+          // 知识库可见性（收敛为 私有 / 组织内公开；提示不暴露技术枚举值）
+          Map.entry("KB_VISIBILITY_INVALID", "所选可见性不可用；个人知识库仅支持「私有」"),
+          Map.entry("ORG_KB_VISIBILITY_INVALID", "团队知识库仅支持「私有」或「组织内公开」，请重新选择"),
+          Map.entry("KB_VISIBILITY_REQUIRED", "请选择知识库可见性"),
+          // API Key 创建 / 授权
+          Map.entry("KEY_NAME_REQUIRED", "请输入 API 密钥名称"),
+          Map.entry("ALLOWED_KB_IDS_REQUIRED", "请至少选择一个要授权的知识库"),
+          Map.entry("KB_NOT_IN_ORG", "所选知识库不属于当前组织，无法授权"),
+          Map.entry("PLATFORM_VIEW_READONLY", "全平台视图为只读治理视角，不能创建或修改内容，请切换到具体组织后再试"),
+          // API Key 鉴权（外部调用直连响应，务必友好中文）
+          Map.entry("API_KEY_MISSING", "缺少 API 密钥，请在请求头 X-API-Key 中携带"),
+          Map.entry("API_KEY_INVALID", "API 密钥无效或已被禁用，请检查后重试"),
+          Map.entry("API_KEY_EXPIRED", "密钥已过期，请重新生成后使用"),
+          Map.entry("API_KEY_RATE_LIMITED", "请求过于频繁，请稍后再试"),
+          // 治理 / 破玻璃
+          Map.entry("GOVERNANCE_REQUIRES_BREAKGLASS", "该治理操作需先进入「全平台视图」（破玻璃）后才能执行"),
+          Map.entry("GOVERNANCE_QUERY_TOO_SHORT", "请输入更精确的检索词（至少 3 个字符）"),
+          Map.entry("REVOKE_REASON_REQUIRED", "请填写吊销原因"),
           // 通用兜底码
           Map.entry("INVALID_REQUEST", "请求参数有误，请检查后重试"),
           Map.entry("FORBIDDEN", "无权访问，请联系管理员"),

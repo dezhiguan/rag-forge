@@ -116,6 +116,10 @@ public class ApiKeyServiceImpl implements ApiKeyService {
   @Override
   @Transactional
   public ApiKey create(CreateApiKeyCommand cmd) {
+    // 超管全平台视图（破玻璃）为只读治理：不能创建 key，语义上不同于「非管理员」，单独给码。
+    if (isPlatformGovernance()) {
+      throw new BizException(403, "PLATFORM_VIEW_READONLY");
+    }
     Long orgId = OrgContextHolder.get();
     requireOrgAdmin(orgId); // 平台视图(orgId=null)无法创建 → 须下钻组织
 
@@ -252,7 +256,10 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     if (apiKey == null) {
       throw new BizException(404, "API Key 不存在");
     }
-    // 删除是组织内操作（平台视图仅吊销不删，按设计），须为该 key 所属组织的 admin。
+    // 删除是组织内操作（平台视图仅吊销不删，按设计）：破玻璃只读治理 → 单独给码，其余须为该 key 组织 admin。
+    if (isPlatformGovernance()) {
+      throw new BizException(403, "PLATFORM_VIEW_READONLY");
+    }
     requireOrgAdmin(apiKey.getOrgId());
     apiKeyMapper.deleteById(id);
     apiKeyInterceptor.resetKeyCache();

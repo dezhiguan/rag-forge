@@ -28,7 +28,8 @@ public class CreateKbDTO {
   // 归属组织 id（为空=个人库）。非空时需当前用户为该组织 OWNER/ADMIN。
   private Long orgId;
 
-  // 可见性：个人库 PRIVATE/PUBLIC；组织库 PRIVATE/ORG。为空默认 PRIVATE。
-  @Pattern(regexp = "PRIVATE|ORG|PUBLIC|", message = "visibility 只能是 PRIVATE / ORG / PUBLIC")
+  // 可见性：个人库仅「私有」；团队库「私有 / 组织内公开」。为空默认「私有」。
+  // 合法性交由 service 层（applyOwnership）按组织类型权威校验，返回带机器码的友好中文提示，
+  // 不在此用 @Pattern 暴露 PRIVATE/ORG/PUBLIC 等技术枚举值。
   private String visibility;
 }
