@@ -43,39 +43,52 @@ public class StreamableMcpController {
         "protocolVersion", protocolVersion(params),
         "capabilities", Map.of("tools", Map.of("listChanged", false)),
         "serverInfo", Map.of("name", "ragforge-mcp-server", "version", "1.0.0"),
-        "instructions", "Use search_knowledge to search the caller's readable RAGForge knowledge bases.");
+        "instructions",
+            """
+            Call list_knowledge_bases before search_knowledge unless the user explicitly provided knowledge base ids.
+            Choose the most relevant readable knowledge base ids by name and description, then pass them to search_knowledge.kbIds.
+            Search private or sensitive knowledge bases only when the user explicitly asks for that scope.
+            """);
   }
 
   private Map<String, Object> toolsListResult() {
-    Map<String, Object> properties = orderedMap(
+    Map<String, Object> searchProperties = orderedMap(
         "query", orderedMap("type", "string", "description", "Search query."),
         "kbIds", orderedMap("type", "string", "description", "Optional comma-separated knowledge base ids."),
         "topK", orderedMap("type", "integer", "description", "Number of results, default 5, maximum 10."));
-    Map<String, Object> inputSchema = orderedMap(
+    Map<String, Object> searchInputSchema = orderedMap(
         "type", "object",
-        "properties", properties,
+        "properties", searchProperties,
         "required", List.of("query"));
-    Map<String, Object> tool = orderedMap(
+    Map<String, Object> listTool = orderedMap(
+        "name", "list_knowledge_bases",
+        "description", "List readable RAGForge knowledge bases with ids, names, counts, and descriptions.",
+        "inputSchema", orderedMap("type", "object", "properties", Map.of()));
+    Map<String, Object> searchTool = orderedMap(
         "name", "search_knowledge",
-        "description", "Search readable RAGForge knowledge bases with hybrid retrieval and return cited snippets.",
-        "inputSchema", inputSchema);
-    return Map.of("tools", List.of(tool));
+        "description",
+            "Search readable RAGForge knowledge bases with hybrid retrieval and return cited snippets. Prefer passing kbIds selected from list_knowledge_bases.",
+        "inputSchema", searchInputSchema);
+    return Map.of("tools", List.of(listTool, searchTool));
   }
 
   private Map<String, Object> callTool(Map<String, Object> params) {
     String name = asString(params.get("name"));
-    if (!"search_knowledge".equals(name) && !"searchKnowledgeBase".equals(name)) {
-      return toolText("Unknown tool: " + name, true);
+    if ("list_knowledge_bases".equals(name) || "listKnowledgeBases".equals(name)) {
+      return toolText(tools.listKnowledgeBases(), false);
     }
-    Map<String, Object> arguments = map(params.get("arguments"));
-    String query = asString(arguments.get("query"));
-    if (query == null || query.isBlank()) {
-      return toolText("Missing required argument: query", true);
+    if ("search_knowledge".equals(name) || "searchKnowledgeBase".equals(name)) {
+      Map<String, Object> arguments = map(params.get("arguments"));
+      String query = asString(arguments.get("query"));
+      if (query == null || query.isBlank()) {
+        return toolText("Missing required argument: query", true);
+      }
+      String kbIds = normalizeKbIds(arguments.get("kbIds"));
+      int topK = intValue(arguments.get("topK"), 5);
+      String result = tools.searchKnowledgeBase(query, kbIds, topK);
+      return toolText(result, false);
     }
-    String kbIds = normalizeKbIds(arguments.get("kbIds"));
-    int topK = intValue(arguments.get("topK"), 5);
-    String result = tools.searchKnowledgeBase(query, kbIds, topK);
-    return toolText(result, false);
+    return toolText("Unknown tool: " + name, true);
   }
 
   private ResponseEntity<Map<String, Object>> ok(Object id, Map<String, Object> result) {

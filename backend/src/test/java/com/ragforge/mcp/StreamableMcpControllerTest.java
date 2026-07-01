@@ -53,7 +53,7 @@ class StreamableMcpControllerTest {
   }
 
   @Test
-  void toolsList_exposesSearchKnowledgeTool() {
+  void toolsList_exposesListAndSearchKnowledgeTools() {
     StreamableMcpController controller = new StreamableMcpController(tools);
 
     ResponseEntity<?> response =
@@ -62,9 +62,34 @@ class StreamableMcpControllerTest {
     Map<?, ?> body = (Map<?, ?>) response.getBody();
     Map<?, ?> result = (Map<?, ?>) body.get("result");
     List<?> toolList = (List<?>) result.get("tools");
-    Map<?, ?> tool = (Map<?, ?>) toolList.getFirst();
-    assertThat(tool.get("name")).isEqualTo("search_knowledge");
-    assertThat(tool.get("inputSchema")).isInstanceOf(Map.class);
+    List<String> toolNames = toolList.stream().map(tool -> String.valueOf(((Map<?, ?>) tool).get("name"))).toList();
+    assertThat(toolNames).containsExactly("list_knowledge_bases", "search_knowledge");
+    assertThat(((Map<?, ?>) toolList.getFirst()).get("inputSchema")).isInstanceOf(Map.class);
+    assertThat(((Map<?, ?>) toolList.get(1)).get("inputSchema")).isInstanceOf(Map.class);
+  }
+
+  @Test
+  void toolsCall_invokesListKnowledgeBases() {
+    when(tools.listKnowledgeBases()).thenReturn("available kbs");
+    StreamableMcpController controller = new StreamableMcpController(tools);
+
+    ResponseEntity<?> response =
+        controller.handle(
+            Map.of(
+                "jsonrpc",
+                "2.0",
+                "id",
+                3,
+                "method",
+                "tools/call",
+                "params",
+                Map.of("name", "list_knowledge_bases", "arguments", Map.of())));
+
+    Map<?, ?> body = (Map<?, ?>) response.getBody();
+    Map<?, ?> result = (Map<?, ?>) body.get("result");
+    List<?> content = (List<?>) result.get("content");
+    assertThat(((Map<?, ?>) content.getFirst()).get("text")).isEqualTo("available kbs");
+    assertThat(result.get("isError")).isEqualTo(false);
   }
 
   @Test
