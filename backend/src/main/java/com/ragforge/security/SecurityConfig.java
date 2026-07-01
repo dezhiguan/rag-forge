@@ -68,6 +68,9 @@ public class SecurityConfig {
                     .hasRole("METRICS_READER")
                     .requestMatchers("/api/v1/.well-known/ragforge-admin-backend-jwks.json").permitAll()
                     .requestMatchers("/api/v1/events/**").permitAll()
+                    // SSE 未读数推送：EventSource 不能带 Authorization header，故放行到 Controller，
+                    // 由 NotificationSseService 用 query-param 的 token 自行验签鉴权。
+                    .requestMatchers("/api/v1/notifications/stream").permitAll()
                     .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/documents", "/api/v1/internal/**", "/mcp", "/mcp/**", "/sse", "/sse/**")
                     .access(
                         (authentication, context) ->

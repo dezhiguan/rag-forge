@@ -86,6 +86,21 @@ class InvitationServiceTest {
   }
 
   @Test
+  void invite_registeredUser_pushesUnreadToInvitee() {
+    when(orgMemberMapper.isOrgAdmin(16L, 7L)).thenReturn(true);
+    when(organizationMapper.selectById(16L)).thenReturn(organization(16L, "TEAM"));
+    when(gatewayClient.resolveByPhone("13800000000"))
+        .thenReturn(Map.of("registered", true, "authUserId", 88L, "maskedPhone", "138****0000"));
+    when(orgMemberMapper.isMember(16L, 88L)).thenReturn(false);
+    when(invitationMapper.selectCount(any())).thenReturn(0L);
+
+    invitationService.invite(16L, "13800000000", "MEMBER");
+
+    // 被邀请方应实时收到未读推送（无需刷新）
+    verify(notificationPusher).pushUnread(88L);
+  }
+
+  @Test
   void invite_unregisteredUser_skipsNotification() {
     when(orgMemberMapper.isOrgAdmin(16L, 7L)).thenReturn(true);
     when(organizationMapper.selectById(16L)).thenReturn(organization(16L, "TEAM"));

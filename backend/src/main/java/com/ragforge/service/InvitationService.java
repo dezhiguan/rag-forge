@@ -114,6 +114,8 @@ public class InvitationService {
       n.setRefId(inv.getId());
       n.setCreatedAt(now);
       notificationMapper.insert(n);
+      // 事务提交后推送，让被邀请方无需刷新即实时看到邀请。
+      pushAfterCommit(inviteeUserId);
     }
 
     Map<String, Object> out = new LinkedHashMap<>();
