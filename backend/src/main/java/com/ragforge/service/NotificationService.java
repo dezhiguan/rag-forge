@@ -53,6 +53,17 @@ public class NotificationService {
 
   public void markRead(Long id) {
     Long uid = currentUserId();
+    // 先校验通知存在且属于当前用户：不存在 / 越权他人通知一律 404（不泄露是否存在），
+    // 避免"标记不存在的通知""越权标记他人通知"都静默返回 200 success。
+    Long owned =
+        notificationMapper.selectCount(
+            new LambdaQueryWrapper<Notification>()
+                .eq(Notification::getId, id)
+                .eq(Notification::getUserId, uid));
+    if (owned == null || owned == 0) {
+      throw new BizException(404, "NOTIFICATION_NOT_FOUND");
+    }
+    // 已读则幂等（update 命中 0 行也不报错），仅未读时置 readAt。
     Notification patch = new Notification();
     patch.setReadAt(LocalDateTime.now());
     notificationMapper.update(

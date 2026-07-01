@@ -60,12 +60,24 @@ class NotificationServiceTest {
 
   @Test
   void markRead_updatesCurrentUsersUnreadNotification() {
+    when(notificationMapper.selectCount(any())).thenReturn(1L);
     ArgumentCaptor<Notification> patch = ArgumentCaptor.forClass(Notification.class);
 
     notificationService.markRead(11L);
 
     verify(notificationMapper).update(patch.capture(), any());
     assertThat(patch.getValue().getReadAt()).isNotNull();
+  }
+
+  @Test
+  void markRead_nonexistentOrNotOwned_throws404AndDoesNotUpdate() {
+    // 不存在的 id / 越权他人通知：owned 计数为 0 → 404，且不执行 update
+    when(notificationMapper.selectCount(any())).thenReturn(0L);
+
+    assertThatThrownBy(() -> notificationService.markRead(999L))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
+    verify(notificationMapper, org.mockito.Mockito.never()).update(any(Notification.class), any());
   }
 
   @Test
