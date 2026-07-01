@@ -16,6 +16,8 @@ import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
+import com.ragforge.storage.ChunkImageResolver;
+import java.util.Map;
 import com.ragforge.security.KbAccessGuard;
 import java.util.List;
 import java.util.Set;
@@ -32,6 +34,7 @@ class RagForgeMcpToolsTest {
   @Mock private AnswerService answerService;
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private KbAccessGuard kbAccessGuard;
+  @Mock private ChunkImageResolver chunkImageResolver;
 
   @InjectMocks private RagForgeMcpTools tools;
 
@@ -74,6 +77,27 @@ class RagForgeMcpToolsTest {
     assertThat(result).contains("找到 1 条相关内容");
     assertThat(result).contains("intro.pdf");
     assertThat(result).contains("RAG stands for Retrieval Augmented Generation");
+  }
+
+  @Test
+  void searchKnowledgeBase_imageChunk_appendsPresignedImageUrl() {
+    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(1L));
+    SearchResult img = new SearchResult();
+    img.setChunkId(42L);
+    img.setContent("架构图");
+    img.setFilename("arch.pdf");
+    RetrievalOutput output =
+        new RetrievalOutput(List.of(img), 80L, "hybrid", null, null, null, null, null);
+    when(retrievalService.retrieve(
+            anyString(), anyList(), any(), anyString(), any(), anyInt(), anyInt(), any()))
+        .thenReturn(output);
+    // 批量解析：按结果中的 chunkId 返回预签名 URL
+    when(chunkImageResolver.presignedUrls(anyList()))
+        .thenReturn(Map.of(42L, "https://oss.example/presigned/arch.png"));
+
+    String result = tools.searchKnowledgeBase("架构图", null, 5);
+
+    assertThat(result).contains("图片：https://oss.example/presigned/arch.png");
   }
 
   @Test

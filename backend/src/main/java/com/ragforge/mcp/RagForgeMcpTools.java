@@ -8,7 +8,9 @@ import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
+import com.ragforge.search.SearchResult;
 import com.ragforge.security.KbAccessGuard;
+import com.ragforge.storage.ChunkImageResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -18,6 +20,8 @@ import org.springframework.stereotype.Component;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -30,11 +34,13 @@ public class RagForgeMcpTools {
     private final AnswerService answerService;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KbAccessGuard kbAccessGuard;
+    private final ChunkImageResolver chunkImageResolver;
 
     @Tool(name = "search_knowledge",
             description = """
         搜索 RAGForge 知识库，返回最相关的文本片段。
         支持混合检索（向量 + 关键词）。
+        若命中的片段为图片，会附带一个有时效的图片可访问 URL（"图片："行）。
         适合用于：简历分析、JD 匹配、面试题参考、行业知识查询。
         """)
     public String searchKnowledgeBase(
@@ -58,15 +64,29 @@ public class RagForgeMcpTools {
                 return "未找到相关内容（query=" + query + "）";
             }
 
+            List<SearchResult> results = output.getResults();
+            // 批量回填图片可访问 URL：一条 JOIN 取 image_key+bucket 再批量预签名（仅 IMAGE chunk 有值）。
+            Map<Long, String> imageUrls =
+                    chunkImageResolver.presignedUrls(
+                            results.stream()
+                                    .map(SearchResult::getChunkId)
+                                    .filter(Objects::nonNull)
+                                    .collect(Collectors.toList()));
+
             StringBuilder sb = new StringBuilder();
-            sb.append("找到 ").append(output.getResults().size()).append(" 条相关内容：\n\n");
-            for (int i = 0; i < output.getResults().size(); i++) {
-                var r = output.getResults().get(i);
+            sb.append("找到 ").append(results.size()).append(" 条相关内容：\n\n");
+            for (int i = 0; i < results.size(); i++) {
+                SearchResult r = results.get(i);
                 sb.append("[").append(i + 1).append("] ");
                 if (r.getFilename() != null) {
                     sb.append("来源：").append(r.getFilename()).append("\n");
                 }
-                sb.append(r.getContent()).append("\n\n");
+                sb.append(r.getContent()).append("\n");
+                String imageUrl = imageUrls.get(r.getChunkId());
+                if (imageUrl != null && !imageUrl.isBlank()) {
+                    sb.append("图片：").append(imageUrl).append("\n");
+                }
+                sb.append("\n");
             }
             return sb.toString();
         } catch (Exception e) {
