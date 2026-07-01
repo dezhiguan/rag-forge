@@ -125,6 +125,70 @@
       </div>
     </div>
 
+    <!-- 创建表单：可视化选范围 / 知识库 / 过期 -->
+    <div v-if="showCreateForm" class="mask" @click.self="showCreateForm = false">
+      <div class="reveal cf">
+        <div class="rv-head">
+          <h3>创建 API key</h3>
+          <span class="rv-x" @click="showCreateForm = false">×</span>
+        </div>
+        <div class="cf-body">
+          <label class="cf-field">
+            <span class="cf-label">名称 *</span>
+            <input class="cf-input" v-model="createForm.keyName" placeholder="如 careermate-prod" />
+          </label>
+
+          <div class="cf-field">
+            <span class="cf-label">可访问范围</span>
+            <label class="cf-radio">
+              <input type="radio" value="ORG_ALL" v-model="createForm.scopeMode" />
+              本组织全部知识库（ORG_ALL）
+            </label>
+            <label class="cf-radio">
+              <input type="radio" value="KB_LIST" v-model="createForm.scopeMode" />
+              指定知识库（KB_LIST）
+            </label>
+          </div>
+
+          <div v-if="createForm.scopeMode === 'KB_LIST'" class="cf-field">
+            <span class="cf-label">选择知识库（仅本组织）</span>
+            <div class="cf-kblist">
+              <label v-for="kb in orgKbs" :key="kb.id" class="cf-kb">
+                <input type="checkbox" :value="kb.id" v-model="createForm.allowedKbIds" />
+                {{ kb.name }}
+              </label>
+              <div v-if="!orgKbs.length" class="cf-empty">本组织暂无知识库</div>
+            </div>
+          </div>
+
+          <div class="cf-field">
+            <span class="cf-label">权限级别</span>
+            <span class="cf-static">只读（READ）· 本期仅支持只读</span>
+          </div>
+
+          <div class="cf-field">
+            <span class="cf-label">有效期</span>
+            <label class="cf-radio">
+              <input type="radio" value="never" v-model="createForm.expiresMode" /> 永不过期
+            </label>
+            <label class="cf-radio">
+              <input type="radio" value="date" v-model="createForm.expiresMode" /> 指定过期日期
+            </label>
+            <input
+              v-if="createForm.expiresMode === 'date'"
+              type="date"
+              class="cf-date"
+              v-model="createForm.expiresAt"
+            />
+          </div>
+        </div>
+        <div class="rv-foot">
+          <button class="btn" @click="showCreateForm = false">取消</button>
+          <button class="btn-primary" :disabled="creating" @click="submitCreate">创建</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 创建成功：弹窗一次性展示明文 key -->
     <div v-if="showReveal" class="mask" @click.self="closeReveal">
       <div class="reveal">
@@ -149,6 +213,7 @@ import { useOrg } from '../composables/useOrg'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { listApiKeys, createApiKey, renameApiKey, deleteApiKey, governanceSearchKeys, revokeApiKey } from '../api/apikey'
+import { listKb } from '../api/kb'
 
 const { current, isPlatform, currentOrgId } = useOrg()
 const toast = useToast()
@@ -159,6 +224,17 @@ const loading = ref(false)
 const creating = ref(false)
 const newKey = ref('')
 const showReveal = ref(false)
+// 创建表单（可视化选范围/KB/过期）
+const showCreateForm = ref(false)
+const orgKbs = ref([])
+const createForm = ref({
+  keyName: '',
+  scopeMode: 'ORG_ALL',
+  allowedKbIds: [],
+  accessLevel: 'READ',
+  expiresMode: 'never',
+  expiresAt: '',
+})
 // 定向治理（平台破玻璃）
 const govQuery = ref('')
 const govResults = ref([])
@@ -209,20 +285,52 @@ async function reload() {
 
 async function onCreate() {
   if (creating.value) return
-  const name = await confirmDialog({
-    title: '创建 API key',
-    message: '名称',
-    icon: '',
-    input: true,
-    inputPlaceholder: '输入 API key 的名称',
-    confirmText: '创建',
-  })
-  if (!name) return
+  createForm.value = {
+    keyName: '',
+    scopeMode: 'ORG_ALL',
+    allowedKbIds: [],
+    accessLevel: 'READ',
+    expiresMode: 'never',
+    expiresAt: '',
+  }
+  showCreateForm.value = true
+  // 拉本组织知识库供 KB_LIST 选择（listKb 已按当前组织过滤）
+  try {
+    const res = await listKb()
+    orgKbs.value = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+  } catch {
+    orgKbs.value = []
+  }
+}
+
+async function submitCreate() {
+  if (creating.value) return
+  const name = createForm.value.keyName.trim()
+  if (!name) {
+    toast.warning('请输入 API key 名称')
+    return
+  }
+  if (createForm.value.scopeMode === 'KB_LIST' && createForm.value.allowedKbIds.length === 0) {
+    toast.warning('指定知识库范围时，请至少选择一个知识库')
+    return
+  }
+  const payload = { keyName: name, scopeMode: createForm.value.scopeMode, accessLevel: 'READ' }
+  if (createForm.value.scopeMode === 'KB_LIST') {
+    payload.allowedKbIds = createForm.value.allowedKbIds
+  }
+  if (createForm.value.expiresMode === 'date') {
+    if (!createForm.value.expiresAt) {
+      toast.warning('请选择过期日期')
+      return
+    }
+    payload.expiresAt = `${createForm.value.expiresAt}T00:00:00`
+  }
   creating.value = true
   try {
-    const res = await createApiKey(String(name).trim())
+    const res = await createApiKey(payload)
     const created = res?.data ?? res
     newKey.value = created?.apiKey || ''
+    showCreateForm.value = false
     showReveal.value = true
     await reload()
   } catch (e) {
@@ -369,6 +477,22 @@ tbody tr:last-child td { border-bottom: 0; }
 .rv-foot { display: flex; justify-content: flex-end; gap: 10px; }
 .rv-foot .btn { height: 38px; padding: 0 18px; }
 .rv-foot .btn-primary { height: 38px; background: #0f1726; }
+
+/* 创建表单 */
+.reveal.cf { width: 520px; }
+.cf-body { display: flex; flex-direction: column; gap: 16px; margin: 6px 0 18px; max-height: 60vh; overflow-y: auto; }
+.cf-field { display: flex; flex-direction: column; gap: 7px; }
+.cf-label { font-size: 12.5px; font-weight: 600; color: var(--slate); }
+.cf-input { border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; font-size: 13px; }
+.cf-input:focus { outline: none; border-color: var(--primary); }
+.cf-radio { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--slate); cursor: pointer; }
+.cf-radio input { width: 15px; height: 15px; }
+.cf-static { font-size: 12.5px; color: var(--text-muted); }
+.cf-kblist { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; }
+.cf-kb { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--slate); cursor: pointer; }
+.cf-kb input { width: 15px; height: 15px; }
+.cf-empty { font-size: 12.5px; color: var(--text-muted); padding: 4px 0; }
+.cf-date { border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; font-size: 13px; width: fit-content; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .sec-title { font-size: 13px; font-weight: 700; color: var(--navy); margin: 0 0 4px; }
