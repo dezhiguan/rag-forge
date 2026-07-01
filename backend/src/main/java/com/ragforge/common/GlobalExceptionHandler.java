@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
 @RestControllerAdvice
@@ -108,6 +110,14 @@ public class GlobalExceptionHandler {
   public ResponseEntity<Result<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
     return ResponseEntity.badRequest()
         .body(Result.fail(400, "MISSING_PARAM: " + ex.getParameterName()));
+  }
+
+  // 未映射的路径（如误访问不存在的接口）应为 404，而非落到通用 Exception → 500。
+  // 之前 /api/auth/me 等未定义路径被当成内部异常返回 500 INTERNAL_ERROR，既不友好也误导排障。
+  @ExceptionHandler({NoHandlerFoundException.class, NoResourceFoundException.class})
+  public ResponseEntity<Result<Void>> handleNotFound(Exception ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(Result.error(404, "NOT_FOUND", "请求的资源不存在"));
   }
 
   @ExceptionHandler(Exception.class)
