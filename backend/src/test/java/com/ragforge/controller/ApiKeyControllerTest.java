@@ -1,5 +1,6 @@
 package com.ragforge.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -11,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 import com.ragforge.mapper.OrganizationMapper;
+import com.ragforge.model.dto.CreateApiKeyCommand;
 import com.ragforge.model.entity.ApiKey;
 import com.ragforge.service.ApiKeyService;
 import java.util.List;
@@ -60,7 +62,7 @@ class ApiKeyControllerTest {
     key.setId(2L);
     key.setKeyName("new-key");
     key.setApiKey("sk-rf-new");
-    when(apiKeyService.create("new-key")).thenReturn(key);
+    when(apiKeyService.create(any(CreateApiKeyCommand.class))).thenReturn(key);
 
     mockMvc
         .perform(

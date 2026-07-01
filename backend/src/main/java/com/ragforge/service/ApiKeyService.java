@@ -1,5 +1,6 @@
 package com.ragforge.service;
 
+import com.ragforge.model.dto.CreateApiKeyCommand;
 import com.ragforge.model.entity.ApiKey;
 import java.util.List;
 
@@ -14,7 +15,8 @@ public interface ApiKeyService {
   /** 定向吊销（仅超管破玻璃，强制原因 + 审计）。 */
   ApiKey revokeWithReason(Long id, String reason);
 
-  ApiKey create(String keyName);
+  /** 创建 key（组织 OWNER/ADMIN；范围/级别/过期见命令）。 */
+  ApiKey create(CreateApiKeyCommand cmd);
 
   /** 重命名 key（仅所属组织 admin）。 */
   ApiKey rename(Long id, String keyName);

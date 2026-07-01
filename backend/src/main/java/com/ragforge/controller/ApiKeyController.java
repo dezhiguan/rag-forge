@@ -2,6 +2,7 @@ package com.ragforge.controller;
 
 import com.ragforge.common.Result;
 import com.ragforge.mapper.OrganizationMapper;
+import com.ragforge.model.dto.CreateApiKeyCommand;
 import com.ragforge.model.entity.ApiKey;
 import com.ragforge.model.entity.Organization;
 import com.ragforge.service.ApiKeyService;
@@ -45,7 +46,14 @@ public class ApiKeyController {
 
   @PostMapping
   public Result<ApiKeyCreatedView> create(@RequestBody CreateApiKeyRequest req) {
-    return Result.ok(ApiKeyCreatedView.from(apiKeyService.create(req.getKeyName())));
+    CreateApiKeyCommand cmd =
+        new CreateApiKeyCommand(
+            req.getKeyName(),
+            req.getScopeMode(),
+            req.getAllowedKbIds(),
+            req.getAccessLevel(),
+            req.getExpiresAt());
+    return Result.ok(ApiKeyCreatedView.from(apiKeyService.create(cmd)));
   }
 
   @PutMapping("/{id}/enable")
@@ -96,6 +104,14 @@ public class ApiKeyController {
   @lombok.Data
   public static class CreateApiKeyRequest {
     private String keyName;
+    /** ORG_ALL(默认) | KB_LIST。 */
+    private String scopeMode;
+    /** KB_LIST 模式授权的知识库 id。 */
+    private List<Long> allowedKbIds;
+    /** READ(本期仅此) | READ_WRITE。 */
+    private String accessLevel;
+    /** 过期时间；空=永不过期。 */
+    private LocalDateTime expiresAt;
   }
 
   @lombok.Data
@@ -112,12 +128,15 @@ public class ApiKeyController {
       Long id,
       String keyName,
       String keyMasked,
+      String keyPrefix,
       Boolean enabled,
       Integer rateLimit,
       Long orgId,
       String orgName,
-      String scopes,
+      String scopeMode,
+      String accessLevel,
       String allowedKbIds,
+      LocalDateTime expiresAt,
       LocalDateTime lastUsedAt,
       LocalDateTime createdAt) {
 
@@ -126,12 +145,15 @@ public class ApiKeyController {
           k.getId(),
           k.getKeyName(),
           mask(k.getApiKey()),
+          k.getKeyPrefix(),
           k.getEnabled(),
           k.getRateLimit(),
           k.getOrgId(),
           k.getOrgId() == null ? null : orgNames.get(k.getOrgId()),
-          k.getScopes(),
+          k.getScopeMode(),
+          k.getAccessLevel(),
           k.getAllowedKbIds(),
+          k.getExpiresAt(),
           k.getLastUsedAt(),
           k.getCreatedAt());
     }
@@ -145,11 +167,29 @@ public class ApiKeyController {
   }
 
   public record ApiKeyCreatedView(
-      Long id, String keyName, String apiKey, Boolean enabled, Long orgId, LocalDateTime createdAt) {
+      Long id,
+      String keyName,
+      String apiKey,
+      String keyPrefix,
+      Boolean enabled,
+      Long orgId,
+      String scopeMode,
+      String accessLevel,
+      LocalDateTime expiresAt,
+      LocalDateTime createdAt) {
 
     static ApiKeyCreatedView from(ApiKey k) {
       return new ApiKeyCreatedView(
-          k.getId(), k.getKeyName(), k.getApiKey(), k.getEnabled(), k.getOrgId(), k.getCreatedAt());
+          k.getId(),
+          k.getKeyName(),
+          k.getApiKey(),
+          k.getKeyPrefix(),
+          k.getEnabled(),
+          k.getOrgId(),
+          k.getScopeMode(),
+          k.getAccessLevel(),
+          k.getExpiresAt(),
+          k.getCreatedAt());
     }
   }
 }

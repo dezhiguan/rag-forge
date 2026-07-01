@@ -10,8 +10,11 @@ import static org.mockito.Mockito.lenient;
 
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.ApiKeyMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.mapper.OrgMemberMapper;
+import com.ragforge.model.dto.CreateApiKeyCommand;
 import com.ragforge.model.entity.ApiKey;
+import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.security.AdminOverrideHolder;
 import com.ragforge.security.ApiKeyInterceptor;
 import com.ragforge.security.OrgContextHolder;
@@ -32,6 +35,7 @@ class ApiKeyServiceImplTest {
   @Mock private ApiKeyMapper apiKeyMapper;
   @Mock private ApiKeyInterceptor apiKeyInterceptor;
   @Mock private OrgMemberMapper orgMemberMapper;
+  @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
 
   @InjectMocks private ApiKeyServiceImpl apiKeyService;
 
@@ -145,9 +149,13 @@ class ApiKeyServiceImplTest {
     verify(apiKeyMapper).update(any(), any());
   }
 
+  private CreateApiKeyCommand cmd(String name) {
+    return new CreateApiKeyCommand(name, null, null, null, null);
+  }
+
   @Test
-  void create_generatesSkRfKeyAndResetsCache() {
-    ApiKey created = apiKeyService.create("integration");
+  void create_defaultsOrgAllReadAndGeneratesHashPrefix() {
+    ApiKey created = apiKeyService.create(cmd("integration"));
 
     ArgumentCaptor<ApiKey> captor = ArgumentCaptor.forClass(ApiKey.class);
     verify(apiKeyMapper).insert(captor.capture());
@@ -160,7 +168,96 @@ class ApiKeyServiceImplTest {
     assertThat(saved.getEnabled()).isTrue();
     assertThat(saved.getRateLimit()).isEqualTo(100);
     assertThat(saved.getOrgId()).isEqualTo(16L);
+    // 默认范围/级别
+    assertThat(saved.getScopeMode()).isEqualTo("ORG_ALL");
+    assertThat(saved.getAccessLevel()).isEqualTo("READ");
+    // hash + 前缀
+    assertThat(saved.getKeyHash()).hasSize(64).isEqualTo(ApiKeyServiceImpl.sha256Hex(saved.getApiKey()));
+    assertThat(saved.getKeyPrefix()).isEqualTo(saved.getApiKey().substring(0, 12));
+    assertThat(saved.getExpiresAt()).isNull();
     assertThat(created.getApiKey()).isEqualTo(saved.getApiKey());
+  }
+
+  @Test
+  void create_blankName_throws400() {
+    assertThatThrownBy(() -> apiKeyService.create(cmd("  ")))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(400));
+    verify(apiKeyMapper, never()).insert(any(ApiKey.class));
+  }
+
+  @Test
+  void create_readWriteRequestForcedToRead() {
+    apiKeyService.create(new CreateApiKeyCommand("k", "ORG_ALL", null, "READ_WRITE", null));
+    ArgumentCaptor<ApiKey> captor = ArgumentCaptor.forClass(ApiKey.class);
+    verify(apiKeyMapper).insert(captor.capture());
+    assertThat(captor.getValue().getAccessLevel()).isEqualTo("READ");
+  }
+
+  @Test
+  void create_withExpiresAt_persisted() {
+    java.time.LocalDateTime exp = java.time.LocalDateTime.now().plusDays(30);
+    apiKeyService.create(new CreateApiKeyCommand("k", "ORG_ALL", null, "READ", exp));
+    ArgumentCaptor<ApiKey> captor = ArgumentCaptor.forClass(ApiKey.class);
+    verify(apiKeyMapper).insert(captor.capture());
+    assertThat(captor.getValue().getExpiresAt()).isEqualTo(exp);
+  }
+
+  @Test
+  void create_kbListEmpty_throws400() {
+    assertThatThrownBy(
+            () -> apiKeyService.create(new CreateApiKeyCommand("k", "KB_LIST", List.of(), "READ", null)))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(400));
+    verify(apiKeyMapper, never()).insert(any(ApiKey.class));
+  }
+
+  @Test
+  void create_kbListBelongingToOrg_ok() {
+    KnowledgeBase kb = new KnowledgeBase();
+    kb.setId(100L);
+    kb.setOrgId(16L);
+    when(knowledgeBaseMapper.selectBatchIds(any())).thenReturn(List.of(kb));
+
+    apiKeyService.create(new CreateApiKeyCommand("k", "KB_LIST", List.of(100L), "READ", null));
+
+    ArgumentCaptor<ApiKey> captor = ArgumentCaptor.forClass(ApiKey.class);
+    verify(apiKeyMapper).insert(captor.capture());
+    ApiKey saved = captor.getValue();
+    assertThat(saved.getScopeMode()).isEqualTo("KB_LIST");
+    assertThat(saved.getAllowedKbIds()).isEqualTo("[100]");
+  }
+
+  @Test
+  void create_kbListNotBelongingToOrg_throws403() {
+    KnowledgeBase kb = new KnowledgeBase();
+    kb.setId(200L);
+    kb.setOrgId(999L); // 他组织
+    when(knowledgeBaseMapper.selectBatchIds(any())).thenReturn(List.of(kb));
+
+    assertThatThrownBy(
+            () -> apiKeyService.create(new CreateApiKeyCommand("k", "KB_LIST", List.of(200L), "READ", null)))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(403));
+    verify(apiKeyMapper, never()).insert(any(ApiKey.class));
+  }
+
+  @Test
+  void create_kbListMissingKb_throws404() {
+    when(knowledgeBaseMapper.selectBatchIds(any())).thenReturn(List.of()); // 查不到
+
+    assertThatThrownBy(
+            () -> apiKeyService.create(new CreateApiKeyCommand("k", "KB_LIST", List.of(300L), "READ", null)))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
+  }
+
+  @Test
+  void create_nonOrgAdmin_throws403() {
+    when(orgMemberMapper.isOrgAdmin(16L, 7L)).thenReturn(false);
+    assertThatThrownBy(() -> apiKeyService.create(cmd("k")))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(403));
   }
 
   private void setAdminBreakglass() {

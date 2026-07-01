@@ -4,17 +4,25 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.ApiKeyMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.mapper.OrgMemberMapper;
+import com.ragforge.model.dto.CreateApiKeyCommand;
 import com.ragforge.model.entity.ApiKey;
+import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.security.AdminOverrideHolder;
 import com.ragforge.security.ApiKeyInterceptor;
 import com.ragforge.security.OrgContextHolder;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.ApiKeyService;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +35,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
   private final ApiKeyMapper apiKeyMapper;
   private final ApiKeyInterceptor apiKeyInterceptor;
   private final OrgMemberMapper orgMemberMapper;
+  private final KnowledgeBaseMapper knowledgeBaseMapper;
 
   /** 超管全平台视图（破玻璃）= 只读治理。 */
   public boolean isPlatformGovernance() {
@@ -106,9 +115,78 @@ public class ApiKeyServiceImpl implements ApiKeyService {
 
   @Override
   @Transactional
-  public ApiKey create(String keyName) {
+  public ApiKey create(CreateApiKeyCommand cmd) {
     Long orgId = OrgContextHolder.get();
     requireOrgAdmin(orgId); // 平台视图(orgId=null)无法创建 → 须下钻组织
+
+    String keyName = cmd == null ? null : cmd.keyName();
+    if (keyName == null || keyName.isBlank()) {
+      throw new BizException(400, "KEY_NAME_REQUIRED");
+    }
+    String scopeMode = normalizeScopeMode(cmd.scopeMode());
+    // 本期仅 READ（READ_WRITE 暂不开放，无写接口接受 key）。
+    String accessLevel = "READ";
+
+    String allowedKbIdsJson = null;
+    if ("KB_LIST".equals(scopeMode)) {
+      List<Long> kbIds = cmd.allowedKbIds();
+      if (kbIds == null || kbIds.isEmpty()) {
+        throw new BizException(400, "ALLOWED_KB_IDS_REQUIRED");
+      }
+      validateKbsBelongToOrg(kbIds, orgId);
+      allowedKbIdsJson = toJsonArray(kbIds);
+    }
+
+    String key = generateKey();
+    ApiKey apiKey = new ApiKey();
+    apiKey.setKeyName(keyName.trim());
+    apiKey.setApiKey(key); // 明文仍存（批次2 切 hash 优先 + 明文回退）
+    apiKey.setKeyHash(sha256Hex(key));
+    apiKey.setKeyPrefix(key.substring(0, Math.min(12, key.length())));
+    apiKey.setEnabled(true);
+    apiKey.setRateLimit(100);
+    apiKey.setOrgId(orgId);
+    apiKey.setScopeMode(scopeMode);
+    apiKey.setAccessLevel(accessLevel);
+    apiKey.setExpiresAt(cmd.expiresAt());
+    if (allowedKbIdsJson != null) {
+      apiKey.setAllowedKbIds(allowedKbIdsJson);
+    }
+    apiKey.setCreatedAt(LocalDateTime.now());
+    apiKeyMapper.insert(apiKey);
+    apiKeyInterceptor.resetKeyCache();
+    return apiKey;
+  }
+
+  private String normalizeScopeMode(String raw) {
+    String v = raw == null ? "" : raw.trim().toUpperCase();
+    if ("KB_LIST".equals(v)) {
+      return "KB_LIST";
+    }
+    return "ORG_ALL"; // 默认
+  }
+
+  /** KB_LIST 授权的库必须都存在且归属当前组织，否则拒绝（防越权注入他组织库）。 */
+  private void validateKbsBelongToOrg(List<Long> kbIds, Long orgId) {
+    Set<Long> distinct = new LinkedHashSet<>(kbIds);
+    List<KnowledgeBase> kbs = knowledgeBaseMapper.selectBatchIds(distinct);
+    if (kbs.size() != distinct.size()) {
+      throw new BizException(404, "KB_NOT_FOUND");
+    }
+    for (KnowledgeBase kb : kbs) {
+      if (kb.getOrgId() == null || !kb.getOrgId().equals(orgId)) {
+        throw new BizException(403, "KB_NOT_IN_ORG");
+      }
+    }
+  }
+
+  private String toJsonArray(List<Long> ids) {
+    return "["
+        + new LinkedHashSet<>(ids).stream().map(String::valueOf).collect(Collectors.joining(","))
+        + "]";
+  }
+
+  private String generateKey() {
     SecureRandom random = new SecureRandom();
     byte[] bytes = new byte[24];
     random.nextBytes(bytes);
@@ -116,18 +194,21 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     for (byte b : bytes) {
       hex.append(String.format("%02x", b));
     }
-    String key = "sk-rf-" + hex;
+    return "sk-rf-" + hex;
+  }
 
-    ApiKey apiKey = new ApiKey();
-    apiKey.setKeyName(keyName);
-    apiKey.setApiKey(key);
-    apiKey.setEnabled(true);
-    apiKey.setRateLimit(100);
-    apiKey.setOrgId(orgId);
-    apiKey.setCreatedAt(LocalDateTime.now());
-    apiKeyMapper.insert(apiKey);
-    apiKeyInterceptor.resetKeyCache();
-    return apiKey;
+  public static String sha256Hex(String s) {
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      byte[] digest = md.digest(s.getBytes(StandardCharsets.UTF_8));
+      StringBuilder sb = new StringBuilder(64);
+      for (byte b : digest) {
+        sb.append(String.format("%02x", b));
+      }
+      return sb.toString();
+    } catch (Exception e) {
+      throw new BizException(500, "HASH_ERROR");
+    }
   }
 
   @Override
