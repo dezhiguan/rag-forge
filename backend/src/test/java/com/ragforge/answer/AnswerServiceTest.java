@@ -57,6 +57,7 @@ class AnswerServiceTest {
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private DocumentMapper documentMapper;
   @Mock private ObjectStorage objectStorage;
+  @Mock private com.ragforge.storage.ChunkImageResolver chunkImageResolver;
   @Mock private AnswerJudgeProducer answerJudgeProducer;
   @Mock private com.ragforge.modelcenter.ModelResolver modelResolver;
   @Mock private com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
@@ -70,8 +71,7 @@ class AnswerServiceTest {
             retrievalService,
             new PromptBuilder(),
             llmService,
-            new CitationLinker(
-                documentMapper, objectStorage, org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class)),
+            new CitationLinker(chunkImageResolver),
             new GuardRails(),
             answerLogMapper,
             knowledgeBaseMapper,
@@ -202,18 +202,15 @@ class AnswerServiceTest {
         .thenReturn(output(List.of(hit(1, "TEXT"), image, hit(3, "TEXT"))));
     when(llmService.streamGenerate(any(LlmGenerateRequest.class), anyInt(), any()))
         .thenReturn(new LlmService.StreamResult("架构图显示服务依赖关系[2]", 100, 20, 50));
-    Document doc = new Document();
-    doc.setStorageBucket("bucket-a");
-    doc.setStorageKey("docs/original.pdf");
-    when(documentMapper.selectById(2L)).thenReturn(doc);
-    when(objectStorage.presignedGet(eq("bucket-a"), eq("images/doc-2/page-1.png"), any(Duration.class)))
-        .thenReturn("https://oss.example/image.png?sig=1");
+    // 批量解析：被引用的 IMAGE chunk(chunkId=2) 返回预签名 URL
+    when(chunkImageResolver.presignedUrls(anyList()))
+        .thenReturn(java.util.Map.of(2L, "https://oss.example/image.png?sig=1"));
 
     AnswerResponse response = answerService.answerBlocking(request());
 
     assertThat(response.getCitations()).hasSize(1);
     assertThat(response.getCitations().get(0).getImageUrl()).isEqualTo("https://oss.example/image.png?sig=1");
-    verify(objectStorage).presignedGet(eq("bucket-a"), eq("images/doc-2/page-1.png"), any(Duration.class));
+    verify(chunkImageResolver).presignedUrls(anyList());
   }
 
   @Test

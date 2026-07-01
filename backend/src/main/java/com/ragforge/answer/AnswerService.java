@@ -34,6 +34,7 @@ import com.ragforge.search.SearchResult;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.LlmService;
+import com.ragforge.storage.ChunkImageResolver;
 import com.ragforge.storage.ObjectStorage;
 import com.ragforge.web.TraceIds;
 import java.io.IOException;
@@ -426,20 +427,18 @@ class PromptBuilder {
 @RequiredArgsConstructor
 class CitationLinker {
   private static final Pattern REF = Pattern.compile("\\[(\\d+)]");
-  private static final Duration IMAGE_URL_TTL = Duration.ofMinutes(5);
 
-  private final DocumentMapper documentMapper;
-  private final ObjectStorage objectStorage;
-  private final JdbcTemplate jdbcTemplate;
+  private final ChunkImageResolver chunkImageResolver;
 
   List<Citation> link(String answer, List<SearchResult> chunks) {
     Set<Integer> citedIndices = extractIndices(answer);
     if (citedIndices.isEmpty()) {
       return List.of();
     }
-    // 检索链路（VectorSearchService/EsSearchService）不回填 image_key 列，SearchResult.imageKey
-    // 恒为 null。这里为被引用的 IMAGE chunk 单独批量取真实 image_key（列缺失时降级为空 map）。
-    Map<Long, String> imageKeyByChunk = fetchImageKeys(citedImageChunkIds(citedIndices, chunks));
+    // 检索链路不回填 image_key，故被引用的 IMAGE chunk 统一走 ChunkImageResolver 批量解析：
+    // 一条 JOIN 取 image_key+bucket 再批量预签名（列缺失时降级为空 map）。
+    Map<Long, String> imageUrlByChunk =
+        chunkImageResolver.presignedUrls(citedImageChunkIds(citedIndices, chunks));
     List<Citation> citations = new ArrayList<>();
     for (int idx : citedIndices) {
       if (idx < 1 || chunks == null || idx > chunks.size()) {
@@ -453,8 +452,7 @@ class CitationLinker {
       citation.setModality(textOrDefault(c.getChunkModality(), "TEXT"));
       citation.setTextSnippet(truncate(c.getContent(), 300));
       if ("IMAGE".equalsIgnoreCase(c.getChunkModality())) {
-        String imageKey = textOrDefault(c.getImageKey(), imageKeyByChunk.get(c.getChunkId()));
-        citation.setImageUrl(imageUrl(c, imageKey));
+        citation.setImageUrl(imageUrlByChunk.get(c.getChunkId()));
       }
       citations.add(citation);
     }
@@ -479,34 +477,6 @@ class CitationLinker {
     return ids;
   }
 
-  /**
-   * 批量取 image_key（原生 JDBC，与 DocumentServiceImpl 同一套路）。image_key 列在部分环境
-   * 可能缺失，捕获异常后降级为空 map：引用文本照常展示，仅缺图片缩略。
-   */
-  private Map<Long, String> fetchImageKeys(List<Long> ids) {
-    if (ids == null || ids.isEmpty()) {
-      return Map.of();
-    }
-    String placeholders = String.join(",", Collections.nCopies(ids.size(), "?"));
-    String sql = "SELECT id, image_key FROM document_chunks WHERE id IN (" + placeholders + ")";
-    Map<Long, String> map = new HashMap<>();
-    try {
-      jdbcTemplate.query(
-          sql,
-          ids.stream().filter(Objects::nonNull).toArray(),
-          rs -> {
-            long id = rs.getLong(1);
-            String key = rs.getString(2);
-            if (key != null && !key.isEmpty()) {
-              map.put(id, key);
-            }
-          });
-    } catch (Exception e) {
-      log.warn("fetchImageKeys skipped (image_key column likely missing): {}", e.getMessage());
-    }
-    return map;
-  }
-
   Set<Integer> extractIndices(String answer) {
     Set<Integer> indices = new LinkedHashSet<>();
     if (answer == null || answer.isBlank()) {
@@ -517,19 +487,6 @@ class CitationLinker {
       indices.add(Integer.parseInt(matcher.group(1)));
     }
     return indices;
-  }
-
-  private String imageUrl(SearchResult result, String imageKey) {
-    if (imageKey == null || imageKey.isBlank()) {
-      // 取不到 IMAGE chunk 的真实 image_key 时返回 null：不能回退去签原始文档 storageKey，
-      // 否则 PDF 等非图片对象会被前端 <img> 渲染成裂图。
-      return null;
-    }
-    Document doc = result.getDocId() == null ? null : documentMapper.selectById(result.getDocId());
-    if (doc == null || doc.getStorageBucket() == null || doc.getStorageBucket().isBlank()) {
-      return null;
-    }
-    return objectStorage.presignedGet(doc.getStorageBucket(), imageKey, IMAGE_URL_TTL);
   }
 
   private static String truncate(String value, int max) {
