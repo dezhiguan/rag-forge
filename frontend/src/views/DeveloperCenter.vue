@@ -263,8 +263,8 @@ const mcpText =
 // 与后端 RagForgeMcpTools 的 @Tool 定义保持一致（工具名即客户端可调用名）
 const mcpTools = [
   { ico: '🔍', name: 'search_knowledge', desc: '在可访问知识库内混合检索（向量+关键词），返回相关片段' },
-  { ico: '📚', name: 'listKnowledgeBases', desc: '列出可访问的知识库（含名称、文档数、片段数）' },
-  { ico: '💬', name: 'answerWithCitations', desc: '用知识库回答问题，返回带引用的答案（含图片 URL）' },
+  { ico: '📚', name: 'list_knowledge_bases', desc: '列出可访问的知识库（含名称、文档数、片段数）' },
+  { ico: '💬', name: 'answer_with_citations', desc: '用知识库回答问题，返回带引用的答案（含图片 URL）' },
 ]
 
 function fmt(s) {
