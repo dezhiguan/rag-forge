@@ -17,7 +17,6 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -89,6 +88,9 @@ public class RagForgeMcpTools {
                 sb.append("\n");
             }
             return sb.toString();
+        } catch (IllegalArgumentException e) {
+            // 参数错误（如 kbIds 格式非法）：显式回报，避免调用方误以为已限定知识库而实际被静默忽略。
+            return "参数错误：" + e.getMessage();
         } catch (Exception e) {
             log.warn("MCP searchKnowledgeBase failed: {}", e.getMessage());
             return "搜索失败：" + e.getMessage();
@@ -153,18 +155,28 @@ public class RagForgeMcpTools {
         return answerService.answerBlocking(request);
     }
 
+    /**
+     * 解析逗号分隔的 kbIds。空/未传 → 空列表（表示"搜索所有可访问库"）；
+     * 传了但含非法 token（如 "abc"）→ 抛 IllegalArgumentException，而不是静默返回空列表——
+     * 否则会退化为"搜索全部库"，调用方以为已限定范围实则被忽略（危险的边界）。
+     */
     private List<Long> parseKbIds(String kbIds) {
         if (kbIds == null || kbIds.isBlank()) {
             return List.of();
         }
-        try {
-            return Arrays.stream(kbIds.split(","))
-                    .map(String::trim)
-                    .filter(s -> !s.isBlank())
-                    .map(Long::parseLong)
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            return List.of();
+        List<Long> ids = new ArrayList<>();
+        for (String token : kbIds.split(",")) {
+            String trimmed = token.trim();
+            if (trimmed.isBlank()) {
+                continue;
+            }
+            try {
+                ids.add(Long.parseLong(trimmed));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "kbIds 格式错误，应为逗号分隔的知识库 ID（如 \"15,16\"），无法解析：" + trimmed);
+            }
         }
+        return ids;
     }
 }

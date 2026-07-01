@@ -86,7 +86,14 @@ public class StreamableMcpController {
       String kbIds = normalizeKbIds(arguments.get("kbIds"));
       int topK = intValue(arguments.get("topK"), 5);
       String result = tools.searchKnowledgeBase(query, kbIds, topK);
-      return toolText(result, false);
+      // 参数错误标记为 isError，避免调用方把错误提示当成检索结果。
+      return toolText(result, result.startsWith("参数错误："));
+    }
+    // answer_with_citations 仅在 /sse（SSE 传输）提供；/mcp（streamable HTTP）为检索类工具。
+    if ("answer_with_citations".equals(name) || "answer".equals(name)) {
+      return toolText(
+          "工具 answer_with_citations 不在 /mcp（streamable HTTP，仅检索）支持范围，请改用 /sse 端点调用。",
+          true);
     }
     return toolText("Unknown tool: " + name, true);
   }

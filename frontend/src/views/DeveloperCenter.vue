@@ -101,8 +101,10 @@
         <div class="card card-pad">
           <div class="sec-title">⚙️ MCP Server 信息</div>
           <div class="sec-hint">把 RAGForge 作为 MCP Server 接入支持 MCP 的客户端。</div>
-          <div class="kv"><span class="k">协议</span><span class="v">MCP (streamable HTTP)</span></div>
-          <div class="kv"><span class="k">Server URL</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
+          <div class="kv"><span class="k">协议</span><span class="v">MCP（streamable HTTP + SSE）</span></div>
+          <div class="kv"><span class="k">检索端点</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
+          <div class="kv"><span class="k">应答端点</span><span class="v">{{ sseUrl }}<span class="copy" @click="copy($event, sseUrl)">复制</span></span></div>
+          <div class="sec-hint" style="margin-top:6px;">/mcp（streamable HTTP）提供检索类工具；answer_with_citations 走 /sse（SSE 传输）。</div>
           <div class="kv"><span class="k">认证</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
           <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定</span></div>
         </div>
@@ -120,7 +122,7 @@
         <pre><button class="pre-copy" @click="copy($event, mcpText)">复制</button>{{ mcpText }}</pre>
         <div class="sec-title" style="margin:24px 0 6px;">可用 MCP 工具</div>
         <div class="mcp-tool" v-for="t in mcpTools" :key="t.name">
-          <span class="mcp-ico">{{ t.ico }}</span><span class="mcp-name">{{ t.name }}</span><span class="mcp-d">{{ t.desc }}</span>
+          <span class="mcp-ico">{{ t.ico }}</span><span class="mcp-name">{{ t.name }}</span><span class="mcp-d">{{ t.desc }}</span><span class="mcp-via">{{ t.via }}</span>
         </div>
       </div>
     </div>
@@ -252,6 +254,8 @@ const orgName = computed(() => current.value?.name || '当前组织')
 const PUBLIC_BASE = 'https://ragforge.net'
 const baseUrl = `${PUBLIC_BASE}/api/v1`
 const mcpUrl = `${PUBLIC_BASE}/mcp`
+// /mcp = streamable HTTP，仅检索类工具；/sse = SSE 传输，含应答类工具（answer_with_citations）。
+const sseUrl = `${PUBLIC_BASE}/sse`
 const curlText =
   `curl ${baseUrl}/search \\\n` +
   `  -H "X-API-Key: <API key>" \\\n` +
@@ -260,11 +264,12 @@ const curlText =
 const mcpText =
   `{\n  "mcpServers": {\n    "ragforge": {\n      "url": "${mcpUrl}",\n` +
   `      "headers": {\n        "X-API-Key": "<API key>"\n      }\n    }\n  }\n}`
-// 与后端 RagForgeMcpTools 的 @Tool 定义保持一致（工具名即客户端可调用名）
+// 与后端 @Tool 定义保持一致（工具名即客户端可调用名）。via 标明支持的端点：
+// /mcp（streamable HTTP）仅检索类；answer_with_citations 仅 /sse（SSE 传输）。
 const mcpTools = [
-  { ico: '🔍', name: 'search_knowledge', desc: '在可访问知识库内混合检索（向量+关键词），返回相关片段' },
-  { ico: '📚', name: 'list_knowledge_bases', desc: '列出可访问的知识库（含名称、文档数、片段数）' },
-  { ico: '💬', name: 'answer_with_citations', desc: '用知识库回答问题，返回带引用的答案（含图片 URL）' },
+  { ico: '🔍', name: 'search_knowledge', desc: '在可访问知识库内混合检索（向量+关键词），返回相关片段', via: '/mcp · /sse' },
+  { ico: '📚', name: 'list_knowledge_bases', desc: '列出可访问的知识库（含名称、文档数、片段数）', via: '/mcp · /sse' },
+  { ico: '💬', name: 'answer_with_citations', desc: '用知识库回答问题，返回带引用的答案（含图片 URL）', via: '仅 /sse' },
 ]
 
 function fmt(s) {
@@ -513,4 +518,5 @@ pre { margin: 0; background: #0f1726; color: #d7e2f4; border-radius: 12px; paddi
 .mcp-ico { width: 30px; height: 30px; border-radius: 9px; background: #f3eefe; color: #7c3aed; display: inline-flex; align-items: center; justify-content: center; }
 .mcp-name { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; font-weight: 700; color: var(--navy); }
 .mcp-d { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.mcp-via { flex: 0 0 auto; margin-left: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700; color: #7c3aed; background: #f3eefe; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
 </style>
