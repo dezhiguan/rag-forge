@@ -2,8 +2,26 @@ import axios from 'axios'
 import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
 import { ERROR_MESSAGES } from './error-messages'
+import { refreshAccessToken } from './auth'
 
 const toast = useToast()
+
+// 静默续期(单飞):access token 短时到期时,用 refresh cookie 悄悄换新 token，
+// 多个并发 401 共享同一次 /refresh，避免重复刷新与重复"登录已过期"提示。
+let refreshPromise = null
+function silentRefresh() {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken()
+      .then((session) => {
+        useAuth().setSession(session.accessToken, session.user)
+        return session.accessToken
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
 
 const ERROR_CODE_LABELS = {
   KB_ACCESS_DENIED: '无权访问该知识库或案例',
@@ -135,9 +153,28 @@ request.interceptors.response.use(
     return body
   },
   (err) => {
+    const status = err.response?.status
+    const original = err.config || {}
+    // 401：先尝试静默续期并重放原请求；每个请求只重试一次，避免死循环。
+    if (status === 401 && !original._retried) {
+      original._retried = true
+      return silentRefresh()
+        .then(() => request(original)) // 重放（请求拦截器会带上新 token）
+        .catch(() => {
+          // 续期失败 = 会话真过期：清会话、提示、跳登录（登录页支持 reason=expired 回跳）
+          useAuth().clearSession()
+          if (!original.silent) {
+            toast.error('登录已过期，请重新登录')
+          }
+          if (typeof window !== 'undefined' && !/\/login/.test(window.location.pathname)) {
+            const here = window.location.pathname + window.location.search
+            window.location.href = `/login?reason=expired&redirect=${encodeURIComponent(here)}`
+          }
+          return Promise.reject(err)
+        })
+    }
     if (!err.config?.silent) {
       const data = err.response?.data
-      const status = err.response?.status
       let msg
       if (status === 401) {
         msg = '登录已过期，请重新登录'
