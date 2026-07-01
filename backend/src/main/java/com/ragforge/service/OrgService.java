@@ -359,6 +359,14 @@ public class OrgService {
         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<
                 com.ragforge.model.entity.ApiKey>()
             .eq(com.ragforge.model.entity.ApiKey::getOrgId, orgId));
+    // 软删除的知识库仍以 org_id 外键引用本组织，而该外键无 ON DELETE CASCADE；
+    // 活跃库已在上方拦截，此处将剩余（软删）库的 org_id 置空，避免删除组织时外键约束报 500。
+    knowledgeBaseMapper.update(
+        null,
+        new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<
+                com.ragforge.model.entity.KnowledgeBase>()
+            .eq("org_id", orgId)
+            .set("org_id", null));
     organizationMapper.deleteById(orgId); // org_members / org_invitations 由外键 ON DELETE CASCADE 清理
   }
 

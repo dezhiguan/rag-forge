@@ -3,6 +3,7 @@ package com.ragforge.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -336,6 +337,8 @@ class OrgServiceTest {
     orgService.deleteOrganization(16L);
 
     verify(apiKeyMapper).delete(any());
+    // 删除组织前须解除软删知识库的 org_id 外键引用，否则删除会因外键约束报 500。
+    verify(knowledgeBaseMapper).update(isNull(), any());
     verify(organizationMapper).deleteById(16L);
 
     when(knowledgeBaseMapper.selectCount(any())).thenReturn(2L);

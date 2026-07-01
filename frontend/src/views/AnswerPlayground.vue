@@ -157,6 +157,15 @@ async function runAnswer() {
         Accept: 'text/event-stream',
         'Cache-Control': 'no-cache',
         ...(state.accessToken ? { Authorization: `Bearer ${state.accessToken}` } : {}),
+        // 原生 fetch 不走 axios 拦截器，需手动注入组织上下文头（对齐 request.js）：
+        // platform=超管全平台视图→破玻璃头；其余→X-Org-Id；个人组织(null)不带头。
+        ...(() => {
+          const orgId = localStorage.getItem('ragforge.currentOrgId')
+          if (orgId === 'platform')
+            return { 'X-Admin-Override': 'true', 'X-Admin-Override-Reason': 'answer-playground-view' }
+          if (orgId) return { 'X-Org-Id': orgId }
+          return {}
+        })(),
       },
       body: JSON.stringify({
         kbIds: [form.kbId],
