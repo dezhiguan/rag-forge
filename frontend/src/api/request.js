@@ -29,12 +29,8 @@ const ERROR_CODE_LABELS = {
   ORG_SLUG_INVALID: '组织标识不合法（小写字母/数字/连字符，2–64 位）',
   ORG_SLUG_TAKEN: '该组织标识已被占用，请换一个',
   ORG_NOT_FOUND: '组织不存在或已被删除',
-  INDIVIDUAL_ORG_NO_INVITE: '个人组织不能邀请成员，请先升级为团队组织',
-  INVITE_ALREADY_PENDING: '对方已有一条待处理的邀请，请勿重复邀请',
-  ALREADY_MEMBER: '对方已是该组织成员',
-  INVITE_NOT_FOUND: '邀请不存在或无权操作',
-  INVITE_NOT_PENDING: '该邀请已被处理（已接受 / 拒绝 / 撤销）',
-  INVITE_EXPIRED: '邀请已过期，请让对方重新发送',
+  // 邀请类错误码（INDIVIDUAL_ORG_NO_INVITE / INVITE_ALREADY_PENDING / ALREADY_MEMBER /
+  // INVITE_NOT_FOUND / INVITE_NOT_PENDING / INVITE_EXPIRED）本文件下方已映射，勿在此重复。
   NOTIFICATION_NOT_FOUND: '通知不存在或无权操作',
   UNAUTHORIZED: '登录状态已失效，请重新登录',
   KB_ACCESS_DENIED: '无权访问该知识库或案例',
