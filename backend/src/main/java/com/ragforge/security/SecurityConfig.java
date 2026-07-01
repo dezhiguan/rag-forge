@@ -1,8 +1,10 @@
 package com.ragforge.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.common.ErrorMessages;
 import com.ragforge.common.Result;
 import com.ragforge.web.TraceIds;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -58,9 +60,17 @@ public class SecurityConfig {
         .exceptionHandling(
             eh ->
                 eh.authenticationEntryPoint(
-                    (request, response, ex) -> writeJson(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
+                    (request, response, ex) ->
+                        writeJson(
+                            response,
+                            HttpServletResponse.SC_UNAUTHORIZED,
+                            // 服务型接口（/search、/answer、/documents、/mcp…）缺 X-API-Key → 引导携带密钥；
+                            // 其余接口 → 登录态失效。都返回友好中文 + 机器码。
+                            isApiKeyServicePath(request) && request.getHeader("X-API-Key") == null
+                                ? "API_KEY_MISSING"
+                                : "UNAUTHORIZED"))
                     .accessDeniedHandler(
-                        (request, response, ex) -> writeJson(response, HttpServletResponse.SC_FORBIDDEN, "Forbidden")))
+                        (request, response, ex) -> writeJson(response, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN")))
         .authorizeHttpRequests(
             auth ->
                 auth.requestMatchers("/api/v1/health", "/actuator/health", "/api/auth/**").permitAll()
@@ -84,12 +94,31 @@ public class SecurityConfig {
         .build();
   }
 
-  private void writeJson(HttpServletResponse response, int status, String message) throws java.io.IOException {
+  /** 是否为 API Key 鉴权的服务型接口（与 authorizeHttpRequests 中的放行集合保持一致）。 */
+  private static boolean isApiKeyServicePath(HttpServletRequest request) {
+    String uri = request.getRequestURI();
+    if (uri == null) {
+      return false;
+    }
+    return uri.startsWith("/api/v1/search")
+        || uri.startsWith("/api/v1/answer")
+        || uri.startsWith("/api/v1/documents")
+        || uri.startsWith("/api/v1/internal/")
+        || uri.equals("/mcp")
+        || uri.startsWith("/mcp/")
+        || uri.equals("/sse")
+        || uri.startsWith("/sse/");
+  }
+
+  /** 安全层拒绝响应：机器码放 errorCode，msg 翻成友好中文（外部直连亦可读）。 */
+  private void writeJson(HttpServletResponse response, int status, String errorCode)
+      throws java.io.IOException {
     response.setStatus(status);
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding("UTF-8");
     response.setHeader(TraceIds.HEADER_TRACE_ID, TraceIds.current());
     response.setHeader(TraceIds.HEADER_REQUEST_ID, TraceIds.currentRequestId());
-    objectMapper.writeValue(response.getWriter(), Result.fail(status, message));
+    objectMapper.writeValue(
+        response.getWriter(), Result.error(status, errorCode, ErrorMessages.toChinese(errorCode)));
   }
 }

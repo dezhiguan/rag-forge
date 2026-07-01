@@ -60,10 +60,20 @@ const ERROR_CODE_LABELS = {
   NOT_ORG_ADMIN: '只有组织的所有者或管理员才能执行此操作',
   NOT_ORG_OWNER: '只有组织所有者才能执行此操作',
   MODEL_TOGGLE_REQUIRES_PLATFORM_VIEW: '启停模型需切换到「全平台视图」（平台管理员）',
-  KB_VISIBILITY_INVALID: '该可见性不适用于此知识库（团队库仅私有/组织可见，个人库仅私有/公开）',
+  KB_VISIBILITY_INVALID: '所选可见性不可用；个人知识库仅支持「私有」',
+  ORG_KB_VISIBILITY_INVALID: '团队知识库仅支持「私有」或「组织内公开」，请重新选择',
   KB_VISIBILITY_PUBLIC_REASON_REQUIRED: '设为公开需填写原因（将记入审计）',
   KB_VISIBILITY_HAS_DEPENDENCIES: '该库被其他组织的密钥或评测引用，收紧前请确认影响',
   KB_VISIBILITY_REQUIRED: '请选择可见性',
+  KEY_NAME_REQUIRED: '请输入 API 密钥名称',
+  ALLOWED_KB_IDS_REQUIRED: '请至少选择一个要授权的知识库',
+  KB_NOT_IN_ORG: '所选知识库不属于当前组织，无法授权',
+  PLATFORM_VIEW_READONLY: '全平台视图为只读治理视角，不能创建或修改内容，请切换到具体组织后再试',
+  GOVERNANCE_REQUIRES_BREAKGLASS: '该治理操作需先进入「全平台视图」（破玻璃）后才能执行',
+  API_KEY_MISSING: '缺少 API 密钥，请在请求头 X-API-Key 中携带',
+  API_KEY_INVALID: 'API 密钥无效或已被禁用，请检查后重试',
+  API_KEY_EXPIRED: '密钥已过期，请重新生成后使用',
+  API_KEY_RATE_LIMITED: '请求过于频繁，请稍后再试',
   INDIVIDUAL_ORG_NO_INVITE: '个人组织不支持邀请成员',
   ALREADY_MEMBER: '该手机号对应的用户已是本组织成员，无需重复邀请',
   INVITE_ALREADY_PENDING: '该用户已有一条待接受的邀请，请等待对方处理',
@@ -121,7 +131,12 @@ export function translateError(payload) {
     if (payload.code === 502 || payload.code === 503 || payload.code === 504)
       return '后台服务繁忙，请稍后重试'
   }
-  return code || '请求失败，请稍后重试'
+  // 兜底：未映射的机器码（形如 SOME_NEW_CODE）不裸露给用户，回退友好文案；
+  // code 若本身是人类可读文案（含中文/空格）则原样展示（B-09 错误码国际化回退）。
+  if (typeof code === 'string' && code) {
+    return /^[A-Z][A-Z0-9_]*(:.*)?$/.test(code) ? '请求失败，请稍后重试' : code
+  }
+  return '请求失败，请稍后重试'
 }
 
 const request = axios.create({

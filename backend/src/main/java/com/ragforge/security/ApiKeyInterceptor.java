@@ -3,6 +3,7 @@ package com.ragforge.security;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.ragforge.common.ErrorMessages;
 import com.ragforge.common.Result;
 import com.ragforge.config.ApiKeyProperties;
 import com.ragforge.web.TraceIds;
@@ -65,7 +66,7 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
       return true;
     }
     if (DevApiKeyConfig.DEV_KEY.equals(apiKey)) {
-      writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "Invalid API Key");
+      writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "API_KEY_INVALID");
       return false;
     }
     ApiKey keyRecord = apiKey != null ? findValidApiKey(apiKey) : null;
@@ -73,11 +74,11 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
       // 过期校验：expires_at 非空且已过 → 拒绝。
       if (keyRecord.getExpiresAt() != null
           && keyRecord.getExpiresAt().isBefore(LocalDateTime.now())) {
-        writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "API Key expired");
+        writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "API_KEY_EXPIRED");
         return false;
       }
       if (!consumeRateLimit(keyRecord)) {
-        writeJsonError(response, 429, 429, "API Key rate limit exceeded");
+        writeJsonError(response, 429, 429, "API_KEY_RATE_LIMITED");
         return false;
       }
       installContext(request, contextFrom(keyRecord), apiKey);
@@ -89,7 +90,9 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
       return true;
     }
 
-    writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "Invalid API Key");
+    // 缺失与无效分别给码：缺 key → 引导携带；有 key 但查不到/被禁用/乱码 → 无效（不泄漏细节）。
+    String errorCode = (apiKey == null || apiKey.isBlank()) ? "API_KEY_MISSING" : "API_KEY_INVALID";
+    writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, 401, errorCode);
     return false;
   }
 
@@ -111,7 +114,10 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     }
   }
 
-  private void writeJsonError(HttpServletResponse response, int httpStatus, int code, String msg)
+  /**
+   * 统一鉴权失败响应：机器码放 errorCode，msg 翻成友好中文（外部直连也可读）。前端按 errorCode 分支、展示 msg。
+   */
+  private void writeJsonError(HttpServletResponse response, int httpStatus, int code, String errorCode)
       throws IOException {
     response.setStatus(httpStatus);
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -120,7 +126,8 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     String requestId = TraceIds.currentRequestId();
     response.setHeader(TraceIds.HEADER_TRACE_ID, traceId);
     response.setHeader(TraceIds.HEADER_REQUEST_ID, requestId);
-    objectMapper.writeValue(response.getWriter(), Result.fail(code, msg));
+    objectMapper.writeValue(
+        response.getWriter(), Result.error(code, errorCode, ErrorMessages.toChinese(errorCode)));
   }
 
   private boolean isWhitelisted(String path) {

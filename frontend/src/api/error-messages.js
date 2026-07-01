@@ -18,10 +18,21 @@ export const ERROR_MESSAGES = {
   NOT_ORG_ADMIN: '只有组织的所有者或管理员才能执行此操作',
   NOT_ORG_OWNER: '只有组织所有者才能执行此操作',
   MODEL_TOGGLE_REQUIRES_PLATFORM_VIEW: '启停模型需切换到「全平台视图」（平台管理员）',
-  KB_VISIBILITY_INVALID: '该可见性不适用于此知识库（团队库仅私有/组织可见，个人库仅私有/公开）',
+  KB_VISIBILITY_INVALID: '所选可见性不可用；个人知识库仅支持「私有」',
+  ORG_KB_VISIBILITY_INVALID: '团队知识库仅支持「私有」或「组织内公开」，请重新选择',
   KB_VISIBILITY_PUBLIC_REASON_REQUIRED: '设为公开需填写原因（将记入审计）',
   KB_VISIBILITY_HAS_DEPENDENCIES: '该库被其他组织的密钥或评测引用，收紧前请确认影响',
   KB_VISIBILITY_REQUIRED: '请选择可见性',
+  // API Key 创建 / 授权 / 鉴权
+  KEY_NAME_REQUIRED: '请输入 API 密钥名称',
+  ALLOWED_KB_IDS_REQUIRED: '请至少选择一个要授权的知识库',
+  KB_NOT_IN_ORG: '所选知识库不属于当前组织，无法授权',
+  PLATFORM_VIEW_READONLY: '全平台视图为只读治理视角，不能创建或修改内容，请切换到具体组织后再试',
+  GOVERNANCE_REQUIRES_BREAKGLASS: '该治理操作需先进入「全平台视图」（破玻璃）后才能执行',
+  API_KEY_MISSING: '缺少 API 密钥，请在请求头 X-API-Key 中携带',
+  API_KEY_INVALID: 'API 密钥无效或已被禁用，请检查后重试',
+  API_KEY_EXPIRED: '密钥已过期，请重新生成后使用',
+  API_KEY_RATE_LIMITED: '请求过于频繁，请稍后再试',
   INVALID_STRATEGY: '所选分块策略不适用于当前文档（例如「按标题分块」仅支持 Markdown 文档）。请改用「固定窗口」或「递归切分」等策略重新分块。',
   SEMANTIC_REQUIRES_LONG_TEXT: '文本不足 2000 字，无法使用语义分块，请改用其他策略。',
   NO_CHUNKER_STRATEGY_AVAILABLE: '没有可用的分块策略，请更换策略后重试。',
@@ -52,7 +63,17 @@ export function translateErrorPayload(payload) {
     if (payload.code >= 500) return ERROR_MESSAGES.SERVER_ERROR
     if (payload.code === 404) return ERROR_MESSAGES.JUDGE_RESULT_NOT_FOUND
   }
-  return typeof code === 'string' ? code : ERROR_MESSAGES.LOAD_FAILED
+  // 兜底：未映射的机器码（形如 SOME_NEW_CODE）不直接裸露给用户，回退友好文案；
+  // 若 code 本身已是人类可读文案（含中文/空格），则原样展示（B-09）。
+  if (typeof code === 'string' && code) {
+    return looksLikeMachineCode(code) ? ERROR_MESSAGES.LOAD_FAILED : code
+  }
+  return ERROR_MESSAGES.LOAD_FAILED
+}
+
+/** 是否形如机器错误码：全大写字母/数字/下划线（可带 :detail 后缀），如 KB_NOT_IN_ORG。 */
+function looksLikeMachineCode(value) {
+  return /^[A-Z][A-Z0-9_]*(:.*)?$/.test(value)
 }
 
 export function resolveHttpError(error, context = {}) {

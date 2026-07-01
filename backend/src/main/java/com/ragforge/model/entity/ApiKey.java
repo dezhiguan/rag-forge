@@ -1,13 +1,16 @@
 package com.ragforge.model.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.ragforge.mybatis.handler.JsonbStringTypeHandler;
 import java.time.LocalDateTime;
 import lombok.Data;
 
 @Data
-@TableName("api_keys")
+// autoResultMap=true：使字段级 typeHandler 在查询结果映射时生效。
+@TableName(value = "api_keys", autoResultMap = true)
 public class ApiKey {
 
   @TableId(type = IdType.AUTO)
@@ -19,7 +22,12 @@ public class ApiKey {
   private Integer rateLimit;
   private String principalType;
   private String principalId;
+
+  // scopes / allowed_kb_ids 在库中为 jsonb，写入时需转 jsonb，否则 varchar→jsonb 类型不匹配报错（M6-02 500）。
+  @TableField(typeHandler = JsonbStringTypeHandler.class)
   private String scopes;
+
+  @TableField(typeHandler = JsonbStringTypeHandler.class)
   private String allowedKbIds;
   /** 所属组织（开发者中心：key 归当前组织）。 */
   private Long orgId;
