@@ -3,7 +3,7 @@
     <div class="page-body">
       <div class="top-toolbar">
         <div class="toolbar-left">
-          <button class="btn btn-primary" @click="openCreate">+ 创建知识库</button>
+          <button v-if="!isPlatform" class="btn btn-primary" @click="openCreate">+ 创建知识库</button>
           <button class="btn btn-secondary" :disabled="loadingKb" @click="loadKbs">刷新</button>
           <button
             v-if="showAdminViewAll"
@@ -632,17 +632,14 @@ function isTeamOwnership(orgId) {
   const org = allMyOrgs.value.find((o) => o.id === orgId)
   return !!org && !org.personal
 }
-// 可见性选项随归属变化：个人库 PRIVATE/PUBLIC；团队库 PRIVATE/ORG
+// 可见性选项随归属变化（模型 Y：移除全域公开）：个人库仅 PRIVATE；团队库 PRIVATE/ORG
 const visibilityOptions = computed(() =>
   isTeamOwnership(kbForm.value.orgId)
     ? [
         { value: 'PRIVATE', label: '私有（仅组织管理员）' },
         { value: 'ORG', label: '组织可见（全体成员可读）' },
       ]
-    : [
-        { value: 'PRIVATE', label: '私有（仅自己）' },
-        { value: 'PUBLIC', label: '公开（全平台只读）' },
-      ]
+    : [{ value: 'PRIVATE', label: '私有（仅自己）' }]
 )
 function onOwnerChange() {
   // 切换归属后，把可见性回退到该归属下的默认值
@@ -677,9 +674,9 @@ const VIS_LABELS = {
   ORG: '组织可见（全体成员可读）',
   PUBLIC: '公开（全平台所有组织可读）',
 }
-// 编辑模态的可见性选项：团队库 PRIVATE/ORG（不允许公开）；个人库 PRIVATE/PUBLIC。
+// 编辑模态可见性选项（模型 Y）：团队库 PRIVATE/ORG；个人库仅 PRIVATE。
 const editVisibilityOptions = computed(() => {
-  const vals = isTeamOwnership(editForm.value.orgId) ? ['PRIVATE', 'ORG'] : ['PRIVATE', 'PUBLIC']
+  const vals = isTeamOwnership(editForm.value.orgId) ? ['PRIVATE', 'ORG'] : ['PRIVATE']
   return vals.map((v) => ({ value: v, label: VIS_LABELS[v] }))
 })
 const answerModes = ['OFF', 'PREVIEW', 'ON']

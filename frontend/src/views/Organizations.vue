@@ -8,7 +8,7 @@
         <p class="gate-desc">
           个人组织无需管理成员；创建团队组织后可邀请成员、共享组织知识库、按组织聚合指标。
         </p>
-        <button class="btn btn-primary" @click="openCreate"><span class="plus">＋</span> 创建组织</button>
+        <button v-if="!isPlatform" class="btn btn-primary" @click="openCreate"><span class="plus">＋</span> 创建组织</button>
       </div>
 
       <div v-if="manageableOrgs.length" class="gate-list">

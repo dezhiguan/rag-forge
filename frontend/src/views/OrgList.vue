@@ -5,7 +5,7 @@
         <h1 class="page-h">我的组织</h1>
         <div class="page-s">你创建或加入的组织。创建团队组织后可邀请成员、共享组织知识库、按组织聚合指标。</div>
       </div>
-      <button class="btn-primary" @click="openCreate = true">＋ 创建组织</button>
+      <button v-if="!isPlatform" class="btn-primary" @click="openCreate = true">＋ 创建组织</button>
     </div>
 
     <template v-if="personalOrg">
@@ -57,7 +57,7 @@
     </div>
     <div v-else class="empty">
       <span class="ei">🏢</span>你还没有加入任何团队组织
-      <div><button class="btn-primary" style="margin-top:14px" @click="openCreate = true">＋ 创建第一个组织</button></div>
+      <div v-if="!isPlatform"><button class="btn-primary" style="margin-top:14px" @click="openCreate = true">＋ 创建第一个组织</button></div>
     </div>
 
     <!-- 创建组织 -->
@@ -88,7 +88,7 @@ import { confirm as confirmDialog } from '../composables/useConfirm'
 
 const router = useRouter()
 const toast = useToast()
-const { orgs, load, setCurrent } = useOrg()
+const { orgs, load, setCurrent, isPlatform } = useOrg()
 const { ragRole, userDisplayName } = useAuth()
 
 // 个人组织单独成区展示；团队组织排除个人组织。
