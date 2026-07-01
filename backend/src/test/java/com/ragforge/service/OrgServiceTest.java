@@ -100,6 +100,16 @@ class OrgServiceTest {
   }
 
   @Test
+  void createOrganization_rejectsOverlongName_with400NotDbError() {
+    // 超长 name 应在 service 层返回 400，而不是撞 organizations.name VARCHAR(128) 报 500。
+    String tooLong = "组".repeat(129);
+    assertThatThrownBy(() -> orgService.createOrganization("team-one", tooLong))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(400));
+    verify(organizationMapper, never()).insert(any(com.ragforge.model.entity.Organization.class));
+  }
+
+  @Test
   void ensureIndividualOrg_returnsExistingOrCreatesOwnerOrg() {
     Organization existing = org(100L, "u-7-old", "个人组织", "INDIVIDUAL");
     when(organizationMapper.selectOne(any())).thenReturn(existing);

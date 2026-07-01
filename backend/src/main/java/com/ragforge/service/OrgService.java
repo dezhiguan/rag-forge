@@ -30,6 +30,8 @@ import org.springframework.util.StringUtils;
 public class OrgService {
 
   private static final Pattern SLUG = Pattern.compile("^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$");
+  /** 显示名长度上限，与 organizations.name VARCHAR(128) 对齐；超长返回 400 而非撞 DB 报 500。 */
+  private static final int MAX_NAME_LEN = 128;
   private static final String OWNER = "OWNER";
   private static final String ADMIN = "ADMIN";
   private static final String MEMBER = "MEMBER";
@@ -60,6 +62,9 @@ public class OrgService {
     }
     if (!StringUtils.hasText(name)) {
       throw new BizException(400, "ORG_NAME_REQUIRED");
+    }
+    if (name.trim().length() > MAX_NAME_LEN) {
+      throw new BizException(400, "ORG_NAME_TOO_LONG");
     }
     Long uid = currentUserId();
     Long exists =
@@ -293,6 +298,9 @@ public class OrgService {
     requireOrgAdmin(orgId, uid);
     Organization org = requireOrg(orgId);
     if (StringUtils.hasText(name)) {
+      if (name.trim().length() > MAX_NAME_LEN) {
+        throw new BizException(400, "ORG_NAME_TOO_LONG");
+      }
       org.setName(name.trim());
     }
     if (StringUtils.hasText(slug)) {

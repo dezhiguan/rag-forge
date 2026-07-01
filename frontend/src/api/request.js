@@ -24,6 +24,10 @@ function silentRefresh() {
 }
 
 const ERROR_CODE_LABELS = {
+  ORG_NAME_TOO_LONG: '组织名称过长（最多 128 个字符）',
+  ORG_NAME_REQUIRED: '请填写组织名称',
+  ORG_SLUG_INVALID: '组织标识不合法（小写字母/数字/连字符，2–64 位）',
+  ORG_SLUG_TAKEN: '该组织标识已被占用，请换一个',
   KB_ACCESS_DENIED: '无权访问该知识库或案例',
   KB_WRITE_FORBIDDEN: '您没有该知识库的写权限',
   ANSWER_DISABLED: '该知识库没有开启应答模式，请先到知识库开启应答模式',
