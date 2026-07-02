@@ -101,10 +101,9 @@
         <div class="card card-pad">
           <div class="sec-title">⚙️ MCP Server 信息</div>
           <div class="sec-hint">把 RAGForge 作为 MCP Server 接入支持 MCP 的客户端。</div>
-          <div class="kv"><span class="k">协议</span><span class="v">MCP（streamable HTTP + SSE）</span></div>
-          <div class="kv"><span class="k">检索端点</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
-          <div class="kv"><span class="k">应答端点</span><span class="v">{{ sseUrl }}<span class="copy" @click="copy($event, sseUrl)">复制</span></span></div>
-          <div class="sec-hint" style="margin-top:6px;">/mcp（streamable HTTP）提供检索类工具；answer_with_citations 走 /sse（SSE 传输）。</div>
+          <div class="kv"><span class="k">协议</span><span class="v">MCP（streamable HTTP）</span></div>
+          <div class="kv"><span class="k">端点</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
+          <div class="sec-hint" style="margin-top:6px;">/mcp（streamable HTTP，无状态）提供全部工具：检索类与 answer_with_citations。</div>
           <div class="kv"><span class="k">认证</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
           <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定</span></div>
         </div>
@@ -254,8 +253,7 @@ const orgName = computed(() => current.value?.name || '当前组织')
 const PUBLIC_BASE = 'https://ragforge.net'
 const baseUrl = `${PUBLIC_BASE}/api/v1`
 const mcpUrl = `${PUBLIC_BASE}/mcp`
-// /mcp = streamable HTTP，仅检索类工具；/sse = SSE 传输，含应答类工具（answer_with_citations）。
-const sseUrl = `${PUBLIC_BASE}/sse`
+// /mcp = streamable HTTP（无状态），暴露全部三个工具，含 answer_with_citations。SSE 传输已下线。
 const curlText =
   `curl ${baseUrl}/search \\\n` +
   `  -H "X-API-Key: <API key>" \\\n` +
@@ -264,12 +262,11 @@ const curlText =
 const mcpText =
   `{\n  "mcpServers": {\n    "ragforge": {\n      "url": "${mcpUrl}",\n` +
   `      "headers": {\n        "X-API-Key": "<API key>"\n      }\n    }\n  }\n}`
-// 与后端 @Tool 定义保持一致（工具名即客户端可调用名）。via 标明支持的端点：
-// /mcp（streamable HTTP）仅检索类；answer_with_citations 仅 /sse（SSE 传输）。
+// 工具名即客户端可调用名，需与 /mcp tools/list 实际一致。三个工具均在无状态 /mcp 暴露。
 const mcpTools = [
-  { ico: '🔍', name: 'search_knowledge', desc: '在可访问知识库内混合检索（向量+关键词），返回相关片段', via: '/mcp · /sse' },
-  { ico: '📚', name: 'list_knowledge_bases', desc: '列出可访问的知识库（含名称、文档数、片段数）', via: '/mcp · /sse' },
-  { ico: '💬', name: 'answer_with_citations', desc: '用知识库回答问题，返回带引用的答案（含图片 URL）', via: '仅 /sse' },
+  { ico: '🔍', name: 'search_knowledge', desc: '在可访问知识库内混合检索（向量+关键词），返回相关片段', via: '/mcp' },
+  { ico: '📚', name: 'list_knowledge_bases', desc: '列出可访问的知识库（含名称、文档数、片段数）', via: '/mcp' },
+  { ico: '💬', name: 'answer_with_citations', desc: '用知识库回答问题，返回带引用的答案（含图片 URL）', via: '/mcp' },
 ]
 
 function fmt(s) {

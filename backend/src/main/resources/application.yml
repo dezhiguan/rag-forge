@@ -9,6 +9,9 @@ spring:
   ai:
     mcp:
       server:
+        # SSE(HTTP+SSE)传输已被 MCP 标准弃用；且多副本下会话内存态不粘 → /mcp/message 404、错误体外泄堆栈。
+        # 三个工具统一走无状态 /mcp(StreamableMcpController)。关闭 SSE 传输，消除 /sse 与 /mcp/message。
+        enabled: false
         name: ragforge-mcp-server
         version: 1.0.0
         type: SYNC
@@ -146,6 +149,11 @@ embedding:
       max-processing-ms-per-doc: ${RAGFORGE_EMBEDDED_IMAGE_MAX_PROCESSING_MS_PER_DOC:120000}
 
 server:
+  error:
+    # 生产错误响应禁止外泄堆栈/异常类名（信息泄露收敛）。
+    include-stacktrace: never
+    include-exception: false
+    include-message: never
   tomcat:
     threads:
       max: ${SERVER_TOMCAT_THREADS_MAX:160}
