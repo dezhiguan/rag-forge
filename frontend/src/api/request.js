@@ -157,8 +157,10 @@ request.interceptors.request.use((config) => {
     if (orgId === 'platform') {
       config.headers['X-Admin-Override'] = 'true'
       // 理由由 OrgSwitcher 进入平台视图时显式采集(留审计);缺失时兜底不影响取数。
-      config.headers['X-Admin-Override-Reason'] =
-        localStorage.getItem('ragforge.adminOverrideReason') || 'platform-view'
+      // HTTP 头仅允许 ISO-8859-1,中文理由须编码后传输,后端 URLDecoder 解码还原。
+      config.headers['X-Admin-Override-Reason'] = encodeURIComponent(
+        localStorage.getItem('ragforge.adminOverrideReason') || 'platform-view',
+      )
     } else if (orgId && orgId !== 'null' && orgId !== '') {
       config.headers['X-Org-Id'] = orgId
     }

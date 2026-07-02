@@ -104,9 +104,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     if (!StringUtils.hasText(flag) || !("true".equalsIgnoreCase(flag) || "1".equals(flag))) {
       return;
     }
-    String reason = request.getHeader(ADMIN_OVERRIDE_REASON_HEADER);
+    // 理由头由前端 encodeURIComponent 编码(HTTP 头仅允许 ISO-8859-1,中文需编码传输),此处解码还原。
+    String reason = decodeOverrideReason(request.getHeader(ADMIN_OVERRIDE_REASON_HEADER));
     AdminOverrideHolder.activate(reason);
     adminAccessAuditService.recordKbBreakGlass(context.userId(), reason);
+  }
+
+  private static String decodeOverrideReason(String raw) {
+    if (raw == null || raw.isEmpty()) {
+      return raw;
+    }
+    try {
+      return java.net.URLDecoder.decode(raw, java.nio.charset.StandardCharsets.UTF_8);
+    } catch (RuntimeException ex) {
+      return raw; // 非编码值(如历史/兜底 platform-view)原样返回
+    }
   }
 
   private boolean isJwtRevoked(JwtClaims claims) {
