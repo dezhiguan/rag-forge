@@ -6,6 +6,8 @@ export const PROCESSING_STATUSES = [
   'chunking',
   'embedding',
   'indexing',
+  // 压缩包容器展开中：与文档处理中同属"进行中"语义，纳入轮询范围。
+  'expanding',
 ]
 
 export function normalizeDocStatus(parseStatus) {
@@ -18,7 +20,8 @@ export function isProcessing(parseStatus) {
 
 export function isTerminal(parseStatus) {
   const status = normalizeDocStatus(parseStatus)
-  return status === 'completed' || status === 'failed'
+  // expanded = 压缩包容器展开完成（含部分成功），与 completed 同为终态。
+  return status === 'completed' || status === 'failed' || status === 'expanded'
 }
 
 // 只有处理完成的文档才允许下载：失败的文档原文件可能根本就不在 OSS（NoSuchKey），

@@ -74,14 +74,14 @@
               class="hidden-file"
               type="file"
               multiple
-              accept=".pdf,.doc,.docx,.md,.markdown,.html,.htm,.txt,.png,.jpg,.jpeg,.gif,.webp,application/pdf,text/plain,image/*"
+              accept=".pdf,.doc,.docx,.md,.markdown,.html,.htm,.txt,.png,.jpg,.jpeg,.gif,.webp,.zip,.tar.gz,.tgz,application/pdf,text/plain,image/*,application/zip,application/gzip,application/x-gzip,application/x-tar"
               @change="onFileChange"
             />
             <div class="upload-icon">📤</div>
             <div class="upload-text">
-              拖拽文件上传 · 文档（PDF / Word / Markdown / HTML / TXT）+ 图片（PNG / JPG / GIF / WEBP，自动 OCR）
+              拖拽文件上传 · 文档（PDF / Word / Markdown / HTML / TXT）+ 图片（PNG / JPG / GIF / WEBP，自动 OCR）+ 压缩包（ZIP / TAR.GZ，服务端自动展开）
             </div>
-            <div class="upload-hint">单文件最大 50MB · 支持批量上传</div>
+            <div class="upload-hint">单文件最大 50MB · 支持批量上传 · 压缩包一律上传后由服务端展开入库</div>
           </div>
 
           <div v-if="uploadItems.length" class="upload-queue">
@@ -92,9 +92,15 @@
               :class="{ failed: item.status === 'failed', done: item.status === 'done' }"
             >
               <div class="upload-item-main">
-                <div class="upload-item-title">{{ item.file.name }}</div>
+                <div class="upload-item-title">
+                  {{ item.file.name }}
+                  <span v-if="item.isArchive" class="archive-chip">压缩包</span>
+                </div>
                 <div class="upload-item-meta">
                   {{ formatBytes(item.file.size) }} · {{ phaseLabel(item.phase) }}
+                  <template v-if="item.isArchive">
+                    · <span class="archive-hint-text">{{ item.status === 'done' ? '展开中' : '将自动展开' }}</span>
+                  </template>
                 </div>
                 <div v-if="item.errorMessage" class="upload-item-error">{{ item.errorMessage }}</div>
               </div>
@@ -260,12 +266,44 @@
                         <div class="state-desc">上传文档后自动解析并建立索引</div>
                       </div>
                       <div v-else class="recent-doc-list">
-                        <article v-for="doc in docsMap[kb.id]?.list || []" :key="doc.id" class="recent-doc-card">
+                        <article
+                          v-for="doc in docsMap[kb.id]?.list || []"
+                          :key="doc.id"
+                          class="recent-doc-card"
+                          :class="{ 'is-archive': doc.isArchive }"
+                        >
                           <div class="doc-type">{{ fileTypeLabel(doc.filename) }}</div>
                           <div class="doc-main">
                             <div class="doc-title-row">
-                              <div class="doc-name">{{ doc.filename }}</div>
+                              <div class="doc-name">
+                                <span
+                                  v-if="doc.isArchive"
+                                  class="archive-expander"
+                                  role="button"
+                                  :title="expandedDocIds[doc.id] ? '收起子文档' : '展开子文档'"
+                                  @click.stop="toggleDocChildren(doc)"
+                                >{{ expandedDocIds[doc.id] ? '▾' : '▸' }}</span>
+                                {{ doc.filename }}
+                                <span v-if="doc.isArchive" class="archive-chip">压缩包</span>
+                              </div>
+
+                              <!-- 压缩包容器：展开中 / 已展开徽标 / 失败 -->
                               <div
+                                v-if="doc.isArchive"
+                                class="doc-status-cell"
+                                :title="isContainerFailed(doc.parseStatus) ? (doc.errorMsg || '展开失败') : undefined"
+                              >
+                                <span v-if="isContainerExpanding(doc.parseStatus)" class="status-icon spin">⟳</span>
+                                <span v-else-if="isContainerExpanded(doc.parseStatus)" class="status-icon ok">✓</span>
+                                <span v-else-if="isContainerFailed(doc.parseStatus)" class="status-icon fail">✗</span>
+                                <span class="badge" :class="containerStatusClass(doc.parseStatus)">
+                                  {{ containerStatusLabel(doc.parseStatus) }}
+                                </span>
+                              </div>
+
+                              <!-- 普通文档状态 -->
+                              <div
+                                v-else
                                 class="doc-status-cell"
                                 :title="normalizeDocStatus(doc.parseStatus) === 'failed' ? doc.errorMsg || '处理失败' : undefined"
                               >
@@ -277,13 +315,71 @@
                                 </span>
                               </div>
                             </div>
-                            <div class="doc-meta">
-                              {{ formatBytes(doc.fileSize) }} · v{{ doc.version ?? 1 }} · {{ doc.chunkCount ?? 0 }} chunks · {{ formatTime(doc.createdAt) }}
+
+                            <!-- 压缩包容器：成功/失败/跳过 徽标 + 跳过明细 tooltip -->
+                            <div v-if="doc.isArchive && doc.childrenSummary" class="archive-summary">
+                              <span class="archive-badge ok">{{ doc.childrenSummary.completed ?? 0 }} 成功</span>
+                              <span class="archive-badge fail">{{ doc.childrenSummary.failed ?? 0 }} 失败</span>
+                              <span
+                                class="archive-badge skip"
+                                :class="{ 'has-detail': (doc.skippedEntries || []).length > 0 }"
+                              >
+                                {{ doc.childrenSummary.skipped ?? 0 }} 跳过
+                                <span
+                                  v-if="(doc.skippedEntries || []).length > 0"
+                                  class="skip-popover"
+                                >
+                                  <strong>跳过明细（{{ doc.skippedEntries.length }} 条）</strong>
+                                  <span
+                                    v-for="(entry, idx) in doc.skippedEntries"
+                                    :key="idx"
+                                    class="skip-row"
+                                  >
+                                    <span class="skip-path">{{ entry.path }}</span>
+                                    <span class="skip-reason">{{ skipReasonLabel(entry.reason) }}</span>
+                                  </span>
+                                </span>
+                              </span>
+                              <span
+                                v-if="(doc.childrenSummary.processing || doc.childrenSummary.pending)"
+                                class="archive-badge pending"
+                              >{{ (doc.childrenSummary.processing ?? 0) + (doc.childrenSummary.pending ?? 0) }} 处理中</span>
                             </div>
-                            <div v-if="normalizeDocStatus(doc.parseStatus) === 'failed' && doc.errorMsg" class="doc-error">
+
+                            <div class="doc-meta">
+                              <template v-if="doc.isArchive">
+                                {{ formatBytes(doc.fileSize) }} · 共 {{ doc.childrenSummary?.total ?? 0 }} 个文件 · {{ formatTime(doc.createdAt) }}
+                              </template>
+                              <template v-else>
+                                {{ formatBytes(doc.fileSize) }} · v{{ doc.version ?? 1 }} · {{ doc.chunkCount ?? 0 }} chunks · {{ formatTime(doc.createdAt) }}
+                              </template>
+                            </div>
+
+                            <div
+                              v-if="doc.isArchive ? (isContainerFailed(doc.parseStatus) && doc.errorMsg) : (normalizeDocStatus(doc.parseStatus) === 'failed' && doc.errorMsg)"
+                              class="doc-error"
+                            >
                               {{ doc.errorMsg }}
                             </div>
-                            <div class="doc-links">
+
+                            <!-- 压缩包容器操作 -->
+                            <div v-if="doc.isArchive" class="doc-links">
+                              <span class="link-action" @click.stop="toggleDocChildren(doc)">
+                                {{ expandedDocIds[doc.id] ? '收起子文档' : '查看子文档' }}
+                              </span>
+                              <span v-if="isContainerFailed(doc.parseStatus) && canWriteKb(kb)" class="link-action" @click.stop="onRetryContainer(doc)">重试展开</span>
+                              <span
+                                v-if="canWriteKb(kb)"
+                                class="link-action danger"
+                                title="删除压缩包及其全部子文档"
+                                @click.stop="onDeleteDoc(doc)"
+                              >
+                                删除
+                              </span>
+                            </div>
+
+                            <!-- 普通文档操作 -->
+                            <div v-else class="doc-links">
                               <span class="link-action" @click.stop="goDoc(doc.id, doc.kbId)">详情</span>
                               <span
                                 class="link-action"
@@ -302,6 +398,33 @@
                               >
                                 删除
                               </span>
+                            </div>
+
+                            <!-- 子文档下钻 -->
+                            <div v-if="doc.isArchive && expandedDocIds[doc.id]" class="archive-children">
+                              <div v-if="childrenLoading[doc.id]" class="archive-children-hint">加载子文档中…</div>
+                              <div v-else-if="(childrenMap[doc.id] || []).length === 0" class="archive-children-hint">
+                                {{ isContainerExpanding(doc.parseStatus) ? '展开中，暂无已入库的子文档' : '该压缩包没有可入库的子文档' }}
+                              </div>
+                              <div v-else class="child-doc-list">
+                                <div
+                                  v-for="child in childrenMap[doc.id]"
+                                  :key="child.id"
+                                  class="child-doc-row"
+                                >
+                                  <span class="child-doc-name" @click.stop="goDoc(child.id, child.kbId ?? kb.id)">
+                                    {{ child.archiveEntryPath || child.filename }}
+                                  </span>
+                                  <span class="child-doc-status">
+                                    <span v-if="isProcessing(child.parseStatus)" class="status-icon spin">⟳</span>
+                                    <span v-else-if="normalizeDocStatus(child.parseStatus) === 'completed'" class="status-icon ok">✓</span>
+                                    <span v-else-if="normalizeDocStatus(child.parseStatus) === 'failed'" class="status-icon fail">✗</span>
+                                    <span class="badge" :class="docStatusClass(child.parseStatus)">
+                                      {{ docStatusLabel(child.parseStatus) }}
+                                    </span>
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </article>
@@ -510,13 +633,15 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref, computed, watch } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createKb, deleteKb, listKb, listKbPaged, updateKb, getVisibilityImpact, changeVisibility } from '../api/kb'
 import { listOrgs } from '../api/org'
 import {
   deleteDocument,
   downloadDocument,
+  getDocument,
+  listDocumentChildren,
   listDocuments,
   reprocessDocument,
   uploadDocument,
@@ -582,6 +707,58 @@ const expandedKbId = ref(null)
 
 const docsMap = reactive({})
 const docsLoading = reactive({})
+
+// ===== 压缩包容器（archive）相关状态 =====
+// 子文档下钻缓存：containerId -> DocumentVO[]
+const childrenMap = reactive({})
+const childrenLoading = reactive({})
+// 容器行展开态：containerId -> bool
+const expandedDocIds = reactive({})
+// 容器展开中轮询定时器：containerId -> intervalId
+const containerTimers = new Map()
+
+// 压缩包扩展名识别（前端仅用于 UI 标注，绝不解压）。
+const ARCHIVE_EXT_RE = /\.(zip|tgz|tar\.gz)$/i
+function isArchiveFile(name) {
+  return ARCHIVE_EXT_RE.test(String(name || '').trim())
+}
+
+// 跳过原因中文映射（与后端 SkipReason.wireName 对齐）。
+const SKIP_REASON_LABELS = {
+  nested_archive: '嵌套压缩包',
+  illegal_path: '非法路径',
+  unsupported_type: '不支持的类型',
+  oversize: '超大文件',
+  register_failed: '入库失败',
+}
+function skipReasonLabel(reason) {
+  return SKIP_REASON_LABELS[reason] || reason || '未知原因'
+}
+
+// 容器状态判定：parse_status 取值 PENDING/EXPANDING（展开中）、EXPANDED（终态成功，含部分成功）、FAILED（终态失败）。
+function isContainerExpanding(status) {
+  const s = normalizeDocStatus(status)
+  return s === 'pending' || s === 'expanding' || s === 'processing'
+}
+function isContainerExpanded(status) {
+  return normalizeDocStatus(status) === 'expanded'
+}
+function isContainerFailed(status) {
+  return normalizeDocStatus(status) === 'failed'
+}
+function isContainerTerminal(status) {
+  return isContainerExpanded(status) || isContainerFailed(status)
+}
+function containerStatusLabel(status) {
+  const s = normalizeDocStatus(status)
+  const map = { pending: '展开中', expanding: '展开中', processing: '展开中', expanded: '已展开', failed: '展开失败' }
+  return map[s] || docStatusLabel(status)
+}
+function containerStatusClass(status) {
+  if (isContainerExpanded(status)) return 'badge-green'
+  if (isContainerFailed(status)) return 'badge-red'
+  return 'badge-amber'
+}
 
 const uploadKbId = ref(null)
 const isDragOver = ref(false)
@@ -829,9 +1006,111 @@ function advanceTrackingQueue() {
   activeStatus.value = 'pending'
 }
 
+// ===== 容器展开轮询：复用 5s 节奏，拉容器详情刷新 childrenSummary，直到 EXPANDED/FAILED =====
+const CONTAINER_POLL_INTERVAL_MS = 5000
+
+function stopContainerPoll(docId) {
+  const timer = containerTimers.get(docId)
+  if (timer) {
+    clearInterval(timer)
+    containerTimers.delete(docId)
+  }
+}
+
+function applyContainerDetail(kbId, docId, detail) {
+  const list = docsMap[kbId]?.list
+  if (!list || !detail) return
+  const doc = list.find((d) => d.id === docId)
+  if (!doc) return
+  doc.parseStatus = detail.parseStatus
+  if (detail.childrenSummary !== undefined) doc.childrenSummary = detail.childrenSummary
+  if (detail.skippedEntries !== undefined) doc.skippedEntries = detail.skippedEntries
+  doc.errorMsg = detail.errorMsg
+  if (detail.isArchive !== undefined) doc.isArchive = detail.isArchive
+}
+
+function pollContainer(kbId, docId) {
+  if (!docId || !kbId) return
+  stopContainerPoll(docId)
+  const tick = async () => {
+    try {
+      const res = await getDocument(docId)
+      const detail = res.data
+      applyContainerDetail(kbId, docId, detail)
+      // 展开中同时刷新已下钻的子文档列表，让 UI 逐步显现入库结果
+      if (expandedDocIds[docId]) await loadChildren(docId)
+      if (isContainerTerminal(detail?.parseStatus)) {
+        stopContainerPoll(docId)
+        await loadKbs()
+      }
+    } catch {
+      stopContainerPoll(docId)
+    }
+  }
+  tick()
+  containerTimers.set(docId, setInterval(tick, CONTAINER_POLL_INTERVAL_MS))
+}
+
+async function hydrateContainerDetail(kbId, docId) {
+  try {
+    const res = await getDocument(docId)
+    applyContainerDetail(kbId, docId, res.data)
+  } catch {
+    // 静默：拉不到详情就维持列表原始展示
+  }
+}
+
+async function loadChildren(containerId) {
+  childrenLoading[containerId] = true
+  try {
+    const res = await listDocumentChildren(containerId)
+    // 兼容后端返回 { list: [...] } 或直接数组
+    childrenMap[containerId] = res.data?.list ?? res.data ?? []
+  } catch {
+    childrenMap[containerId] = childrenMap[containerId] ?? []
+  } finally {
+    childrenLoading[containerId] = false
+  }
+}
+
+async function toggleDocChildren(doc) {
+  const id = doc.id
+  expandedDocIds[id] = !expandedDocIds[id]
+  if (expandedDocIds[id] && !childrenMap[id]) {
+    await loadChildren(id)
+  }
+}
+
+async function onRetryContainer(doc) {
+  const targetKbId = doc.kbId ?? expandedKbId.value
+  if (!Number.isInteger(Number(targetKbId)) || Number(targetKbId) <= 0) {
+    toast.warning('无法确定压缩包所属知识库')
+    return
+  }
+  try {
+    await reprocessDocument(doc.id)
+    doc.parseStatus = 'EXPANDING'
+    doc.errorMsg = null
+    pollContainer(targetKbId, doc.id)
+    toast.success('已提交重新展开')
+  } catch {
+    // 全局拦截器已 toast
+  }
+}
+
 function watchProcessingDocs(kbId) {
   const list = docsMap[kbId]?.list ?? []
   for (const doc of list) {
+    // 压缩包容器走独立的展开轮询（拉详情刷新 childrenSummary）
+    if (doc.isArchive) {
+      if (isContainerExpanding(doc.parseStatus)) {
+        pollContainer(kbId, doc.id)
+      } else if (doc.childrenSummary == null) {
+        // 已终态但列表未带聚合：一次性拉详情补齐 childrenSummary / skippedEntries。
+        hydrateContainerDetail(kbId, doc.id)
+      }
+      continue
+    }
     if (!isProcessing(doc.parseStatus)) continue
     ensureActiveTracking(doc.id, kbId, doc.parseStatus)
     startDocPolling(
@@ -1111,6 +1390,8 @@ function createUploadItem(file, kbId) {
     status: 'queued',
     errorCode: null,
     errorMessage: '',
+    // 压缩包标注：仅用于卡片文案（"压缩包 · 将自动展开 / 展开中"），前端绝不解压。
+    isArchive: isArchiveFile(file?.name),
   }
 }
 
@@ -1135,8 +1416,13 @@ async function uploadOneItem(item, onConflict = 'REJECT') {
     item.phase = 'done'
     item.status = 'done'
     item.progress = 100
-    if (docId) {
+    if (docId && !item.isArchive) {
+      // 普通文档：进入既有解析管道轮询。
       beginPollingDoc(docId, item.kbId)
+    } else if (docId && item.isArchive) {
+      // 压缩包：register 成功后容器进入 EXPANDING/PENDING，
+      // 展开轮询由 handleFiles 末尾的 loadDocs → watchProcessingDocs 统一拉起。
+      pollContainer(item.kbId, docId)
     }
   } catch (e) {
     const code = uploadErrorCode(e)
@@ -1313,6 +1599,9 @@ async function onDeleteDoc(doc) {
   })
   if (!ok) return
   stopDocPolling(doc.id)
+  stopContainerPoll(doc.id)
+  delete childrenMap[doc.id]
+  delete expandedDocIds[doc.id]
   if (activeDocId.value === doc.id) {
     activeDocId.value = null
     activeStatus.value = null
@@ -1366,6 +1655,11 @@ function statusClass(status) {
   if (status === 'rebuilding') return 'badge-amber'
   return 'badge-gray'
 }
+
+onUnmounted(() => {
+  containerTimers.forEach((timer) => clearInterval(timer))
+  containerTimers.clear()
+})
 
 onMounted(async () => {
   await loadKbs()
@@ -1852,6 +2146,124 @@ onMounted(async () => {
 
 .doc-links {
   margin-top: 6px;
+}
+
+/* ====== 压缩包容器（archive）UI ====== */
+.recent-doc-card.is-archive {
+  border-color: #c7d2fe;
+  background: #fbfbff;
+}
+
+.archive-chip {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #4338ca;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: var(--radius-full);
+  padding: 1px 8px;
+  vertical-align: middle;
+}
+
+.archive-hint-text { color: var(--primary); font-weight: 600; }
+
+.archive-expander {
+  display: inline-block;
+  margin-right: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+}
+.archive-expander:hover { color: var(--primary); }
+
+.archive-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.archive-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  padding: 1px 9px;
+  border: 1px solid transparent;
+}
+.archive-badge.ok { background: #dcfce7; color: #166534; border-color: rgba(22,101,52,0.2); }
+.archive-badge.fail { background: #fee2e2; color: #991b1b; border-color: rgba(239,68,68,0.25); }
+.archive-badge.skip { background: #f1f5f9; color: #475569; border-color: rgba(148,163,184,0.35); }
+.archive-badge.pending { background: #fef3c7; color: #92400e; border-color: rgba(146,64,14,0.2); }
+
+/* 跳过徽标 hover 明细弹层（复用页面既有 .hint-popover 深色气泡风格） */
+.archive-badge.skip.has-detail { position: relative; cursor: help; }
+.archive-badge.skip .skip-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 200;
+  width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: #1e293b;
+  color: #f1f5f9;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
+  font-weight: 400;
+  text-align: left;
+}
+.archive-badge.skip.has-detail:hover .skip-popover { display: block; }
+.skip-popover strong { display: block; color: #fff; font-size: 12px; margin-bottom: 6px; }
+.skip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding: 2px 0;
+}
+.skip-path { color: #cbd5e1; word-break: break-all; min-width: 0; }
+.skip-reason { color: #fca5a5; flex: 0 0 auto; font-weight: 600; }
+
+.archive-children {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.archive-children-hint { font-size: 12px; color: var(--text-muted); }
+
+.child-doc-list { display: grid; gap: 6px; }
+.child-doc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+.child-doc-name {
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.child-doc-name:hover { text-decoration: underline; }
+.child-doc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 .docs-table {

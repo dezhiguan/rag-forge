@@ -167,6 +167,16 @@ export const listDocuments = (kbId, page = 1, size = 20, keyword) => {
 
 export const getDocument = (id) => request.get(`/documents/${id}`)
 
+// 压缩包容器下钻：拉取该容器展开出的子文档列表（DocumentVO[]）。
+// 契约：GET /api/v1/documents/{containerId}/children，由后端并行实现。
+export const listDocumentChildren = (containerId) => {
+  const id = Number(containerId)
+  if (!Number.isInteger(id) || id <= 0) {
+    return Promise.reject(new Error('INVALID_CONTAINER_ID'))
+  }
+  return request.get(`/documents/${id}/children`)
+}
+
 export const listDocumentChunks = (id, page = 1, size = 20) =>
   request.get(`/documents/${id}/chunks`, { params: { page, size } })
 
