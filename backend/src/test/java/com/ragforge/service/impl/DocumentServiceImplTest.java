@@ -140,7 +140,7 @@ class DocumentServiceImplTest {
     assertThatThrownBy(
             () ->
                 documentService.upload(
-                    1L, new MockMultipartFile("file", "bad.txt", "text/plain", "x".getBytes())))
+                    1L, new MockMultipartFile("file", "bad.exe", "application/octet-stream", "x".getBytes())))
         .isInstanceOf(BizException.class)
         .hasMessageContaining("只允许");
   }
