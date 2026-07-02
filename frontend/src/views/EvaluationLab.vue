@@ -858,6 +858,7 @@ const strategyLabelMap = {
 const chunkerStrategyOptions = [
   { value: 'RECURSIVE', label: 'Recursive', hint: '递归切分' },
   { value: 'MARKDOWN_HEADING', label: 'Markdown Heading', hint: '按标题分块' },
+  { value: 'STRUCTURED_HEADING', label: 'Structured Heading', hint: '中文结构标记分块' },
   { value: 'SEMANTIC', label: 'Semantic', hint: '语义分块' },
   { value: 'TABLE_AWARE', label: 'Table Aware', hint: '表格感知' },
   { value: 'FIXED_WINDOW', label: 'Fixed Window', hint: '固定窗口' },

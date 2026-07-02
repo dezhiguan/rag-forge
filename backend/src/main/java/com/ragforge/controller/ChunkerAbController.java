@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/evaluation")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR')")
+// 分块 A/B 仅读取 KB 文档做内存重分块评估、不改动线上 KB,权限对齐评测实验室其余端点
+// (dataset/question/experiment/golden-set 均允许普通用户),避免前端可见但后端 403 的不一致。
+@PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER','SERVICE_ACCOUNT')")
 public class ChunkerAbController {
 
   private final ChunkerAbService chunkerAbService;
