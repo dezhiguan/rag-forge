@@ -345,12 +345,12 @@
           <div class="drawer-action-row">
             <button
               class="btn-save-config"
-              :class="{ 'is-saving': savingSampling }"
-              :disabled="savingSampling || !isPlatformAdmin"
+              :class="{ 'is-saving': savingGlobal }"
+              :disabled="savingGlobal || !isPlatformAdmin"
               :title="isPlatformAdmin ? '' : '全局配置仅平台管理员可修改'"
               @click="saveGlobalSampling"
             >
-              <span v-if="savingSampling" class="btn-save-spinner" aria-hidden="true" />
+              <span v-if="savingGlobal" class="btn-save-spinner" aria-hidden="true" />
               <svg v-else class="btn-save-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                 <path
                   d="M4 3.5h8.5L16 7v9.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
@@ -361,7 +361,7 @@
                 <path d="M8 3.5v4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
                 <path d="M6 13.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
               </svg>
-              <span>{{ savingSampling ? '保存中...' : '保存全局配置' }}</span>
+              <span>{{ savingGlobal ? '保存中...' : '保存全局配置' }}</span>
             </button>
           </div>
         </section>
@@ -375,7 +375,7 @@
             </select>
             <input v-model.number="kbOverrideForm.ratePercent" type="number" min="0" max="10" step="0.5" />
             <label><input v-model="kbOverrideForm.enabled" type="checkbox" /> 启用</label>
-            <button class="btn btn-secondary btn-sm" :disabled="savingSampling" @click="saveKbOverride">保存覆盖</button>
+            <button class="btn btn-secondary btn-sm" :disabled="savingOverride" @click="saveKbOverride">保存覆盖</button>
           </div>
           <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无知识库单独覆盖</div>
           <div v-else class="override-list">
@@ -512,7 +512,9 @@ const kbFilterOptions = computed(() => {
 const globalRatePercent = ref(1)
 const globalSamplingEnabled = ref(true)
 const goldenEnabledCount = ref(0)
-const savingSampling = ref(false)
+// 全局配置与 KB 覆盖各用独立的保存态,避免点「保存覆盖」时「保存全局配置」按钮跟着进"保存中"。
+const savingGlobal = ref(false)
+const savingOverride = ref(false)
 const replayingGolden = ref(false)
 const settingsError = ref('')
 const monthlyBudgetCny = ref(200)
@@ -680,11 +682,14 @@ async function loadSamplingSettings() {
 }
 
 async function saveGlobalSampling() {
-  await saveSampling({
-    scopeType: 'GLOBAL',
-    sampleRate: percentToRate(globalRatePercent.value),
-    enabled: globalSamplingEnabled.value,
-  })
+  await saveSampling(
+    {
+      scopeType: 'GLOBAL',
+      sampleRate: percentToRate(globalRatePercent.value),
+      enabled: globalSamplingEnabled.value,
+    },
+    'global',
+  )
 }
 
 async function saveKbOverride() {
@@ -692,15 +697,18 @@ async function saveKbOverride() {
     settingsError.value = '请选择知识库'
     return
   }
-  await saveSampling({
-    scopeType: 'KB',
-    scopeId: kbOverrideForm.scopeId,
-    sampleRate: percentToRate(kbOverrideForm.ratePercent),
-    enabled: kbOverrideForm.enabled,
-  })
+  await saveSampling(
+    {
+      scopeType: 'KB',
+      scopeId: kbOverrideForm.scopeId,
+      sampleRate: percentToRate(kbOverrideForm.ratePercent),
+      enabled: kbOverrideForm.enabled,
+    },
+    'kb',
+  )
 }
 
-async function saveSampling(payload) {
+async function saveSampling(payload, which = 'global') {
   const rate = Number(payload.sampleRate)
   if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
     settingsError.value = '抽样率必须在 0% 到 100% 之间'
@@ -714,7 +722,8 @@ async function saveSampling(payload) {
     }
     confirmed = true
   }
-  savingSampling.value = true
+  const savingFlag = which === 'kb' ? savingOverride : savingGlobal
+  savingFlag.value = true
   settingsError.value = ''
   try {
     await upsertSamplingConfig(Object.assign({}, payload, { confirmed }))
@@ -726,7 +735,7 @@ async function saveSampling(payload) {
       toast.error(resolveHttpError(error, { kind: 'sampling' }))
     }
   } finally {
-    savingSampling.value = false
+    savingFlag.value = false
   }
 }
 
