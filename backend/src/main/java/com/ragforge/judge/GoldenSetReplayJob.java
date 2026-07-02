@@ -27,6 +27,7 @@ public class GoldenSetReplayJob {
   private final EvalQuestionMapper questionMapper;
   private final EvalDatasetMapper datasetMapper;
   private final AnswerService answerService;
+  private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
   @Scheduled(cron = "${ragforge.judge.golden-replay.cron:0 0 3 * * *}")
   @SchedulerLock(name = SCHEDULER_LOCK_NAME, lockAtMostFor = "PT2H")
@@ -46,14 +47,22 @@ public class GoldenSetReplayJob {
     for (int i = 0; i < requested; i++) {
       EvalQuestion question = questions.get(i);
       try {
+        List<Long> kbIds = parseKbIds(question);
         AnswerRequest req = new AnswerRequest();
         req.setQuery(question.getQuestion());
-        req.setKbIds(parseKbIds(question));
+        req.setKbIds(kbIds);
         req.setJudgeSource("GOLDEN_SET");
         req.setGoldenQuestionId(question.getId());
         req.setForceSample(true);
         req.setStream(false);
-        answerService.answerSync(req);
+        // 回放跑在无请求上下文的线程上:设组织上下文,让应答/检索里的 query 向量化等模型用量
+        // 归属到 KB 所属组织(否则记在 org_id=0,组织成本看板看不到)。
+        com.ragforge.security.OrgContextHolder.set(resolveOrgId(kbIds));
+        try {
+          answerService.answerSync(req);
+        } finally {
+          com.ragforge.security.OrgContextHolder.clear();
+        }
         success++;
       } catch (Exception e) {
         failed++;
@@ -96,5 +105,14 @@ public class GoldenSetReplayJob {
       throw new IllegalStateException("GOLDEN_SET_DATASET_KB_REQUIRED");
     }
     return List.of(dataset.getKbId());
+  }
+
+  /** 取被评测 KB 所属组织(首个),用于把回放应答/检索的模型用量归属到组织。 */
+  private Long resolveOrgId(List<Long> kbIds) {
+    if (kbIds == null || kbIds.isEmpty() || kbIds.get(0) == null) {
+      return null;
+    }
+    com.ragforge.model.entity.KnowledgeBase kb = knowledgeBaseMapper.selectById(kbIds.get(0));
+    return kb == null ? null : kb.getOrgId();
   }
 }
