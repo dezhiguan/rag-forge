@@ -181,11 +181,15 @@ public class AnswerService {
               }
             });
     long llmLatency = llmResult.latencyMs() > 0 ? llmResult.latencyMs() : System.currentTimeMillis() - llmStart;
-    List<Citation> citations = citationLinker.link(llmResult.content(), retrieval.getResults());
-    GuardRailResult guard = guardRails.check(llmResult.content(), citations);
+    // 规范化答案里的 [n] 引用编号:应答 LLM 常把编号写飘(如只检索到 1 个块却引用 [5]),
+    // 越界编号收敛到有效范围,避免用户看到指向不存在块的悬空编号(与检索块显示对齐)。
+    String answerText =
+        CitationLinker.normalizeCitationMarkers(llmResult.content(), retrieval.getResults().size());
+    List<Citation> citations = citationLinker.link(answerText, retrieval.getResults());
+    GuardRailResult guard = guardRails.check(answerText, citations);
 
     AnswerResponse response = new AnswerResponse();
-    response.setAnswer(llmResult.content());
+    response.setAnswer(answerText);
     response.setCitations(citations);
     response.setRetrieval(retrievalResponse);
     response.setTokens(new TokenUsage(llmResult.promptTokens(), llmResult.completionTokens()));
@@ -523,6 +527,24 @@ class CitationLinker {
       indices.add(Integer.parseInt(matcher.group(1)));
     }
     return indices;
+  }
+
+  /**
+   * 规范化答案中的 [n] 引用编号:越界(&lt;1 或 &gt;检索块数)的编号收敛到 [1](排名最高的检索块), 有效编号保持不变。避免应答 LLM 幻觉出的悬空编号(如只 1 个块却写 [5])在页面上指向不存在的块。
+   */
+  static String normalizeCitationMarkers(String answer, int chunkCount) {
+    if (answer == null || answer.isBlank() || chunkCount <= 0 || !answer.contains("[")) {
+      return answer;
+    }
+    java.util.regex.Matcher matcher = REF.matcher(answer);
+    StringBuilder sb = new StringBuilder();
+    while (matcher.find()) {
+      int k = Integer.parseInt(matcher.group(1));
+      int fixed = (k >= 1 && k <= chunkCount) ? k : 1;
+      matcher.appendReplacement(sb, "[" + fixed + "]");
+    }
+    matcher.appendTail(sb);
+    return sb.toString();
   }
 
   private static String truncate(String value, int max) {

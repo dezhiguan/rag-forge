@@ -31,6 +31,7 @@ class GoldenSetReplayJobTest {
   @Mock private EvalQuestionMapper questionMapper;
   @Mock private EvalDatasetMapper datasetMapper;
   @Mock private AnswerService answerService;
+  @Mock private com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
   @Test
   void replay_runsFiveQuestionsDryRunWithForcedGoldenSampling() {
@@ -38,7 +39,7 @@ class GoldenSetReplayJobTest {
     when(datasetMapper.selectById(7L)).thenReturn(dataset(99L));
     when(answerService.answerSync(any(AnswerRequest.class))).thenReturn(new AnswerResponse());
 
-    GoldenSetReplayJob job = new GoldenSetReplayJob(questionMapper, datasetMapper, answerService);
+    GoldenSetReplayJob job = new GoldenSetReplayJob(questionMapper, datasetMapper, answerService, knowledgeBaseMapper);
     ReplayResultVo result = job.replay(null, 5);
 
     assertThat(result.getRequested()).isEqualTo(5);

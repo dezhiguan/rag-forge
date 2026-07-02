@@ -39,6 +39,7 @@ public class JudgeOrchestrator {
   private final RagforgeMetrics metrics;
   private final ObjectMapper objectMapper;
   private final com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
+  private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
   @Value("${app.deepseek.model:deepseek-v4-flash}")
   private String judgeModel;
@@ -146,14 +147,32 @@ public class JudgeOrchestrator {
     }
 
     metrics.recordJudgeCost(result.getSource(), cost);
-    modelUsageRecorder.record(
-        new com.ragforge.modelcenter.ModelUsageEvent(
-            judgeModel,
-            com.ragforge.modelcenter.Purpose.JUDGE,
-            judgePromptTokens,
-            judgeCompletionTokens,
-            latency,
-            "COMPLETED".equals(result.getStatus())));
+    // 判分跑在异步 judge Pod 上、无请求上下文,ModelUsageRecorder 会把 org 记成 0(每个组织的
+    // 成本看板都看不到判分花费)。这里把 OrgContextHolder 临时设成被判 KB 所属组织,让 JUDGE 的
+    // 模型用量正确归属到组织(与质量看板 judge_metrics_daily 的口径一致)。
+    Long judgeOrgId = resolveOrgId(kbIds);
+    com.ragforge.security.OrgContextHolder.set(judgeOrgId);
+    try {
+      modelUsageRecorder.record(
+          new com.ragforge.modelcenter.ModelUsageEvent(
+              judgeModel,
+              com.ragforge.modelcenter.Purpose.JUDGE,
+              judgePromptTokens,
+              judgeCompletionTokens,
+              latency,
+              "COMPLETED".equals(result.getStatus())));
+    } finally {
+      com.ragforge.security.OrgContextHolder.clear();
+    }
+  }
+
+  /** 取被判 KB 所属组织(多库时取首个),用于把判分的模型用量归属到组织。 */
+  private Long resolveOrgId(Long[] kbIds) {
+    if (kbIds == null || kbIds.length == 0 || kbIds[0] == null) {
+      return null;
+    }
+    com.ragforge.model.entity.KnowledgeBase kb = knowledgeBaseMapper.selectById(kbIds[0]);
+    return kb == null ? null : kb.getOrgId();
   }
 
   private JudgeScore scoreDimension(JudgeContext ctx, ScoreDimension dimension) {

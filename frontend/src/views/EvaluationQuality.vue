@@ -244,7 +244,7 @@
                 <span>•</span>
                 <span>{{ formatDateTime(item.createdAt) }}</span>
                 <span>•</span>
-                <span class="top-issue">{{ item.topIssue || '暂无问题摘要' }}</span>
+                <span class="top-issue">{{ formatTopIssue(item.topIssue) }}</span>
               </div>
             </article>
           </div>
@@ -433,7 +433,7 @@ import {
   upsertSamplingConfig,
 } from '../api/quality'
 import { listKb } from '../api/kb'
-import { resolveHttpError } from '../api/error-messages'
+import { bottleneckLabel, resolveHttpError } from '../api/error-messages'
 import { useAuth } from '../composables/useAuth'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
@@ -850,6 +850,18 @@ function formatDateTime(value) {
 function truncateText(text, maxLength) {
   const source = text || ''
   return source.length > maxLength ? `${source.slice(0, maxLength)}...` : source
+}
+
+// 最差 case 的问题摘要:后端把 issues 首条(可能是机器码 bottleneck=X)直接给到 topIssue,
+// 这里转成中文:NONE→无明显问题,其余→检索瓶颈/生成瓶颈/两者皆有;非 bottleneck 的摘要原样展示。
+function formatTopIssue(topIssue) {
+  if (!topIssue) return '暂无问题摘要'
+  const m = /^bottleneck=(\w+)/i.exec(topIssue)
+  if (m) {
+    const key = m[1].toUpperCase()
+    return key === 'NONE' ? '无明显问题' : bottleneckLabel(key)
+  }
+  return topIssue
 }
 
 function scoreClass(value) {
