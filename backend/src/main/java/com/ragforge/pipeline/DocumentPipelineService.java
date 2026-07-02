@@ -524,16 +524,20 @@ public class DocumentPipelineService {
       if (rewriter != null) {
         HtmlMarkdownImageExtractor.RewriteResult result = extractAndRewriteFromObject(doc, rewriter, contentType);
         if (result != null) {
+          // HTML 需剥标签成纯文本（rfimg 占位符是纯文本会保留）；markdown/纯文本本就是可读文本，不动。
+          String text =
+              isHtmlContentType(contentType)
+                  ? htmlToPlainText(result.rewrittenText())
+                  : result.rewrittenText();
           return new ParseResult(
-              result.rewrittenText(),
-              System.currentTimeMillis() - start,
-              1,
-              List.of(),
-              result.images());
+              text, System.currentTimeMillis() - start, 1, List.of(), result.images());
         }
       }
       // 兜底：rewriter 找不到 / 调用失败时退回旧路径（纯文本 + 单独抽图，无占位符）
       String rawText = readRawText(doc);
+      if (isHtmlContentType(contentType)) {
+        rawText = htmlToPlainText(rawText);
+      }
       return new ParseResult(
           rawText,
           System.currentTimeMillis() - start,
@@ -787,6 +791,41 @@ public class DocumentPipelineService {
     return contentType.equals("application/pdf")
         || contentType.equals("application/msword")
         || contentType.startsWith("application/vnd.openxmlformats-");
+  }
+
+  private static boolean isHtmlContentType(String contentType) {
+    return contentType.equals("text/html")
+        || contentType.equals("application/xhtml+xml")
+        || contentType.equals("html")
+        || contentType.equals("htm");
+  }
+
+  /**
+   * 用 Tika 把 HTML 剥成纯文本（去 script/style、解码 HTML 实体、按块级元素换行），修复 HTML 标签污染
+   * 文本 chunk / 向量的问题。已内嵌的 rfimg 占位符 {@code ![image N](rfimg://N)} 是纯文本节点，剥标签时保留。
+   * 解析失败则回退原文（不因清洗失败中断入库）。
+   */
+  static String htmlToPlainText(String html) {
+    if (!StringUtils.hasText(html)) {
+      return html;
+    }
+    try {
+      java.io.StringWriter writer = new java.io.StringWriter();
+      org.apache.tika.sax.BodyContentHandler handler = new org.apache.tika.sax.BodyContentHandler(writer);
+      org.apache.tika.metadata.Metadata metadata = new org.apache.tika.metadata.Metadata();
+      metadata.set(org.apache.tika.metadata.Metadata.CONTENT_TYPE, "text/html; charset=UTF-8");
+      new org.apache.tika.parser.AutoDetectParser()
+          .parse(
+              new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)),
+              handler,
+              metadata,
+              new org.apache.tika.parser.ParseContext());
+      String text = writer.toString();
+      return StringUtils.hasText(text) ? text.strip() : html;
+    } catch (Exception e) {
+      log.warn("HTML 转纯文本失败，回退原文: err={}", e.getMessage());
+      return html;
+    }
   }
 
   private static String suffixFor(String filename) {
