@@ -31,14 +31,12 @@
       <div class="toolbar-block">
         <label>知识库筛选</label>
         <div class="kb-filter-row">
-          <input
-            v-model="kbIdInput"
-            type="text"
-            inputmode="numeric"
-            placeholder="留空为全部"
-            @keyup.enter="applyKbFilter"
-          />
-          <button class="btn btn-secondary btn-sm" @click="applyKbFilter">应用</button>
+          <select class="kb-filter-select" :value="kbId ?? ''" @change="onKbFilterChange">
+            <option value="">全部知识库</option>
+            <option v-for="kb in kbOptions" :key="kb.id" :value="kb.id">
+              {{ kb.name || kbDisplayName(kb.id) }}
+            </option>
+          </select>
           <button class="btn btn-secondary btn-sm" @click="clearKbFilter">清除</button>
         </div>
       </div>
@@ -407,7 +405,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   deleteSamplingConfig,
@@ -861,22 +859,20 @@ function setDays(value) {
   router.push({ path: '/evaluation/quality', query: targetQuery })
 }
 
-function applyKbFilter() {
-  const raw = (kbIdInput.value || '').trim()
-  if (!raw) {
+// 知识库筛选改为按名称下拉选择(不再让用户输 ID)。
+function onKbFilterChange(event) {
+  const val = event?.target?.value
+  if (!val) {
     clearKbFilter()
     return
   }
-  if (!/^\d+$/.test(raw)) {
-    toast.error('请输入有效的知识库 ID（数字）')
-    return
-  }
-  const parsed = Number.parseInt(raw, 10)
-  if (parsed <= 0) {
-    toast.error('请输入有效的知识库 ID（数字）')
+  const parsed = Number.parseInt(val, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    clearKbFilter()
     return
   }
   kbId.value = parsed
+  kbIdInput.value = String(parsed)
   router.push({ path: '/evaluation/quality', query: { days: normalizedDays.value, kbId: parsed } })
 }
 
@@ -885,6 +881,18 @@ function clearKbFilter() {
   kbId.value = null
   router.push({ path: '/evaluation/quality', query: { days: normalizedDays.value } })
 }
+
+// 供筛选下拉使用的知识库清单(按名称展示),页面加载时拉取。
+async function loadKbOptions() {
+  try {
+    const resp = await listKb()
+    kbOptions.value = unwrapResponse(resp) || []
+  } catch {
+    /* 忽略:下拉为空时退化为"全部" */
+  }
+}
+
+onMounted(loadKbOptions)
 
 function openKb(targetKbId) {
   if (!targetKbId) return
@@ -1029,7 +1037,7 @@ async function loadWorstCases() {
 async function loadCost() {
   loading.cost = true
   try {
-    const response = await fetchCost(days.value)
+    const response = await fetchCost(days.value, kbId.value)
     cost.value = unwrapResponse(response) || {
       totalCny: 0,
       dailyAverageCny: 0,
@@ -1252,6 +1260,21 @@ watch(
   transition: border-color 0.15s ease;
 }
 .toolbar-block input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.kb-filter-select {
+  min-width: 200px;
+  max-width: 280px;
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  transition: border-color 0.15s ease;
+}
+.kb-filter-select:focus {
   outline: none;
   border-color: var(--primary);
 }
