@@ -99,7 +99,11 @@ public class RemoteOcrClient implements OcrClient {
                     "content",
                     List.of(
                         Map.of("image", dataUri(imageBytes, contentType)),
-                        Map.of("text", "识别图中所有文字"))))));
+                        Map.of("text", "识别图中所有文字"))))),
+        // 必须显式指定 text_recognition,否则 qwen-vl-ocr 对密集排版图会走"文本检测"、
+        // 只返回检测框坐标(如 236,72,75,421,90)而非识别文字,导致索引里是坐标垃圾、检索不到。
+        "parameters",
+        Map.of("ocr_options", Map.of("task", "text_recognition")));
   }
 
   static String extractOcrText(JsonNode root) {
