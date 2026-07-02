@@ -35,11 +35,18 @@ public class DefaultArchiveExpander implements ArchiveExpander {
   private static final int READ_BUFFER = 8192;
 
   private final ArchiveLimits limits;
-  private final ZipExtractor zipExtractor = new ZipExtractor();
-  private final TarGzExtractor tarGzExtractor = new TarGzExtractor();
+  private final ArchiveReader zipExtractor;
+  private final ArchiveReader tarGzExtractor;
 
   public DefaultArchiveExpander(ArchiveLimits limits) {
+    this(limits, new ZipExtractor(), new TarGzExtractor());
+  }
+
+  /** 测试可注入自定义读取器以穷举护栏分支（生产走默认构造，读取器为真实 zip/tar.gz 实现）。 */
+  DefaultArchiveExpander(ArchiveLimits limits, ArchiveReader zipExtractor, ArchiveReader tarGzExtractor) {
     this.limits = limits;
+    this.zipExtractor = zipExtractor;
+    this.tarGzExtractor = tarGzExtractor;
   }
 
   @Override

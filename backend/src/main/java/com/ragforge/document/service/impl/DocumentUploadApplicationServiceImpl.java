@@ -337,7 +337,9 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
   private static final java.util.Set<String> ARCHIVE_FILE_TYPES = java.util.Set.of("zip", "tar.gz");
 
   private boolean isArchiveContainer(Document doc) {
-    return doc.getParentDocumentId() == null && ARCHIVE_FILE_TYPES.contains(doc.getFileType());
+    return doc.getParentDocumentId() == null
+        && doc.getFileType() != null
+        && ARCHIVE_FILE_TYPES.contains(doc.getFileType());
   }
 
   private void dispatchArchiveExpandAfterCommit(Long id) {
