@@ -12,6 +12,13 @@
         <div class="state-title">加载中...</div>
       </div>
 
+      <div v-else-if="doc && orgMismatch" class="state-hint">
+        <div class="state-icon">🔒</div>
+        <div class="state-title">该文档不属于当前组织</div>
+        <div class="state-desc">请切换到该文档所属的组织后再查看。</div>
+        <button class="btn btn-secondary" type="button" style="margin-top:12px" @click="onBack">← 返回上一页</button>
+      </div>
+
       <template v-else-if="doc">
         <header class="doc-header">
           <div class="doc-header-main">
@@ -305,6 +312,7 @@ import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rec
 import { getKb } from '../api/kb'
 import { translateErrorCode } from '../api/error-messages'
 import { navigateBackFromDocument } from '../composables/useDocumentNav'
+import { useOrg } from '../composables/useOrg'
 import { useDocumentPolling } from '../composables/useDocumentPolling'
 import {
   isTerminal,
@@ -314,6 +322,7 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const { currentOrgId, isPlatform } = useOrg()
 const loading = ref(false)
 const retrying = ref(false)
 const rechunking = ref(false)
@@ -324,6 +333,12 @@ const doc = ref(null)
 // 只读库隐藏重新分块/重新处理/删除等写操作，保留清洗对比这类纯查看能力（后端也会 403 兜底）。
 const kbPermission = ref(null)
 const canWrite = computed(() => kbPermission.value === 'write' || kbPermission.value === 'admin')
+// 组织视角隔离：文档所属 KB 的组织与“当前组织”不一致时（KbAccessGuard 按 KB 权限放行、但组织视角要求隔离），
+// 拦截正文展示，避免切到其它组织后仍看到原组织文档内容（操作误归属）。平台视图放行。
+const kbOrgId = ref(null)
+const orgMismatch = computed(
+  () => !isPlatform.value && kbOrgId.value != null && currentOrgId.value != null && kbOrgId.value !== currentOrgId.value,
+)
 const chunks = ref([])
 const chunkPage = ref(1)
 const chunkSize = 20
@@ -498,14 +513,18 @@ async function loadKbPermission() {
   const kbId = doc.value?.kbId
   if (!kbId) {
     kbPermission.value = null
+    kbOrgId.value = null
     return
   }
   try {
     const res = await getKb(kbId)
     kbPermission.value = res.data?.myPermission ?? null
+    // 记录文档所属 KB 的组织，用于组织视角隔离判定（见 orgMismatch）。
+    kbOrgId.value = res.data?.orgId ?? null
   } catch {
     // 拿不到权限时按只读处理，宁可少给写入口（后端仍有 403 兜底）
     kbPermission.value = null
+    kbOrgId.value = null
   }
 }
 
