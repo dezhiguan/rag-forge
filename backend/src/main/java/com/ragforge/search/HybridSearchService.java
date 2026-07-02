@@ -153,7 +153,8 @@ public class HybridSearchService {
       }
       SearchResult base = merged.computeIfAbsent(item.getChunkId(), id -> cloneForHybrid(item));
       base.setVectorScore(item.getVectorScore());
-      rrfScores.merge(item.getChunkId(), 1.0 / (RRF_K + i + 1), Double::sum);
+      // 加权 RRF:向量路按 vw 加权(此前两路等权、vectorWeight 形同虚设)。
+      rrfScores.merge(item.getChunkId(), vw * (1.0 / (RRF_K + i + 1)), Double::sum);
     }
 
     for (int i = 0; i < keywordResults.size(); i++) {
@@ -175,7 +176,8 @@ public class HybridSearchService {
       if (base.getChunkIndex() == 0 && item.getChunkIndex() != 0) {
         base.setChunkIndex(item.getChunkIndex());
       }
-      rrfScores.merge(item.getChunkId(), 1.0 / (RRF_K + i + 1), Double::sum);
+      // 关键词路按 (1-vw) 加权。默认 vw=0.55 → 向量略占优,兼顾语义正确性与 BM25 精确召回。
+      rrfScores.merge(item.getChunkId(), (1.0 - vw) * (1.0 / (RRF_K + i + 1)), Double::sum);
     }
 
     List<SearchResult> sorted = new ArrayList<>(merged.values());
