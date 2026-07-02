@@ -276,13 +276,6 @@
                           <div class="doc-main">
                             <div class="doc-title-row">
                               <div class="doc-name">
-                                <span
-                                  v-if="doc.isArchive"
-                                  class="archive-expander"
-                                  role="button"
-                                  :title="expandedDocIds[doc.id] ? '收起子文档' : '展开子文档'"
-                                  @click.stop="toggleDocChildren(doc)"
-                                >{{ expandedDocIds[doc.id] ? '▾' : '▸' }}</span>
                                 {{ doc.filename }}
                                 <span v-if="doc.isArchive" class="archive-chip">压缩包</span>
                               </div>
@@ -348,7 +341,7 @@
 
                             <div class="doc-meta">
                               <template v-if="doc.isArchive">
-                                {{ formatBytes(doc.fileSize) }} · 共 {{ doc.childrenSummary?.total ?? 0 }} 个文件 · {{ formatTime(doc.createdAt) }}
+                                {{ formatBytes(doc.fileSize) }} · v{{ doc.version ?? 1 }} · {{ formatTime(doc.createdAt) }}
                               </template>
                               <template v-else>
                                 {{ formatBytes(doc.fileSize) }} · v{{ doc.version ?? 1 }} · {{ doc.chunkCount ?? 0 }} chunks · {{ formatTime(doc.createdAt) }}
@@ -362,11 +355,9 @@
                               {{ doc.errorMsg }}
                             </div>
 
-                            <!-- 压缩包容器操作 -->
+                            <!-- 压缩包容器操作：下载原压缩包 / 删除 / 失败重试展开（本层不下钻子文档） -->
                             <div v-if="doc.isArchive" class="doc-links">
-                              <span class="link-action" @click.stop="toggleDocChildren(doc)">
-                                {{ expandedDocIds[doc.id] ? '收起子文档' : '查看子文档' }}
-                              </span>
+                              <span class="link-action" title="下载原压缩包" @click.stop="onDownloadDoc(doc)">下载</span>
                               <span v-if="isContainerFailed(doc.parseStatus) && canWriteKb(kb)" class="link-action" @click.stop="onRetryContainer(doc)">重试展开</span>
                               <span
                                 v-if="canWriteKb(kb)"
@@ -398,33 +389,6 @@
                               >
                                 删除
                               </span>
-                            </div>
-
-                            <!-- 子文档下钻 -->
-                            <div v-if="doc.isArchive && expandedDocIds[doc.id]" class="archive-children">
-                              <div v-if="childrenLoading[doc.id]" class="archive-children-hint">加载子文档中…</div>
-                              <div v-else-if="(childrenMap[doc.id] || []).length === 0" class="archive-children-hint">
-                                {{ isContainerExpanding(doc.parseStatus) ? '展开中，暂无已入库的子文档' : '该压缩包没有可入库的子文档' }}
-                              </div>
-                              <div v-else class="child-doc-list">
-                                <div
-                                  v-for="child in childrenMap[doc.id]"
-                                  :key="child.id"
-                                  class="child-doc-row"
-                                >
-                                  <span class="child-doc-name" @click.stop="goDoc(child.id, child.kbId ?? kb.id)">
-                                    {{ child.archiveEntryPath || child.filename }}
-                                  </span>
-                                  <span class="child-doc-status">
-                                    <span v-if="isProcessing(child.parseStatus)" class="status-icon spin">⟳</span>
-                                    <span v-else-if="normalizeDocStatus(child.parseStatus) === 'completed'" class="status-icon ok">✓</span>
-                                    <span v-else-if="normalizeDocStatus(child.parseStatus) === 'failed'" class="status-icon fail">✗</span>
-                                    <span class="badge" :class="docStatusClass(child.parseStatus)">
-                                      {{ docStatusLabel(child.parseStatus) }}
-                                    </span>
-                                  </span>
-                                </div>
-                              </div>
                             </div>
                           </div>
                         </article>
@@ -628,7 +592,6 @@ import {
   deleteDocument,
   downloadDocument,
   getDocument,
-  listDocumentChildren,
   listDocuments,
   reprocessDocument,
   uploadDocument,
@@ -696,11 +659,7 @@ const docsMap = reactive({})
 const docsLoading = reactive({})
 
 // ===== 压缩包容器（archive）相关状态 =====
-// 子文档下钻缓存：containerId -> DocumentVO[]
-const childrenMap = reactive({})
-const childrenLoading = reactive({})
-// 容器行展开态：containerId -> bool
-const expandedDocIds = reactive({})
+// 本层（知识库列表）压缩包只作为「原始压缩包文件」平铺展示，不下钻子文档。
 // 容器展开中轮询定时器：containerId -> intervalId
 const containerTimers = new Map()
 
@@ -1024,8 +983,6 @@ function pollContainer(kbId, docId) {
       const res = await getDocument(docId)
       const detail = res.data
       applyContainerDetail(kbId, docId, detail)
-      // 展开中同时刷新已下钻的子文档列表，让 UI 逐步显现入库结果
-      if (expandedDocIds[docId]) await loadChildren(docId)
       if (isContainerTerminal(detail?.parseStatus)) {
         stopContainerPoll(docId)
         await loadKbs()
@@ -1044,27 +1001,6 @@ async function hydrateContainerDetail(kbId, docId) {
     applyContainerDetail(kbId, docId, res.data)
   } catch {
     // 静默：拉不到详情就维持列表原始展示
-  }
-}
-
-async function loadChildren(containerId) {
-  childrenLoading[containerId] = true
-  try {
-    const res = await listDocumentChildren(containerId)
-    // 兼容后端返回 { list: [...] } 或直接数组
-    childrenMap[containerId] = res.data?.list ?? res.data ?? []
-  } catch {
-    childrenMap[containerId] = childrenMap[containerId] ?? []
-  } finally {
-    childrenLoading[containerId] = false
-  }
-}
-
-async function toggleDocChildren(doc) {
-  const id = doc.id
-  expandedDocIds[id] = !expandedDocIds[id]
-  if (expandedDocIds[id] && !childrenMap[id]) {
-    await loadChildren(id)
   }
 }
 
@@ -1589,8 +1525,6 @@ async function onDeleteDoc(doc) {
   if (!ok) return
   stopDocPolling(doc.id)
   stopContainerPoll(doc.id)
-  delete childrenMap[doc.id]
-  delete expandedDocIds[doc.id]
   if (activeDocId.value === doc.id) {
     activeDocId.value = null
     activeStatus.value = null
@@ -2158,16 +2092,6 @@ onMounted(async () => {
 
 .archive-hint-text { color: var(--primary); font-weight: 600; }
 
-.archive-expander {
-  display: inline-block;
-  margin-right: 4px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  user-select: none;
-}
-.archive-expander:hover { color: var(--primary); }
-
 .archive-summary {
   display: flex;
   flex-wrap: wrap;
@@ -2219,41 +2143,6 @@ onMounted(async () => {
 }
 .skip-path { color: #cbd5e1; word-break: break-all; min-width: 0; }
 .skip-reason { color: #fca5a5; flex: 0 0 auto; font-weight: 600; }
-
-.archive-children {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--border);
-}
-.archive-children-hint { font-size: 12px; color: var(--text-muted); }
-
-.child-doc-list { display: grid; gap: 6px; }
-.child-doc-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: #fff;
-}
-.child-doc-name {
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--primary);
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.child-doc-name:hover { text-decoration: underline; }
-.child-doc-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-}
 
 .docs-table {
   width: 100%;

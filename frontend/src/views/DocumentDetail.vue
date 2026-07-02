@@ -24,14 +24,19 @@
           <div class="doc-header-main">
             <div class="doc-title-group">
               <div class="doc-title-badges">
-                <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
+                <span v-if="isArchiveContainer" class="archive-status" :class="archiveStatusClass">{{ archiveStatusLabel }}</span>
+                <StatusBadge v-else :status="doc.parseStatus" :error="doc.errorMsg" />
                 <span v-if="!canWrite" class="ro-tag" title="只读知识库，你仅有查看与下载权限">只读</span>
               </div>
-              <h1 class="doc-title">{{ doc.filename }}</h1>
+              <h1 class="doc-title">
+                <span class="doc-title-text">{{ doc.filename }}</span>
+                <span v-if="isArchiveContainer" class="chip">压缩包</span>
+                <span v-else-if="doc.sourceArchiveName" class="from-tag">来自 {{ doc.sourceArchiveName }}</span>
+              </h1>
             </div>
             <div class="doc-header-actions">
               <button
-                v-if="canWrite"
+                v-if="canWrite && !isArchiveContainer"
                 type="button"
                 class="link-btn"
                 :disabled="!canRechunk || rechunking"
@@ -83,7 +88,40 @@
           </div>
         </section>
 
-        <div v-if="isCompletedDoc" class="doc-layout">
+        <!--
+          压缩包容器（isArchive / EXPANDING / EXPANDED / FAILED）：本身没有 chunk，
+          不能走"分块预览"，也不能走通用"处理中"分支（EXPANDED/FAILED 是终态）。
+          展示展开结果徽标 + 状态 + 跳过条目，而不是无限转圈 + 无意义的"重新分块"。
+        -->
+        <div v-if="isArchiveContainer" class="archive-panel" :class="{ failed: archiveFailed }">
+          <div v-if="archiveExpanding" class="archive-expanding">
+            <span class="processing-spinner">⟳</span>
+            <span>正在解压并入库压缩包内的文档，请稍候…</span>
+          </div>
+
+          <div v-if="childrenSummary" class="archive-badges">
+            <span class="badge badge-green">{{ childrenSummary.completed ?? 0 }} 成功</span>
+            <span class="badge" :class="(childrenSummary.failed ?? 0) > 0 ? 'badge-red' : 'badge-gray'">{{ childrenSummary.failed ?? 0 }} 失败</span>
+            <span class="badge" :class="(childrenSummary.skipped ?? 0) > 0 ? 'badge-amber' : 'badge-gray'">{{ childrenSummary.skipped ?? 0 }} 跳过</span>
+          </div>
+
+          <p v-if="archiveFailed" class="archive-error">
+            展开失败：{{ translateErrorCode(doc.errorMsg) || doc.errorMsg || '压缩包无法解压' }}
+          </p>
+          <p v-else-if="archiveExpanded" class="archive-hint">
+            压缩包已解压并入库 {{ childrenSummary?.completed ?? 0 }} 个文档，可在检索中命中。
+          </p>
+
+          <div v-if="skippedEntries.length" class="archive-skipped">
+            <div class="archive-skipped-title">跳过的条目（{{ skippedEntries.length }}）</div>
+            <div v-for="(e, i) in skippedEntries" :key="i" class="archive-skipped-item">
+              <span class="removed-tag">{{ skipReasonLabel(e.reason) }}</span>
+              <code>{{ e.path }}</code>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="isCompletedDoc" class="doc-layout">
           <div class="doc-left" @scroll="onChunksScroll">
             <div class="section-title">
               📄 Chunks（{{ chunks.length }} / {{ chunkTotal }}）
@@ -145,7 +183,10 @@
             <div class="meta-list">
               <div class="meta-row">
                 <span class="meta-key">文件名</span>
-                <span class="meta-val">{{ doc.filename }}</span>
+                <span class="meta-val">
+                  {{ doc.filename }}
+                  <span v-if="doc.sourceArchiveName" class="from-tag">来自 {{ doc.sourceArchiveName }}</span>
+                </span>
               </div>
               <div class="meta-row">
                 <span class="meta-key">大小</span>
@@ -353,6 +394,40 @@ const isCompletedDoc = computed(() => normalizedStatus.value === 'completed')
 const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
 const isImageDoc = computed(() => (doc.value?.fileType || '').toLowerCase().startsWith('image/'))
 const downloadUrl = computed(() => doc.value?.id ? `/api/v1/documents/${doc.value.id}/download` : '')
+
+// 压缩包容器：以 VO.isArchive 为准；EXPANDING/EXPANDED 是容器专属状态，也一并识别。
+// FAILED 单靠状态无法区分容器与普通文档失败，只由 isArchive 判定，避免误伤普通失败文档。
+const isArchiveContainer = computed(
+  () => Boolean(doc.value?.isArchive) || ['expanding', 'expanded'].includes(normalizedStatus.value),
+)
+// 容器"处理中"= 仅 EXPANDING；EXPANDED / FAILED 都是终态（不再无限转圈）。
+const archiveExpanding = computed(() => isArchiveContainer.value && normalizedStatus.value === 'expanding')
+const archiveExpanded = computed(() => isArchiveContainer.value && normalizedStatus.value === 'expanded')
+const archiveFailed = computed(() => isArchiveContainer.value && normalizedStatus.value === 'failed')
+const childrenSummary = computed(() => doc.value?.childrenSummary || null)
+const skippedEntries = computed(() => doc.value?.skippedEntries || [])
+const archiveStatusLabel = computed(() => {
+  if (archiveFailed.value) return '展开失败'
+  if (archiveExpanding.value) return '展开中'
+  return '已展开'
+})
+const archiveStatusClass = computed(() => {
+  if (archiveFailed.value) return 'is-failed'
+  if (archiveExpanding.value) return 'is-processing'
+  return 'is-completed'
+})
+
+// 压缩包内被跳过条目的原因中文映射（契约约定）。
+const SKIP_REASON_LABELS = {
+  nested_archive: '嵌套压缩包',
+  illegal_path: '非法路径',
+  unsupported_type: '不支持的类型',
+  oversize: '超大文件',
+  register_failed: '入库失败',
+}
+function skipReasonLabel(reason) {
+  return SKIP_REASON_LABELS[normalizeDocStatus(reason)] || reason || '未知'
+}
 
 // figureIndex -> imageUrl 映射，TEXT chunk 里的 ![image N](rfimg://N) 占位符按 N 反查这张表
 // 拿到真实预签 URL inline 渲染。来源是同一篇文档所有已加载 IMAGE chunk 的 figureIndex + imageUrl。
@@ -579,7 +654,10 @@ function setupPolling() {
       doc.value.errorMsg = status.errorMsg
     },
     async (status) => {
-      if (normalizeDocStatus(status.parseStatus) === 'completed') {
+      // completed=普通文档处理完（拉 chunk）；expanded=压缩包展开完（拉 childrenSummary/skippedEntries）。
+      // 两者都要 loadDetail 刷新，status 轮询本身不返回容器展开明细。
+      const s = normalizeDocStatus(status.parseStatus)
+      if (s === 'completed' || s === 'expanded') {
         await loadDetail()
       }
     },
@@ -850,6 +928,147 @@ function piiLabel(key) {
   font-size: 18px;
   font-weight: 700;
   color: var(--slate);
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.doc-title-text {
+  min-width: 0;
+  word-break: break-all;
+}
+
+/* 子文档来源标识：纯标识，不可点、不带下载 */
+.from-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--primary-soft, #eaf1ff);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 压缩包标签 */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 容器状态胶囊（复用 StatusBadge 配色，本组件独立定义） */
+.archive-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+.archive-status.is-processing {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: rgba(29, 78, 216, 0.2);
+}
+.archive-status.is-completed {
+  background: #dcfce7;
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.2);
+}
+.archive-status.is-failed {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: rgba(153, 27, 27, 0.22);
+}
+
+.archive-panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 24px 22px;
+}
+
+.archive-expanding {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.archive-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.archive-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.archive-error {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b91c1c;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.archive-skipped {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.archive-skipped-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.archive-skipped-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  background: #fff;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.archive-skipped-item .removed-tag {
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.archive-skipped-item code {
+  color: #334155;
   word-break: break-all;
 }
 

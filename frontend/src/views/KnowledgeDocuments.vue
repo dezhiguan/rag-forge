@@ -53,7 +53,14 @@
           <article v-for="doc in docs" :key="doc.id" class="doc-row">
             <div class="doc-type">{{ fileTypeLabel(doc.filename) }}</div>
             <div class="doc-main">
-              <h3>{{ doc.filename }}</h3>
+              <h3>
+                {{ doc.filename }}
+                <span
+                  v-if="doc.sourceArchiveName"
+                  class="doc-from"
+                  :title="`来自压缩包 ${doc.sourceArchiveName}`"
+                >来自 {{ doc.sourceArchiveName }}</span>
+              </h3>
               <div class="doc-meta">
                 {{ formatBytes(doc.fileSize) }} · v{{ doc.version ?? 1 }} · {{ doc.chunkCount ?? 0 }} chunks · {{ formatTime(doc.createdAt) }}
               </div>
@@ -161,7 +168,9 @@ async function loadDocs(nextPage = 1) {
   }
   loading.value = true
   try {
-    const res = await listDocuments(kbId.value, nextPage, size, docKeyword.value.trim() || undefined)
+    // flatten=true：后端返回「解压出的子文档 + 独立文档」，排除压缩包容器本身，
+    // 因此列表里平铺显示解压结果，不出现 isArchive 容器项。
+    const res = await listDocuments(kbId.value, nextPage, size, docKeyword.value.trim() || undefined, true)
     docs.value = res.data?.list ?? []
     total.value = res.data?.total ?? 0
     page.value = res.data?.page ?? nextPage
@@ -398,6 +407,22 @@ watch(kbId, (nextKbId, prevKbId) => {
   font-size: 13px;
   line-height: 1.45;
   word-break: break-word;
+}
+
+/* 子文档来源标识：纯展示、不可点击、不带下载。独立文档(sourceArchiveName 为空)不渲染此标签。 */
+.doc-from {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 9px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--primary-soft, #eff4ff);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .doc-meta {
