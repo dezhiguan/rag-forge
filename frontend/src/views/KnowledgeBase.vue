@@ -46,7 +46,8 @@
 
       <div v-else class="content">
         <div v-if="!uploadableKbs.length" class="no-writable-hint">
-          公共知识库为只读，你暂无可写入的知识库。请先「创建知识库」后再上传文档。
+          <template v-if="canCreateKb">公共知识库为只读，你暂无可写入的知识库。请先「创建知识库」后再上传文档。</template>
+          <template v-else>公共知识库为只读，你暂无可写入的知识库。请联系组织的所有者或管理员创建知识库，或为你分配写入权限。</template>
         </div>
         <div v-else class="upload-layout">
           <div class="upload-settings">
