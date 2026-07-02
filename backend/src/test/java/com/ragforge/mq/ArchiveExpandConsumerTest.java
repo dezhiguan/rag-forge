@@ -16,6 +16,7 @@ import com.ragforge.archive.ArchiveException;
 import com.ragforge.archive.ArchiveExpander;
 import com.ragforge.archive.ExpandOutcome;
 import com.ragforge.archive.ExpandedEntry;
+import com.ragforge.common.ErrorMessages;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.dto.IngestCommand;
@@ -140,7 +141,11 @@ class ArchiveExpandConsumerTest {
     consumer.onMessage(10L);
 
     verify(documentMapper)
-        .finishExpansion(eq(10L), eq("FAILED"), isNull(), eq(ArchiveErrorCodes.SUSPICIOUS_RATIO));
+        .finishExpansion(
+            eq(10L),
+            eq("FAILED"),
+            isNull(),
+            eq(ErrorMessages.toChinese(ArchiveErrorCodes.SUSPICIOUS_RATIO)));
   }
 
   @Test
@@ -152,6 +157,7 @@ class ArchiveExpandConsumerTest {
     consumer.onMessage(10L);
 
     verify(documentMapper)
-        .finishExpansion(eq(10L), eq("FAILED"), isNull(), eq(ArchiveErrorCodes.CORRUPTED));
+        .finishExpansion(
+            eq(10L), eq("FAILED"), isNull(), eq(ErrorMessages.toChinese(ArchiveErrorCodes.CORRUPTED)));
   }
 }

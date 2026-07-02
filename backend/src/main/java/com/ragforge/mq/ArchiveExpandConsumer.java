@@ -3,6 +3,7 @@ package com.ragforge.mq;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.archive.ArchiveErrorCodes;
 import com.ragforge.archive.ArchiveException;
+import com.ragforge.common.ErrorMessages;
 import com.ragforge.archive.ArchiveExpander;
 import com.ragforge.archive.ArchiveFormat;
 import com.ragforge.archive.ExpandOutcome;
@@ -82,11 +83,14 @@ public class ArchiveExpandConsumer implements RocketMQListener<Long> {
       }
       expand(container);
     } catch (ArchiveException ae) {
+      // error_msg 面向用户展示，落中文提示（而非裸机器码），码保留在日志便于排查
       log.warn("Archive expand failed: containerId={} code={} msg={}", containerId, ae.getCode(), ae.getMessage());
-      documentMapper.finishExpansion(containerId, STATUS_FAILED, null, ae.getCode());
+      documentMapper.finishExpansion(
+          containerId, STATUS_FAILED, null, ErrorMessages.toChinese(ae.getCode()));
     } catch (Exception e) {
       log.error("Archive expand errored: containerId={}", containerId, e);
-      documentMapper.finishExpansion(containerId, STATUS_FAILED, null, ArchiveErrorCodes.CORRUPTED);
+      documentMapper.finishExpansion(
+          containerId, STATUS_FAILED, null, ErrorMessages.toChinese(ArchiveErrorCodes.CORRUPTED));
     } finally {
       OrgContextHolder.clear();
     }
