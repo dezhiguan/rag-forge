@@ -532,7 +532,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         documentMapper.selectCount(
             new LambdaQueryWrapper<Document>().eq(Document::getKbId, id));
     if (docCount != null && docCount > 0) {
-      throw new BizException("知识库下存在 " + docCount + " 个文档，请先删除文档");
+      // 用 409 而非默认 500：前端对 500 一律显示"服务暂时异常",会盖掉这句有意义的提示。
+      throw new BizException(409, "知识库下存在 " + docCount + " 个文档，请先删除文档后再删除知识库");
     }
     kb.setStatus(STATUS_DELETED);
     kb.setUpdatedAt(LocalDateTime.now());
