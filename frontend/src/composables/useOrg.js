@@ -95,4 +95,14 @@ if (typeof window !== 'undefined') {
       .load()
       .catch(() => {})
   })
+
+  // 跨 tab 组织上下文同步：currentOrgId 存于 origin 级 localStorage，OrgSwitcher 只 reload 当前 tab，
+  // 其它 tab 的当前组织会被静默改变（下次请求带新组织，页面却仍是旧组织数据 → 操作误归属）。
+  // storage 事件只在“发生变更之外的其它 tab”触发：currentOrgId 一旦变化，本 tab 整页重载，与切换 tab 对齐。
+  window.addEventListener('storage', (e) => {
+    if (e.key === STORAGE_KEY && e.oldValue !== e.newValue) {
+      state.currentId = readStored()
+      window.location.reload()
+    }
+  })
 }

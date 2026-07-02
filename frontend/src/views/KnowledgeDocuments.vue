@@ -9,7 +9,14 @@
         <PageBreadcrumb class="page-crumb" :items="breadcrumbItems" />
       </div>
 
-      <div class="summary-grid">
+      <div v-if="kbInaccessible" class="empty" style="padding:48px 0;text-align:center">
+        <div style="font-size:32px">🔒</div>
+        <div style="margin-top:8px;font-weight:600">无法访问该知识库</div>
+        <div style="margin-top:4px;color:#8a94a6">知识库不存在，或不属于当前组织、你没有访问权限。请切换到对应组织或返回知识库管理页。</div>
+        <button class="btn btn-secondary" type="button" style="margin-top:16px" @click="$router.push('/knowledge')">← 返回知识库</button>
+      </div>
+
+      <div v-if="!kbInaccessible" class="summary-grid">
         <div>
           <span>文档</span>
           <strong>{{ total }}</strong>
@@ -24,7 +31,7 @@
         </div>
       </div>
 
-      <div class="docs-panel">
+      <div v-if="!kbInaccessible" class="docs-panel">
         <div class="doc-toolbar">
           <div class="doc-search" :class="{ has: docKeyword }">
             <span class="doc-search-ico">🔍</span>
@@ -110,6 +117,7 @@ const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 const kb = ref(null)
+const kbLoaded = ref(false)
 const docs = ref([])
 const page = ref(1)
 const size = 20
@@ -120,6 +128,9 @@ let docSearchTimer = null
 
 const kbId = computed(() => parsePositiveId(route.params.kbId))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size)))
+// KB 已加载但不在当前可访问列表（无权限 / 不存在 / 不属于当前组织）→ 给明确提示，
+// 而非误导性的“暂无文档，请上传”。
+const kbInaccessible = computed(() => kbLoaded.value && !kb.value)
 
 // 写权限：以后端返回的 myPermission(admin|write|read) 为准。
 // 只读库(read / 公共库访客)隐藏删除、重试等写操作，仅保留查看与下载（后端也会 403 兜底）。
@@ -135,8 +146,12 @@ const breadcrumbItems = computed(() => [
 ])
 
 async function loadKb() {
-  const res = await listKb()
-  kb.value = (res.data ?? []).find((item) => item.id === kbId.value) || null
+  try {
+    const res = await listKb()
+    kb.value = (res.data ?? []).find((item) => item.id === kbId.value) || null
+  } finally {
+    kbLoaded.value = true
+  }
 }
 
 async function loadDocs(nextPage = 1) {
