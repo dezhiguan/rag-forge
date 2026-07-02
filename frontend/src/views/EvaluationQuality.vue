@@ -315,12 +315,22 @@
 
         <section class="drawer-section">
           <h3>全局抽样率</h3>
+          <p v-if="!isPlatformAdmin" class="global-readonly-hint">
+            全局抽样率与月度预算仅平台管理员可修改，此处为只读。你可在下方「知识库覆盖」配置自己知识库的抽样。
+          </p>
           <div class="rate-row">
-            <input v-model.number="globalRatePercent" type="range" min="0" max="20" step="0.5" />
+            <input
+              v-model.number="globalRatePercent"
+              type="range"
+              min="0"
+              max="20"
+              step="0.5"
+              :disabled="!isPlatformAdmin"
+            />
             <strong>{{ globalRatePercent.toFixed(1) }}%</strong>
           </div>
           <label class="inline-check">
-            <input v-model="globalSamplingEnabled" type="checkbox" />
+            <input v-model="globalSamplingEnabled" type="checkbox" :disabled="!isPlatformAdmin" />
             启用全局抽样
           </label>
           <div v-if="globalRatePercent > 10" class="cost-warning">
@@ -336,7 +346,8 @@
             <button
               class="btn-save-config"
               :class="{ 'is-saving': savingSampling }"
-              :disabled="savingSampling"
+              :disabled="savingSampling || !isPlatformAdmin"
+              :title="isPlatformAdmin ? '' : '全局配置仅平台管理员可修改'"
               @click="saveGlobalSampling"
             >
               <span v-if="savingSampling" class="btn-save-spinner" aria-hidden="true" />
@@ -382,13 +393,16 @@
           <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
           <button
             class="btn-save-config btn-save-config--secondary"
-            :disabled="replayingGolden || goldenEnabledCount <= 0"
-            :title="replayDisabledReason"
+            :disabled="replayingGolden || goldenEnabledCount <= 0 || !isPlatformAdmin"
+            :title="isPlatformAdmin ? replayDisabledReason : '全量黄金集回放仅平台管理员可触发'"
             @click="replayGoldenNow"
           >
             {{ replayingGolden ? '任务进行中...' : '立即回放' }}
           </button>
-          <p v-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
+          <p v-if="!isPlatformAdmin" class="muted golden-empty-hint">
+            全量黄金集回放仅平台管理员可触发（避免占用全平台 judge 预算）。
+          </p>
+          <p v-else-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
             当前没有启用的黄金集题目，请先在「评测实验室」里把题目的 judgeEnabled 设为 true。
           </p>
           <p v-else class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
@@ -426,7 +440,9 @@ import { useToast } from '../composables/useToast'
 
 const toast = useToast()
 
-const { clearSession } = useAuth()
+const { clearSession, ragRole } = useAuth()
+// 全局抽样率与月度预算仅平台管理员可改;非管理员时全局区控件置灰(与后端 SAMPLING_GLOBAL_ADMIN_ONLY 一致)。
+const isPlatformAdmin = computed(() => ragRole.value === 'ADMIN')
 const router = useRouter()
 const route = useRoute()
 
@@ -1711,6 +1727,17 @@ watch(
 
 .golden-empty-hint {
   color: #b45309;
+}
+
+.global-readonly-hint {
+  margin: 4px 0 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
 .btn-save-config.is-saving {
