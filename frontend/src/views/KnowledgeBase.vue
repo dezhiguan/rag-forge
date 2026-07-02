@@ -3,7 +3,7 @@
     <div class="page-body">
       <div class="top-toolbar">
         <div class="toolbar-left">
-          <button v-if="!isPlatform" class="btn btn-primary" @click="openCreate">+ 创建知识库</button>
+          <button v-if="canCreateKb" class="btn btn-primary" @click="openCreate">+ 创建知识库</button>
           <button class="btn btn-secondary" :disabled="loadingKb" @click="loadKbs">刷新</button>
           <button
             v-if="showAdminViewAll"
@@ -555,7 +555,12 @@ const route = useRoute()
 const { start: startDocPolling, stop: stopDocPolling } = useDocumentPolling()
 
 const { ragRole } = useAuth()
-const { isPlatform } = useOrg()
+const { isPlatform, current } = useOrg()
+// 创建知识库权限：个人组织本人可建；团队组织仅 OWNER/ADMIN 可建（与后端 applyOwnership 的
+// NOT_ORG_ADMIN 守卫一致）。MEMBER/平台视图不显示「创建知识库」按钮，避免点了才被 403。
+const canCreateKb = computed(
+  () => !isPlatform.value && (!!current.value?.personal || ['OWNER', 'ADMIN'].includes(current.value?.myRole)),
+)
 // 「查看全部知识库」是平台级越权：仅在「全平台视图」(破玻璃)下出现，与驾驶舱口径一致；
 // 个人/团队组织上下文下不显示。
 const showAdminViewAll = computed(() => ragRole.value === 'ADMIN' && isPlatform.value)
