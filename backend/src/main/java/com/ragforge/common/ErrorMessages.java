@@ -86,6 +86,11 @@ public final class ErrorMessages {
           Map.entry("ARCHIVE_ENCRYPTED_UNSUPPORTED", "暂不支持加密压缩包，请上传未加密的压缩包"),
           Map.entry("ARCHIVE_EMPTY", "压缩包内没有可入库的文件"),
           Map.entry("ARCHIVE_CORRUPTED", "压缩包已损坏或格式不正确，无法解压"),
+          // 文档处理管道（子文档解析/向量化失败——面向用户，不泄露内部细节）
+          Map.entry("EMBEDDING_RATE_LIMITED", "向量化服务繁忙，请稍后重试"),
+          Map.entry("EMBEDDING_CALL_FAILED", "文档向量化失败，请稍后重试"),
+          Map.entry("NO_CHUNKER_STRATEGY_AVAILABLE", "文档无法分块（内容可能为空或格式不支持）"),
+          Map.entry("DOC_PROCESS_FAILED", "文档处理失败，请稍后重试"),
           // 评测
           Map.entry("JUDGE_RESULT_NOT_FOUND", "评测结果不存在或已被清理"),
           Map.entry("EVAL_DATASET_NOT_FOUND", "评测数据集不存在"),
@@ -119,5 +124,45 @@ public final class ErrorMessages {
       }
     }
     return errorCode; // 未收录：回退原码，前端仍可本地化
+  }
+
+  /**
+   * 把管道内部的原始异常消息净化成对用户友好的中文（用于持久化到 {@code documents.error_msg} 展示）。
+   * 优先翻译机器码；对含内部细节（HTTP 429 / JSON / URL / 堆栈 / request_id / 英文异常）的消息归为通用提示，
+   * 不向用户泄露内部信息；已是干净短中文文案则保留。
+   */
+  public static String toUserFriendly(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return "文档处理失败，请稍后重试";
+    }
+    String s = raw.trim();
+    String cn = CN.get(s);
+    if (cn != null) {
+      return cn;
+    }
+    if (s.matches("(?s).*(429|RateQuota|Throttling|[Rr]ate ?[Ll]imit).*")) {
+      return "向量化服务繁忙，请稍后重试";
+    }
+    if (s.contains("Embedding") || s.contains("embedding") || s.contains("向量化")) {
+      return "文档向量化失败，请稍后重试";
+    }
+    if (s.contains("OCR") || s.contains("ocr")) {
+      return "图片识别失败，请稍后重试";
+    }
+    if (s.matches("[A-Z][A-Z0-9_]{4,}")) { // 裸机器码
+      return CN.getOrDefault(s, "文档处理失败，请稍后重试");
+    }
+    if (s.contains("{")
+        || s.contains("http")
+        || s.contains("request_id")
+        || s.contains("at com.")
+        || s.contains("Exception")
+        || s.contains("HTTP ")) { // 含内部细节
+      return "文档处理失败，请稍后重试";
+    }
+    if (s.length() <= 80 && s.matches("(?s).*[一-龥].*") && !s.matches("(?s).*[A-Za-z]{5,}.*")) {
+      return s; // 干净短中文，保留
+    }
+    return "文档处理失败，请稍后重试";
   }
 }

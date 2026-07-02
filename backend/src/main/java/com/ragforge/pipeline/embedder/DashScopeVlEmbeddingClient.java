@@ -75,10 +75,16 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
       if (StringUtils.hasText(properties.getApiKey())) {
         builder.header("Authorization", "Bearer " + properties.getApiKey());
       }
-      HttpResponse<String> response =
-          httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-      if (response.statusCode() / 100 != 2) {
-        throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
+      HttpResponse<String> response = sendWithRetry(builder.build());
+      int sc = response.statusCode();
+      if (sc == 429) {
+        // 限流重试后仍失败：抛机器码(净化展示为"向量化服务繁忙，请稍后重试")，不泄露 DashScope 原文
+        log.warn("VL Embedding 限流(429)重试后仍失败: {}", brief(response.body()));
+        throw new BizException("EMBEDDING_RATE_LIMITED");
+      }
+      if (sc / 100 != 2) {
+        log.warn("VL Embedding 非2xx HTTP {}: {}", sc, brief(response.body()));
+        throw new IOException("embedding HTTP " + sc);
       }
       metrics.recordVlEmbeddingCall(inputs.size());
       metrics.recordVlEmbeddingImageTokens(
@@ -95,14 +101,44 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
               System.currentTimeMillis() - start,
               true));
       return parseEmbeddings(tree, inputs.size());
+    } catch (BizException e) {
+      throw e; // 已是机器码(如 EMBEDDING_RATE_LIMITED)
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new BizException("VL Embedding 调用被中断");
+      throw new BizException("EMBEDDING_CALL_FAILED");
     } catch (IllegalStateException e) {
       throw e;
     } catch (Exception e) {
-      throw new BizException("VL Embedding 调用失败: " + e.getMessage());
+      log.warn("VL Embedding 调用失败", e);
+      throw new BizException("EMBEDDING_CALL_FAILED");
     }
+  }
+
+  /** 429 / 5xx 指数退避重试（含抖动），缓解大批量入库时打爆嵌入 API 速率配额。 */
+  private HttpResponse<String> sendWithRetry(HttpRequest req)
+      throws IOException, InterruptedException {
+    int maxRetries = 4;
+    long backoffMs = 500;
+    HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      int sc = resp.statusCode();
+      if (sc != 429 && sc / 100 != 5) {
+        return resp; // 成功或不可重试
+      }
+      long wait = Math.min(backoffMs, 8000) + (long) (Math.random() * 250);
+      log.info("VL Embedding HTTP {} 第{}次退避重试 {}ms", sc, attempt + 1, wait);
+      Thread.sleep(wait);
+      backoffMs *= 2;
+      resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+    }
+    return resp;
+  }
+
+  private static String brief(String body) {
+    if (body == null) {
+      return "";
+    }
+    return body.length() > 200 ? body.substring(0, 200) : body;
   }
 
   /** 读取 usage token；缺失则按文本长度估算（图片输入不计文本 token）。 */

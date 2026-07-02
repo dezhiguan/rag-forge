@@ -268,7 +268,10 @@ public class DocumentPipelineService {
             .eq(Document::getId, docId)
             .set(Document::getParseStatus, status)
             .set(Document::getUpdatedAt, LocalDateTime.now())
-            .set(Document::getErrorMsg, truncateError(errorMsg)));
+            // error_msg 面向用户展示：净化成友好中文，不泄露 429/JSON/堆栈等内部细节（原始细节仍在日志）
+            .set(
+                Document::getErrorMsg,
+                truncateError(com.ragforge.common.ErrorMessages.toUserFriendly(errorMsg))));
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
