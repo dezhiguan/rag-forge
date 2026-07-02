@@ -21,7 +21,8 @@ export const fetchWorstCases = (limit, days, kbId) =>
 
 export const fetchCaseDetail = (id) => request.get(`/evaluation/quality/case/${id}`)
 
-export const fetchCost = (days) => request.get('/evaluation/quality/cost', { params: { days } })
+export const fetchCost = (days, kbId) =>
+  request.get('/evaluation/quality/cost', { params: { days, ...(kbId ? { kbId } : {}) } })
 
 export const listSamplingConfigs = () => request.get('/evaluation/quality/sampling')
 

@@ -119,7 +119,12 @@ public class AnswerService {
     long start = System.currentTimeMillis();
     List<Long> kbIds = distinct(request.getKbIds());
     List<KnowledgeBase> kbs = loadKnowledgeBases(kbIds);
-    String effectiveMode = enforceAnswerMode(kbs, request.getAnswerMode());
+    // Golden Set 评测回放是内部质量评估，不应受知识库“对外应答开关(answerMode=OFF)”限制，
+    // 否则默认关闭应答的知识库将永远无法产出 judge 评测数据。仅评测回放绕过该守卫。
+    String effectiveMode =
+        isGoldenSetReplay(request)
+            ? normalizeMode(textOrDefault(request.getAnswerMode(), "ON"))
+            : enforceAnswerMode(kbs, request.getAnswerMode());
     String llmModel = selectModel(kbs);
 
     RetrievalOutput retrieval =
@@ -378,6 +383,10 @@ public class AnswerService {
 
   private static String normalizeMode(String mode) {
     return textOrDefault(mode, "OFF").trim().toUpperCase(Locale.ROOT);
+  }
+
+  private static boolean isGoldenSetReplay(AnswerRequest request) {
+    return "GOLDEN_SET".equalsIgnoreCase(request.getJudgeSource());
   }
 
   private static String guardMessage(GuardRailResult result) {

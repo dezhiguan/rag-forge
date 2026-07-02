@@ -1,13 +1,16 @@
 package com.ragforge.mcp;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.ragforge.answer.AnswerModels.AnswerRequest;
 import com.ragforge.answer.AnswerModels.AnswerResponse;
 import com.ragforge.answer.AnswerModels.Citation;
 import com.ragforge.common.BizException;
 import com.ragforge.common.ErrorMessages;
 import com.ragforge.answer.AnswerService;
+import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
+import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
@@ -21,6 +24,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,6 +39,7 @@ public class RagForgeMcpTools {
     private final RetrievalService retrievalService;
     private final AnswerService answerService;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final DocumentMapper documentMapper;
     private final KbAccessGuard kbAccessGuard;
     private final ChunkImageResolver chunkImageResolver;
 
@@ -117,11 +122,15 @@ public class RagForgeMcpTools {
             if (kbs.isEmpty()) {
                 return "当前没有可用的知识库。";
             }
+            // 用实时聚合的文档数覆盖 knowledge_bases.doc_count（该计数器在失败/删除/replace 等非常规路径会漂移，
+            // 曾出现"文档数=0"误导 LLM 判空跳过），口径与 KnowledgeBaseServiceImpl.applyRealCounts 一致。批量 group by 避免 N+1。
+            Map<Long, Integer> realDocCounts = countDocsByKb(
+                    kbs.stream().map(KnowledgeBase::getId).collect(Collectors.toList()));
             StringBuilder sb = new StringBuilder("可用知识库列表：\n\n");
             for (KnowledgeBase kb : kbs) {
                 sb.append("- ID=").append(kb.getId())
                         .append(" 名称=").append(kb.getName())
-                        .append(" 文档数=").append(kb.getDocCount() == null ? 0 : kb.getDocCount())
+                        .append(" 文档数=").append(realDocCounts.getOrDefault(kb.getId(), 0))
                         .append(" 片段数=").append(kb.getChunkCount() == null ? 0 : kb.getChunkCount());
                 if (kb.getDescription() != null && !kb.getDescription().isBlank()) {
                     sb.append(" 描述=").append(kb.getDescription());
@@ -133,6 +142,31 @@ public class RagForgeMcpTools {
             log.warn("MCP listKnowledgeBases failed: {}", e.getMessage());
             return "获取知识库列表失败：" + e.getMessage();
         }
+    }
+
+    /** 批量实时统计各库文档数（一次 group by），规避 knowledge_bases.doc_count 计数器漂移。 */
+    private Map<Long, Integer> countDocsByKb(List<Long> kbIds) {
+        Map<Long, Integer> counts = new HashMap<>();
+        if (kbIds == null || kbIds.isEmpty()) {
+            return counts;
+        }
+        List<Map<String, Object>> rows =
+                documentMapper.selectMaps(
+                        new QueryWrapper<Document>()
+                                .select("kb_id", "count(*) AS cnt")
+                                .in("kb_id", kbIds)
+                                .groupBy("kb_id"));
+        if (rows == null) {
+            return counts;
+        }
+        for (Map<String, Object> row : rows) {
+            Object kbId = row.get("kb_id");
+            Object cnt = row.get("cnt");
+            if (kbId instanceof Number && cnt instanceof Number) {
+                counts.put(((Number) kbId).longValue(), ((Number) cnt).intValue());
+            }
+        }
+        return counts;
     }
 
     @Tool(name = "answer_with_citations",

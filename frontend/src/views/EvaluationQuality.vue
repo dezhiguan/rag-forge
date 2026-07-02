@@ -31,14 +31,12 @@
       <div class="toolbar-block">
         <label>知识库筛选</label>
         <div class="kb-filter-row">
-          <input
-            v-model="kbIdInput"
-            type="text"
-            inputmode="numeric"
-            placeholder="留空为全部"
-            @keyup.enter="applyKbFilter"
-          />
-          <button class="btn btn-secondary btn-sm" @click="applyKbFilter">应用</button>
+          <select class="kb-filter-select" :value="kbId ?? ''" @change="onKbFilterChange">
+            <option value="">全部知识库</option>
+            <option v-for="kb in kbFilterOptions" :key="kb.id" :value="kb.id">
+              {{ kb.name || kbDisplayName(kb.id) }}
+            </option>
+          </select>
           <button class="btn btn-secondary btn-sm" @click="clearKbFilter">清除</button>
         </div>
       </div>
@@ -317,12 +315,22 @@
 
         <section class="drawer-section">
           <h3>全局抽样率</h3>
+          <p v-if="!isPlatformAdmin" class="global-readonly-hint">
+            全局抽样率与月度预算仅平台管理员可修改，此处为只读。你可在下方「知识库覆盖」配置自己知识库的抽样。
+          </p>
           <div class="rate-row">
-            <input v-model.number="globalRatePercent" type="range" min="0" max="20" step="0.5" />
+            <input
+              v-model.number="globalRatePercent"
+              type="range"
+              min="0"
+              max="20"
+              step="0.5"
+              :disabled="!isPlatformAdmin"
+            />
             <strong>{{ globalRatePercent.toFixed(1) }}%</strong>
           </div>
           <label class="inline-check">
-            <input v-model="globalSamplingEnabled" type="checkbox" />
+            <input v-model="globalSamplingEnabled" type="checkbox" :disabled="!isPlatformAdmin" />
             启用全局抽样
           </label>
           <div v-if="globalRatePercent > 10" class="cost-warning">
@@ -337,11 +345,12 @@
           <div class="drawer-action-row">
             <button
               class="btn-save-config"
-              :class="{ 'is-saving': savingSampling }"
-              :disabled="savingSampling"
+              :class="{ 'is-saving': savingGlobal }"
+              :disabled="savingGlobal || !isPlatformAdmin"
+              :title="isPlatformAdmin ? '' : '全局配置仅平台管理员可修改'"
               @click="saveGlobalSampling"
             >
-              <span v-if="savingSampling" class="btn-save-spinner" aria-hidden="true" />
+              <span v-if="savingGlobal" class="btn-save-spinner" aria-hidden="true" />
               <svg v-else class="btn-save-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                 <path
                   d="M4 3.5h8.5L16 7v9.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
@@ -352,7 +361,7 @@
                 <path d="M8 3.5v4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
                 <path d="M6 13.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
               </svg>
-              <span>{{ savingSampling ? '保存中...' : '保存全局配置' }}</span>
+              <span>{{ savingGlobal ? '保存中...' : '保存全局配置' }}</span>
             </button>
           </div>
         </section>
@@ -366,7 +375,7 @@
             </select>
             <input v-model.number="kbOverrideForm.ratePercent" type="number" min="0" max="10" step="0.5" />
             <label><input v-model="kbOverrideForm.enabled" type="checkbox" /> 启用</label>
-            <button class="btn btn-secondary btn-sm" :disabled="savingSampling" @click="saveKbOverride">保存覆盖</button>
+            <button class="btn btn-secondary btn-sm" :disabled="savingOverride" @click="saveKbOverride">保存覆盖</button>
           </div>
           <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无知识库单独覆盖</div>
           <div v-else class="override-list">
@@ -384,13 +393,16 @@
           <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
           <button
             class="btn-save-config btn-save-config--secondary"
-            :disabled="replayingGolden || goldenEnabledCount <= 0"
-            :title="replayDisabledReason"
+            :disabled="replayingGolden || goldenEnabledCount <= 0 || !isPlatformAdmin"
+            :title="isPlatformAdmin ? replayDisabledReason : '全量黄金集回放仅平台管理员可触发'"
             @click="replayGoldenNow"
           >
             {{ replayingGolden ? '任务进行中...' : '立即回放' }}
           </button>
-          <p v-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
+          <p v-if="!isPlatformAdmin" class="muted golden-empty-hint">
+            全量黄金集回放仅平台管理员可触发（避免占用全平台 judge 预算）。
+          </p>
+          <p v-else-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
             当前没有启用的黄金集题目，请先在「评测实验室」里把题目的 judgeEnabled 设为 true。
           </p>
           <p v-else class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
@@ -407,7 +419,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   deleteSamplingConfig,
@@ -428,7 +440,9 @@ import { useToast } from '../composables/useToast'
 
 const toast = useToast()
 
-const { clearSession } = useAuth()
+const { clearSession, ragRole } = useAuth()
+// 全局抽样率与月度预算仅平台管理员可改;非管理员时全局区控件置灰(与后端 SAMPLING_GLOBAL_ADMIN_ONLY 一致)。
+const isPlatformAdmin = computed(() => ragRole.value === 'ADMIN')
 const router = useRouter()
 const route = useRoute()
 
@@ -486,10 +500,21 @@ const sampleCount = ref(0)
 const showSamplingDrawer = ref(false)
 const samplingConfigs = ref([])
 const kbOptions = ref([])
+// 筛选下拉的选项:刷新时 URL 的 kbId 会先于 listKb 到达,原生 select 找不到匹配 option
+// 会短暂空白;这里为"尚未在下拉数据里的选中项"补一个占位项,消除空白。
+const kbFilterOptions = computed(() => {
+  const opts = kbOptions.value || []
+  if (kbId.value != null && !opts.some((k) => k.id === kbId.value)) {
+    return [{ id: kbId.value, name: kbName(kbId.value) }, ...opts]
+  }
+  return opts
+})
 const globalRatePercent = ref(1)
 const globalSamplingEnabled = ref(true)
 const goldenEnabledCount = ref(0)
-const savingSampling = ref(false)
+// 全局配置与 KB 覆盖各用独立的保存态,避免点「保存覆盖」时「保存全局配置」按钮跟着进"保存中"。
+const savingGlobal = ref(false)
+const savingOverride = ref(false)
 const replayingGolden = ref(false)
 const settingsError = ref('')
 const monthlyBudgetCny = ref(200)
@@ -657,11 +682,14 @@ async function loadSamplingSettings() {
 }
 
 async function saveGlobalSampling() {
-  await saveSampling({
-    scopeType: 'GLOBAL',
-    sampleRate: percentToRate(globalRatePercent.value),
-    enabled: globalSamplingEnabled.value,
-  })
+  await saveSampling(
+    {
+      scopeType: 'GLOBAL',
+      sampleRate: percentToRate(globalRatePercent.value),
+      enabled: globalSamplingEnabled.value,
+    },
+    'global',
+  )
 }
 
 async function saveKbOverride() {
@@ -669,15 +697,18 @@ async function saveKbOverride() {
     settingsError.value = '请选择知识库'
     return
   }
-  await saveSampling({
-    scopeType: 'KB',
-    scopeId: kbOverrideForm.scopeId,
-    sampleRate: percentToRate(kbOverrideForm.ratePercent),
-    enabled: kbOverrideForm.enabled,
-  })
+  await saveSampling(
+    {
+      scopeType: 'KB',
+      scopeId: kbOverrideForm.scopeId,
+      sampleRate: percentToRate(kbOverrideForm.ratePercent),
+      enabled: kbOverrideForm.enabled,
+    },
+    'kb',
+  )
 }
 
-async function saveSampling(payload) {
+async function saveSampling(payload, which = 'global') {
   const rate = Number(payload.sampleRate)
   if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
     settingsError.value = '抽样率必须在 0% 到 100% 之间'
@@ -691,7 +722,8 @@ async function saveSampling(payload) {
     }
     confirmed = true
   }
-  savingSampling.value = true
+  const savingFlag = which === 'kb' ? savingOverride : savingGlobal
+  savingFlag.value = true
   settingsError.value = ''
   try {
     await upsertSamplingConfig(Object.assign({}, payload, { confirmed }))
@@ -703,7 +735,7 @@ async function saveSampling(payload) {
       toast.error(resolveHttpError(error, { kind: 'sampling' }))
     }
   } finally {
-    savingSampling.value = false
+    savingFlag.value = false
   }
 }
 
@@ -861,22 +893,20 @@ function setDays(value) {
   router.push({ path: '/evaluation/quality', query: targetQuery })
 }
 
-function applyKbFilter() {
-  const raw = (kbIdInput.value || '').trim()
-  if (!raw) {
+// 知识库筛选改为按名称下拉选择(不再让用户输 ID)。
+function onKbFilterChange(event) {
+  const val = event?.target?.value
+  if (!val) {
     clearKbFilter()
     return
   }
-  if (!/^\d+$/.test(raw)) {
-    toast.error('请输入有效的知识库 ID（数字）')
-    return
-  }
-  const parsed = Number.parseInt(raw, 10)
-  if (parsed <= 0) {
-    toast.error('请输入有效的知识库 ID（数字）')
+  const parsed = Number.parseInt(val, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    clearKbFilter()
     return
   }
   kbId.value = parsed
+  kbIdInput.value = String(parsed)
   router.push({ path: '/evaluation/quality', query: { days: normalizedDays.value, kbId: parsed } })
 }
 
@@ -885,6 +915,18 @@ function clearKbFilter() {
   kbId.value = null
   router.push({ path: '/evaluation/quality', query: { days: normalizedDays.value } })
 }
+
+// 供筛选下拉使用的知识库清单(按名称展示),页面加载时拉取。
+async function loadKbOptions() {
+  try {
+    const resp = await listKb()
+    kbOptions.value = unwrapResponse(resp) || []
+  } catch {
+    /* 忽略:下拉为空时退化为"全部" */
+  }
+}
+
+onMounted(loadKbOptions)
 
 function openKb(targetKbId) {
   if (!targetKbId) return
@@ -1029,7 +1071,7 @@ async function loadWorstCases() {
 async function loadCost() {
   loading.cost = true
   try {
-    const response = await fetchCost(days.value)
+    const response = await fetchCost(days.value, kbId.value)
     cost.value = unwrapResponse(response) || {
       totalCny: 0,
       dailyAverageCny: 0,
@@ -1252,6 +1294,21 @@ watch(
   transition: border-color 0.15s ease;
 }
 .toolbar-block input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.kb-filter-select {
+  min-width: 200px;
+  max-width: 280px;
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  transition: border-color 0.15s ease;
+}
+.kb-filter-select:focus {
   outline: none;
   border-color: var(--primary);
 }
@@ -1679,6 +1736,17 @@ watch(
 
 .golden-empty-hint {
   color: #b45309;
+}
+
+.global-readonly-hint {
+  margin: 4px 0 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
 .btn-save-config.is-saving {

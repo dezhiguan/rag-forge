@@ -6,6 +6,7 @@ import com.ragforge.common.Result;
 import com.ragforge.judge.SamplingUpsertRequest;
 import com.ragforge.mapper.JudgeSamplingConfigMapper;
 import com.ragforge.model.entity.JudgeSamplingConfig;
+import com.ragforge.security.KbAccessGuard;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import java.math.BigDecimal;
@@ -13,7 +14,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,29 +22,45 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+// 权限口径:全局/租户抽样配置(影响全平台流量与 judge 费用)→ 平台管理员;
+// 知识库覆盖(仅影响单个 KB)→ 该 KB 所属组织的管理员(kbAccessGuard.canAdmin)。
 @RestController
 @RequestMapping("/api/v1/evaluation/quality/sampling")
-@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 public class JudgeSamplingController {
 
   private static final BigDecimal MAX_RATE = new BigDecimal("1.0");
   private static final BigDecimal MIN_RATE = BigDecimal.ZERO;
   private static final BigDecimal RATE_CONFIRM_THRESHOLD = new BigDecimal("0.1");
+  private static final String SCOPE_KB = "KB";
 
   private final JudgeSamplingConfigMapper configMapper;
+  private final KbAccessGuard kbAccessGuard;
 
   @GetMapping
   public Result<List<JudgeSamplingConfig>> list() {
     List<JudgeSamplingConfig> list =
         configMapper.selectList(new LambdaQueryWrapper<JudgeSamplingConfig>().orderByAsc(JudgeSamplingConfig::getScopeType));
-    return Result.ok(list);
+    if (isPlatformAdmin()) {
+      return Result.ok(list);
+    }
+    // 非平台管理员:只返回全局配置(只读展示)+ 自己可管理的 KB 覆盖,避免泄漏其它组织配置。
+    List<JudgeSamplingConfig> scoped =
+        list.stream()
+            .filter(
+                c ->
+                    SCOPE_KB.equalsIgnoreCase(c.getScopeType())
+                        ? (c.getScopeId() != null && kbAccessGuard.canAdmin(c.getScopeId()))
+                        : "GLOBAL".equalsIgnoreCase(c.getScopeType()))
+            .toList();
+    return Result.ok(scoped);
   }
 
   @PostMapping
   public Result<JudgeSamplingConfig> upsert(@RequestBody SamplingUpsertRequest req) {
     normalizeReq(req);
     validateReq(req);
+    requireConfigPermission(req.getScopeType(), req.getScopeId());
 
     LambdaQueryWrapper<JudgeSamplingConfig> query = buildLookup(req.getScopeType(), req.getScopeId(), req.getTenantId());
     JudgeSamplingConfig config = configMapper.selectOne(query);
@@ -70,8 +86,32 @@ public class JudgeSamplingController {
 
   @DeleteMapping("/{id}")
   public Result<Void> delete(@PathVariable Long id) {
+    JudgeSamplingConfig config = configMapper.selectById(id);
+    if (config == null) {
+      return Result.ok();
+    }
+    requireConfigPermission(config.getScopeType(), config.getScopeId());
     configMapper.deleteById(id);
     return Result.ok();
+  }
+
+  private boolean isPlatformAdmin() {
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    return ctx != null && ctx.isAdmin();
+  }
+
+  /** 全局/租户配置仅平台管理员;KB 覆盖需该 KB 所属组织的管理员(kbAccessGuard.canAdmin)。 */
+  private void requireConfigPermission(String scopeType, Long scopeId) {
+    if (isPlatformAdmin()) {
+      return;
+    }
+    if (SCOPE_KB.equalsIgnoreCase(scopeType)) {
+      if (scopeId != null && kbAccessGuard.canAdmin(scopeId)) {
+        return;
+      }
+      throw new BizException(403, "SAMPLING_KB_ADMIN_ONLY");
+    }
+    throw new BizException(403, "SAMPLING_GLOBAL_ADMIN_ONLY");
   }
 
   private void normalizeReq(SamplingUpsertRequest req) {

@@ -53,7 +53,7 @@ class StreamableMcpControllerTest {
   }
 
   @Test
-  void toolsList_exposesListAndSearchKnowledgeTools() {
+  void toolsList_exposesListSearchAndAnswerTools() {
     StreamableMcpController controller = new StreamableMcpController(tools);
 
     ResponseEntity<?> response =
@@ -63,9 +63,12 @@ class StreamableMcpControllerTest {
     Map<?, ?> result = (Map<?, ?>) body.get("result");
     List<?> toolList = (List<?>) result.get("tools");
     List<String> toolNames = toolList.stream().map(tool -> String.valueOf(((Map<?, ?>) tool).get("name"))).toList();
-    assertThat(toolNames).containsExactly("list_knowledge_bases", "search_knowledge");
+    // /mcp 现无状态暴露三工具（含 answer_with_citations），tools/list 只登记 snake_case 名。
+    assertThat(toolNames)
+        .containsExactly("list_knowledge_bases", "search_knowledge", "answer_with_citations");
     assertThat(((Map<?, ?>) toolList.getFirst()).get("inputSchema")).isInstanceOf(Map.class);
     assertThat(((Map<?, ?>) toolList.get(1)).get("inputSchema")).isInstanceOf(Map.class);
+    assertThat(((Map<?, ?>) toolList.get(2)).get("inputSchema")).isInstanceOf(Map.class);
   }
 
   @Test
@@ -118,6 +121,52 @@ class StreamableMcpControllerTest {
     List<?> content = (List<?>) result.get("content");
     assertThat(((Map<?, ?>) content.getFirst()).get("text")).isEqualTo("found");
     assertThat(result.get("isError")).isEqualTo(false);
+  }
+
+  @Test
+  void toolsCall_searchBackendFailure_marksIsError() {
+    // 后端检索故障返回「搜索失败：…」应置 isError=true，避免被 MCP 客户端当成正常检索结果（BUG-1）。
+    when(tools.searchKnowledgeBase("java", null, 5)).thenReturn("搜索失败：ES is down");
+    StreamableMcpController controller = new StreamableMcpController(tools);
+
+    ResponseEntity<?> response =
+        controller.handle(
+            Map.of(
+                "jsonrpc",
+                "2.0",
+                "id",
+                3,
+                "method",
+                "tools/call",
+                "params",
+                Map.of("name", "search_knowledge", "arguments", Map.of("query", "java"))));
+
+    Map<?, ?> body = (Map<?, ?>) response.getBody();
+    Map<?, ?> result = (Map<?, ?>) body.get("result");
+    assertThat(result.get("isError")).isEqualTo(true);
+  }
+
+  @Test
+  void toolsCall_searchNoAccessibleKb_marksIsError() {
+    // 「没有可访问的知识库。」同样置 isError=true，口径与 answer 分支一致（BUG-1）。
+    when(tools.searchKnowledgeBase("java", null, 5)).thenReturn("没有可访问的知识库。");
+    StreamableMcpController controller = new StreamableMcpController(tools);
+
+    ResponseEntity<?> response =
+        controller.handle(
+            Map.of(
+                "jsonrpc",
+                "2.0",
+                "id",
+                3,
+                "method",
+                "tools/call",
+                "params",
+                Map.of("name", "search_knowledge", "arguments", Map.of("query", "java"))));
+
+    Map<?, ?> body = (Map<?, ?>) response.getBody();
+    Map<?, ?> result = (Map<?, ?>) body.get("result");
+    assertThat(result.get("isError")).isEqualTo(true);
   }
 
   @Test

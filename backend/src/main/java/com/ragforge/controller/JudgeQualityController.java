@@ -112,7 +112,13 @@ public class JudgeQualityController {
   }
 
   @GetMapping("/cost")
-  public Result<CostSummaryVo> cost(@RequestParam(defaultValue = "30") int days) {
-    return Result.ok(queryService.cost(days, currentOrgScope()));
+  public Result<CostSummaryVo> cost(
+      @RequestParam(defaultValue = "30") int days,
+      @RequestParam(required = false) Long kbId) {
+    Set<Long> scope = currentOrgScope();
+    requireKbInScope(kbId, scope);
+    // 与 overview/worst-cases 一致:按知识库筛选时,成本也只统计该知识库(联动)。
+    Set<Long> effectiveScope = kbId != null ? Set.of(kbId) : scope;
+    return Result.ok(queryService.cost(days, effectiveScope));
   }
 }
