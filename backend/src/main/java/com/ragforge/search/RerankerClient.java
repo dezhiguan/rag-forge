@@ -31,6 +31,11 @@ public class RerankerClient {
   @Value("${app.dashscope.rerank-model:gte-rerank-v2}")
   private String model;
 
+  // qwen3-rerank 为指令微调模型,按其输入范式给 query 前缀一条"答案相关性"指令,引导它按
+  // "文档是否直接、准确地回答用户问题"排序(而非仅字面/主题相似),缓解"答案埋在密集大块里"的排序问题。
+  @Value("${app.dashscope.rerank-instruction:根据文档是否直接、准确地包含用户问题的答案来判断相关性;越能直接回答问题的文档相关性越高。}")
+  private String rerankInstruction;
+
   public RerankOutput rerank(String query, List<String> documents, int topN) {
     long start = System.currentTimeMillis();
     if (documents == null || documents.isEmpty()) {
@@ -43,7 +48,11 @@ public class RerankerClient {
       headers.setContentType(MediaType.APPLICATION_JSON);
       headers.setBearerAuth(apiKey);
 
-      var input = Map.of("query", query, "documents", documents);
+      String effectiveQuery =
+          (rerankInstruction == null || rerankInstruction.isBlank())
+              ? query
+              : "Instruct: " + rerankInstruction + "\nQuery: " + query;
+      var input = Map.of("query", effectiveQuery, "documents", documents);
       var params = Map.of("top_n", topN);
       var body = Map.of("model", model, "input", input, "parameters", params);
 
