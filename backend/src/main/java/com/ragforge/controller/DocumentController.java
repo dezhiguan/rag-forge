@@ -98,7 +98,11 @@ public class DocumentController {
       @RequestParam(defaultValue = "20") @Min(1) int size,
       @RequestParam(required = false) String keyword,
       @RequestParam(defaultValue = "false") boolean flatten) {
-    return Result.ok(documentService.listByKb(kbId, page, size, keyword, flatten));
+    // 默认(知识库列表层)走既有 4 参重载；flatten(文档列表层)走平铺重载
+    return Result.ok(
+        flatten
+            ? documentService.listByKb(kbId, page, size, keyword, true)
+            : documentService.listByKb(kbId, page, size, keyword));
   }
 
   @GetMapping("/documents/{id}")
