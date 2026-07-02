@@ -1086,9 +1086,25 @@ const costStacks = computed(() => {
   return entries.map((item) => Object.assign({}, item, { pct: (item.value / total) * 100 }))
 })
 
+// OS-B1：组织切换是整页刷新且保留 URL，旧组织的 kbId 会残留到新组织（403 或口径错位）。
+// 加载前校验 kbId 归属当前组织，不属于则清除筛选、按当前组织全量展示。
+let orgKbIdSetPromise = null
+async function kbBelongsToCurrentOrg(id) {
+  if (!orgKbIdSetPromise) {
+    orgKbIdSetPromise = listKb()
+      .then((resp) => {
+        const list = unwrapResponse(resp)
+        return new Set((Array.isArray(list) ? list : []).map((kb) => kb.id))
+      })
+      .catch(() => null) // 校验请求失败不阻断加载，由后端范围校验兜底
+  }
+  const ids = await orgKbIdSetPromise
+  return ids == null || ids.has(id)
+}
+
 watch(
   () => route.query,
-  (nextQuery) => {
+  async (nextQuery) => {
     const qDays = Number(nextQuery?.days)
     const qKb = nextQuery?.kbId
 
@@ -1101,6 +1117,11 @@ watch(
     } else {
       const parsed = Number.parseInt(qKb, 10)
       if (Number.isFinite(parsed)) {
+        if (!(await kbBelongsToCurrentOrg(parsed))) {
+          toast.info('已清除不属于当前组织的知识库筛选')
+          router.replace({ path: '/evaluation/quality', query: { days: normalizedDays.value } })
+          return // query 变化会重新触发本 watch 并全量加载
+        }
         kbId.value = parsed
         kbIdInput.value = String(parsed)
       }

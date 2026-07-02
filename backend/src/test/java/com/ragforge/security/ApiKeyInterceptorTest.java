@@ -141,7 +141,8 @@ class ApiKeyInterceptorTest {
     assertThat(allowed).isFalse();
     verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
     assertThat(responseBody.toString()).contains("\"code\":401");
-    assertThat(responseBody.toString()).contains("Invalid API Key");
+    // 友好错误契约：机器码在 errorCode，msg 为中文。
+    assertThat(responseBody.toString()).contains("API_KEY_INVALID");
   }
 
   @Test
@@ -164,7 +165,7 @@ class ApiKeyInterceptorTest {
     assertThat(allowed).isFalse();
     verify(response).setStatus(429);
     assertThat(responseBody.toString()).contains("\"code\":429");
-    assertThat(responseBody.toString()).contains("rate limit exceeded");
+    assertThat(responseBody.toString()).contains("API_KEY_RATE_LIMITED");
   }
 
   @Test
@@ -208,7 +209,7 @@ class ApiKeyInterceptorTest {
 
     assertThat(allowed).isFalse();
     verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-    assertThat(responseBody.toString()).contains("expired");
+    assertThat(responseBody.toString()).contains("API_KEY_EXPIRED");
     assertThat(RagAuthContextHolder.get()).isNull();
   }
 

@@ -59,10 +59,9 @@ public class JudgeQualityController {
   public Result<OverviewVo> overview(
       @RequestParam(defaultValue = "7") int days,
       @RequestParam(required = false) Long kbId) {
-    if (kbId != null && !kbAccessGuard.canRead(kbId)) {
-      throw new com.ragforge.common.BizException(403, "KB_ACCESS_DENIED");
-    }
-    return Result.ok(queryService.overview(days, kbId, currentOrgScope()));
+    Set<Long> scope = currentOrgScope();
+    requireKbInScope(kbId, scope);
+    return Result.ok(queryService.overview(days, kbId, scope));
   }
 
   @GetMapping("/by-kb")
@@ -75,10 +74,27 @@ public class JudgeQualityController {
       @RequestParam(defaultValue = "10") int limit,
       @RequestParam(defaultValue = "7") int days,
       @RequestParam(required = false) Long kbId) {
-    if (kbId != null && !kbAccessGuard.canRead(kbId)) {
-      throw new com.ragforge.common.BizException(403, "KB_ACCESS_DENIED");
+    Set<Long> scope = currentOrgScope();
+    requireKbInScope(kbId, scope);
+    return Result.ok(queryService.worstCases(limit, days, kbId, scope));
+  }
+
+  /**
+   * kbId 筛选必须与当前组织口径一致（OS-B1）：kbId 非空时会绕过 scope 直查该 KB，若只校验 canRead，
+   * 跨组织成员切换组织后残留的旧组织 kbId 仍可查到他组织统计（口径错位）。
+   *
+   * <p>语义分层：①始终要求 canRead；②团队组织（scope 非空）额外要求 kbId 落在本组织范围内，堵住
+   * 团队→团队切换的残留泄漏；③个人组织/无组织上下文（scope 空）与破玻璃（scope=null）不做范围收窄，
+   * 避免误伤「个人组织无 X-Org-Id、按自己个人库筛选」的合法场景。
+   */
+  private void requireKbInScope(Long kbId, Set<Long> scope) {
+    if (kbId == null) {
+      return;
     }
-    return Result.ok(queryService.worstCases(limit, days, kbId, currentOrgScope()));
+    boolean outOfOrgScope = scope != null && !scope.isEmpty() && !scope.contains(kbId);
+    if (!kbAccessGuard.canRead(kbId) || outOfOrgScope) {
+      throw new BizException(403, "KB_ACCESS_DENIED");
+    }
   }
 
   @GetMapping("/case/{judgeResultId}")

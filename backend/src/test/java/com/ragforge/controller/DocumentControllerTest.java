@@ -594,7 +594,8 @@ class DocumentControllerTest {
     mockMvc
         .perform(post("/api/v1/documents/14/reprocess"))
         .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.msg").value("ALREADY_IN_PROGRESS"));
+        // M11：msg 为友好中文，机器码移至 errorCode。
+        .andExpect(jsonPath("$.errorCode").value("ALREADY_IN_PROGRESS"));
   }
 
   @Test

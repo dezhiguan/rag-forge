@@ -88,7 +88,8 @@ class ApiAndExceptionTest {
             .perform(get("/api/v1/kb"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value(401))
-            .andExpect(jsonPath("$.msg").value("Invalid API Key"))
+            // 友好错误契约：缺 key → 机器码 API_KEY_MISSING（errorCode），msg 为中文引导。
+            .andExpect(jsonPath("$.errorCode").value("API_KEY_MISSING"))
             // 新契约：错误体不再携带 traceId，改由 X-Trace-Id 响应头承载。
             .andExpect(jsonPath("$.traceId").doesNotExist())
             .andExpect(header().exists("X-Trace-Id"))
