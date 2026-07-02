@@ -78,6 +78,14 @@ public final class ErrorMessages {
               "INVALID_STRATEGY", "所选分块策略不适用于该文档（「按标题分块」仅支持 Markdown 文档），请改用其他策略"),
           Map.entry("SEMANTIC_REQUIRES_LONG_TEXT", "文档内容过短，暂不适用语义分块，请改用其他分块策略"),
           Map.entry("INVALID_CHUNKER_PROFILE_JSON", "分块配置格式有误，请检查后重试"),
+          // 压缩包上传 / 解压
+          Map.entry("UNSUPPORTED_ARCHIVE_FORMAT", "暂不支持该压缩格式（仅支持 zip 与 tar.gz）"),
+          Map.entry("ARCHIVE_SUSPICIOUS_RATIO", "压缩包异常：疑似恶意文件（压缩比过高），已终止处理"),
+          Map.entry("ARCHIVE_TOTAL_SIZE_EXCEEDED", "压缩包解压后体积超出上限，已终止处理"),
+          Map.entry("ARCHIVE_TOO_MANY_ENTRIES", "压缩包内文件数量超出上限，已终止处理"),
+          Map.entry("ARCHIVE_ENCRYPTED_UNSUPPORTED", "暂不支持加密压缩包，请上传未加密的压缩包"),
+          Map.entry("ARCHIVE_EMPTY", "压缩包内没有可入库的文件"),
+          Map.entry("ARCHIVE_CORRUPTED", "压缩包已损坏或格式不正确，无法解压"),
           // 评测
           Map.entry("JUDGE_RESULT_NOT_FOUND", "评测结果不存在或已被清理"),
           Map.entry("EVAL_DATASET_NOT_FOUND", "评测数据集不存在"),

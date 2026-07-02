@@ -38,6 +38,17 @@ public class Document {
   private Integer chunkCount;
   private String errorMsg;
   private String chunkType;
+
+  /** 压缩包子文档指向容器（容器与普通文档为 null）。 */
+  private Long parentDocumentId;
+
+  /** 子文档在压缩包内的相对路径（仅子文档填写）。 */
+  private String archiveEntryPath;
+
+  /** 容器解压汇总 JSON（仅容器填写）：{@code {totalEntries,registered,skipped[]}}。 */
+  @TableField(value = "expand_summary", typeHandler = JsonbStringTypeHandler.class)
+  private String expandSummary;
+
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 
