@@ -177,12 +177,19 @@ public class ChunkerAbServiceImpl implements ChunkerAbService {
       }
     }
     int questionCount = Math.max(1, questions.size());
+    // 未产出分块 = 该策略对本数据集全部文档都不适用(如语义分块要求文档≥2000字被跳过),
+    // 给出说明,避免前端把"跳过"误显示为"命中率 0%"。
+    String note =
+        totalChunks == 0
+            ? "未产出分块:文档不满足该策略适用条件(如语义分块要求文档≥2000字)"
+            : null;
     return new ChunkerAbResponse.ResultItem(
         strategy,
         round(top1Hits * 1.0 / questionCount),
         round(mrr / questionCount),
         avgChunkLen,
-        totalChunks);
+        totalChunks,
+        note);
   }
 
   private List<ScoredChunk> rank(List<ScoredChunk> chunks, String question) {
