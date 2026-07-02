@@ -61,6 +61,7 @@ Flyway `V1..V51`(baseline=26,out-of-order),核心表 ~26 张:knowledge_bases / d
 
 ### 认证与权限
 Auth Gateway 颁发 JWT(RS256),后端自研 `JwtVerifier`(JWKS 验签,非 nimbus)。角色为字符串约定 `ADMIN / KB_EDITOR / KB_VIEWER / SERVICE_ACCOUNT`。KB 访问统一过 `KbAccessGuard`。组织模型为 GitHub 式个人+组织(已移除 tenant)。
+会话:access 15min/refresh 旋转(7d,记住我 30d 滑动),网关 60s 旋转宽限期;前端 `api/session.js` 主动续期+跨标签页 Web Locks 单飞+失败分级(仅 401/403 踢登录)。详见 `docs/dev/security-and-multitenancy.md` §8。
 
 ### 部署(k3s)
 `ragforge` 命名空间,同一 backend 镜像按 `RAGFORGE_ROLE` 起 `api`(3)/ `worker`(1,MQ consumer)/ `judge`(1,LLM-as-Judge)+ `frontend`(2)。入口:域名 → 入口层 Nginx → 应用层 NodePort 31090。详见 `docs/deploy/deployment-architecture.md`。

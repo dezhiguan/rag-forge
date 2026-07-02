@@ -40,7 +40,7 @@
 
 ---
 
-## 特性线:认证 / 权限 / 去租户(独立 V1 → V2)
+## 特性线:认证 / 权限 / 去租户(独立 V1 → V2 → V3)
 
 ### V1
 - `prototype/unified-auth-redesign-V1.html` — 统一认证与权限优化设计稿(CareerMate × RAGForge × Auth Gateway)。
@@ -51,6 +51,13 @@
 - `dev/tenant-removal-and-org-permissions-V2.md` — **彻底移除 `tenant_id`**,改 GitHub 式「个人 + 组织」模型(组织落 RAG 本地,KB 用 `owner_user_id` / `org_id`)。取代 V1。
 - 落地:`prototype/permission-plan.html`(从按平台控权 → 组织自治)、`test/org-permission-test-plan-V2.md`(取代 V1)。
 - 对应迁移:`V45`(建 organizations/org_members,KB 加 org_id、删 tenant_id)、`V46`(邀请/通知)、`V48`(org type)、`V49`/`V51`(retrieval_log / api_key 加 org_id)。
+
+### V3(会话续期加固 + 记住我 30 天,2026-07-03)
+- 背景:线上频繁误报"登录已过期"(access token 仅 15min + 续期失败不分级把网络抖动当会话过期 + refresh 一次性旋转无宽限期误杀多标签页 + "记住我 30 天"后端未实现)。
+- 网关(auth-gateway `feature/refresh-grace-remember`):旋转宽限期 60s(窗口内复用=并发双刷补发,超窗=重放灭族)、`remember` → 30 天 refresh TTL(滑动窗口,迁移 `V10` 落 `auth_sessions.refresh_ttl_seconds`)、响应新增 `refresh_expires_in`。
+- 本仓库(`feature/auth-session-hardening`):DTO 透传 remember、cookie TTL 跟随网关、`/me` 改真 401;前端新增 `api/session.js`(主动续期提前 90s、Web Locks 跨标签页单飞、BroadcastChannel 同步、失败分级仅 401/403 踢登录),authClient/upload 补 401 重放,SSE 跟随 token 重建。
+- 文档:`dev/security-and-multitenancy.md` §8、验收:`test/auth-session-hardening-acceptance-V1.md`。
+- 遗留:`rf_csrf` 头后端未校验(靠 SameSite=Lax 兜底),待补。
 
 ---
 

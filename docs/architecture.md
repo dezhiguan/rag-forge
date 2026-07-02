@@ -111,12 +111,13 @@ KB answer_mode 校验
 
 ## 7. 安全与多租户
 
-安全模型详见 [security-and-multitenancy.md](./security-and-multitenancy.md)。架构上要点如下：
+安全模型详见 [security-and-multitenancy.md](./dev/security-and-multitenancy.md)。架构上要点如下：
 
 - JWT user、SERVICE_ACCOUNT、admin 三类 principal 统一落到 `RagAuthContext`。
 - 后台接口走 JWT，搜索/Answer/MCP 可走 JWT 或 API Key。
 - `KbAccessGuard` 做 KB 级读写管理权限判断；文档级权限通过 doc -> kb 解析。
 - `retrieval_logs`、`answer_logs` 记录 tenant/principal/trace/citations snapshot。
+- 登录会话：Auth Gateway 双 token（access 15min / refresh 一次性旋转 7d，记住我 30d 滑动窗口）+ 代理层 httpOnly `rf_refresh` cookie；网关 60s 旋转宽限期容忍并发双刷；前端到期前 90s 主动静默续期、跨标签页 Web Locks 单飞、续期失败按 401/403 与网络抖动分级处理。详见 security 文档 §8。
 
 ## 8. K3s 部署拓扑
 

@@ -117,3 +117,36 @@ X-API-Key: <careermate-agent-key>
 ```
 
 这样 Search、Answer 和 MCP 工具都会被限制在 KB 16 的授权范围内。若请求 KB 17，`KbAccessGuard.filterReadable` 会过滤掉并记录访问拒绝指标。
+
+## 8. 会话生命周期与静默续期（2026-07-03 加固）
+
+管理台登录态由 Auth Gateway 双 token + RAGForge 代理层 cookie 组成：
+
+```text
+Auth Gateway ──签发──> access token(JWT RS256, TTL=900s)
+             └───────> refresh token(一次性旋转, TTL=7d / 记住我=30d)
+RAGForge /api/auth 代理 ──> rf_refresh(httpOnly, path=/api/auth, maxAge 跟随网关 refresh_expires_in)
+前端 ──> access token 仅存内存(不落 localStorage), 刷新页面靠 rf_refresh 恢复
+```
+
+### 8.1 网关侧（auth-gateway）
+
+- **旋转宽限期**：refresh token 一次性旋转；已旋转 token 在 `auth.refresh-rotation-grace-seconds`（默认 60s）内被再次使用视作**并发双刷**（多标签页 / 弱网重试），补发新令牌并发 `refresh.grace_reuse` 事件；超窗才按重放攻击吊销整个 token 族（`refresh.replay_detected`）。设 0 恢复严格一次性。
+- **记住我**：登录接口 `remember=true` 时 refresh TTL 取 `auth.remember-refresh-ttl-seconds`（默认 30 天），落 `auth_sessions.refresh_ttl_seconds`（V10 迁移），旋转时继承——即**滑动窗口**：30 天内有活跃就一直续。
+- 令牌响应新增 `refresh_expires_in`，供下游对齐 cookie 生命周期。
+
+### 8.2 代理侧（backend `auth/`）
+
+- 登录 DTO 透传 `remember`；`rf_refresh` / `rf_csrf` cookie maxAge 跟随 `refresh_expires_in`（旧网关缺字段回退 7 天）。
+- `/api/v1/me` 未认证返回真 HTTP 401（进前端统一续期路径，而非 200+body401 直接报错）。
+
+### 8.3 前端（`frontend/src/api/session.js` 会话中枢）
+
+- **主动续期**：登录/续期后按 `expiresIn` 在到期前 90s（+0~15s 抖动）静默换新 token；被动 401→续期→重放降为兜底。
+- **跨标签页单飞**：`navigator.locks` 全浏览器互斥执行 `/refresh`，成功后 `BroadcastChannel('ragforge-auth')` 把新 token / 登出同步给所有标签页（与网关宽限期双保险，防旋转重放误杀）。
+- **失败分级**：仅网关明确 401/403 判"会话真过期"（清会话 → `/login?reason=expired` 带回跳）；超时/断网/5xx 属线路抖动，退避重试（0.8s/2s）后仍失败也只提示"网络不稳定"，**不清会话不踢登录**。
+- 覆盖面：`request`（/api/v1）、`authClient`（带 Bearer 的认证接口）、`uploadRequest`（长上传中途过期重放）三个 axios 实例统一走同一单飞；通知 SSE watch accessToken 变化重建 EventSource，避免重连携带过期 token。
+
+### 8.4 已知遗留
+
+- `rf_csrf` double-submit cookie 前端随非 GET 请求发送 `X-CSRF-Token`，但后端**尚未校验**该头（当前靠 SameSite=Lax 兜底）。待补校验或移除。
