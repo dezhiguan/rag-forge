@@ -69,7 +69,19 @@ public class StreamableMcpController {
         "description",
             "Search readable RAGForge knowledge bases with hybrid retrieval and return cited snippets. Prefer passing kbIds selected from list_knowledge_bases.",
         "inputSchema", searchInputSchema);
-    return Map.of("tools", List.of(listTool, searchTool));
+    Map<String, Object> answerProperties = orderedMap(
+        "query", orderedMap("type", "string", "description", "Question to answer."),
+        "kbIds", orderedMap("type", "string", "description", "Optional comma-separated knowledge base ids."));
+    Map<String, Object> answerInputSchema = orderedMap(
+        "type", "object",
+        "properties", answerProperties,
+        "required", List.of("query"));
+    Map<String, Object> answerTool = orderedMap(
+        "name", "answer_with_citations",
+        "description",
+            "Answer a question grounded in readable RAGForge knowledge bases, returning a cited answer (citations may include image URLs).",
+        "inputSchema", answerInputSchema);
+    return Map.of("tools", List.of(listTool, searchTool, answerTool));
   }
 
   private Map<String, Object> callTool(Map<String, Object> params) {
@@ -89,11 +101,20 @@ public class StreamableMcpController {
       // 参数错误标记为 isError，避免调用方把错误提示当成检索结果。
       return toolText(result, result.startsWith("参数错误："));
     }
-    // answer_with_citations 仅在 /sse（SSE 传输）提供；/mcp（streamable HTTP）为检索类工具。
+    // answer_with_citations：无状态 /mcp 直接接线，复用 RagForgeMcpTools 的越权过滤与检索策略。
     if ("answer_with_citations".equals(name) || "answer".equals(name)) {
-      return toolText(
-          "工具 answer_with_citations 不在 /mcp（streamable HTTP，仅检索）支持范围，请改用 /sse 端点调用。",
-          true);
+      Map<String, Object> arguments = map(params.get("arguments"));
+      String query = asString(arguments.get("query"));
+      if (query == null || query.isBlank()) {
+        return toolText("Missing required argument: query", true);
+      }
+      String kbIds = normalizeKbIds(arguments.get("kbIds"));
+      String result = tools.answerWithCitations(query, kbIds);
+      boolean isError =
+          result.startsWith("参数错误：")
+              || result.startsWith("应答失败：")
+              || result.startsWith("没有可访问");
+      return toolText(result, isError);
     }
     return toolText("Unknown tool: " + name, true);
   }

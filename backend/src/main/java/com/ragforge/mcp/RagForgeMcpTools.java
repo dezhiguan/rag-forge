@@ -3,6 +3,7 @@ package com.ragforge.mcp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ragforge.answer.AnswerModels.AnswerRequest;
 import com.ragforge.answer.AnswerModels.AnswerResponse;
+import com.ragforge.answer.AnswerModels.Citation;
 import com.ragforge.answer.AnswerService;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.KnowledgeBase;
@@ -153,6 +154,48 @@ public class RagForgeMcpTools {
         request.setTopK(10);
         request.setMaxTokens(800);
         return answerService.answerBlocking(request);
+    }
+
+    /**
+     * 无状态 /mcp（StreamableMcpController）调用入口：带引用应答，返回渲染后的文本。
+     * 复用 {@link #answer(String, List)} 的越权过滤（KbAccessGuard）与检索策略；异常统一转友好文案，绝不抛到 500。
+     */
+    public String answerWithCitations(String query, String kbIds) {
+        try {
+            List<Long> kbIdList = parseKbIds(kbIds);
+            AnswerResponse resp = answer(query, kbIdList);
+            return formatAnswer(resp);
+        } catch (IllegalArgumentException e) {
+            String msg = e.getMessage();
+            // 无可读库时保持与检索一致的干净文案；其余参数问题（如 kbIds 格式）加"参数错误："前缀。
+            return msg != null && msg.startsWith("没有可访问") ? msg : "参数错误：" + msg;
+        } catch (Exception e) {
+            log.warn("MCP answerWithCitations failed: {}", e.getMessage());
+            return "应答失败：" + e.getMessage();
+        }
+    }
+
+    /** 将带引用的应答渲染为 MCP 文本内容：答案正文 + 引用列表（含图片 URL，若有）。 */
+    private String formatAnswer(AnswerResponse resp) {
+        if (resp == null || resp.getAnswer() == null || resp.getAnswer().isBlank()) {
+            return "未生成应答。";
+        }
+        StringBuilder sb = new StringBuilder(resp.getAnswer());
+        List<Citation> citations = resp.getCitations();
+        if (citations != null && !citations.isEmpty()) {
+            sb.append("\n\n引用：\n");
+            for (Citation c : citations) {
+                sb.append("[").append(c.getId()).append("] ");
+                if (c.getTextSnippet() != null && !c.getTextSnippet().isBlank()) {
+                    sb.append(c.getTextSnippet());
+                }
+                sb.append("\n");
+                if (c.getImageUrl() != null && !c.getImageUrl().isBlank()) {
+                    sb.append("图片：").append(c.getImageUrl()).append("\n");
+                }
+            }
+        }
+        return sb.toString();
     }
 
     /**
