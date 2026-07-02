@@ -30,6 +30,8 @@ import org.springframework.stereotype.Service;
 public class RetrievalService {
 
   private static final int RRF_K = 10;
+  // 送入 reranker 的单条候选内容最大字符数(覆盖整块,远小于 reranker 输入上限)。
+  private static final int RERANK_DOC_MAX_CHARS = 1000;
 
   private final VectorSearchService vectorSearchService;
   private final EsSearchService esSearchService;
@@ -224,12 +226,17 @@ public class RetrievalService {
           vectorLatencyMs,
           keywordLatencyMs);
 
+      // 重排候选内容截断上限:块本身受 chunkSize(~512)约束,截 300 会把靠后的关键信息
+      // (如"创始人"往往在文档后段)切掉,导致 reranker 看残缺文本判错。放宽到 1000 覆盖整块,
+      // 仍远小于 reranker 的输入上限。
       List<String> documents =
           results.stream()
               .map(
                   r -> {
                     String c = r.getContent();
-                    return (c != null && c.length() > 300) ? c.substring(0, 300) : c;
+                    return (c != null && c.length() > RERANK_DOC_MAX_CHARS)
+                        ? c.substring(0, RERANK_DOC_MAX_CHARS)
+                        : c;
                   })
               .toList();
       long rerankStart = System.currentTimeMillis();
