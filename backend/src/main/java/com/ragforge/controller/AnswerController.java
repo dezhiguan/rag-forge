@@ -24,7 +24,9 @@ public class AnswerController {
   private final KbAccessGuard kbAccessGuard;
 
   @PostMapping(value = "/answer", produces = "text/event-stream;charset=UTF-8")
-  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','SERVICE_ACCOUNT')")
+  // 与 /search 一致纳入 USER:普通用户(如个人组织 owner)也应能对自己有权的库应答;
+  // 真正的逐库归属校验由下方 kbAccessGuard.filterReadable 完成,补 USER 不放宽 KB 访问。
+  @PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER','SERVICE_ACCOUNT')")
   public SseEmitter answer(@RequestBody AnswerRequest request, HttpServletResponse response) {
     if (request == null || request.getKbIds() == null || request.getKbIds().isEmpty()) {
       throw new BizException(400, "KB_IDS_REQUIRED");
