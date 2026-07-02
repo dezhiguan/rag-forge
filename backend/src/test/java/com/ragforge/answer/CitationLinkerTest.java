@@ -43,6 +43,19 @@ class CitationLinkerTest {
     assertThat(linker.allRetrieved(null)).isEmpty();
   }
 
+  @Test
+  void normalizeCitationMarkersClampsOutOfRange() {
+    // 只有 1 个检索块,越界编号 [5] 收敛到 [1];有效编号不变;无块或无编号则原样返回。
+    assertThat(CitationLinker.normalizeCitationMarkers("定价为 36000 元 [5]。", 1))
+        .isEqualTo("定价为 36000 元 [1]。");
+    assertThat(CitationLinker.normalizeCitationMarkers("A[5] B[6] C[7]", 1)).isEqualTo("A[1] B[1] C[1]");
+    assertThat(CitationLinker.normalizeCitationMarkers("有效 [2] 越界 [9]", 3)).isEqualTo("有效 [2] 越界 [1]");
+    assertThat(CitationLinker.normalizeCitationMarkers("成立于 2018 年 [1]。", 1))
+        .isEqualTo("成立于 2018 年 [1]。");
+    assertThat(CitationLinker.normalizeCitationMarkers("无编号", 1)).isEqualTo("无编号");
+    assertThat(CitationLinker.normalizeCitationMarkers("有编号[3]但无块", 0)).isEqualTo("有编号[3]但无块");
+  }
+
   private SearchResult hit(long id) {
     SearchResult result = new SearchResult();
     result.setChunkId(id);
