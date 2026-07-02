@@ -174,7 +174,9 @@ public class ArchiveExpandConsumer implements RocketMQListener<Long> {
     return kb == null ? null : kb.getOrgId();
   }
 
-  /** 按扩展名推断 contentType（白名单内的文档类型），供下游解析管道路由。 */
+  /**
+   * 按扩展名推断 contentType，供下游按 image/* 前缀路由：图片→图片管道(OCR/VL)，其它→文档管道(文本+内嵌图)。
+   */
   private static String guessContentType(String filename) {
     String ext = "";
     if (filename != null) {
@@ -189,6 +191,11 @@ public class ArchiveExpandConsumer implements RocketMQListener<Long> {
       case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       case "md", "markdown" -> "text/markdown";
       case "html", "htm" -> "text/html";
+      case "txt" -> "text/plain";
+      case "png" -> "image/png";
+      case "jpg", "jpeg" -> "image/jpeg";
+      case "gif" -> "image/gif";
+      case "webp" -> "image/webp";
       default -> "application/octet-stream";
     };
   }

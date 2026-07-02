@@ -4,18 +4,26 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * 可入库的文档扩展名白名单（与 {@code DocumentServiceImpl.ALLOWED_EXTENSIONS} 口径一致）。 压缩包解压出的
- * entry 复用此白名单：非白名单 entry 跳过（{@code unsupported_type}）。
+ * 压缩包解压后可入库的扩展名白名单，分两类，决定子文档路由到哪条管道：
  *
- * <p>注：图片（image/*）由图片管道处理，不在此文本白名单内；压缩包内图片本期按非白名单跳过，
- * 与散传图片走 presign 图片管道的行为差异已在测试用例 AR-WL 覆盖并记录。
+ * <ul>
+ *   <li>{@link #DOC_EXTENSIONS} 文档类（含 txt）→ 文档管道 DocumentPipelineService（抽文本 + 内嵌图）
+ *   <li>{@link #IMAGE_EXTENSIONS} 图片类 → 图片管道 ImagePipelineService（OCR/VL）
+ * </ul>
+ *
+ * <p>命中任一类即受支持；否则跳过（{@code unsupported_type}）。路由由子文档 contentType（image/* vs 其它）
+ * 决定，见 {@code ArchiveExpandConsumer.guessContentType}。
  */
 public final class SupportedDocumentTypes {
 
   private SupportedDocumentTypes() {}
 
-  public static final Set<String> ALLOWED_EXTENSIONS =
-      Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm");
+  /** 文档类（走文本/PDF/Office 解析；含 txt，与散传口径一致）。 */
+  public static final Set<String> DOC_EXTENSIONS =
+      Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm", "txt");
+
+  /** 图片类（走图片 OCR/VL 管道；对齐前端散传 accept）。 */
+  public static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp");
 
   /** 取文件名扩展名（小写，不含点）；无扩展名返回空串。 */
   public static String extensionOf(String filename) {
@@ -34,8 +42,14 @@ public final class SupportedDocumentTypes {
     return name.substring(dot + 1).toLowerCase(Locale.ROOT);
   }
 
-  /** 扩展名是否在白名单内（大小写不敏感）。 */
+  /** 扩展名是否受支持（文档类或图片类，大小写不敏感）。 */
   public static boolean isAllowed(String filename) {
-    return ALLOWED_EXTENSIONS.contains(extensionOf(filename));
+    String ext = extensionOf(filename);
+    return DOC_EXTENSIONS.contains(ext) || IMAGE_EXTENSIONS.contains(ext);
+  }
+
+  /** 是否为图片类（用于路由到图片管道）。 */
+  public static boolean isImage(String filename) {
+    return IMAGE_EXTENSIONS.contains(extensionOf(filename));
   }
 }
