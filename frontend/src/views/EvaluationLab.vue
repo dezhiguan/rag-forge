@@ -359,10 +359,13 @@
                   <td>
                     <span class="strategy-badge">{{ chunkerStrategyLabel(item.strategy) }}</span>
                   </td>
-                  <td class="metric-cell">{{ formatRate(item.top1) }}</td>
-                  <td class="metric-cell metric-accent">{{ formatMrr(item.mrr) }}</td>
-                  <td>{{ item.avgChunkLen }}</td>
-                  <td>{{ item.totalChunks }}</td>
+                  <td v-if="item.note" colspan="4" class="skip-note">跳过 · {{ item.note }}</td>
+                  <template v-else>
+                    <td class="metric-cell">{{ formatRate(item.top1) }}</td>
+                    <td class="metric-cell metric-accent">{{ formatMrr(item.mrr) }}</td>
+                    <td>{{ item.avgChunkLen }}</td>
+                    <td>{{ item.totalChunks }}</td>
+                  </template>
                 </tr>
               </tbody>
             </table>
@@ -2036,6 +2039,7 @@ onMounted(async () => {
 
 /* Metric cells */
 .metric-cell { font-weight: 600; font-variant-numeric: tabular-nums; }
+.skip-note { color: #9ca3af; font-size: 12px; font-style: italic; }
 .metric-accent { color: #10b981; }
 
 /* Actions cell */
