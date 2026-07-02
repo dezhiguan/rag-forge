@@ -155,7 +155,8 @@ public class AnswerService {
       response.setGuardRailResult(GuardRailResult.PASS.name());
       response.setLlmModel(llmModel);
       metrics.updateAnswerCitationRate(0, 0);
-      writeLog(request, kbIds, response, effectiveMode, llmModel, retrieval.getStrategy(), start);
+      writeLog(
+          request, kbIds, response, retrieval.getResults(), effectiveMode, llmModel, retrieval.getStrategy(), start);
       if (emitter != null) {
         send(emitter, "token", Map.of("delta", NOT_FOUND_ANSWER));
         send(emitter, "complete", response);
@@ -204,7 +205,8 @@ public class AnswerService {
     if (guard != GuardRailResult.PASS) {
       metrics.recordAnswerGuardRailBlocked(guard.name());
     }
-    writeLog(request, kbIds, response, effectiveMode, llmModel, retrieval.getStrategy(), start);
+    writeLog(
+        request, kbIds, response, retrieval.getResults(), effectiveMode, llmModel, retrieval.getStrategy(), start);
 
     if (guard != GuardRailResult.PASS) {
       if (emitter != null) {
@@ -256,6 +258,7 @@ public class AnswerService {
       AnswerRequest request,
       List<Long> kbIds,
       AnswerResponse response,
+      List<SearchResult> retrievedChunks,
       String answerMode,
       String llmModel,
       String retrievalStrategy,
@@ -268,7 +271,9 @@ public class AnswerService {
       log.setKbIdsCsv(String.join(",", kbIds.stream().map(String::valueOf).toList()));
       log.setQuery(request.getQuery());
       log.setAnswer(response.getAnswer());
-      log.setCitationsSnapshot(toJson(response.getCitations()));
+      // 喂给裁判/案例详情的是"全部检索块"(而非仅被答案 [n] 引用的块):
+      // 避免应答 LLM 引用编号飘了导致快照为空、正确答案被误判为"无出处"。
+      log.setCitationsSnapshot(toJson(citationLinker.allRetrieved(retrievedChunks)));
       log.setRetrievalStrategy(retrievalStrategy);
       log.setAnswerMode(answerMode);
       log.setLlmModel(llmModel);
@@ -463,6 +468,28 @@ class CitationLinker {
       if ("IMAGE".equalsIgnoreCase(c.getChunkModality())) {
         citation.setImageUrl(imageUrlByChunk.get(c.getChunkId()));
       }
+      citations.add(citation);
+    }
+    return citations;
+  }
+
+  /**
+   * 全量检索快照:不按答案的 [n] 引用过滤,返回所有检索到的块(按检索顺序编号)。 用于 LLM-as-Judge 评测与案例详情——即使应答 LLM 把引用编号写飘了(如只检索到 1 个块却引用
+   * [5]/[6]/[7]),裁判仍能拿到真实检索上下文,不会把内容正确的答案误判成"无出处/完全编造"。
+   */
+  List<Citation> allRetrieved(List<SearchResult> chunks) {
+    if (chunks == null || chunks.isEmpty()) {
+      return List.of();
+    }
+    List<Citation> citations = new ArrayList<>();
+    for (int i = 0; i < chunks.size(); i++) {
+      SearchResult c = chunks.get(i);
+      Citation citation = new Citation();
+      citation.setId(i + 1);
+      citation.setChunkId(c.getChunkId());
+      citation.setDocId(c.getDocId());
+      citation.setModality(textOrDefault(c.getChunkModality(), "TEXT"));
+      citation.setTextSnippet(truncate(c.getContent(), 300));
       citations.add(citation);
     }
     return citations;
