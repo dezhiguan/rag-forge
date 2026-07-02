@@ -65,7 +65,7 @@ class JudgeOrchestratorUnitTest {
     when(scorer.score(any(), eq(ScoreDimension.FAITHFULNESS))).thenReturn(success(ScoreDimension.FAITHFULNESS, "0.9"));
     when(scorer.score(any(), eq(ScoreDimension.CONTEXT_PRECISION))).thenReturn(success(ScoreDimension.CONTEXT_PRECISION, "0.8"));
     when(scorer.score(any(), eq(ScoreDimension.ANSWER_RELEVANCE))).thenReturn(success(ScoreDimension.ANSWER_RELEVANCE, "0.85"));
-    when(scorer.score(any(), eq(ScoreDimension.COMPOSITE))).thenReturn(success(ScoreDimension.COMPOSITE, "0.88"));
+    // COMPOSITE 不再经 LLM scorer,改由三项子维度确定性计算(见 JudgeOrchestrator.computeComposite)。
     org.mockito.Mockito.doAnswer(
             invocation -> {
               JudgeResult inserted = invocation.getArgument(0);
@@ -88,8 +88,16 @@ class JudgeOrchestratorUnitTest {
     org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(judgeResultMapper, scorer);
     inOrder.verify(judgeResultMapper).insert(any(JudgeResult.class));
     inOrder.verify(scorer).score(any(), eq(ScoreDimension.FAITHFULNESS));
+    // 综合分=三项子维度均值确定性计算:(0.9+0.8+0.85)/3 = 0.85;且不再调用 LLM 综合判分。
     verify(judgeResultMapper)
-        .updateById(argThat((JudgeResult r) -> "COMPLETED".equals(r.getStatus()) && r.getId().equals(1001L)));
+        .updateById(
+            argThat(
+                (JudgeResult r) ->
+                    "COMPLETED".equals(r.getStatus())
+                        && r.getId().equals(1001L)
+                        && r.getOverallScore() != null
+                        && r.getOverallScore().compareTo(new java.math.BigDecimal("0.85")) == 0));
+    verify(scorer, org.mockito.Mockito.never()).score(any(), eq(ScoreDimension.COMPOSITE));
     verify(metrics).recordJudgeCost(eq("PRODUCTION"), any(BigDecimal.class));
   }
 
@@ -114,7 +122,7 @@ class JudgeOrchestratorUnitTest {
     when(scorer.score(any(), eq(ScoreDimension.FAITHFULNESS))).thenReturn(success(ScoreDimension.FAITHFULNESS, "0.9"));
     when(scorer.score(any(), eq(ScoreDimension.CONTEXT_PRECISION))).thenReturn(fail(ScoreDimension.CONTEXT_PRECISION, "llm error"));
     when(scorer.score(any(), eq(ScoreDimension.ANSWER_RELEVANCE))).thenReturn(success(ScoreDimension.ANSWER_RELEVANCE, "0.85"));
-    when(scorer.score(any(), eq(ScoreDimension.COMPOSITE))).thenReturn(success(ScoreDimension.COMPOSITE, "0.88"));
+    // COMPOSITE 不再经 LLM scorer,改由三项子维度确定性计算(见 JudgeOrchestrator.computeComposite)。
     org.mockito.Mockito.doAnswer(
             invocation -> {
               JudgeResult inserted = invocation.getArgument(0);
@@ -208,7 +216,7 @@ class JudgeOrchestratorUnitTest {
     when(scorer.score(any(), eq(ScoreDimension.FAITHFULNESS))).thenReturn(fail(ScoreDimension.FAITHFULNESS, longReason));
     when(scorer.score(any(), eq(ScoreDimension.CONTEXT_PRECISION))).thenReturn(success(ScoreDimension.CONTEXT_PRECISION, "0.8"));
     when(scorer.score(any(), eq(ScoreDimension.ANSWER_RELEVANCE))).thenReturn(success(ScoreDimension.ANSWER_RELEVANCE, "0.85"));
-    when(scorer.score(any(), eq(ScoreDimension.COMPOSITE))).thenReturn(success(ScoreDimension.COMPOSITE, "0.88"));
+    // COMPOSITE 不再经 LLM scorer,改由三项子维度确定性计算(见 JudgeOrchestrator.computeComposite)。
     org.mockito.Mockito.doAnswer(
             invocation -> {
               JudgeResult inserted = invocation.getArgument(0);

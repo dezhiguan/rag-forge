@@ -30,7 +30,10 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/evaluation/golden-set")
-@PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR')")
+// 纳入 KB_VIEWER/USER:普通用户(如组织 owner)也应能在质量看板查看启用题数并对
+// 自己有权的数据集触发回放。实际授权仍由 requireReplayPermission 逐数据集/KB 校验
+// (全量回放 datasetId=null 仍限平台管理员),补角色不放宽访问。
+@PreAuthorize("hasAnyRole('ADMIN','KB_EDITOR','KB_VIEWER','USER','SERVICE_ACCOUNT')")
 public class GoldenSetController {
 
   private final GoldenSetReplayJob replayJob;

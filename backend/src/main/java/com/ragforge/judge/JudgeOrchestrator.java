@@ -14,6 +14,7 @@ import com.ragforge.model.entity.DocumentChunk;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.ragforge.model.entity.JudgeResult;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -81,10 +82,9 @@ public class JudgeOrchestrator {
       JudgeScore faithfulness = scoreDimension(ctx, ScoreDimension.FAITHFULNESS);
       JudgeScore contextPrecision = scoreDimension(ctx, ScoreDimension.CONTEXT_PRECISION);
       JudgeScore answerRelevance = scoreDimension(ctx, ScoreDimension.ANSWER_RELEVANCE);
-      JudgeContext compositeCtx =
-          ctx.withPriorScores(
-              faithfulness.getScore(), contextPrecision.getScore(), answerRelevance.getScore());
-      JudgeScore overall = scoreDimension(compositeCtx, ScoreDimension.COMPOSITE);
+      // 综合分改为由三项子维度确定性计算,去除易幻觉、会与子分自相矛盾的 LLM 综合调用
+      // （曾出现三项子维度均 1.0、综合却给 0.4 的错判）。
+      JudgeScore overall = computeComposite(faithfulness, contextPrecision, answerRelevance);
 
       List<JudgeScore> scores = List.of(faithfulness, contextPrecision, answerRelevance, overall);
       applyDimensionResult(result, faithfulness);
@@ -286,6 +286,92 @@ public class JudgeOrchestrator {
     } catch (NumberFormatException e) {
       return null;
     }
+  }
+
+  // 弱维度阈值:低于此视为该维度拖后腿(瓶颈)。
+  private static final BigDecimal COMPOSITE_WEAK_THRESHOLD = BigDecimal.valueOf(0.6);
+
+  /**
+   * 综合分与瓶颈由三项子维度确定性计算,不再调用 LLM 综合判分。 综合分=三项均值(与子分单调一致,杜绝"子项全高、综合却低"的自相矛盾);
+   * 瓶颈=实际拖后腿的维度(上下文精度→检索;忠实度/相关性→生成)。
+   */
+  private JudgeScore computeComposite(
+      JudgeScore faithfulness, JudgeScore contextPrecision, JudgeScore answerRelevance) {
+    if (faithfulness == null
+        || contextPrecision == null
+        || answerRelevance == null
+        || !faithfulness.isSuccess()
+        || !contextPrecision.isSuccess()
+        || !answerRelevance.isSuccess()
+        || faithfulness.getScore() == null
+        || contextPrecision.getScore() == null
+        || answerRelevance.getScore() == null) {
+      return JudgeScore.failed(ScoreDimension.COMPOSITE, "COMPOSITE_REQUIRES_ALL_SUBSCORES");
+    }
+    BigDecimal f = faithfulness.getScore();
+    BigDecimal cp = contextPrecision.getScore();
+    BigDecimal ar = answerRelevance.getScore();
+    BigDecimal overall =
+        f.add(cp).add(ar).divide(BigDecimal.valueOf(3), 4, RoundingMode.HALF_UP);
+
+    boolean retrievalWeak = cp.compareTo(COMPOSITE_WEAK_THRESHOLD) < 0;
+    boolean generationWeak = f.min(ar).compareTo(COMPOSITE_WEAK_THRESHOLD) < 0;
+    String bottleneck =
+        retrievalWeak && generationWeak
+            ? "BOTH"
+            : retrievalWeak ? "RETRIEVAL" : generationWeak ? "GENERATION" : "NONE";
+
+    List<String> improvements = new ArrayList<>();
+    if (retrievalWeak) {
+      improvements.add("提升检索质量：优化分块策略 / 嵌入模型 / 重排，提高上下文精度。");
+    }
+    if (generationWeak) {
+      improvements.add("优化答案生成：改进 Prompt 或更换应答模型，提升忠实度与相关性。");
+    }
+    String reasoning =
+        String.format(
+            Locale.ROOT,
+            "综合分由三项子维度均值确定性计算（忠实度 %.2f / 上下文精度 %.2f / 答案相关性 %.2f），瓶颈：%s。",
+            f.doubleValue(),
+            cp.doubleValue(),
+            ar.doubleValue(),
+            bottleneckLabel(bottleneck));
+
+    List<String> issues = new ArrayList<>(improvements);
+    issues.add("bottleneck=" + bottleneck);
+
+    String rawJson;
+    try {
+      Map<String, Object> m = new LinkedHashMap<>();
+      m.put("overall_score", overall);
+      m.put("reasoning", reasoning);
+      m.put("bottleneck", bottleneck);
+      m.put("improvements", improvements);
+      m.put("computed", true);
+      rawJson = objectMapper.writeValueAsString(m);
+    } catch (JsonProcessingException e) {
+      rawJson = null;
+    }
+    return JudgeScore.success(
+        ScoreDimension.COMPOSITE,
+        overall,
+        reasoning,
+        issues,
+        rawJson,
+        0,
+        BigDecimal.ZERO,
+        0,
+        0,
+        true);
+  }
+
+  private static String bottleneckLabel(String bottleneck) {
+    return switch (bottleneck) {
+      case "RETRIEVAL" -> "检索";
+      case "GENERATION" -> "生成";
+      case "BOTH" -> "两者皆有";
+      default -> "无";
+    };
   }
 
   private String buildRawResponse(List<JudgeScore> scores) {

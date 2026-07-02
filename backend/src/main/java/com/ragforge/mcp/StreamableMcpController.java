@@ -34,7 +34,7 @@ public class StreamableMcpController {
       case "tools/list" -> ok(id, toolsListResult());
       case "tools/call" -> ok(id, callTool(params(request)));
       case "ping" -> ok(id, Map.of());
-      default -> error(id, -32601, "Method not found: " + method);
+      default -> error(id, -32601, "方法不存在：" + method);
     };
   }
 
@@ -93,20 +93,24 @@ public class StreamableMcpController {
       Map<String, Object> arguments = map(params.get("arguments"));
       String query = asString(arguments.get("query"));
       if (query == null || query.isBlank()) {
-        return toolText("Missing required argument: query", true);
+        return toolText("参数错误：缺少必填参数 query。", true);
       }
       String kbIds = normalizeKbIds(arguments.get("kbIds"));
       int topK = intValue(arguments.get("topK"), 5);
       String result = tools.searchKnowledgeBase(query, kbIds, topK);
-      // 参数错误标记为 isError，避免调用方把错误提示当成检索结果。
-      return toolText(result, result.startsWith("参数错误："));
+      // 参数错误、后端检索故障、无可访问库均置 isError=true，避免调用方把错误提示当成检索结果喂给 LLM（与 answer 分支口径一致）。
+      boolean isError =
+          result.startsWith("参数错误：")
+              || result.startsWith("搜索失败：")
+              || result.startsWith("没有可访问");
+      return toolText(result, isError);
     }
     // answer_with_citations：无状态 /mcp 直接接线，复用 RagForgeMcpTools 的越权过滤与检索策略。
     if ("answer_with_citations".equals(name) || "answer".equals(name)) {
       Map<String, Object> arguments = map(params.get("arguments"));
       String query = asString(arguments.get("query"));
       if (query == null || query.isBlank()) {
-        return toolText("Missing required argument: query", true);
+        return toolText("参数错误：缺少必填参数 query。", true);
       }
       String kbIds = normalizeKbIds(arguments.get("kbIds"));
       String result = tools.answerWithCitations(query, kbIds);
@@ -116,7 +120,11 @@ public class StreamableMcpController {
               || result.startsWith("没有可访问");
       return toolText(result, isError);
     }
-    return toolText("Unknown tool: " + name, true);
+    // name 缺失单独提示，避免出现机器化的“未知工具：null”。
+    if (name == null || name.isBlank()) {
+      return toolText("参数错误：缺少工具名称 name。", true);
+    }
+    return toolText("未知工具：" + name, true);
   }
 
   private ResponseEntity<Map<String, Object>> ok(Object id, Map<String, Object> result) {

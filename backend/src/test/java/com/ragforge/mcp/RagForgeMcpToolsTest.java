@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.ragforge.answer.AnswerModels.AnswerRequest;
 import com.ragforge.answer.AnswerModels.AnswerResponse;
 import com.ragforge.answer.AnswerService;
+import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.search.RetrievalService;
@@ -34,6 +35,7 @@ class RagForgeMcpToolsTest {
   @Mock private RetrievalService retrievalService;
   @Mock private AnswerService answerService;
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
+  @Mock private DocumentMapper documentMapper;
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private ChunkImageResolver chunkImageResolver;
 
@@ -163,7 +165,7 @@ class RagForgeMcpToolsTest {
     KnowledgeBase kb1 = new KnowledgeBase();
     kb1.setId(15L);
     kb1.setName("Personal KB");
-    kb1.setDocCount(10);
+    kb1.setDocCount(0); // 冗余计数器已漂移为 0，应被实时聚合覆盖（BUG-2）
     kb1.setChunkCount(150);
 
     KnowledgeBase kb2 = new KnowledgeBase();
@@ -175,6 +177,12 @@ class RagForgeMcpToolsTest {
 
     when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb1, kb2));
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(15L, 16L));
+    // 实时聚合文档数：kb15 实有 3 篇（覆盖漂移的 0），kb16 实有 7 篇（覆盖冗余计数器 5）
+    when(documentMapper.selectMaps(any()))
+        .thenReturn(
+            List.of(
+                Map.of("kb_id", 15L, "cnt", 3L),
+                Map.of("kb_id", 16L, "cnt", 7L)));
 
     String result = tools.listKnowledgeBases();
 
@@ -182,6 +190,9 @@ class RagForgeMcpToolsTest {
     assertThat(result).contains("JD KB");
     assertThat(result).contains("Job descriptions");
     assertThat(result).contains("ID=15");
+    // 展示的文档数取实时聚合值，而非实体上漂移的 doc_count
+    assertThat(result).contains("文档数=3");
+    assertThat(result).contains("文档数=7");
   }
 
   @Test

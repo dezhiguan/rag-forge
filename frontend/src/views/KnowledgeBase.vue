@@ -458,19 +458,6 @@
             <textarea v-model="kbForm.description" rows="3" placeholder="可选" />
           </label>
           <label class="field">
-            <span>归属</span>
-            <select v-model="kbForm.orgId" @change="onOwnerChange" data-test="kb-form-owner">
-              <option
-                v-for="org in manageableOrgs"
-                :key="org.id"
-                :value="org.id"
-                data-test="kb-form-owner-org"
-              >
-                组织：{{ org.name }}
-              </option>
-            </select>
-          </label>
-          <label class="field">
             <span>可见性</span>
             <select v-model="kbForm.visibility" data-test="kb-form-visibility">
               <option v-for="opt in visibilityOptions" :key="opt.value" :value="opt.value">
@@ -1186,8 +1173,10 @@ async function openCreate() {
   }
   showCreate.value = true
   await loadManageableOrgs()
-  // 默认归属＝个人组织（一切皆组织，沿用"默认建到自己名下"）
-  kbForm.value.orgId = personalOrg.value?.id ?? manageableOrgs.value[0]?.id ?? null
+  // 归属＝当前所在组织,不再让用户选择(创建入口在平台视图已隐藏,current 必为真实组织)。
+  kbForm.value.orgId = current.value?.id ?? personalOrg.value?.id ?? null
+  // 依当前组织类型收敛可见性默认值(个人库仅 PRIVATE,团队库 PRIVATE/ORG,默认都 PRIVATE)。
+  kbForm.value.visibility = 'PRIVATE'
 }
 
 async function onCreateKb() {
