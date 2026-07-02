@@ -96,8 +96,9 @@ public class DocumentController {
       @PathVariable Long kbId,
       @RequestParam(defaultValue = "1") @Min(1) int page,
       @RequestParam(defaultValue = "20") @Min(1) int size,
-      @RequestParam(required = false) String keyword) {
-    return Result.ok(documentService.listByKb(kbId, page, size, keyword));
+      @RequestParam(required = false) String keyword,
+      @RequestParam(defaultValue = "false") boolean flatten) {
+    return Result.ok(documentService.listByKb(kbId, page, size, keyword, flatten));
   }
 
   @GetMapping("/documents/{id}")

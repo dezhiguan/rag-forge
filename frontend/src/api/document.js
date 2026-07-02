@@ -160,9 +160,13 @@ export const replaceDocument = (kbId, docId, file) => {
   return request.post(`/kb/${id}/documents/replace/${docId}`, formData)
 }
 
-export const listDocuments = (kbId, page = 1, size = 20, keyword) => {
+// flatten=true：文档列表层，平铺子文档+独立文档（排除压缩包容器），子文档带 sourceArchiveName 来源标识。
+// flatten=false（默认）：知识库列表层，压缩包容器+独立文档。
+export const listDocuments = (kbId, page = 1, size = 20, keyword, flatten = false) => {
   const id = assertKbId(kbId)
-  return request.get(`/kb/${id}/documents`, { params: { page, size, keyword: keyword || undefined } })
+  return request.get(`/kb/${id}/documents`, {
+    params: { page, size, keyword: keyword || undefined, flatten: flatten || undefined },
+  })
 }
 
 export const getDocument = (id) => request.get(`/documents/${id}`)

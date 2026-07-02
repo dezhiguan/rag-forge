@@ -202,23 +202,60 @@ public class DocumentServiceImpl implements DocumentService {
 
   @Override
   public PageResult<DocumentVO> listByKb(Long kbId, int page, int size, String keyword) {
+    return listByKb(kbId, page, size, keyword, false);
+  }
+
+  @Override
+  public PageResult<DocumentVO> listByKb(
+      Long kbId, int page, int size, String keyword, boolean flatten) {
     requireActiveKb(kbId);
 
     Page<Document> mpPage = new Page<>(page, size);
     String kw = keyword == null ? null : keyword.trim();
-    IPage<Document> result =
-        documentMapper.selectPage(
-            mpPage,
-            new LambdaQueryWrapper<Document>()
-                .eq(Document::getKbId, kbId)
-                // 默认隐藏压缩包子文档：列表只呈现容器 + 独立文档，子文档经容器详情下钻查看，
-                // 避免一个百文件的压缩包解压产物淹没列表。
-                .isNull(Document::getParentDocumentId)
-                .like(kw != null && !kw.isEmpty(), Document::getFilename, kw)
-                .orderByDesc(Document::getCreatedAt));
+    LambdaQueryWrapper<Document> wrapper =
+        new LambdaQueryWrapper<Document>()
+            .eq(Document::getKbId, kbId)
+            .like(kw != null && !kw.isEmpty(), Document::getFilename, kw)
+            .orderByDesc(Document::getCreatedAt);
+    if (flatten) {
+      // 文档列表层：平铺——子文档 + 独立文档，排除压缩包容器本身（容器归"知识库列表"层）。
+      wrapper.and(
+          q ->
+              q.isNotNull(Document::getParentDocumentId)
+                  .or(o -> o.notIn(Document::getFileType, ARCHIVE_FILE_TYPES))
+                  .or(o -> o.isNull(Document::getFileType)));
+    } else {
+      // 知识库列表层：原始文件——容器 + 独立文档（隐藏子文档）。
+      wrapper.isNull(Document::getParentDocumentId);
+    }
+    IPage<Document> result = documentMapper.selectPage(mpPage, wrapper);
 
     List<DocumentVO> list = result.getRecords().stream().map(this::toDocumentVO).toList();
+    if (flatten) {
+      enrichSourceArchiveNames(list);
+    }
     return PageResult.of(result.getTotal(), (int) mpPage.getCurrent(), size, list);
+  }
+
+  /** 为平铺列表中的子文档批量补齐来源压缩包文件名（一次查询，避免 N+1）。 */
+  private void enrichSourceArchiveNames(List<DocumentVO> list) {
+    java.util.Set<Long> parentIds =
+        list.stream()
+            .map(DocumentVO::getParentDocumentId)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+    if (parentIds.isEmpty()) {
+      return;
+    }
+    java.util.Map<Long, String> nameById = new java.util.HashMap<>();
+    for (Document parent : documentMapper.selectBatchIds(parentIds)) {
+      nameById.put(parent.getId(), parent.getFilename());
+    }
+    for (DocumentVO vo : list) {
+      if (vo.getParentDocumentId() != null) {
+        vo.setSourceArchiveName(nameById.get(vo.getParentDocumentId()));
+      }
+    }
   }
 
   @Override
@@ -247,6 +284,13 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setCleanReportJson(doc.getCleanReportJson());
     vo.setCleanProfileId(doc.getCleanProfileId());
     vo.setCreatedAt(doc.getCreatedAt());
+    // 子文档来源标识（详情页「来自 xx.zip」）
+    vo.setParentDocumentId(doc.getParentDocumentId());
+    vo.setArchiveEntryPath(doc.getArchiveEntryPath());
+    if (doc.getParentDocumentId() != null) {
+      Document parent = documentMapper.selectById(doc.getParentDocumentId());
+      vo.setSourceArchiveName(parent == null ? null : parent.getFilename());
+    }
     if (kb != null) {
       vo.setKbName(kb.getName());
       vo.setEmbeddingModel(kb.getEmbeddingModel());
@@ -691,6 +735,8 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setIngestSource(doc.getIngestSource());
     vo.setCreatedAt(doc.getCreatedAt());
     vo.setIsArchive(isArchiveContainer(doc));
+    vo.setParentDocumentId(doc.getParentDocumentId());
+    vo.setArchiveEntryPath(doc.getArchiveEntryPath());
     return vo;
   }
 

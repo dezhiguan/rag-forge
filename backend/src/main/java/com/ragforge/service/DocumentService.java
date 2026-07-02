@@ -20,6 +20,11 @@ public interface DocumentService {
 
   PageResult<DocumentVO> listByKb(Long kbId, int page, int size, String keyword);
 
+  /**
+   * @param flatten true=文档列表层(平铺子文档+独立文档，排除容器)；false=知识库列表层(容器+独立文档)。
+   */
+  PageResult<DocumentVO> listByKb(Long kbId, int page, int size, String keyword, boolean flatten);
+
   DocumentDetailVO getById(Long id);
 
   java.util.List<DocumentVO> listChildren(Long containerId);
