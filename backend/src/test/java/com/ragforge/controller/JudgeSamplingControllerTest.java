@@ -14,30 +14,43 @@ import com.ragforge.common.GlobalExceptionHandler;
 import com.ragforge.judge.SamplingUpsertRequest;
 import com.ragforge.mapper.JudgeSamplingConfigMapper;
 import com.ragforge.model.entity.JudgeSamplingConfig;
+import com.ragforge.security.KbAccessGuard;
+import com.ragforge.security.RagAuthContext;
+import com.ragforge.security.RagAuthContextHolder;
 import java.math.BigDecimal;
+import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
 
 @ExtendWith(MockitoExtension.class)
 class JudgeSamplingControllerTest {
 
   @Mock private JudgeSamplingConfigMapper configMapper;
+  @Mock private KbAccessGuard kbAccessGuard;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
+    // 现有用例校验的是配置逻辑,以平台管理员身份运行,绕过新的权限拆分门槛。
+    RagAuthContextHolder.set(
+        new RagAuthContext(1L, "ADMIN", Set.of(), Set.of(), Set.of(), "USER", "user-1"));
     mockMvc =
-        standaloneSetup(new JudgeSamplingController(configMapper))
+        standaloneSetup(new JudgeSamplingController(configMapper, kbAccessGuard))
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
+  }
+
+  @AfterEach
+  void tearDown() {
+    RagAuthContextHolder.clear();
   }
 
   @Test
@@ -71,10 +84,39 @@ class JudgeSamplingControllerTest {
   }
 
   @Test
-  void samplingController_isAdminOnly() {
-    PreAuthorize annotation = JudgeSamplingController.class.getAnnotation(PreAuthorize.class);
-    assertThat(annotation).isNotNull();
-    assertThat(annotation.value()).isEqualTo("hasRole('ADMIN')");
+  void globalConfig_nonAdmin_forbidden() throws Exception {
+    RagAuthContextHolder.set(
+        new RagAuthContext(2L, "USER", Set.of(), Set.of(), Set.of(), "USER", "user-2"));
+    mockMvc
+        .perform(
+            post("/api/v1/evaluation/quality/sampling")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request(new BigDecimal("0.05"), true))))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.msg").value("SAMPLING_GLOBAL_ADMIN_ONLY"));
+  }
+
+  @Test
+  void kbOverride_byKbOrgAdmin_allowed() throws Exception {
+    RagAuthContextHolder.set(
+        new RagAuthContext(2L, "USER", Set.of(), Set.of(), Set.of(), "USER", "user-2"));
+    when(kbAccessGuard.canAdmin(77L)).thenReturn(true);
+    when(configMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+    when(configMapper.insert(any(JudgeSamplingConfig.class))).thenReturn(1);
+
+    SamplingUpsertRequest req = new SamplingUpsertRequest();
+    req.setScopeType("KB");
+    req.setScopeId(77L);
+    req.setSampleRate(new BigDecimal("0.05"));
+    req.setEnabled(true);
+    req.setConfirmed(true);
+
+    mockMvc
+        .perform(
+            post("/api/v1/evaluation/quality/sampling")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+        .andExpect(status().isOk());
   }
 
   private SamplingUpsertRequest request(BigDecimal sampleRate, boolean confirmed) {

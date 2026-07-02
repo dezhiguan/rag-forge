@@ -44,6 +44,8 @@ const ERROR_CODE_LABELS = {
   REPLAY_ALREADY_RUNNING: '已有回放任务正在进行，请稍后再试',
   SAMPLE_RATE_TOO_HIGH_REQUIRES_CONFIRM: '当前抽样率超过 10%，月度成本会显著增加，请勾选确认后再保存',
   SAMPLING_ADMIN_ONLY: '只有管理员可以修改抽样配置',
+  SAMPLING_GLOBAL_ADMIN_ONLY: '全局抽样率与月度预算配置仅平台管理员可修改',
+  SAMPLING_KB_ADMIN_ONLY: '无权配置该知识库的抽样（需为该知识库所属组织的管理员）',
   DATASET_ID_REQUIRED: '请选择具体的数据集（管理员才能跑全量回放）',
   UPLOAD_NOT_FOUND: '上传未完成或已过期，请重新上传',
   SIZE_MISMATCH: '文件传输不完整，请重试',
@@ -213,7 +215,8 @@ request.interceptors.response.use(
       } else if (status === 403) {
         const url = err.config?.url || ''
         if (url.includes('/evaluation/quality/sampling')) {
-          msg = ERROR_MESSAGES.SAMPLING_ADMIN_ONLY
+          // 区分"全局配置仅平台管理员"与"无权配置该 KB 的抽样",不再统一硬编码。
+          msg = translateError(data) || ERROR_MESSAGES.SAMPLING_ADMIN_ONLY
         } else {
           msg = translateError(data) || ERROR_MESSAGES.KB_ACCESS_DENIED
         }
