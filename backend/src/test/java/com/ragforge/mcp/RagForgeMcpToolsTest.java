@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.ragforge.answer.AnswerModels.AnswerRequest;
@@ -138,15 +139,11 @@ class RagForgeMcpToolsTest {
   }
 
   @Test
-  void searchKnowledgeBase_invalidKbIds_usesAllReadable() {
-    when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(1L));
-    RetrievalOutput output = new RetrievalOutput(List.of(), 50L, "hybrid", null, null, null, null, null);
-    when(retrievalService.retrieve(anyString(), anyList(), any(), anyString(), any(), anyInt(), anyInt(), any()))
-        .thenReturn(output);
-
-    // "abc,xyz" parses to empty → falls back to allReadableKbIds
+  void searchKnowledgeBase_invalidKbIds_returnsParamError() {
+    // 含非法 token 的 kbIds 会抛参数错误（不再静默退化为"搜索全部库"，避免越权扩大范围）。
     String result = tools.searchKnowledgeBase("query", "abc,xyz", 5);
-    assertThat(result).isNotBlank();
+    assertThat(result).contains("参数错误");
+    verifyNoInteractions(retrievalService);
   }
 
   // ---- listKnowledgeBases ----

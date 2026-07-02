@@ -144,7 +144,7 @@ public class ApiKeyController {
       return new ApiKeyView(
           k.getId(),
           k.getKeyName(),
-          mask(k.getApiKey()),
+          mask(k.getKeyPrefix()),
           k.getKeyPrefix(),
           k.getEnabled(),
           k.getRateLimit(),
@@ -158,11 +158,12 @@ public class ApiKeyController {
           k.getCreatedAt());
     }
 
-    private static String mask(String key) {
-      if (key == null || key.length() < 12) {
+    // 明文不再入库（M8-01/08），掩码由展示前缀派生。
+    private static String mask(String keyPrefix) {
+      if (keyPrefix == null || keyPrefix.isBlank()) {
         return "****";
       }
-      return key.substring(0, 8) + "****" + key.substring(key.length() - 4);
+      return keyPrefix + "****";
     }
   }
 

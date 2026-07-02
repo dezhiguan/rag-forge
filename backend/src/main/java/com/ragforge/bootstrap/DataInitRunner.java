@@ -24,16 +24,18 @@ public class DataInitRunner implements ApplicationRunner {
 
   @Override
   public void run(ApplicationArguments args) {
+    // 安全基线（M8-01/08）：种子 key 同样只存 hash + 前缀，不落明文。
+    String keyHash = com.ragforge.service.impl.ApiKeyServiceImpl.sha256Hex(DEV_API_KEY);
     Long count =
-        apiKeyMapper.selectCount(
-            new LambdaQueryWrapper<ApiKey>().eq(ApiKey::getApiKey, DEV_API_KEY));
+        apiKeyMapper.selectCount(new LambdaQueryWrapper<ApiKey>().eq(ApiKey::getKeyHash, keyHash));
     if (count != null && count > 0) {
       return;
     }
 
     ApiKey apiKey = new ApiKey();
     apiKey.setKeyName(DEV_KEY_NAME);
-    apiKey.setApiKey(DEV_API_KEY);
+    apiKey.setKeyHash(keyHash);
+    apiKey.setKeyPrefix(DEV_API_KEY.substring(0, Math.min(12, DEV_API_KEY.length())));
     apiKey.setEnabled(true);
     apiKey.setRateLimit(100);
     apiKey.setCreatedAt(LocalDateTime.now());

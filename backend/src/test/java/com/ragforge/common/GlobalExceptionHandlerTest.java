@@ -91,7 +91,8 @@ class GlobalExceptionHandlerTest {
         .perform(get("/test/param"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value(400))
-        .andExpect(jsonPath("$.msg").value(org.hamcrest.Matchers.containsString("MISSING_PARAM")));
+        // M11：msg 为友好中文，机器码移至 errorCode。
+        .andExpect(jsonPath("$.errorCode").value(org.hamcrest.Matchers.containsString("MISSING_PARAM")));
   }
 
   @Test
@@ -101,7 +102,8 @@ class GlobalExceptionHandlerTest {
         .perform(get("/test/item/NaN"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value(400))
-        .andExpect(jsonPath("$.msg").value(org.hamcrest.Matchers.containsString("INVALID_PARAM")));
+        // M11：msg 为友好中文，机器码移至 errorCode。
+        .andExpect(jsonPath("$.errorCode").value(org.hamcrest.Matchers.containsString("INVALID_PARAM")));
   }
 
   @RestController

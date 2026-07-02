@@ -82,7 +82,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     String term = q.trim();
     return apiKeyMapper.selectList(
         new LambdaQueryWrapper<ApiKey>()
-            .and(w -> w.like(ApiKey::getKeyName, term).or().likeRight(ApiKey::getApiKey, term))
+            .and(w -> w.like(ApiKey::getKeyName, term).or().likeRight(ApiKey::getKeyPrefix, term))
             .orderByDesc(ApiKey::getCreatedAt)
             .last("LIMIT 50"));
   }
@@ -99,7 +99,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     }
     ApiKey apiKey = apiKeyMapper.selectById(id);
     if (apiKey == null) {
-      throw new BizException(404, "API Key 不存在");
+      throw new BizException(404, "API_KEY_NOT_FOUND");
     }
     apiKeyMapper.update(null, new UpdateWrapper<ApiKey>().eq("id", id).set("enabled", false));
     apiKeyInterceptor.resetKeyCache();
@@ -144,7 +144,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     String key = generateKey();
     ApiKey apiKey = new ApiKey();
     apiKey.setKeyName(keyName.trim());
-    apiKey.setApiKey(key); // 明文仍存（批次2 切 hash 优先 + 明文回退）
+    // 安全基线（M8-01/08）：明文不入库，仅存 hash + 展示前缀；鉴权按 hash 比对。
     apiKey.setKeyHash(sha256Hex(key));
     apiKey.setKeyPrefix(key.substring(0, Math.min(12, key.length())));
     apiKey.setEnabled(true);
@@ -159,6 +159,8 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     apiKey.setCreatedAt(LocalDateTime.now());
     apiKeyMapper.insert(apiKey);
     apiKeyInterceptor.resetKeyCache();
+    // 明文仅通过本次创建响应返回一次（不落库、不落日志）。
+    apiKey.setApiKey(key);
     return apiKey;
   }
 
@@ -220,7 +222,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
   public ApiKey rename(Long id, String keyName) {
     ApiKey apiKey = apiKeyMapper.selectById(id);
     if (apiKey == null) {
-      throw new BizException(404, "API Key 不存在");
+      throw new BizException(404, "API_KEY_NOT_FOUND");
     }
     requireOrgAdmin(apiKey.getOrgId());
     if (keyName == null || keyName.isBlank()) {
@@ -237,7 +239,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
   public ApiKey enable(Long id, boolean enabled) {
     ApiKey apiKey = apiKeyMapper.selectById(id);
     if (apiKey == null) {
-      throw new BizException(404, "API Key 不存在");
+      throw new BizException(404, "API_KEY_NOT_FOUND");
     }
     // 平台治理可吊销任意 key；普通上下文须为该 key 所属组织的 admin。
     if (!isPlatformGovernance()) {
@@ -254,7 +256,7 @@ public class ApiKeyServiceImpl implements ApiKeyService {
   public void delete(Long id) {
     ApiKey apiKey = apiKeyMapper.selectById(id);
     if (apiKey == null) {
-      throw new BizException(404, "API Key 不存在");
+      throw new BizException(404, "API_KEY_NOT_FOUND");
     }
     // 删除是组织内操作（平台视图仅吊销不删，按设计）：破玻璃只读治理 → 单独给码，其余须为该 key 组织 admin。
     if (isPlatformGovernance()) {

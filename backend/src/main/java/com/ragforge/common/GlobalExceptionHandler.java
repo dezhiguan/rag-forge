@@ -29,13 +29,23 @@ public class GlobalExceptionHandler {
 
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+  /** 机器码形态：大写字母开头 + 大写/数字/下划线，允许 {@code CODE:后缀} 动态段。 */
+  private static final java.util.regex.Pattern MACHINE_CODE =
+      java.util.regex.Pattern.compile("[A-Z][A-Z0-9_]*(?::.*)?");
+
   @ExceptionHandler(BizException.class)
   public void handleBizException(BizException ex, HttpServletResponse response) throws IOException {
     // ex.getMessage() 是机器码 → errorCode；msg 翻成中文用户提示；错误体不带 traceId（保留在响应头供排查）。
-    String errorCode = ex.getMessage();
+    // 历史遗留的裸中文 message 不是机器码：直接作为 msg 返回，errorCode 置空（避免中文码外露）。
+    String raw = ex.getMessage();
+    boolean isCode = raw != null && MACHINE_CODE.matcher(raw).matches();
+    String errorCode = isCode ? raw : null;
+    String msg =
+        isCode
+            ? ErrorMessages.toChinese(raw)
+            : (raw == null || raw.isBlank() ? "操作失败，请稍后重试" : raw);
     Result<Map<String, Object>> body =
-        new Result<>(
-            ex.getCode(), ErrorMessages.toChinese(errorCode), errorCode, ex.getData(), null);
+        new Result<>(ex.getCode(), msg, errorCode, ex.getData(), null);
     response.setStatus(ex.getCode());
     response.setContentType("application/json");
     response.setCharacterEncoding("UTF-8");
@@ -49,7 +59,19 @@ public class GlobalExceptionHandler {
         ex.getBindingResult().getFieldErrors().stream()
             .map(FieldError::getDefaultMessage)
             .collect(Collectors.joining(", "));
-    return ResponseEntity.badRequest().body(Result.fail(400, msg));
+    if (msg.isBlank()) {
+      msg = ErrorMessages.toChinese("INVALID_PARAM");
+    }
+    return ResponseEntity.badRequest().body(Result.error(400, "INVALID_PARAM", msg));
+  }
+
+  /** 请求体缺失/JSON 不合法/字段类型不匹配：400 + 友好提示，而非落兜底 500。 */
+  @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+  public ResponseEntity<Result<Void>> handleNotReadable(
+      org.springframework.http.converter.HttpMessageNotReadableException ex) {
+    log.warn("Unreadable request body: {}", ex.getMessage());
+    return ResponseEntity.badRequest()
+        .body(Result.error(400, "INVALID_REQUEST", ErrorMessages.toChinese("INVALID_REQUEST")));
   }
 
   @ExceptionHandler(MaxUploadSizeExceededException.class)
@@ -86,7 +108,8 @@ public class GlobalExceptionHandler {
       return ResponseEntity.status(404).body(Result.fail(404, "Not Found"));
     }
     return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
-        .body(Result.fail(405, "Method Not Allowed"));
+        .body(
+            Result.error(405, "METHOD_NOT_ALLOWED", ErrorMessages.toChinese("METHOD_NOT_ALLOWED")));
   }
 
   @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
@@ -102,14 +125,18 @@ public class GlobalExceptionHandler {
     String name = ex.getName();
     Object value = ex.getValue();
     log.warn("Invalid request param: name={}, value={}", name, value);
-    String msg = String.format("INVALID_PARAM: %s=%s", name, value);
-    return ResponseEntity.badRequest().body(Result.fail(400, msg));
+    return ResponseEntity.badRequest()
+        .body(Result.error(400, "INVALID_PARAM:" + name, ErrorMessages.toChinese("INVALID_PARAM")));
   }
 
   @ExceptionHandler(MissingServletRequestParameterException.class)
   public ResponseEntity<Result<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
     return ResponseEntity.badRequest()
-        .body(Result.fail(400, "MISSING_PARAM: " + ex.getParameterName()));
+        .body(
+            Result.error(
+                400,
+                "MISSING_PARAM:" + ex.getParameterName(),
+                ErrorMessages.toChinese("MISSING_PARAM")));
   }
 
   // 未映射的路径（如误访问不存在的接口）应为 404，而非落到通用 Exception → 500。

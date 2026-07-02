@@ -59,6 +59,7 @@ public final class ErrorMessages {
           Map.entry("KB_VISIBILITY_REQUIRED", "请选择知识库可见性"),
           // API Key 创建 / 授权
           Map.entry("KEY_NAME_REQUIRED", "请输入 API 密钥名称"),
+          Map.entry("API_KEY_NOT_FOUND", "API 密钥不存在或已被删除"),
           Map.entry("ALLOWED_KB_IDS_REQUIRED", "请至少选择一个要授权的知识库"),
           Map.entry("KB_NOT_IN_ORG", "所选知识库不属于当前组织，无法授权"),
           Map.entry("PLATFORM_VIEW_READONLY", "全平台视图为只读治理视角，不能创建或修改内容，请切换到具体组织后再试"),
@@ -71,8 +72,23 @@ public final class ErrorMessages {
           Map.entry("GOVERNANCE_REQUIRES_BREAKGLASS", "该治理操作需先进入「全平台视图」（破玻璃）后才能执行"),
           Map.entry("GOVERNANCE_QUERY_TOO_SHORT", "请输入更精确的检索词（至少 3 个字符）"),
           Map.entry("REVOKE_REASON_REQUIRED", "请填写吊销原因"),
+          // 文档 / 分块
+          Map.entry("DOCUMENT_NOT_FOUND", "文档不存在或已被删除"),
+          Map.entry(
+              "INVALID_STRATEGY", "所选分块策略不适用于该文档（「按标题分块」仅支持 Markdown 文档），请改用其他策略"),
+          Map.entry("SEMANTIC_REQUIRES_LONG_TEXT", "文档内容过短，暂不适用语义分块，请改用其他分块策略"),
+          Map.entry("INVALID_CHUNKER_PROFILE_JSON", "分块配置格式有误，请检查后重试"),
+          // 评测
+          Map.entry("JUDGE_RESULT_NOT_FOUND", "评测结果不存在或已被清理"),
+          Map.entry("EVAL_DATASET_NOT_FOUND", "评测数据集不存在"),
+          Map.entry("EVAL_RESOURCE_NOT_IN_ORG", "所选评测资源不属于当前组织"),
+          Map.entry("ALREADY_IN_PROGRESS", "任务正在进行中，请稍候再试"),
           // 通用兜底码
-          Map.entry("INVALID_REQUEST", "请求参数有误，请检查后重试"),
+          Map.entry("INVALID_REQUEST", "请求格式有误，请检查后重试"),
+          Map.entry("INVALID_PARAM", "请求参数有误，请检查后重试"),
+          Map.entry("MISSING_PARAM", "请求缺少必要参数，请检查后重试"),
+          Map.entry("METHOD_NOT_ALLOWED", "请求方式不支持"),
+          Map.entry("NOT_FOUND", "请求的资源不存在"),
           Map.entry("FORBIDDEN", "无权访问，请联系管理员"),
           Map.entry("INTERNAL_ERROR", "服务暂时异常，请稍后重试"));
 

@@ -197,7 +197,8 @@ class JudgeQualityControllerTest {
         .perform(get("/api/v1/evaluation/quality/case/100"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value(404))
-        .andExpect(jsonPath("$.msg").value("JUDGE_RESULT_NOT_FOUND"));
+        // M11：msg 为友好中文，机器码移至 errorCode。
+        .andExpect(jsonPath("$.errorCode").value("JUDGE_RESULT_NOT_FOUND"));
   }
 
   @Test
@@ -236,7 +237,8 @@ class JudgeQualityControllerTest {
         .perform(get("/api/v1/evaluation/quality/case/100"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value(404))
-        .andExpect(jsonPath("$.msg").value("JUDGE_RESULT_NOT_FOUND"));
+        // M11：msg 为友好中文，机器码移至 errorCode。
+        .andExpect(jsonPath("$.errorCode").value("JUDGE_RESULT_NOT_FOUND"));
   }
 
   @Test

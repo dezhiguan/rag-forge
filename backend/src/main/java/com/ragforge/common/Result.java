@@ -18,6 +18,8 @@ public class Result<T> {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   private String errorCode;
 
+  /** 业务数据；为 null 时不出现在 JSON（错误响应不再携带 data:null，M11 友好性）。 */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   private T data;
 
   /** 链路追踪 id：仅成功响应携带；失败响应为 null 且不出现在 body（改由 X-Trace-Id 响应头承载）。 */
