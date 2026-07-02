@@ -20,6 +20,8 @@ import com.ragforge.model.dto.RegisterUploadRequest;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
+import com.ragforge.archive.ArchiveFormatDetector;
+import com.ragforge.mq.ArchiveExpandProducer;
 import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.chunker.ChunkParams;
 import com.ragforge.pipeline.chunker.ChunkerProfile;
@@ -57,7 +59,9 @@ class DocumentUploadApplicationServiceImplTest {
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private ChunkingService chunkingService;
   @Mock private DocumentProcessProducer mqProducer;
+  @Mock private ArchiveExpandProducer archiveExpandProducer;
 
+  private final ArchiveFormatDetector archiveFormatDetector = new ArchiveFormatDetector();
   private final ObjectMapper objectMapper = new ObjectMapper();
   private StorageProperties storageProperties;
   private DocumentUploadApplicationServiceImpl service;
@@ -79,7 +83,9 @@ class DocumentUploadApplicationServiceImplTest {
             documentChunkMapper,
             knowledgeBaseMapper,
             chunkingService,
-            mqProducer);
+            mqProducer,
+            archiveExpandProducer,
+            archiveFormatDetector);
   }
 
   @AfterEach

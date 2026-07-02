@@ -18,6 +18,7 @@ import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
+import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.service.FileStorageService;
@@ -33,9 +34,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
@@ -50,6 +54,9 @@ class DocumentServiceImplTest {
   @Mock private ObjectStorage objectStorage;
   @Mock private DocumentProcessProducer documentProcessProducer;
   @Mock private EsIndexService esIndexService;
+
+  // 真实 ObjectMapper：容器聚合需解析 expand_summary，@InjectMocks 会注入 @Spy。
+  @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
   @InjectMocks private DocumentServiceImpl documentService;
 
@@ -344,6 +351,129 @@ class DocumentServiceImplTest {
                     new MockMultipartFile("file", "a.pdf", "application/pdf", "x".getBytes())))
         .isInstanceOf(BizException.class)
         .hasMessageContaining("知识库不存在");
+  }
+
+  @Test
+  void getById_archiveContainer_withSkips_aggregatesChildrenSummary() {
+    Document container = archiveDoc(20L, 1L, "bundle.zip", "zip");
+    container.setExpandSummary(
+        "{\"totalEntries\":6,\"registered\":4,\"skipped\":["
+            + "{\"path\":\"a/b.exe\",\"reason\":\"not_whitelisted\"},"
+            + "{\"path\":\"big.pdf\"}]}");
+    when(documentMapper.selectById(20L)).thenReturn(container);
+    when(documentMapper.countChildrenByStatus(20L))
+        .thenReturn(
+            List.of(
+                Map.of("status", "COMPLETED", "cnt", 3L),
+                Map.of("status", "FAILED", "cnt", 1L),
+                Map.of("status", "PENDING", "cnt", 1),
+                Map.of("status", "PROCESSING", "cnt", 2L),
+                // 未知状态仍计入 total，但不单列
+                Map.of("status", "EXPANDED", "cnt", 1L)));
+
+    DocumentDetailVO vo = documentService.getById(20L);
+
+    assertThat(vo.getIsArchive()).isTrue();
+    var summary = vo.getChildrenSummary();
+    assertThat(summary).isNotNull();
+    assertThat(summary.getCompleted()).isEqualTo(3);
+    assertThat(summary.getFailed()).isEqualTo(1);
+    assertThat(summary.getPending()).isEqualTo(1);
+    assertThat(summary.getProcessing()).isEqualTo(2);
+    assertThat(summary.getTotal()).isEqualTo(8); // 3+1+1+2+1
+    assertThat(summary.getSkipped()).isEqualTo(2);
+    assertThat(vo.getSkippedEntries()).hasSize(2);
+    assertThat(vo.getSkippedEntries().get(0).getPath()).isEqualTo("a/b.exe");
+    assertThat(vo.getSkippedEntries().get(0).getReason()).isEqualTo("not_whitelisted");
+    // 缺失 reason 字段容忍为 null
+    assertThat(vo.getSkippedEntries().get(1).getReason()).isNull();
+  }
+
+  @Test
+  void getById_archiveContainer_nullExpandSummary_hasEmptySkips() {
+    Document container = archiveDoc(21L, 1L, "bundle.tar.gz", "tar.gz");
+    container.setExpandSummary(null);
+    when(documentMapper.selectById(21L)).thenReturn(container);
+    when(documentMapper.countChildrenByStatus(21L))
+        .thenReturn(List.of(Map.of("status", "COMPLETED", "cnt", 5L)));
+
+    DocumentDetailVO vo = documentService.getById(21L);
+
+    assertThat(vo.getIsArchive()).isTrue();
+    assertThat(vo.getChildrenSummary().getTotal()).isEqualTo(5);
+    assertThat(vo.getChildrenSummary().getSkipped()).isZero();
+    assertThat(vo.getSkippedEntries()).isEmpty();
+  }
+
+  @Test
+  void getById_archiveContainer_invalidExpandSummary_toleratesAndReturnsEmptySkips() {
+    Document container = archiveDoc(22L, 1L, "broken.zip", "zip");
+    container.setExpandSummary("not-json");
+    when(documentMapper.selectById(22L)).thenReturn(container);
+    when(documentMapper.countChildrenByStatus(22L)).thenReturn(List.of());
+
+    DocumentDetailVO vo = documentService.getById(22L);
+
+    assertThat(vo.getIsArchive()).isTrue();
+    assertThat(vo.getChildrenSummary().getTotal()).isZero();
+    assertThat(vo.getSkippedEntries()).isEmpty();
+  }
+
+  @Test
+  void getById_normalDocument_isArchiveFalseAndNoAggregation() {
+    Document normal = doc(23L, 1L, "resume.pdf", "COMPLETED");
+    when(documentMapper.selectById(23L)).thenReturn(normal);
+
+    DocumentDetailVO vo = documentService.getById(23L);
+
+    assertThat(vo.getIsArchive()).isFalse();
+    assertThat(vo.getChildrenSummary()).isNull();
+    assertThat(vo.getSkippedEntries()).isNull();
+    verify(documentMapper, never()).countChildrenByStatus(any());
+  }
+
+  @Test
+  void listChildren_returnsMappedChildren() {
+    Document container = archiveDoc(30L, 1L, "bundle.zip", "zip");
+    Document child1 = doc(31L, 1L, "a.pdf", "COMPLETED");
+    child1.setParentDocumentId(30L);
+    Document child2 = doc(32L, 1L, "b.md", "PENDING");
+    child2.setParentDocumentId(30L);
+    when(documentMapper.selectById(30L)).thenReturn(container);
+    when(documentMapper.selectChildren(30L)).thenReturn(List.of(child1, child2));
+
+    var children = documentService.listChildren(30L);
+
+    assertThat(children).hasSize(2);
+    assertThat(children.get(0).getId()).isEqualTo(31L);
+    assertThat(children.get(1).getFilename()).isEqualTo("b.md");
+  }
+
+  @Test
+  void listChildren_containerNotFound_throws404() {
+    when(documentMapper.selectById(99L)).thenReturn(null);
+
+    assertThatThrownBy(() -> documentService.listChildren(99L))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
+  }
+
+  @Test
+  void listChildren_notAContainer_throws404() {
+    Document normal = doc(40L, 1L, "resume.pdf", "COMPLETED");
+    when(documentMapper.selectById(40L)).thenReturn(normal);
+
+    assertThatThrownBy(() -> documentService.listChildren(40L))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
+    verify(documentMapper, never()).selectChildren(any());
+  }
+
+  private static Document archiveDoc(long id, long kbId, String filename, String fileType) {
+    Document doc = doc(id, kbId, filename, "EXPANDED");
+    doc.setFileType(fileType);
+    doc.setParentDocumentId(null);
+    return doc;
   }
 
   private static KnowledgeBase activeKb(long id) {

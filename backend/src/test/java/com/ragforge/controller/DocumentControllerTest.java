@@ -31,6 +31,8 @@ import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
 import com.ragforge.model.vo.DocumentUploadResultVO;
 import com.ragforge.model.vo.DocumentVO;
+import com.ragforge.archive.ArchiveFormatDetector;
+import com.ragforge.mq.ArchiveExpandProducer;
 import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.security.KbAccessGuard;
 import com.ragforge.security.RagAuthContext;
@@ -74,7 +76,9 @@ class DocumentControllerTest {
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private ChunkingService chunkingService;
   @Mock private DocumentProcessProducer mqProducer;
+  @Mock private ArchiveExpandProducer archiveExpandProducer;
 
+  private final ArchiveFormatDetector archiveFormatDetector = new ArchiveFormatDetector();
   private MockMvc mockMvc;
   private StorageProperties storageProperties;
 
@@ -100,7 +104,9 @@ class DocumentControllerTest {
                         documentChunkMapper,
                         knowledgeBaseMapper,
                         chunkingService,
-                        mqProducer)))
+                        mqProducer,
+                        archiveExpandProducer,
+                        archiveFormatDetector)))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(
                 new ResourceHttpMessageConverter(), new MappingJackson2HttpMessageConverter())

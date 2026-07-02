@@ -18,6 +18,7 @@ import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.dto.OnConflict;
 import com.ragforge.model.entity.Document;
+import com.ragforge.mq.ArchiveExpandProducer;
 import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.storage.ObjectStorage;
@@ -37,6 +38,7 @@ class IngestServiceImplTest {
   @Mock private DocumentMapper documentMapper;
   @Mock private DocumentChunkMapper chunkMapper;
   @Mock private DocumentProcessProducer mqProducer;
+  @Mock private ArchiveExpandProducer archiveExpandProducer;
   @Mock private EsIndexService esIndexService;
   @Mock private ObjectStorage objectStorage;
 
@@ -49,6 +51,7 @@ class IngestServiceImplTest {
             documentMapper,
             chunkMapper,
             mqProducer,
+            archiveExpandProducer,
             esIndexService,
             objectStorage,
             new RagforgeMetrics(new SimpleMeterRegistry()));
