@@ -33,7 +33,7 @@
         <div class="kb-filter-row">
           <select class="kb-filter-select" :value="kbId ?? ''" @change="onKbFilterChange">
             <option value="">全部知识库</option>
-            <option v-for="kb in kbOptions" :key="kb.id" :value="kb.id">
+            <option v-for="kb in kbFilterOptions" :key="kb.id" :value="kb.id">
               {{ kb.name || kbDisplayName(kb.id) }}
             </option>
           </select>
@@ -484,6 +484,15 @@ const sampleCount = ref(0)
 const showSamplingDrawer = ref(false)
 const samplingConfigs = ref([])
 const kbOptions = ref([])
+// 筛选下拉的选项:刷新时 URL 的 kbId 会先于 listKb 到达,原生 select 找不到匹配 option
+// 会短暂空白;这里为"尚未在下拉数据里的选中项"补一个占位项,消除空白。
+const kbFilterOptions = computed(() => {
+  const opts = kbOptions.value || []
+  if (kbId.value != null && !opts.some((k) => k.id === kbId.value)) {
+    return [{ id: kbId.value, name: kbName(kbId.value) }, ...opts]
+  }
+  return opts
+})
 const globalRatePercent = ref(1)
 const globalSamplingEnabled = ref(true)
 const goldenEnabledCount = ref(0)
