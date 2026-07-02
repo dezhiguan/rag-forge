@@ -28,6 +28,11 @@ public class EsIndexService {
 
   public static final String INDEX_NAME = "ragforge_chunks";
 
+  // 入 ES 的块必然已完成分块+向量化,故其 parse_status 恒为 COMPLETED。 不能取父文档的瞬时状态——indexChunks 在
+  // DocumentPipelineService 里先于「置文档 COMPLETED」执行,此刻父文档还是 PROCESSING,会导致 ES 块永久卡在
+  // PROCESSING,而 EsSearchService 的 BM25 查询强制过滤 COMPLETED → 关键词检索全失效。
+  private static final String CHUNK_PARSE_STATUS = "COMPLETED";
+
   private static final int BULK_BATCH_SIZE = 50;
 
   private final ElasticsearchClient client;
@@ -226,7 +231,7 @@ public class EsIndexService {
     m.put("doc_id", chunk.getDocId());
     m.put("kb_id", chunk.getKbId());
     m.put("filename", doc.getFilename());
-    m.put("parse_status", doc.getParseStatus());
+    m.put("parse_status", CHUNK_PARSE_STATUS);
     m.put("content", chunk.getContent());
     m.put("chunk_index", chunk.getChunkIndex());
 
