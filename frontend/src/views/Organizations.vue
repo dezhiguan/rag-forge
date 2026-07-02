@@ -256,8 +256,8 @@
             </div>
           </section>
 
-          <!-- 危险区 -->
-          <section v-show="tab === 'danger'">
+          <!-- 危险区：仅 OWNER 可见（转移/删除均 OWNER 专属） -->
+          <section v-if="isOwner" v-show="tab === 'danger'">
             <div class="danger-zone">
               <div class="dz-head">
                 <div class="dz-title">危险区</div>
@@ -403,14 +403,18 @@ const savingGeneral = ref(false)
 const transferTarget = ref(null)
 const otherMembers = computed(() => members.value.filter((m) => m.userId !== myUserId.value))
 
-const navItems = computed(() => [
-  { key: 'general', ico: '⚙️', label: '通用' },
-  { key: 'members', ico: '👥', label: '成员', count: members.value.length },
-  { key: 'invites', ico: '✉️', label: '邀请', count: invites.value.length, warn: invites.value.length > 0 },
-  { key: 'kb', ico: '📚', label: '知识库归属' },
-  { key: 'plan', ico: '⬆️', label: '套餐与升级', wip: true },
-  { key: 'danger', ico: '⚠️', label: '危险区', danger: true },
-])
+const navItems = computed(() => {
+  const items = [
+    { key: 'general', ico: '⚙️', label: '通用' },
+    { key: 'members', ico: '👥', label: '成员', count: members.value.length },
+    { key: 'invites', ico: '✉️', label: '邀请', count: invites.value.length, warn: invites.value.length > 0 },
+    { key: 'kb', ico: '📚', label: '知识库归属' },
+    { key: 'plan', ico: '⬆️', label: '套餐与升级', wip: true },
+  ]
+  // 危险区（转移所有权 / 删除组织）均为 OWNER 专属操作，非 OWNER 不展示该入口。
+  if (isOwner.value) items.push({ key: 'danger', ico: '⚠️', label: '危险区', danger: true })
+  return items
+})
 
 const filteredMembers = computed(() => {
   const q = memberSearch.value.trim().toLowerCase()
