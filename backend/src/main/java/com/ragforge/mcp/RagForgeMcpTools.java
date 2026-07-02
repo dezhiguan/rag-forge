@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ragforge.answer.AnswerModels.AnswerRequest;
 import com.ragforge.answer.AnswerModels.AnswerResponse;
 import com.ragforge.answer.AnswerModels.Citation;
+import com.ragforge.common.BizException;
+import com.ragforge.common.ErrorMessages;
 import com.ragforge.answer.AnswerService;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.KnowledgeBase;
@@ -169,10 +171,24 @@ public class RagForgeMcpTools {
             String msg = e.getMessage();
             // 无可读库时保持与检索一致的干净文案；其余参数问题（如 kbIds 格式）加"参数错误："前缀。
             return msg != null && msg.startsWith("没有可访问") ? msg : "参数错误：" + msg;
+        } catch (BizException e) {
+            // 业务码转友好中文，避免把机器码（如 ANSWER_DISABLED）直接透给 MCP 客户端/LLM。
+            return "应答失败：" + friendlyAnswerError(e.getMessage());
         } catch (Exception e) {
+            // 兜底：仅记录内部原因，对外回固定友好文案，不外泄原始异常信息。
             log.warn("MCP answerWithCitations failed: {}", e.getMessage());
-            return "应答失败：" + e.getMessage();
+            return "应答失败：应答服务暂时不可用，请稍后重试。";
         }
+    }
+
+    /** 把应答业务码翻成对 MCP 客户端友好的中文提示。 */
+    private String friendlyAnswerError(String code) {
+        if ("ANSWER_DISABLED".equals(code)) {
+            return "该知识库未开启应答功能，请先在知识库设置中开启应答，或改用 search_knowledge 检索。";
+        }
+        String cn = ErrorMessages.toChinese(code);
+        // toChinese 对未收录码回退原码；此时给固定友好兜底，避免机器码外露。
+        return cn == null || cn.equals(code) ? "应答服务暂时不可用，请稍后重试。" : cn;
     }
 
     /** 将带引用的应答渲染为 MCP 文本内容：答案正文 + 引用列表（含图片 URL，若有）。 */
