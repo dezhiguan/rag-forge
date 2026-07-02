@@ -155,6 +155,33 @@ class AnswerServiceTest {
   }
 
   @Test
+  void goldenSetReplay_bypassesAnswerModeOff() {
+    mockKb("OFF"); // 知识库对外应答开关关闭
+    when(retrievalService.retrieve(anyString(), anyList(), any(), eq("hybrid"), eq(0.7), eq(10), eq(10), any()))
+        .thenReturn(output(List.of(hit(1, "TEXT"))));
+    when(llmService.streamGenerate(any(LlmGenerateRequest.class), anyInt(), any()))
+        .thenReturn(new LlmService.StreamResult("评测答案[1]", 10, 5, 20));
+
+    AnswerRequest golden = request();
+    golden.setJudgeSource("GOLDEN_SET");
+
+    AnswerResponse response = answerService.answerBlocking(golden);
+
+    // 评测回放不受 KB 应答开关限制:仍能生成答案(供 judge 评分)
+    assertThat(response.getAnswer()).contains("评测答案");
+    verify(llmService).streamGenerate(any(), anyInt(), any());
+  }
+
+  @Test
+  void productionAnswer_answerModeOff_throwsDisabled() {
+    mockKb("OFF"); // 非评测的生产应答仍受守卫拦截
+    assertThatThrownBy(() -> answerService.answerBlocking(request()))
+        .isInstanceOf(BizException.class)
+        .extracting("code")
+        .isEqualTo(403);
+  }
+
+  @Test
   void missingKnowledgeBase_throws404() {
     when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of());
 
