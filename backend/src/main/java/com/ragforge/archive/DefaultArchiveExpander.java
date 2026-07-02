@@ -38,6 +38,7 @@ public class DefaultArchiveExpander implements ArchiveExpander {
   private final ArchiveReader zipExtractor;
   private final ArchiveReader tarGzExtractor;
 
+  @org.springframework.beans.factory.annotation.Autowired
   public DefaultArchiveExpander(ArchiveLimits limits) {
     this(limits, new ZipExtractor(), new TarGzExtractor());
   }

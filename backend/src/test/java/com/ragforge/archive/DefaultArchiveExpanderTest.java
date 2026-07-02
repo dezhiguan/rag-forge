@@ -234,6 +234,18 @@ class DefaultArchiveExpanderTest {
   }
 
   @Test
+  void springContextCanInstantiateBean() {
+    // 复现流水线故障：DefaultArchiveExpander 有多构造器，须 @Autowired 标注生产构造器，
+    // 否则 Spring 找不到唯一/默认构造器，容器启动即失败。
+    try (org.springframework.context.annotation.AnnotationConfigApplicationContext ctx =
+        new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+      ctx.register(com.ragforge.common.ArchiveLimits.class, DefaultArchiveExpander.class);
+      ctx.refresh();
+      assertThat(ctx.getBean(DefaultArchiveExpander.class)).isNotNull();
+    }
+  }
+
+  @Test
   void unsupportedFormat_fatal() {
     FakeArchiveReader reader = new FakeArchiveReader(ArchiveFormat.ZIP);
     assertThatThrownBy(
