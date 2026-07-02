@@ -142,13 +142,12 @@
 <script setup>
 import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAuth } from '../../composables/useAuth'
 import { loginByPassword, loginByMobile, sendSmsCode } from '../../api/auth'
+import { applySession } from '../../api/session'
 import { loadMe } from '../../api/account'
 
 const route = useRoute()
 const router = useRouter()
-const { setSession } = useAuth()
 
 const tab = ref('password')
 const loading = ref(false)
@@ -294,12 +293,13 @@ function applyLoginError(e) {
   form.challengeId = e.challengeId || form.challengeId
 }
 
-async function finishLogin({ accessToken, user }) {
-  if (!accessToken) {
+async function finishLogin(session) {
+  if (!session?.accessToken) {
     applyLoginError({ message: '登录响应缺少 access token' })
     return
   }
-  setSession(accessToken, user)
+  // applySession = 写会话 + 按 expiresIn 安排主动续期 + 广播给其他标签页
+  applySession(session)
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
   router.replace(redirect.startsWith('/') ? redirect : '/')
   // /me（capabilities/显示名）后台补全，不阻塞跳转——避免慢或卡住的 /me 拖住登录

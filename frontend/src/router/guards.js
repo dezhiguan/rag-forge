@@ -1,11 +1,12 @@
 import { useAuth } from '../composables/useAuth'
 import { useOrg } from '../composables/useOrg'
-import { refreshAccessToken } from '../api/auth'
+// 经 session.js 单飞刷新：避免守卫与 401 拦截器并发双刷触发网关旋转重放检测
+import { silentRefresh } from '../api/session'
 import { loadMe } from '../api/account'
 
 export function installRouteGuards(router) {
   router.beforeEach(async (to) => {
-    const { isAuthenticated, ragRole, scopes, setSession } = useAuth()
+    const { isAuthenticated, ragRole, scopes } = useAuth()
     const { current, load, state: orgState } = useOrg()
     if (to.meta.public) {
       if (to.name === 'Login' && isAuthenticated.value) return { path: '/' }
@@ -13,8 +14,7 @@ export function installRouteGuards(router) {
     }
     if (!isAuthenticated.value) {
       try {
-        const session = await refreshAccessToken()
-        setSession(session.accessToken, session.user)
+        await silentRefresh() // 内部已写会话并安排主动续期
         await loadMe()
       } catch {
         return { path: '/login', query: { redirect: to.fullPath } }

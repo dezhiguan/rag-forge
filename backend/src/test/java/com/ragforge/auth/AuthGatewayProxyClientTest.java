@@ -54,7 +54,7 @@ class AuthGatewayProxyClientTest {
             eq("https://auth.example.test/auth/login/password"), any(HttpEntity.class), eq(TokenResponse.class)))
         .thenReturn(ResponseEntity.ok(token));
 
-    TokenResponse result = client.loginPassword("amy", "secret");
+    TokenResponse result = client.loginPassword("amy", "secret", false);
 
     assertThat(result.getAccessToken()).isEqualTo("access-1");
     HttpEntity<?> entity = capturedPostEntity("/auth/login/password", TokenResponse.class);
@@ -151,7 +151,7 @@ class AuthGatewayProxyClientTest {
             eq("https://auth.example.test/auth/login/mobile"), any(HttpEntity.class), eq(TokenResponse.class)))
         .thenReturn(ResponseEntity.ok(token("mobile-token")));
 
-    TokenResponse result = client.loginMobile("13900000000", "654321");
+    TokenResponse result = client.loginMobile("13900000000", "654321", false);
 
     assertThat(result.getAccessToken()).isEqualTo("mobile-token");
     HttpEntity<?> entity = capturedPostEntity("/auth/login/mobile", TokenResponse.class);

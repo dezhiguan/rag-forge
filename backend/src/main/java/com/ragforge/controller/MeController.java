@@ -2,6 +2,7 @@ package com.ragforge.controller;
 
 import com.ragforge.auth.CapabilityResolver;
 import com.ragforge.auth.UserProfileService;
+import com.ragforge.common.BizException;
 import com.ragforge.common.Result;
 import com.ragforge.model.entity.UserProfile;
 import com.ragforge.security.RagAuthContext;
@@ -26,7 +27,9 @@ public class MeController {
   public Result<Map<String, Object>> me() {
     RagAuthContext context = RagAuthContextHolder.get();
     if (context == null || context.userId() == null) {
-      return Result.fail(401, "Unauthorized");
+      // 必须是 HTTP 401（BizException 由全局处理器按 code 写状态码），
+      // 让前端 axios 走统一"静默续期+重放"，而不是 HTTP 200 + body 401 直接弹"已过期"。
+      throw new BizException(401, "UNAUTHORIZED");
     }
     Long userId = context.userId();
     UserProfile profile = userProfileService.getOrCreate(userId);

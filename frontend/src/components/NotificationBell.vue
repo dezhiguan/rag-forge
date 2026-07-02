@@ -60,7 +60,7 @@ import { useAuth } from '../composables/useAuth'
 
 defineProps({ collapsed: { type: Boolean, default: false } })
 
-const { isAuthenticated, state } = useAuth()
+const { state } = useAuth()
 
 const open = ref(false)
 const busy = ref(false)
@@ -167,11 +167,13 @@ function onDocClick() {
 }
 
 // 等鉴权就绪再拉取并建连，避免刷新时早于会话恢复触发 401。
+// 改 watch accessToken 本身：token 每次静默续期都会更新，连带重建 SSE，
+// 避免 EventSource 自动重连时还带着 URL 里的过期 token 反复 401。
 watch(
-  isAuthenticated,
-  (ok) => {
-    if (ok) {
-      load()
+  () => state.accessToken,
+  (token, prev) => {
+    if (token) {
+      if (!prev) load() // 首次就绪才拉取；续期换 token 不重复拉（onopen 会对齐）
       openStream()
     } else {
       closeStream()

@@ -132,12 +132,14 @@ public class AuthProxyController {
 
   @PostMapping("/login")
   public ResponseEntity<Result<Map<String, Object>>> login(@RequestBody PasswordLoginRequest request) {
-    return loginResponse(client.loginPassword(request.account(), request.password()));
+    return loginResponse(
+        client.loginPassword(request.account(), request.password(), Boolean.TRUE.equals(request.remember())));
   }
 
   @PostMapping("/login-mobile")
   public ResponseEntity<Result<Map<String, Object>>> loginMobile(@RequestBody MobileLoginRequest request) {
-    return loginResponse(client.loginMobile(request.phone(), request.code()));
+    return loginResponse(
+        client.loginMobile(request.phone(), request.code(), Boolean.TRUE.equals(request.remember())));
   }
 
   @PostMapping("/sms/send")
@@ -208,9 +210,12 @@ public class AuthProxyController {
     data.put("expiresIn", tokens.getExpiresIn());
     data.put("user", user);
     String csrf = "csrf_" + UUID.randomUUID();
+    // cookie 生命周期跟随网关 refresh token TTL（记住我=30天/默认7天）；旧网关无该字段时回退 7 天。
+    Duration cookieTtl =
+        tokens.getRefreshExpiresIn() > 0 ? Duration.ofSeconds(tokens.getRefreshExpiresIn()) : Duration.ofDays(7);
     return ResponseEntity.ok()
-        .header(HttpHeaders.SET_COOKIE, refreshCookie(tokens.getRefreshToken()).toString())
-        .header(HttpHeaders.SET_COOKIE, csrfCookie(csrf).toString())
+        .header(HttpHeaders.SET_COOKIE, refreshCookie(tokens.getRefreshToken(), cookieTtl).toString())
+        .header(HttpHeaders.SET_COOKIE, csrfCookie(csrf, cookieTtl).toString())
         .body(Result.ok(data));
   }
 
@@ -247,23 +252,23 @@ public class AuthProxyController {
     }
   }
 
-  private ResponseCookie refreshCookie(String value) {
+  private ResponseCookie refreshCookie(String value, Duration maxAge) {
     return ResponseCookie.from(REFRESH_COOKIE, value)
         .httpOnly(true)
         .secure(properties.isCookieSecure())
         .sameSite("Lax")
         .path("/api/auth")
-        .maxAge(Duration.ofDays(7))
+        .maxAge(maxAge)
         .build();
   }
 
-  private ResponseCookie csrfCookie(String value) {
+  private ResponseCookie csrfCookie(String value, Duration maxAge) {
     return ResponseCookie.from(CSRF_COOKIE, value)
         .httpOnly(false)
         .secure(properties.isCookieSecure())
         .sameSite("Lax")
         .path("/")
-        .maxAge(Duration.ofDays(7))
+        .maxAge(maxAge)
         .build();
   }
 
@@ -303,9 +308,10 @@ public class AuthProxyController {
         .body(Result.fail(500, "认证代理不可用"));
   }
 
-  public record PasswordLoginRequest(String account, String password, String captcha, String challengeId) {}
+  public record PasswordLoginRequest(
+      String account, String password, String captcha, String challengeId, Boolean remember) {}
 
-  public record MobileLoginRequest(String phone, String code) {}
+  public record MobileLoginRequest(String phone, String code, Boolean remember) {}
 
   public record SmsRequest(String phone, String scene) {}
 

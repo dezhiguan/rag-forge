@@ -29,6 +29,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { logout, logoutAll } from '../api/auth'
+import { notifyLoggedOut } from '../api/session'
 import { useAuth } from '../composables/useAuth'
 import { useOrg } from '../composables/useOrg'
 import LogoutAllDialog from './LogoutAllDialog.vue'
@@ -71,6 +72,7 @@ async function handleLogout() {
     await logout()
   } finally {
     clearSession()
+    notifyLoggedOut() // 停续期定时器并广播，其他标签页一起下线
     router.replace('/login')
   }
 }
@@ -84,6 +86,7 @@ async function handleLogoutAll(password) {
     showLogoutAll.value = false
     open.value = false
     clearSession()
+    notifyLoggedOut()
     router.replace('/login')
   }
 }

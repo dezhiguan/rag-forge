@@ -2,26 +2,10 @@ import axios from 'axios'
 import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
 import { ERROR_MESSAGES } from './error-messages'
-import { refreshAccessToken } from './auth'
+// 静默续期收口到 session.js：跨标签页单飞 + 主动续期 + 失败分级（401/403 才算真过期）
+import { silentRefresh, handleSessionExpired } from './session'
 
 const toast = useToast()
-
-// 静默续期(单飞):access token 短时到期时,用 refresh cookie 悄悄换新 token，
-// 多个并发 401 共享同一次 /refresh，避免重复刷新与重复"登录已过期"提示。
-let refreshPromise = null
-function silentRefresh() {
-  if (!refreshPromise) {
-    refreshPromise = refreshAccessToken()
-      .then((session) => {
-        useAuth().setSession(session.accessToken, session.user)
-        return session.accessToken
-      })
-      .finally(() => {
-        refreshPromise = null
-      })
-  }
-  return refreshPromise
-}
 
 const ERROR_CODE_LABELS = {
   ORG_NAME_TOO_LONG: '组织名称过长（最多 128 个字符）',
@@ -194,15 +178,16 @@ request.interceptors.response.use(
       original._retried = true
       return silentRefresh()
         .then(() => request(original)) // 重放（请求拦截器会带上新 token）
-        .catch(() => {
-          // 续期失败 = 会话真过期：清会话、提示、跳登录（登录页支持 reason=expired 回跳）
-          useAuth().clearSession()
-          if (!original.silent) {
-            toast.error('登录已过期，请重新登录')
-          }
-          if (typeof window !== 'undefined' && !/\/login/.test(window.location.pathname)) {
-            const here = window.location.pathname + window.location.search
-            window.location.href = `/login?reason=expired&redirect=${encodeURIComponent(here)}`
+        .catch((refreshErr) => {
+          if (refreshErr && refreshErr.authExpired) {
+            // 网关明确拒绝(401/403) = 会话真过期：提示并跳登录（登录页支持 reason=expired 回跳）
+            if (!original.silent) {
+              toast.error('登录已过期，请重新登录')
+            }
+            handleSessionExpired()
+          } else if (!original.silent) {
+            // 超时/断网/网关 5xx = 线路抖动：refresh cookie 仍有效，不清会话不踢登录
+            toast.error('网络不稳定，登录续期失败，请稍后重试')
           }
           return Promise.reject(err)
         })

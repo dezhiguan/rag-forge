@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuth } from '../composables/useAuth'
+import { silentRefresh, handleSessionExpired } from './session'
 
 const uploadRequest = axios.create({
   baseURL: '/api/v1',
@@ -13,6 +14,24 @@ uploadRequest.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${state.accessToken}`
   }
   return config
+})
+
+// 长上传中途 access token 到期：静默续期后重放一次，避免大文件功亏一篑。
+uploadRequest.interceptors.response.use(undefined, (err) => {
+  const status = err?.response?.status
+  const original = err?.config
+  if (status === 401 && original && !original._retried) {
+    original._retried = true
+    return silentRefresh()
+      .then(() => uploadRequest(original)) // 请求拦截器会带上新 token
+      .catch((refreshErr) => {
+        if (refreshErr && refreshErr.authExpired) {
+          handleSessionExpired()
+        }
+        return Promise.reject(err)
+      })
+  }
+  return Promise.reject(err)
 })
 
 export class UploadError extends Error {

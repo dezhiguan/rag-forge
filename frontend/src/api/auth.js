@@ -97,6 +97,10 @@ function normalizeAuthError(error) {
   return {
     code,
     message: friendlyAuthMessage(code, rawMessage),
+    // HTTP 状态与原始请求配置随错误透传：session.js 据 status 区分
+    // "会话真过期(401/403)"与"网络抖动"，据 config 做 401 续期后重放。
+    status: error?.response?.status,
+    config: error?.config,
     remainingAttempts: payload.remainingAttempts ?? payload.remaining_attempts,
     captchaRequired: Boolean(payload.captchaRequired ?? payload.captcha_required),
     captchaImage: payload.captchaImage || payload.captcha_image || '',

@@ -30,19 +30,22 @@ public class AuthGatewayProxyClient {
     this.restTemplate = restTemplate;
   }
 
-  public TokenResponse loginPassword(String account, String password) {
+  public TokenResponse loginPassword(String account, String password, boolean remember) {
     MultiValueMap<String, String> form = clientForm();
     form.add("account", account);
     form.add("password", password);
     form.add("target_aud", properties.getTargetAudience());
+    // 记住我：网关据此发 30 天 refresh token（否则默认 7 天）
+    form.add("remember", String.valueOf(remember));
     return postForm("/auth/login/password", form, TokenResponse.class);
   }
 
-  public TokenResponse loginMobile(String phone, String code) {
+  public TokenResponse loginMobile(String phone, String code, boolean remember) {
     MultiValueMap<String, String> form = clientForm();
     form.add("phone", phone);
     form.add("code", code);
     form.add("target_aud", properties.getTargetAudience());
+    form.add("remember", String.valueOf(remember));
     return postForm("/auth/login/mobile", form, TokenResponse.class);
   }
 
@@ -218,5 +221,9 @@ public class AuthGatewayProxyClient {
 
     @JsonProperty("expires_in")
     private long expiresIn;
+
+    /** refresh token 剩余生命周期（秒）。旧网关不返回该字段时为 0，代理层回退默认 7 天。 */
+    @JsonProperty("refresh_expires_in")
+    private long refreshExpiresIn;
   }
 }

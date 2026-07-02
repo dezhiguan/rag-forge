@@ -62,11 +62,12 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { refreshAccessToken, resetPasswordConfirm, resetPasswordInit, resetPasswordVerify } from '../../api/auth'
+import { applySession } from '../../api/session'
 import { loadMe } from '../../api/account'
 import { useAuth } from '../../composables/useAuth'
 
 const router = useRouter()
-const { state, setSession, setResetTicket, clearResetTicket } = useAuth()
+const { state, setResetTicket, clearResetTicket } = useAuth()
 
 const step = ref(1)
 const loading = ref(false)
@@ -130,10 +131,10 @@ async function handleConfirm() {
     // 改用已轮换的 refresh cookie 换取 session_version 正确的新 token，再进首页。
     try {
       const fresh = await refreshAccessToken()
-      setSession(fresh.accessToken, fresh.user || res.user)
+      applySession({ ...fresh, user: fresh.user || res.user })
     } catch {
       // 兜底：refresh 不可用时退回 confirm 返回的 token（退化为旧行为）
-      setSession(res.accessToken, res.user)
+      applySession(res)
     }
     loadMe() // 后台补全 capabilities/显示名，不阻塞跳转
     step.value = 3
