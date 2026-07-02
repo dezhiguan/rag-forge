@@ -22,6 +22,8 @@ public interface DocumentService {
 
   DocumentDetailVO getById(Long id);
 
+  java.util.List<DocumentVO> listChildren(Long containerId);
+
   PageResult<DocumentChunkVO> listChunks(Long id, int page, int size);
 
   DocumentStatusVO getStatus(Long id);

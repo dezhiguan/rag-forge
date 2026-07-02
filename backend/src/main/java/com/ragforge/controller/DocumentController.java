@@ -106,6 +106,12 @@ public class DocumentController {
     return Result.ok(documentService.getById(id));
   }
 
+  @GetMapping("/documents/{id}/children")
+  @PreAuthorize("@kbAccessGuard.canReadDocument(#id)")
+  public Result<java.util.List<DocumentVO>> listChildren(@PathVariable Long id) {
+    return Result.ok(documentService.listChildren(id));
+  }
+
   @GetMapping("/documents/{id}/chunks")
   @PreAuthorize("@kbAccessGuard.canReadDocument(#id)")
   public Result<PageResult<DocumentChunkVO>> listChunks(

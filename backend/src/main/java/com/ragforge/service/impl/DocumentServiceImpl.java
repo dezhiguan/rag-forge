@@ -13,6 +13,7 @@ import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
+import com.ragforge.model.vo.ChildrenSummaryVO;
 import com.ragforge.model.vo.DocumentChunkVO;
 import com.ragforge.model.vo.DocumentDetailVO;
 import com.ragforge.model.vo.DocumentStatusVO;
@@ -61,6 +62,9 @@ public class DocumentServiceImpl implements DocumentService {
 
   private static final Set<String> ALLOWED_EXTENSIONS =
       Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm");
+
+  /** 压缩包容器判定的 file_type 集合（配合 parentDocumentId == null）。 */
+  private static final Set<String> ARCHIVE_FILE_TYPES = Set.of("zip", "tar.gz");
 
   private static final String STATUS_PROCESSING = "PROCESSING";
 
@@ -207,6 +211,9 @@ public class DocumentServiceImpl implements DocumentService {
             mpPage,
             new LambdaQueryWrapper<Document>()
                 .eq(Document::getKbId, kbId)
+                // 默认隐藏压缩包子文档：列表只呈现容器 + 独立文档，子文档经容器详情下钻查看，
+                // 避免一个百文件的压缩包解压产物淹没列表。
+                .isNull(Document::getParentDocumentId)
                 .like(kw != null && !kw.isEmpty(), Document::getFilename, kw)
                 .orderByDesc(Document::getCreatedAt));
 
@@ -248,7 +255,105 @@ public class DocumentServiceImpl implements DocumentService {
     }
     applyEffectiveChunkParams(vo, id);
     vo.setChunks(List.of());
+    applyArchiveAggregation(vo, doc);
     return vo;
+  }
+
+  /**
+   * 容器详情聚合：若该文档为压缩包容器（file_type in zip/tar.gz 且无父容器），
+   * 实时按子文档状态计算 childrenSummary 并解析 expand_summary.skipped，普通文档保持 false/null。
+   */
+  private void applyArchiveAggregation(DocumentDetailVO vo, Document doc) {
+    if (!isArchiveContainer(doc)) {
+      vo.setIsArchive(false);
+      return;
+    }
+    vo.setIsArchive(true);
+
+    ChildrenSummaryVO summary = new ChildrenSummaryVO();
+    int total = 0;
+    List<java.util.Map<String, Object>> rows = documentMapper.countChildrenByStatus(doc.getId());
+    if (rows != null) {
+      for (java.util.Map<String, Object> row : rows) {
+        if (row == null) {
+          continue;
+        }
+        Object statusObj = row.get("status");
+        String status = statusObj == null ? "" : statusObj.toString().toUpperCase(Locale.ROOT);
+        int cnt = toInt(row.get("cnt"));
+        total += cnt;
+        switch (status) {
+          case "PENDING" -> summary.setPending(cnt);
+          case "PROCESSING" -> summary.setProcessing(cnt);
+          case "COMPLETED" -> summary.setCompleted(cnt);
+          case "FAILED" -> summary.setFailed(cnt);
+          default -> {
+            // 未知状态仍计入 total，但不单列，避免前端出现未定义字段。
+          }
+        }
+      }
+    }
+    summary.setTotal(total);
+
+    List<com.ragforge.archive.SkipRecord> skipped = parseSkippedEntries(doc.getExpandSummary());
+    summary.setSkipped(skipped.size());
+    vo.setChildrenSummary(summary);
+    vo.setSkippedEntries(skipped);
+  }
+
+  /** 解析容器 expand_summary.skipped 数组为 [{path, reason}]；缺失/非法时返回空列表。 */
+  private List<com.ragforge.archive.SkipRecord> parseSkippedEntries(String expandSummary) {
+    if (!StringUtils.hasText(expandSummary)) {
+      return List.of();
+    }
+    try {
+      JsonNode root = objectMapper.readTree(expandSummary);
+      JsonNode skippedNode = root.get("skipped");
+      if (skippedNode == null || !skippedNode.isArray()) {
+        return List.of();
+      }
+      List<com.ragforge.archive.SkipRecord> list = new java.util.ArrayList<>();
+      for (JsonNode node : skippedNode) {
+        com.ragforge.archive.SkipRecord record = new com.ragforge.archive.SkipRecord();
+        record.setPath(node.hasNonNull("path") ? node.get("path").asText() : null);
+        record.setReason(node.hasNonNull("reason") ? node.get("reason").asText() : null);
+        list.add(record);
+      }
+      return list;
+    } catch (Exception e) {
+      log.debug("parseSkippedEntries skipped: {}", e.getMessage());
+      return List.of();
+    }
+  }
+
+  private boolean isArchiveContainer(Document doc) {
+    return doc.getParentDocumentId() == null
+        && doc.getFileType() != null
+        && ARCHIVE_FILE_TYPES.contains(doc.getFileType());
+  }
+
+  private int toInt(Object value) {
+    if (value instanceof Number number) {
+      return number.intValue();
+    }
+    if (value == null) {
+      return 0;
+    }
+    try {
+      return Integer.parseInt(value.toString());
+    } catch (NumberFormatException e) {
+      return 0;
+    }
+  }
+
+  @Override
+  public List<DocumentVO> listChildren(Long containerId) {
+    Document container = documentMapper.selectById(containerId);
+    if (container == null || !isArchiveContainer(container)) {
+      throw new BizException(404, "文档不存在");
+    }
+    List<Document> children = documentMapper.selectChildren(containerId);
+    return children.stream().map(this::toDocumentVO).toList();
   }
 
   /** 文档详情展示实际分块参数（rechunk 后覆盖 KB 默认值）。 */
