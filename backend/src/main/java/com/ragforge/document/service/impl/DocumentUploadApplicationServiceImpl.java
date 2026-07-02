@@ -1,6 +1,9 @@
 package com.ragforge.document.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.archive.ArchiveErrorCodes;
+import com.ragforge.archive.ArchiveFormat;
+import com.ragforge.archive.ArchiveFormatDetector;
 import com.ragforge.common.BizException;
 import com.ragforge.common.RelayUploadLimits;
 import com.ragforge.document.dto.UploadRelayResult;
@@ -23,6 +26,7 @@ import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.dto.PresignUploadRequest;
 import com.ragforge.model.dto.RegisterUploadRequest;
 import com.ragforge.model.entity.Document;
+import com.ragforge.mq.ArchiveExpandProducer;
 import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.security.KbAccessGuard;
 import com.ragforge.security.RagAuthContext;
@@ -69,6 +73,8 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final ChunkingService chunkingService;
   private final DocumentProcessProducer mqProducer;
+  private final ArchiveExpandProducer archiveExpandProducer;
+  private final ArchiveFormatDetector archiveFormatDetector;
 
   @Override
   public Map<String, Object> presignUpload(PresignUploadRequest request) {
@@ -159,6 +165,14 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
       throw new BizException(422, "SIZE_MISMATCH");
     }
 
+    // 分流：按 magic number 判定是否压缩包。7z/rar 直接拒；zip/tar.gz 标记为容器登记（走展开管道）。
+    ArchiveFormat archiveFormat =
+        detectArchiveFormat(payload.getStorageBucket(), payload.getStorageKey());
+    if (archiveFormat.isArchive() && !archiveFormat.isSupported()) {
+      safeDelete(payload.getStorageBucket(), payload.getStorageKey());
+      throw new BizException(415, ArchiveErrorCodes.UNSUPPORTED_FORMAT);
+    }
+
     IngestCommand cmd = new IngestCommand();
     cmd.setKbId(payload.getKbId());
     cmd.setStorageBucket(payload.getStorageBucket());
@@ -171,6 +185,9 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     cmd.setIngestSource(request.getIngestSource());
     cmd.setChunkType(request.getChunkType());
     cmd.setMetadata(request.getMetadata());
+    if (archiveFormat.isSupported()) {
+      cmd.setArchiveFormat(archiveFormat.token());
+    }
 
     IngestResult result = ingestService.register(cmd);
     long t3 = System.currentTimeMillis();
@@ -220,6 +237,15 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
       }
       String fileContentHash = HexFormat.of().formatHex(digest.digest());
       applyFileMd5(cmd, fileContentHash);
+
+      // 分流：relay 通道同样按 magic number 判定压缩包（拒 7z/rar；zip/tar.gz 标记容器）
+      ArchiveFormat archiveFormat = detectArchiveFormatFromFile(tempFile);
+      if (archiveFormat.isArchive() && !archiveFormat.isSupported()) {
+        throw new BizException(415, ArchiveErrorCodes.UNSUPPORTED_FORMAT);
+      }
+      if (archiveFormat.isSupported()) {
+        cmd.setArchiveFormat(archiveFormat.token());
+      }
 
       String originalFilename = cleanFilename(file.getOriginalFilename());
       key = storageKey(kbId, originalFilename);
@@ -281,6 +307,20 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
       throw new BizException(404, "DOCUMENT_NOT_FOUND");
     }
 
+    // 压缩包容器整包重试：FAILED/EXPANDED → 重新 EXPANDING，派发到解压管道（非解析管道）
+    if (isArchiveContainer(doc)) {
+      String cStatus = normalizeStatus(doc.getParseStatus());
+      if ("PENDING".equals(cStatus) || "EXPANDING".equals(cStatus)) {
+        throw new BizException(409, "ALREADY_IN_PROGRESS");
+      }
+      int reset = documentMapper.resetContainerForRetry(id);
+      if (reset == 0) {
+        throw new BizException(409, "REPROCESS_NOT_ALLOWED");
+      }
+      dispatchArchiveExpandAfterCommit(id);
+      return Map.of("documentId", id, "status", "PENDING");
+    }
+
     String status = normalizeStatus(doc.getParseStatus());
     if ("PENDING".equals(status) || "PROCESSING".equals(status) || "REPROCESSING".equals(status)) {
       throw new BizException(409, "ALREADY_IN_PROGRESS");
@@ -292,6 +332,26 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     documentMapper.updateStatus(id, "PENDING");
     sendProcessAfterCommit(id);
     return Map.of("documentId", id, "status", "PENDING");
+  }
+
+  private static final java.util.Set<String> ARCHIVE_FILE_TYPES = java.util.Set.of("zip", "tar.gz");
+
+  private boolean isArchiveContainer(Document doc) {
+    return doc.getParentDocumentId() == null && ARCHIVE_FILE_TYPES.contains(doc.getFileType());
+  }
+
+  private void dispatchArchiveExpandAfterCommit(Long id) {
+    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+      archiveExpandProducer.send(id);
+      return;
+    }
+    TransactionSynchronizationManager.registerSynchronization(
+        new TransactionSynchronization() {
+          @Override
+          public void afterCommit() {
+            archiveExpandProducer.send(id);
+          }
+        });
   }
 
   @Override
@@ -421,6 +481,28 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
 
   private String storageKey(Long kbId, String filename) {
     return "kb_" + kbId + "/" + UUID.randomUUID() + "/" + filename;
+  }
+
+  /** 从 OSS 对象读取文件头，按 magic number 判定压缩格式（读取失败按非压缩包处理，不阻断上传）。 */
+  private ArchiveFormat detectArchiveFormat(String bucket, String key) {
+    try (InputStream in = objectStorage.get(bucket, key)) {
+      byte[] header = in.readNBytes(ArchiveFormatDetector.HEADER_BYTES);
+      return archiveFormatDetector.detect(header);
+    } catch (Exception e) {
+      log.warn("archive magic detect failed bucket={} key={} err={}", bucket, key, e.getMessage());
+      return ArchiveFormat.UNKNOWN;
+    }
+  }
+
+  /** 从本地临时文件读取文件头，按 magic number 判定压缩格式（relay 通道用）。 */
+  private ArchiveFormat detectArchiveFormatFromFile(Path file) {
+    try (InputStream in = Files.newInputStream(file)) {
+      byte[] header = in.readNBytes(ArchiveFormatDetector.HEADER_BYTES);
+      return archiveFormatDetector.detect(header);
+    } catch (Exception e) {
+      log.warn("archive magic detect (relay) failed err={}", e.getMessage());
+      return ArchiveFormat.UNKNOWN;
+    }
   }
 
   private String defaultBucket(String requestedBucket) {

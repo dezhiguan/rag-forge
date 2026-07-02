@@ -9,6 +9,7 @@ import com.ragforge.model.dto.IngestCommand;
 import com.ragforge.model.dto.IngestResult;
 import com.ragforge.model.dto.OnConflict;
 import com.ragforge.model.entity.Document;
+import com.ragforge.mq.ArchiveExpandProducer;
 import com.ragforge.mq.DocumentProcessProducer;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import com.ragforge.storage.ObjectStorage;
@@ -52,6 +53,7 @@ public class IngestServiceImpl implements IngestService {
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper chunkMapper;
   private final DocumentProcessProducer mqProducer;
+  private final ArchiveExpandProducer archiveExpandProducer;
   private final EsIndexService esIndexService;
   private final ObjectStorage objectStorage;
   private final RagforgeMetrics metrics;
@@ -133,13 +135,39 @@ public class IngestServiceImpl implements IngestService {
     doc.setParseStatus(STATUS_PENDING);
     doc.setChunkCount(0);
     doc.setChunkType(cmd.getChunkType());
+    // 压缩包字段：容器（archiveFormat 非空）file_type 存格式 token；子文档回指容器
+    doc.setParentDocumentId(cmd.getParentDocumentId());
+    doc.setArchiveEntryPath(cmd.getArchiveEntryPath());
+    final boolean container = StringUtils.hasText(cmd.getArchiveFormat());
+    if (container) {
+      doc.setFileType(cmd.getArchiveFormat());
+    }
     doc.setCreatedAt(LocalDateTime.now());
     documentMapper.insert(doc);
 
     final Long docId = doc.getId();
-    afterCommit(() -> dispatchMqAsync(docId, "create"));
+    // 容器派发到 archive-expand（解压）；普通文档/子文档派发到 document-process（解析）
+    afterCommit(
+        () -> {
+          if (container) {
+            dispatchArchiveExpandAsync(docId);
+          } else {
+            dispatchMqAsync(docId, "create");
+          }
+        });
     metrics.recordIngestCreated();
     return IngestResult.created(docId);
+  }
+
+  private void dispatchArchiveExpandAsync(Long containerId) {
+    MQ_DISPATCH_EXECUTOR.execute(
+        () -> {
+          try {
+            archiveExpandProducer.send(containerId);
+          } catch (Exception e) {
+            log.error("Archive expand dispatch failed: containerId={} err={}", containerId, e.getMessage(), e);
+          }
+        });
   }
 
   private void dispatchMqAsync(Long documentId, String action) {
