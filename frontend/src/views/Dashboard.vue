@@ -201,7 +201,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref, computed } from 'vue'
+import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { getDashboardMetrics } from '../api/metrics'
 import { reprocessDocument } from '../api/document'
 import { useOrg } from '../composables/useOrg'
@@ -445,8 +445,10 @@ function formatTokens(n) {
 
 onMounted(() => {
   loadMetrics()
-  loadMembers()
 })
+// 组织成员概览随当前组织联动：org 列表异步加载完成或切换组织后 current.id 变化即重新拉取，
+// 避免首屏 org 尚未就绪时 loadMembers 因 current.id 为空而显示「0 人」（且此前无重试）。
+watch(() => current.value?.id, () => loadMembers(), { immediate: true })
 </script>
 
 <style scoped>
