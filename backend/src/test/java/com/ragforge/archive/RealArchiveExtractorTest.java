@@ -89,6 +89,32 @@ class RealArchiveExtractorTest {
   }
 
   @Test
+  void realTarGz_compressionBomb_trippedByArchiveRatioGuard() throws Exception {
+    // 高压缩比 tar.gz（大量零字节）——gzip 无逐 entry 压缩前大小，靠"整包比值"护栏拦截
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    try (GzipCompressorOutputStream gz = new GzipCompressorOutputStream(bos);
+        TarArchiveOutputStream tos = new TarArchiveOutputStream(gz)) {
+      byte[] zeros = new byte[512 * 1024]; // 512KB 零 → 压缩后 ~KB，比值远超阈值
+      TarArchiveEntry entry = new TarArchiveEntry("a.pdf");
+      entry.setSize(zeros.length);
+      tos.putArchiveEntry(entry);
+      tos.write(zeros);
+      tos.closeArchiveEntry();
+    }
+    com.ragforge.common.ArchiveLimits limits = new com.ragforge.common.ArchiveLimits();
+    limits.setMaxCompressionRatio(10); // 收紧比值便于确定性触发
+    DefaultArchiveExpander tight = new DefaultArchiveExpander(limits);
+
+    assertThatThrownBy(
+            () -> tight.expand(new ByteArrayInputStream(bos.toByteArray()), ArchiveFormat.TAR_GZ, e -> {}))
+        .isInstanceOf(ArchiveException.class)
+        .satisfies(
+            t ->
+                assertThat(((ArchiveException) t).getCode())
+                    .isEqualTo(ArchiveErrorCodes.SUSPICIOUS_RATIO));
+  }
+
+  @Test
   void corruptedGzip_mappedToArchiveException() {
     byte[] garbage = {(byte) 0x1F, (byte) 0x8B, 1, 2, 3, 4, 5, 6};
     assertThatThrownBy(

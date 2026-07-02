@@ -262,6 +262,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 new QueryWrapper<Document>()
                     .select("kb_id", "count(*) AS cnt")
                     .in("kb_id", kbIds)
+                    // 压缩包子文档在列表中隐藏，docCount 不计子文档，只算容器+独立文档，保持一致
+                    .isNull("parent_document_id")
                     .groupBy("kb_id")));
     java.util.Map<Long, Integer> chunkCounts =
         countByKb(

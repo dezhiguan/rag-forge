@@ -55,9 +55,11 @@ public class DefaultArchiveExpander implements ArchiveExpander {
     ArchiveReader reader = readerFor(format);
     ExpandOutcome outcome = new ExpandOutcome();
     long[] totalBytes = {0L};
+    // 计压缩包读入字节，用于"整包"压缩比护栏 —— tar.gz 的 gzip 层无逐 entry 压缩前大小，
+    // 只能在整包层面比对 解压总量/压缩读入量，才能对 tar.gz 解压炸弹也施加比值护栏。
+    CountingInputStream counted = new CountingInputStream(archiveStream);
     try {
-      reader.read(
-          archiveStream, entry -> handleEntry(entry, outcome, totalBytes, consumer));
+      reader.read(counted, entry -> handleEntry(entry, outcome, totalBytes, counted, consumer));
     } catch (ArchiveException ae) {
       throw ae; // 致命护栏：向上传播，容器置 FAILED
     } catch (IOException | RuntimeException e) {
@@ -82,7 +84,11 @@ public class DefaultArchiveExpander implements ArchiveExpander {
   }
 
   private void handleEntry(
-      RawEntry entry, ExpandOutcome outcome, long[] totalBytes, ArchiveEntryConsumer consumer)
+      RawEntry entry,
+      ExpandOutcome outcome,
+      long[] totalBytes,
+      CountingInputStream counted,
+      ArchiveEntryConsumer consumer)
       throws IOException {
     if (entry.directory()) {
       return; // 目录不计数、不入库
@@ -116,7 +122,7 @@ public class DefaultArchiveExpander implements ArchiveExpander {
       return;
     }
 
-    byte[] content = readGuarded(entry, totalBytes);
+    byte[] content = readGuarded(entry, totalBytes, counted);
     if (content == null) {
       // 单 entry 超阈：跳过，不失败整包
       outcome.addSkip(safePath, SkipReason.OVERSIZE);
@@ -138,7 +144,8 @@ public class DefaultArchiveExpander implements ArchiveExpander {
    * 超阈返回 {@code null}（调用方记 oversize 跳过）。 触发累计总量 / 压缩比护栏时抛致命 {@link
    * ArchiveException}。
    */
-  private byte[] readGuarded(RawEntry entry, long[] totalBytes) throws IOException {
+  private byte[] readGuarded(RawEntry entry, long[] totalBytes, CountingInputStream counted)
+      throws IOException {
     long compressed = entry.compressedSize();
     long maxRatio = limits.getMaxCompressionRatio();
     long maxEntry = limits.getMaxEntryBytes();
@@ -158,11 +165,19 @@ public class DefaultArchiveExpander implements ArchiveExpander {
             ArchiveErrorCodes.TOTAL_SIZE_EXCEEDED,
             "uncompressed total exceeds " + maxTotal + " bytes");
       }
-      // 压缩比护栏（增量、早停）：仅在压缩前大小已知时生效
+      // 压缩比护栏（增量、早停）：
+      //  a) 逐 entry —— 压缩前大小已知时（zip 精确）
+      //  b) 整包 —— 解压总量/压缩读入量（tar.gz 兜底，gzip 无逐 entry 压缩前大小）
       if (maxRatio > 0 && compressed > 0 && entryBytes > compressed * maxRatio) {
         throw new ArchiveException(
             ArchiveErrorCodes.SUSPICIOUS_RATIO,
             "compression ratio exceeds " + maxRatio + ":1 for " + entry.name());
+      }
+      long compressedSoFar = counted.getCount();
+      if (maxRatio > 0 && compressedSoFar > 0 && totalBytes[0] > compressedSoFar * maxRatio) {
+        throw new ArchiveException(
+            ArchiveErrorCodes.SUSPICIOUS_RATIO,
+            "archive compression ratio exceeds " + maxRatio + ":1");
       }
       if (!oversize) {
         if (entryBytes > maxEntry) {
@@ -182,6 +197,37 @@ public class DefaultArchiveExpander implements ArchiveExpander {
       return HexFormat.of().formatHex(digest.digest(content));
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("SHA-256 unavailable", e);
+    }
+  }
+
+  /** 统计从底层压缩包流累计读入的字节数，用于整包压缩比护栏。 */
+  private static final class CountingInputStream extends java.io.FilterInputStream {
+    private long count;
+
+    CountingInputStream(InputStream in) {
+      super(in);
+    }
+
+    long getCount() {
+      return count;
+    }
+
+    @Override
+    public int read() throws IOException {
+      int b = super.read();
+      if (b != -1) {
+        count++;
+      }
+      return b;
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      int n = super.read(b, off, len);
+      if (n > 0) {
+        count += n;
+      }
+      return n;
     }
   }
 }

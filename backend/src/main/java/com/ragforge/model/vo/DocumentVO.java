@@ -22,6 +22,9 @@ public class DocumentVO {
   private String ingestSource;
   private LocalDateTime createdAt;
 
+  /** 是否压缩包容器（file_type ∈ zip/tar.gz 且无父）。前端据此把该行渲染为可展开组。 */
+  private Boolean isArchive;
+
   // 来自关联知识库的冗余字段，方便展示
   private String kbName;
   private String embeddingModel;

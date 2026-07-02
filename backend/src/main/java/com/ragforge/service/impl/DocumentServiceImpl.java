@@ -558,6 +558,21 @@ public class DocumentServiceImpl implements DocumentService {
       throw new BizException(404, "文档不存在");
     }
 
+    // 压缩包容器：DB 的 ON DELETE CASCADE 只删子文档行与其 chunk 行，ES 索引不会级联。
+    // 删容器前须逐个清理子文档的 ES 与本地文件，避免留下 ES 孤儿（设计稿 §5「不留孤儿」）。
+    if (isArchiveContainer(doc)) {
+      for (Document child : documentMapper.selectChildren(id)) {
+        esIndexService.deleteByDocId(child.getId());
+        if (child.getFilePath() != null && !child.getFilePath().isBlank()) {
+          try {
+            fileStorageService.delete(child.getFilePath());
+          } catch (Exception ignored) {
+            // 子文件清理 best-effort，不阻断容器删除
+          }
+        }
+      }
+    }
+
     esIndexService.deleteByDocId(id);
 
     fileStorageService.delete(doc.getFilePath());
@@ -675,6 +690,7 @@ public class DocumentServiceImpl implements DocumentService {
     vo.setContentMd5(doc.getContentMd5());
     vo.setIngestSource(doc.getIngestSource());
     vo.setCreatedAt(doc.getCreatedAt());
+    vo.setIsArchive(isArchiveContainer(doc));
     return vo;
   }
 
