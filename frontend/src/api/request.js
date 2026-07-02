@@ -156,7 +156,9 @@ request.interceptors.request.use((config) => {
     const orgId = localStorage.getItem('ragforge.currentOrgId')
     if (orgId === 'platform') {
       config.headers['X-Admin-Override'] = 'true'
-      config.headers['X-Admin-Override-Reason'] = 'platform-dashboard-view'
+      // 理由由 OrgSwitcher 进入平台视图时显式采集(留审计);缺失时兜底不影响取数。
+      config.headers['X-Admin-Override-Reason'] =
+        localStorage.getItem('ragforge.adminOverrideReason') || 'platform-view'
     } else if (orgId && orgId !== 'null' && orgId !== '') {
       config.headers['X-Org-Id'] = orgId
     }

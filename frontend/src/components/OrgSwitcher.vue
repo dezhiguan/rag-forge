@@ -49,6 +49,10 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useOrg, PLATFORM_ID } from '../composables/useOrg'
 import { useAuth } from '../composables/useAuth'
+import { confirm as confirmDialog } from '../composables/useConfirm'
+
+// 破玻璃访问理由的存储 key（request.js 读取并注入 X-Admin-Override-Reason）
+const ADMIN_OVERRIDE_REASON_KEY = 'ragforge.adminOverrideReason'
 
 defineProps({ collapsed: { type: Boolean, default: false } })
 
@@ -80,14 +84,29 @@ function roleLabel(role) {
 function select(o) {
   open.value = false
   if (o.id === current.value.id) return
+  // 离开平台视图即结束破玻璃：清除已存的访问理由，避免残留到普通组织上下文。
+  try { localStorage.removeItem(ADMIN_OVERRIDE_REASON_KEY) } catch { /* ignore */ }
   setCurrent(o.id ?? null)
   // 切换组织是全局上下文变更：整页重载，确保所有页面带新的 X-Org-Id 重新取数。
   window.location.reload()
 }
 
-function selectPlatform() {
+// 进入全平台视图 = 超管破玻璃:默认不激活,必须显式确认并填写访问理由(留审计)。
+// 取消或未填理由则不进入。理由存 localStorage,供 request.js 注入 X-Admin-Override-Reason;
+// 头本身照常注入 —— 故驾驶舱/质量看板/成本等平台数据 tab 显示不受影响。
+async function selectPlatform() {
   open.value = false
   if (current.value.platform) return
+  const reason = await confirmDialog({
+    title: '进入全平台视图(超管破玻璃)',
+    message: '你将以超管身份跨组织访问全平台数据,本次访问全程审计。请填写访问理由:',
+    input: true,
+    inputPlaceholder: '如:排查组织质量下降 / 客户支持工单 #123 / 安全事件核查',
+    confirmText: '确认进入',
+  })
+  const r = typeof reason === 'string' ? reason.trim() : ''
+  if (!r) return // 取消或未填理由 → 默认不激活,保持当前组织
+  try { localStorage.setItem(ADMIN_OVERRIDE_REASON_KEY, r.slice(0, 200)) } catch { /* ignore */ }
   setCurrent(PLATFORM_ID)
   window.location.reload()
 }
