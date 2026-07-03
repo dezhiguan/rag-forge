@@ -79,7 +79,7 @@
             />
             <div class="upload-icon">📤</div>
             <div class="upload-text">
-              拖拽文件上传 · 文档（PDF / Word / Markdown / HTML / TXT）+ 图片（PNG / JPG / GIF / WEBP，自动 OCR）+ 压缩包（ZIP / TAR.GZ，服务端自动展开）
+              拖拽文件上传 · 文档（PDF / Word / Markdown / HTML / TXT / CSV）+ 图片（PNG / JPG / GIF / WEBP，自动 OCR）+ 压缩包（ZIP / TAR.GZ，服务端自动展开）
             </div>
             <div class="upload-hint">单文件最大 50MB · 支持批量上传 · 压缩包一律上传后由服务端展开入库</div>
           </div>
