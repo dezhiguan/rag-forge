@@ -54,6 +54,12 @@ public class AuthGatewayProxyClient {
     return postForm("/auth/login/password", form, TokenResponse.class);
   }
 
+  /** 换一张：获取一张新的图形验证码（公开，无需 client 鉴权）。返回 {captchaImage, challengeId}。 */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> getCaptcha() {
+    return restTemplate.getForObject(properties.getBaseUrl() + "/auth/captcha", Map.class);
+  }
+
   public TokenResponse loginMobile(String phone, String code, boolean remember) {
     MultiValueMap<String, String> form = clientForm();
     form.add("phone", phone);

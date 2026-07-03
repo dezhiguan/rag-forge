@@ -50,6 +50,12 @@ export function sendSmsCode({ phone, scene = 'login' }) {
   return authClient.post('/sms/send', { phone, scene })
 }
 
+// 换一张：获取一张新的图形验证码，返回 { captchaImage, challengeId }
+export async function fetchCaptcha() {
+  const res = await authClient.get('/captcha')
+  return res?.data?.data || res?.data || {}
+}
+
 export async function refreshAccessToken() {
   return normalizeLoginResponse(await authClient.post('/refresh'))
 }

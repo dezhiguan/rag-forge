@@ -141,6 +141,12 @@ public class AuthProxyController {
             Boolean.TRUE.equals(request.remember())));
   }
 
+  /** 换一张：前端"看不清"时获取一张新的图形验证码。返回 {captchaImage, challengeId}。 */
+  @GetMapping("/captcha")
+  public Result<Map<String, Object>> captcha() {
+    return Result.ok(client.getCaptcha());
+  }
+
   @PostMapping("/login-mobile")
   public ResponseEntity<Result<Map<String, Object>>> loginMobile(@RequestBody MobileLoginRequest request) {
     return loginResponse(

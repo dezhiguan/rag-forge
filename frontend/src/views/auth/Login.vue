@@ -69,9 +69,18 @@
                 :disabled="submitDisabled"
                 @input="errorMsg = ''"
               />
-              <img v-if="captchaImage" class="captcha-img" :src="captchaImage" alt="图形验证码" />
-              <div v-else class="captcha-fallback">R7A2</div>
+              <img
+                v-if="captchaImage"
+                class="captcha-img"
+                :src="captchaImage"
+                alt="图形验证码"
+                title="点击换一张"
+                style="cursor: pointer"
+                @click="onRefreshCaptcha"
+              />
+              <button v-else type="button" class="captcha-fallback" @click="onRefreshCaptcha">点击获取</button>
             </div>
+            <a class="link captcha-refresh" href="#" @click.prevent="onRefreshCaptcha">看不清，换一张</a>
           </div>
           <div class="row-between">
             <label class="check" :class="{ on: form.remember }">
@@ -142,7 +151,7 @@
 <script setup>
 import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { loginByPassword, loginByMobile, sendSmsCode } from '../../api/auth'
+import { loginByPassword, loginByMobile, sendSmsCode, fetchCaptcha } from '../../api/auth'
 import { applySession } from '../../api/session'
 import { loadMe } from '../../api/account'
 
@@ -193,6 +202,19 @@ function switchTab(next) {
   if (loading.value) return
   tab.value = next
   errorMsg.value = ''
+}
+
+async function onRefreshCaptcha() {
+  try {
+    const c = await fetchCaptcha()
+    captchaRequired.value = true
+    captchaImage.value = c.captchaImage || ''
+    form.challengeId = c.challengeId || ''
+    form.captcha = ''
+    errorMsg.value = ''
+  } catch {
+    errorMsg.value = '获取验证码失败，请稍后重试'
+  }
 }
 
 async function handlePasswordLogin() {
