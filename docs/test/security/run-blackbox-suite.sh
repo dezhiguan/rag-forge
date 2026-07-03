@@ -46,8 +46,14 @@ for m in TRACE PUT DELETE; do
 done
 
 h "SEC-BB-03  /sse 是否已下线"
-sse="$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$BASE/sse")"
-[[ "$sse" == "404" || "$sse" == "410" ]] && pass "/sse -> $sse (已下线)" || warn "/sse -> $sse (仍挂载,应 404/410)"
+# 判据:/sse 不应再暴露后端 MCP 端点（API_KEY_MISSING/INVALID）。下线后 nginx 无 /sse location，
+# 回退到 SPA(200 HTML) 或 404/410 均视为已下线（与任意未知路径一致，不再泄露 MCP 语义）。
+sse_body="$("${CURL[@]}" "$BASE/sse")"
+if grep -q 'API_KEY_MISSING\|API_KEY_INVALID' <<<"$sse_body"; then
+  warn "/sse 仍暴露后端 MCP 端点(API_KEY_*),未真正下线"
+else
+  pass "/sse 已下线(回退 SPA/404,不再暴露 MCP 语义)"
+fi
 
 h "SEC-BB-04  未认证错误提示语义"
 body="$("${CURL[@]}" -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/login")"
