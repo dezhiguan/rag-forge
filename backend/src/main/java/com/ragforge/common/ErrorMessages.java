@@ -47,6 +47,7 @@ public final class ErrorMessages {
           // 鉴权
           Map.entry("UNAUTHORIZED", "登录状态已失效，请重新登录"),
           Map.entry("TOKEN_INVALID", "登录状态已失效，请重新登录"),
+          Map.entry("LOGIN_REQUIRED", "请先登录后再操作"),
           // 知识库（常见用户可见）
           Map.entry("KB_ACCESS_DENIED", "无权访问该知识库或案例"),
           Map.entry("KB_WRITE_FORBIDDEN", "您没有该知识库的写权限"),

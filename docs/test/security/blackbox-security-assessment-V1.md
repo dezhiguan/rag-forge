@@ -14,6 +14,22 @@
 | 版本 | 日期 | 修订说明 |
 | --- | --- | --- |
 | V1 | 2026-07-03 | 首次评估:外部黑盒 + 认证态 IDOR / JWT / 输入校验;形成 8 项 gap + 11 项已验证防护 |
+| V1.1 | 2026-07-03 | 落地首轮修复:安全响应头 + server_tokens、/sse 收口、登录错误语义分级、CSP(缓解 SEC-BB-02);另 3 项(令牌存储重构 / aud-scope 改名 / 短信验证码)列为待办,见「修复状态」 |
+
+## 修复状态（V1.1 · 2026-07-03）
+
+> 本轮修复分支 `docs/security-assessment`,后端 `mvn clean test-compile` 通过(362 主源 + 136 测试),CSP 已核线上 bundle 无 `eval`/`new Function`/wasm(`script-src 'self'` 不会白屏)。
+
+| 发现 | 状态 | 落点 |
+| --- | --- | --- |
+| SEC-BB-01 安全响应头 + 版本泄露 | ✅ 已修 | `nginx.conf` ragforge.net 443 块 + `= /index.html` 补 5 头 + `server_tokens off` |
+| SEC-BB-02 令牌 JS 存储 + 无 CSP | 🟡 部分修 | 已加 CSP `script-src 'self'`(缓解 XSS 窃取令牌);**HttpOnly 令牌下沉属认证架构改造,单列设计另行推进** |
+| SEC-BB-03 /sse 未下线 | ✅ 已修 | `SecurityConfig` 移除 `/sse`、`/sse/**`(不再回 MCP 专属 API_KEY_MISSING;MCP SSE 传输 yml 早已 `enabled:false`) |
+| SEC-BB-04 登录错误语义 | ✅ 已修 | 未带凭证→`LOGIN_REQUIRED`「请先登录」;令牌失效(过滤器)→友好中文「登录状态已失效」;新增 `resolveUnauthenticatedCode` + `ErrorMessages.LOGIN_REQUIRED` |
+| SEC-BB-08 nginx 版本泄露 | ✅ 已修 | `server_tokens off`(并入 SEC-BB-01) |
+| SEC-BB-05 令牌 aud/scope 命名 | ⏸️ 待办 | JWT 契约,跨 Auth Gateway + 后端 + 存量令牌,爆炸半径大,需协同灰度,单列 |
+| SEC-BB-06 health 泄 traceId | ⏸️ 接受 | traceId 是全响应统一关联 ID(非机密),info 级,暂接受 |
+| SEC-BB-07 短信首发无验证码 | ⏸️ 待办 | 属功能项(验证码供应 + 前端流程);优先先核限流阈值是否够紧 |
 
 ## 交战规则(ROE)
 
