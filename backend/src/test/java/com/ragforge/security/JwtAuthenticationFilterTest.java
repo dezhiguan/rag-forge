@@ -102,7 +102,8 @@ class JwtAuthenticationFilterTest {
     filter.doFilter(request, response, chain);
 
     assertThat(response.getStatus()).isEqualTo(401);
-    assertThat(response.getContentAsString()).contains("Unauthorized");
+    // 令牌失效改为友好中文 + 机器码（errorCode=UNAUTHORIZED），不再是英文 "Unauthorized"。
+    assertThat(response.getContentAsString()).contains("UNAUTHORIZED");
     verify(chain, never()).doFilter(request, response);
   }
 
