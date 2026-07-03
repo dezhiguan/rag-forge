@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 @Component
@@ -32,12 +33,24 @@ public class AuthGatewayProxyClient {
   }
 
   public TokenResponse loginPassword(String account, String password, boolean remember) {
+    return loginPassword(account, password, null, null, remember);
+  }
+
+  public TokenResponse loginPassword(
+      String account, String password, String captcha, String challengeId, boolean remember) {
     MultiValueMap<String, String> form = clientForm();
     form.add("account", account);
     form.add("password", password);
     form.add("target_aud", properties.getTargetAudience());
     // 记住我：网关据此发 30 天 refresh token（否则默认 7 天）
     form.add("remember", String.valueOf(remember));
+    // 登录失败次数过多时前端会带上图形验证码作答，透传给网关校验；空值不下发。
+    if (StringUtils.hasText(captcha)) {
+      form.add("captcha", captcha);
+    }
+    if (StringUtils.hasText(challengeId)) {
+      form.add("challenge_id", challengeId);
+    }
     return postForm("/auth/login/password", form, TokenResponse.class);
   }
 

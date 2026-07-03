@@ -133,7 +133,12 @@ public class AuthProxyController {
   @PostMapping("/login")
   public ResponseEntity<Result<Map<String, Object>>> login(@RequestBody PasswordLoginRequest request) {
     return loginResponse(
-        client.loginPassword(request.account(), request.password(), Boolean.TRUE.equals(request.remember())));
+        client.loginPassword(
+            request.account(),
+            request.password(),
+            request.captcha(),
+            request.challengeId(),
+            Boolean.TRUE.equals(request.remember())));
   }
 
   @PostMapping("/login-mobile")
