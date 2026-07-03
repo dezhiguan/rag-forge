@@ -18,6 +18,7 @@ import com.ragforge.search.HybridSearchService.HybridSearchOutput;
 import com.ragforge.search.RerankerClient.RerankOutput;
 import com.ragforge.search.RerankerClient.RerankResult;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
+import com.ragforge.search.limit.LocalConcurrencyLimiter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -63,7 +64,8 @@ class RetrievalServiceTest {
             meterRegistry,
             new RagforgeMetrics(meterRegistry),
             retrievalProperties,
-            retrievalExecutor);
+            retrievalExecutor,
+            new LocalConcurrencyLimiter());
   }
 
   @AfterEach
