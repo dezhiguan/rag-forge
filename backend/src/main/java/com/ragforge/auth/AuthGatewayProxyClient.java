@@ -51,7 +51,11 @@ public class AuthGatewayProxyClient {
 
   public void sendSms(String phone, String scene) {
     // 透传 app=ragforge：网关据此在登录场景下对未注册手机号拦截发码（避免白发短信）。
-    postJson("/auth/sms/send", Map.of("phone", phone, "scene", scene, "app", "ragforge"), Map.class);
+    // phone 为 null（如空请求体）时转成空串，避免 Map.of 拒绝 null 抛 NPE→500；空串由网关校验返回友好 400。
+    postJson(
+        "/auth/sms/send",
+        Map.of("phone", phone == null ? "" : phone, "scene", scene, "app", "ragforge"),
+        Map.class);
   }
 
   public Object resetInit(String account, String phone) {
