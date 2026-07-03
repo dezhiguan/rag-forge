@@ -80,7 +80,7 @@
               />
               <button v-else type="button" class="captcha-fallback" @click="onRefreshCaptcha">点击获取</button>
             </div>
-            <a class="link captcha-refresh" href="#" @click.prevent="onRefreshCaptcha">看不清，换一张</a>
+            <a class="captcha-refresh" href="#" @click.prevent="onRefreshCaptcha">看不清？换一张</a>
           </div>
           <div class="row-between">
             <label class="check" :class="{ on: form.remember }">
@@ -458,6 +458,22 @@ onUnmounted(() => {
   font-weight: 800;
   letter-spacing: 2px;
   user-select: none;
+  cursor: pointer;
+}
+
+.captcha-refresh {
+  display: block;
+  margin-top: 6px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 400;
+  color: #94a3b8;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.captcha-refresh:hover {
+  color: #1d4ed8;
 }
 
 .sms-btn {
