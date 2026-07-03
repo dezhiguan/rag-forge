@@ -63,6 +63,7 @@
 
         <div class="card card-pad cred-block">
           <h3>设置 / 修改密码</h3>
+          <p class="card-hint">修改密码后，所有设备将退出登录，需使用新密码重新登录。</p>
           <input class="input" v-model="pwd.oldPassword" type="password" placeholder="原密码（首次设置可留空）" />
           <input class="input" v-model="pwd.newPassword" type="password" placeholder="新密码：至少 8 位，含字母与数字" />
           <p v-if="pwd.newPassword && !passwordValid" class="field-hint-error">密码至少 8 位，且需同时包含字母和数字</p>
@@ -75,11 +76,15 @@
 
 <script setup>
 import { reactive, ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getProfile, updateProfile, setPassword, bindEmail, setUsername, loadMe } from '../api/account'
+import { notifyLoggedOut } from '../api/session'
+import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
 
 const route = useRoute()
+const router = useRouter()
+const { clearSession } = useAuth()
 const toast = useToast()
 
 const tab = ref(route.query.tab === 'security' ? 'security' : 'profile')
@@ -143,13 +148,17 @@ async function doSetPassword() {
   busy.pwd = true
   try {
     await setPassword({ oldPassword: pwd.oldPassword || undefined, newPassword: pwd.newPassword })
-    toast.success('密码已更新')
-    pwd.oldPassword = ''
-    pwd.newPassword = ''
+    toast.success('密码已更新，请使用新密码重新登录')
+    // 改密后网关已撤销该用户全部会话，主动下线并跳登录页，
+    // 避免停留在页面上直到下次续期才被动踢出；busy 保持 true 防重复提交
+    setTimeout(() => {
+      clearSession()
+      notifyLoggedOut()
+      router.replace('/login')
+    }, 1500)
   } catch (e) {
     // authClient 拦截器不自动 toast，凭证操作必须自行提示，否则失败时静默无反馈
     toast.error(e?.message || '密码更新失败')
-  } finally {
     busy.pwd = false
   }
 }
