@@ -74,7 +74,7 @@
               class="hidden-file"
               type="file"
               multiple
-              accept=".pdf,.doc,.docx,.md,.markdown,.html,.htm,.txt,.png,.jpg,.jpeg,.gif,.webp,.zip,.tar.gz,.tgz,application/pdf,text/plain,image/*,application/zip,application/gzip,application/x-gzip,application/x-tar"
+              accept=".pdf,.doc,.docx,.md,.markdown,.html,.htm,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.zip,.tar.gz,.tgz,application/pdf,text/plain,text/csv,image/*,application/zip,application/gzip,application/x-gzip,application/x-tar"
               @change="onFileChange"
             />
             <div class="upload-icon">📤</div>

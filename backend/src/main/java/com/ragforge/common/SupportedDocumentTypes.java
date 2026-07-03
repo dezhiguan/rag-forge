@@ -20,7 +20,7 @@ public final class SupportedDocumentTypes {
 
   /** 文档类（走文本/PDF/Office 解析；含 txt，与散传口径一致）。 */
   public static final Set<String> DOC_EXTENSIONS =
-      Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm", "txt");
+      Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm", "txt", "csv");
 
   /** 图片类（走图片 OCR/VL 管道；对齐前端散传 accept）。 */
   public static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp");

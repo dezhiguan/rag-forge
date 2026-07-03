@@ -91,6 +91,10 @@ public final class ErrorMessages {
           Map.entry("EMBEDDING_CALL_FAILED", "文档向量化失败，请稍后重试"),
           Map.entry("NO_CHUNKER_STRATEGY_AVAILABLE", "文档无法分块（内容可能为空或格式不支持）"),
           Map.entry("DOC_PROCESS_FAILED", "文档处理失败，请稍后重试"),
+          // CSV 解析
+          Map.entry("CSV_EMPTY", "CSV 文件内容为空"),
+          Map.entry("CSV_NO_DATA_ROWS", "CSV 只有表头、没有数据行"),
+          Map.entry("CSV_PARSE_FAILED", "CSV 解析失败，请检查文件格式或分隔符"),
           // 评测
           Map.entry("JUDGE_RESULT_NOT_FOUND", "评测结果不存在或已被清理"),
           Map.entry("EVAL_DATASET_NOT_FOUND", "评测数据集不存在"),

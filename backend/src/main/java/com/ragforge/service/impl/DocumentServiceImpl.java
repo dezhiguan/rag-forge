@@ -61,7 +61,7 @@ public class DocumentServiceImpl implements DocumentService {
   private static final String PARSE_STATUS_PENDING = "PENDING";
 
   private static final Set<String> ALLOWED_EXTENSIONS =
-      Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm", "txt");
+      Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm", "txt", "csv");
 
   /** 压缩包容器判定的 file_type 集合（配合 parentDocumentId == null）。 */
   private static final Set<String> ARCHIVE_FILE_TYPES = Set.of("zip", "tar.gz");
@@ -662,7 +662,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     String ext = extractExtension(originalFilename);
     if (!ALLOWED_EXTENSIONS.contains(ext)) {
-      throw new BizException(400, "只允许 PDF / Word / Markdown / HTML / TXT");
+      throw new BizException(400, "只允许 PDF / Word / Markdown / HTML / TXT / CSV");
     }
 
     // MIME 校验：contentType 可能为空，此时仅依赖扩展名
@@ -682,6 +682,11 @@ public class DocumentServiceImpl implements DocumentService {
           case "md", "markdown" -> contentType.equals("text/markdown") || contentType.equals("text/plain");
           case "html", "htm" -> contentType.equals("text/html");
           case "txt" -> contentType.equals("text/plain") || contentType.equals("text/markdown");
+          case "csv" ->
+              contentType.equals("text/csv")
+                  || contentType.equals("application/csv")
+                  || contentType.equals("application/vnd.ms-excel")
+                  || contentType.equals("text/plain");
           default -> false;
         };
 

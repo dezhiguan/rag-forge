@@ -88,6 +88,7 @@ public class DocumentPipelineService {
   private final ImagePipelineService imagePipelineService;
   private final List<EmbeddedImageExtractor> embeddedImageExtractors;
   private final MultimodalProperties multimodalProperties;
+  private final com.ragforge.pipeline.parser.CsvToTextConverter csvToTextConverter;
 
   @Lazy @Autowired private DocumentPipelineService self;
 
@@ -516,6 +517,12 @@ public class DocumentPipelineService {
     }
 
     String contentType = normalizeContentType(doc.getFileType());
+    // CSV 特判必须在通用 text/* 分支之前：text/csv 也 startsWith("text/")，否则会误走 HTML/markdown 抽图路径
+    if (isCsvContentType(contentType, doc.getFilename())) {
+      long start = System.currentTimeMillis();
+      String text = csvToTextConverter.convert(readRawBytes(doc));
+      return new ParseResult(text, System.currentTimeMillis() - start, 1);
+    }
     if (contentType.startsWith("text/")) {
       long start = System.currentTimeMillis();
       // HTML/Markdown 走"抽图+占位符重写"一遍扫，TEXT chunk 里就带 ![image N](rfimg://N)
@@ -703,6 +710,23 @@ public class DocumentPipelineService {
       }
     }
     return Files.readString(Path.of(doc.getFilePath()), StandardCharsets.UTF_8);
+  }
+
+  /** 读原始字节（CSV 需自行按检测到的编码解码，不能预设 UTF-8）。 */
+  private byte[] readRawBytes(Document doc) throws Exception {
+    if (StringUtils.hasText(doc.getStorageBucket())) {
+      try (InputStream in = objectStorage.get(doc.getStorageBucket(), doc.getStorageKey())) {
+        return in.readAllBytes();
+      }
+    }
+    return Files.readAllBytes(Path.of(doc.getFilePath()));
+  }
+
+  private static boolean isCsvContentType(String contentType, String filename) {
+    return contentType.equals("text/csv")
+        || contentType.equals("application/csv")
+        || contentType.equals("csv")
+        || (filename != null && filename.toLowerCase(java.util.Locale.ROOT).endsWith(".csv"));
   }
 
   private HtmlMarkdownImageExtractor findHtmlMarkdownExtractor(String contentType) {

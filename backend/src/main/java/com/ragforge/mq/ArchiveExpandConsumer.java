@@ -192,6 +192,7 @@ public class ArchiveExpandConsumer implements RocketMQListener<Long> {
       case "md", "markdown" -> "text/markdown";
       case "html", "htm" -> "text/html";
       case "txt" -> "text/plain";
+      case "csv" -> "text/csv";
       case "png" -> "image/png";
       case "jpg", "jpeg" -> "image/jpeg";
       case "gif" -> "image/gif";
