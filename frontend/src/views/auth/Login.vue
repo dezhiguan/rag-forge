@@ -126,7 +126,7 @@
             <label class="check" :class="{ on: form.remember }">
               <input type="checkbox" v-model="form.remember" />
               <span class="box-tick" aria-hidden="true">{{ form.remember ? '✓' : '' }}</span>
-              <span>记住此设备</span>
+              <span>记住我 30 天</span>
             </label>
             <span class="link muted">遇到问题？联系管理员</span>
           </div>
