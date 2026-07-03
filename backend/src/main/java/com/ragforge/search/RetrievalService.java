@@ -4,6 +4,7 @@ import com.ragforge.search.HybridSearchService.HybridSearchOutput;
 import com.ragforge.common.BizException;
 import com.ragforge.config.RetrievalProperties;
 import com.ragforge.metrics.RagforgeMetrics;
+import com.ragforge.search.limit.ConcurrencyLimiter;
 import com.ragforge.search.RerankerClient.RerankOutput;
 import com.ragforge.search.RerankerClient.RerankResult;
 import java.util.ArrayList;
@@ -16,7 +17,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -42,11 +42,7 @@ public class RetrievalService {
   private final RagforgeMetrics ragforgeMetrics;
   private final RetrievalProperties retrievalProperties;
   private final Executor retrievalExecutor;
-  private final Semaphore keywordSemaphore;
-  private final Semaphore vectorSemaphore;
-  private final Semaphore hybridSemaphore;
-  private final Semaphore fullSemaphore;
-  private final Semaphore rewriteSemaphore;
+  private final ConcurrencyLimiter concurrencyLimiter;
 
   public RetrievalService(
       VectorSearchService vectorSearchService,
@@ -57,7 +53,8 @@ public class RetrievalService {
       MeterRegistry meterRegistry,
       RagforgeMetrics ragforgeMetrics,
       RetrievalProperties retrievalProperties,
-      @Qualifier("retrievalExecutor") Executor retrievalExecutor) {
+      @Qualifier("retrievalExecutor") Executor retrievalExecutor,
+      ConcurrencyLimiter concurrencyLimiter) {
     this.vectorSearchService = vectorSearchService;
     this.esSearchService = esSearchService;
     this.hybridSearchService = hybridSearchService;
@@ -67,11 +64,7 @@ public class RetrievalService {
     this.ragforgeMetrics = ragforgeMetrics;
     this.retrievalProperties = retrievalProperties;
     this.retrievalExecutor = retrievalExecutor;
-    this.keywordSemaphore = new Semaphore(Math.max(1, retrievalProperties.getKeyword().getMaxConcurrent()));
-    this.vectorSemaphore = new Semaphore(Math.max(1, retrievalProperties.getVector().getMaxConcurrent()));
-    this.hybridSemaphore = new Semaphore(Math.max(1, retrievalProperties.getHybrid().getMaxConcurrent()));
-    this.fullSemaphore = new Semaphore(Math.max(1, retrievalProperties.getFull().getMaxConcurrent()));
-    this.rewriteSemaphore = new Semaphore(Math.max(1, retrievalProperties.getRewrite().getMaxConcurrent()));
+    this.concurrencyLimiter = concurrencyLimiter;
   }
 
   public RetrievalOutput retrieve(
@@ -112,16 +105,16 @@ public class RetrievalService {
     requireKbScope(kbIds);
     String normalizedStrategy = normalizeStrategy(strategy);
     recordDeprecatedSearchFields(modality, queryImageBase64);
-    Semaphore semaphore = semaphoreFor(normalizedStrategy);
     int timeoutMs = timeoutMsFor(normalizedStrategy);
-    boolean acquired = false;
+    ConcurrencyLimiter.Guard guard =
+        concurrencyLimiter.tryAcquire(
+            normalizedStrategy, limitFor(normalizedStrategy), leaseMsFor(normalizedStrategy));
+    if (guard == null) {
+      meterRegistry.counter("ragforge.retrieval.rejected", "strategy", normalizedStrategy).increment();
+      throw new BizException(429, "检索请求过多，请稍后重试");
+    }
     CompletableFuture<RetrievalOutput> future = null;
     try {
-      acquired = semaphore.tryAcquire(200, TimeUnit.MILLISECONDS);
-      if (!acquired) {
-        meterRegistry.counter("ragforge.retrieval.rejected", "strategy", normalizedStrategy).increment();
-        throw new BizException(429, "检索请求过多，请稍后重试");
-      }
       future =
           CompletableFuture.supplyAsync(
               () ->
@@ -159,9 +152,7 @@ public class RetrievalService {
     } catch (Exception e) {
       throw new BizException(500, "检索失败：" + e.getMessage());
     } finally {
-      if (acquired) {
-        semaphore.release();
-      }
+      guard.close();
     }
   }
 
@@ -303,14 +294,20 @@ public class RetrievalService {
         rerankLatencyMs);
   }
 
-  private Semaphore semaphoreFor(String strategy) {
+  private int limitFor(String strategy) {
     return switch (strategy) {
-      case "keyword" -> keywordSemaphore;
-      case "hybrid" -> hybridSemaphore;
-      case "full" -> fullSemaphore;
-      case "rewrite" -> rewriteSemaphore;
-      default -> vectorSemaphore;
+      case "keyword" -> retrievalProperties.getKeyword().getMaxConcurrent();
+      case "hybrid" -> retrievalProperties.getHybrid().getMaxConcurrent();
+      case "full" -> retrievalProperties.getFull().getMaxConcurrent();
+      case "rewrite" -> retrievalProperties.getRewrite().getMaxConcurrent();
+      default -> retrievalProperties.getVector().getMaxConcurrent();
     };
+  }
+
+  private long leaseMsFor(String strategy) {
+    // 租约须大于单次最长耗时，避免运行中的请求被误当泄漏回收；取配置租约与(策略超时+5s)较大值。
+    return Math.max(
+        retrievalProperties.getDistributedLimit().getLeaseMs(), timeoutMsFor(strategy) + 5000L);
   }
 
   private int timeoutMsFor(String strategy) {
