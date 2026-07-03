@@ -318,11 +318,36 @@ class DocumentPipelineServiceTest {
     verify(chunkingService).split(eq(doc), eq(kb), eq("<h1>raw</h1>"));
   }
 
-  // 注:内嵌图已对齐纯图片、不再受 kb.imageProcessingMode 门槛控制(见 processEmbeddedImages),
-  // 故删除原 processDocument_imageProcessingOffSkipsEmbeddedImages 用例;下面用例覆盖"内嵌图被处理"。
+  @Test
+  void processDocument_imageProcessingOffSkipsEmbeddedImages() throws Exception {
+    Document doc = document(9L, 10L, "mixed.pdf");
+    KnowledgeBase kb = knowledgeBase(10L);
+    kb.setImageProcessingMode("OFF");
+    List<Chunk> chunks = List.of(new Chunk(0, "text", 4));
+    List<float[]> vectors = List.of(new float[] {0.1f});
+    List<DocumentChunk> inserted = List.of(chunkEntity(700L, 0));
+    ExtractedImage image = extractedImage(0);
+
+    when(documentMapper.selectById(9L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString()))
+        .thenReturn(new ParseResult("text", 1L, 1, List.of("text"), List.of(image)));
+    when(chunkingService.split(eq(doc), eq(kb), eq("text"))).thenReturn(chunkingResult(chunks));
+    when(embeddingService.embedBatch(List.of("text"))).thenReturn(vectors);
+    doReturn(inserted)
+        .when(documentPipelineService)
+        .insertChunks(eq(9L), eq(10L), eq(chunks), eq(vectors), eq("RESUME"), eq("RECURSIVE"));
+    when(esIndexService.indexChunks(inserted, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(9L);
+
+    verify(imagePipelineSupport, never()).processSingleImage(any(), any(), any(), any(), anyInt(), any());
+    verify(imagePipelineService, never()).insertImageChunks(anyList());
+    verify(documentPipelineService).updateDocumentChunkCount(9L, 1);
+  }
 
   @Test
-  void processDocument_processesEmbeddedImages() throws Exception {
+  void processDocument_imageProcessingOnProcessesEmbeddedImages() throws Exception {
     Document doc = document(10L, 10L, "mixed.pdf");
     KnowledgeBase kb = knowledgeBase(10L);
     kb.setImageProcessingMode("ON");

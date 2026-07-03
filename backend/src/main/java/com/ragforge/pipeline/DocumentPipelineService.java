@@ -189,7 +189,7 @@ public class DocumentPipelineService {
         throw new BizException("ES 索引写入失败，等待重试或补偿");
       }
 
-      List<DocumentChunk> imageChunks = processEmbeddedImages(parseResult.getImages(), doc, chunks.size());
+      List<DocumentChunk> imageChunks = processEmbeddedImages(parseResult.getImages(), doc, kb, chunks.size());
       if (!imageChunks.isEmpty()) {
         chunkCount += imageChunks.size();
       }
@@ -588,11 +588,11 @@ public class DocumentPipelineService {
   }
 
   private List<DocumentChunk> processEmbeddedImages(
-      List<ExtractedImage> images, Document doc, int startChunkIndex) {
-    // 内嵌图对齐纯图片:只受全局 multimodal 开关控制,不再额外要求 kb.imageProcessingMode==ON。
-    // 此前纯图片(ImagePipelineService)只看全局开关、内嵌图却要 KB 单独开 ON,导致图文混合文档
-    // 的内嵌图默认被静默丢弃、检索不到,与纯图片行为不一致。小图仍由下方 8KB 门槛过滤。
-    if (!multimodalProperties.isEnabled() || images == null || images.isEmpty()) {
+      List<ExtractedImage> images, Document doc, KnowledgeBase kb, int startChunkIndex) {
+    if (!multimodalProperties.isEnabled()
+        || images == null
+        || images.isEmpty()
+        || !"ON".equalsIgnoreCase(kb.getImageProcessingMode())) {
       return List.of();
     }
     long deadline = System.currentTimeMillis() + embeddedImageMaxProcessingMsPerDoc();
