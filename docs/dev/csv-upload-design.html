@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAGForge CSV 文档入库支持设计</title>
+<style>
+  :root{
+    --navy:#0f172a; --slate:#1e293b; --muted:#64748b; --border:#e2e8f0;
+    --primary:#2563eb; --primary-soft:#eff4ff;
+    --red:#dc2626; --red-soft:#fef2f2; --amber:#b45309; --amber-soft:#fffbeb;
+    --green:#15803d; --green-soft:#ecfdf5; --bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--slate);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    line-height:1.7;font-size:15px}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 28px 80px}
+  header.doc-head{border-bottom:2px solid var(--navy);padding-bottom:20px;margin-bottom:8px}
+  h1{font-size:26px;color:var(--navy);margin:0 0 8px;font-weight:800;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:14px}
+  .meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--muted)}
+  .meta b{color:var(--slate)}
+  h2{font-size:20px;color:var(--navy);margin:44px 0 14px;padding-top:14px;border-top:1px solid var(--border);font-weight:700}
+  h2 .n{display:inline-block;min-width:30px;color:var(--primary)}
+  h3{font-size:16px;color:var(--slate);margin:26px 0 10px;font-weight:700}
+  h4{font-size:14px;color:var(--slate);margin:16px 0 6px}
+  p{margin:10px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{background:#f1f5f9;color:var(--navy);font-weight:700;font-size:12.5px}
+  tr:last-child td{border-bottom:none}
+  code{font-family:"SFMono-Regular",Consolas,Menlo,monospace;font-size:12.5px;background:#f1f5f9;padding:1px 6px;border-radius:5px;color:#334155}
+  pre{background:var(--navy);color:#e2e8f0;padding:14px 16px;border-radius:10px;overflow-x:auto;font-size:12.5px;line-height:1.55}
+  pre code{background:none;color:inherit;padding:0}
+  .callout{border-radius:10px;padding:14px 16px;margin:16px 0;border:1px solid;font-size:14px}
+  .callout .t{font-weight:700;margin-bottom:4px}
+  .c-red{background:var(--red-soft);border-color:#fecaca;color:#7f1d1d}
+  .c-amber{background:var(--amber-soft);border-color:#fde68a;color:#78350f}
+  .c-green{background:var(--green-soft);border-color:#bbf7d0;color:#14532d}
+  .c-blue{background:var(--primary-soft);border-color:#bfdbfe;color:#1e3a8a}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;vertical-align:middle}
+  .p0{background:#fee2e2;color:#991b1b}.p1{background:#ffedd5;color:#9a3412}.p2{background:#e0e7ff;color:#3730a3}
+  .done{background:#dcfce7;color:#166534}.todo{background:#fef9c3;color:#854d0e}
+  ul{margin:8px 0 8px 2px;padding-left:20px}
+  li{margin:5px 0}
+  .toc{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 20px;margin:20px 0}
+  .toc a{color:var(--primary);text-decoration:none;font-size:13.5px}
+  .toc a:hover{text-decoration:underline}
+  .toc ol{margin:6px 0;padding-left:22px}
+  .decide{background:#fff;border:1px solid var(--border);border-left:4px solid var(--primary);border-radius:8px;padding:12px 16px;margin:12px 0}
+  .decide.d-done{border-left-color:var(--green)}
+  .decide .q{font-weight:700;color:var(--navy)}
+  .decide .opts{font-size:13.5px;color:var(--muted);margin-top:4px}
+  .foot{margin-top:50px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12.5px}
+  .diagram{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin:14px 0;font-family:"SFMono-Regular",Consolas,Menlo,monospace;font-size:12.5px;white-space:pre;overflow-x:auto;color:#334155;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <h1>RAGForge CSV 文档入库支持设计</h1>
+  <div class="sub">行即 chunk + 表头前缀 · 复用文本管道 · 散传与压缩包双通道</div>
+  <div class="meta">
+    <span>拟制日期:<b>2026-07-03</b></span>
+    <span>版本:<b>V1(待评审)</b></span>
+    <span>状态:<b>待评审 — 5 个决策点待拍板</b></span>
+    <span>作者:<b>架构组 @guandezhi</b></span>
+  </div>
+</header>
+
+<div class="callout c-blue">
+  <div class="t">一句话</div>
+  主流做法 = <b>行即 chunk + 每行拼表头</b>（LangChain CSVLoader 同款），做记录级语义检索;
+  仅新增"CSV→行文本"一步转换，<b>下游文本分块/向量化/检索管道零改动</b>。聚合统计问答(NL2SQL)不在本期。
+</div>
+
+<div class="toc">
+  <b>目录</b>
+  <ol>
+    <li><a href="#s1">背景与目标</a></li>
+    <li><a href="#s2">主流做法对比(为何选行即 chunk)</a></li>
+    <li><a href="#s3">设计要点</a></li>
+    <li><a href="#s4">CSV → 行文本转换</a></li>
+    <li><a href="#s5">具体改动点</a></li>
+    <li><a href="#s6">决策点(待拍板)</a></li>
+    <li><a href="#s7">边界与护栏</a></li>
+    <li><a href="#s8">测试用例</a></li>
+    <li><a href="#s9">分阶段与目标日期</a></li>
+    <li><a href="#s10">范围外(单独评估)</a></li>
+  </ol>
+</div>
+
+<h2 id="s1"><span class="n">1.</span>背景与目标</h2>
+<p>当前 CSV 在四道白名单(散传后端 <code>ALLOWED_EXTENSIONS</code>、压缩包 <code>SupportedDocumentTypes</code>、前端 <code>accept</code>、解析器)中<b>全部缺席</b>——前端选不了 <code>.csv</code>,即便绕过去传后端也拒。</p>
+<p>CSV 是<b>表格数据</b>,若当纯文本直接分块,会把行列切碎、丢失表头语义、污染向量,检索质量差。</p>
+<p><b>目标</b>:让 CSV(散传 + 压缩包内)按"<b>行即 chunk + 表头前缀</b>"入库,支持<b>记录级语义检索</b>(如"张三是什么职级"、"研发部有谁");<b>聚合统计</b>(平均/求和/分组计数)明确<b>不在本期</b>,见 &sect;10。</p>
+
+<h2 id="s2"><span class="n">2.</span>主流做法对比(为何选行即 chunk)</h2>
+<table>
+  <tr><th>做法</th><th>说明</th><th>适合</th><th>取舍</th></tr>
+  <tr><td><b>① 行即 chunk + 表头</b><br><span class="pill done">本方案</span></td><td>每行拼成 <code>列名: 值;列名: 值</code>,整行一段;表头拼在每行前。LangChain <code>CSVLoader</code> 同款</td><td>记录级语义检索</td><td>做不了跨行聚合统计</td></tr>
+  <tr><td>② 转 Markdown 表格</td><td>CSV→markdown 表格再分块</td><td>小表格(几十行)结构清晰</td><td>大表格切到中间会丢表头/错位,需每块重复表头</td></tr>
+  <tr><td>③ 结构化 + NL2SQL / Pandas</td><td>灌进 SQL/DataFrame,LLM 生成查询去算</td><td>聚合统计("平均薪资/几人")</td><td>要引 SQL 引擎 + query 路由,量级大;非向量 RAG 范畴</td></tr>
+</table>
+<p>RAGForge 是<b>向量 RAG 知识引擎</b>(非分析型数据库),务实匹配 = <b>①</b>,可选叠加 ② 对小表格。本方案取 ①。</p>
+
+<h2 id="s3"><span class="n">3.</span>设计要点</h2>
+<h3>① 白名单四处放行 csv</h3>
+<p>散传 <code>ALLOWED_EXTENSIONS</code>、压缩包 <code>SupportedDocumentTypes.DOC_EXTENSIONS</code>、前端 <code>accept</code> + <code>EXTENSION_CONTENT_TYPES(csv→text/csv)</code>、散传 MIME 校验加 <code>csv</code> case。</p>
+<h3>② 新增一步 CSV→行文本转换(核心,唯一新逻辑)</h3>
+<p>在 <code>DocumentPipelineService.resolveText</code> 里对 <code>text/csv</code> <b>特判</b>——不走 <code>readRawText</code> 原样喂,而是先解析成"每行带表头"的可读文本,再<b>完全复用现有文本分块 + 向量化 + 检索管道</b>,一行不改下游。</p>
+<h3>③ CSV 解析用 Apache Commons CSV</h3>
+<p>新增 <code>commons-csv</code> 依赖(~1 个 jar),稳妥处理引号包裹、值内逗号、值内换行、BOM、编码,避免手写正则踩坑。</p>
+
+<h2 id="s4"><span class="n">4.</span>CSV → 行文本转换</h2>
+<div class="diagram">输入 CSV:
+姓名,部门,职级,入职
+张三,研发,P7,2021-03
+李四,产品,P6,2022-08
+
+转换后(喂给现有分块器):
+姓名: 张三;部门: 研发;职级: P7;入职: 2021-03
+
+姓名: 李四;部门: 产品;职级: P6;入职: 2022-08</div>
+<p>每行一段(空行分隔),<b>表头拼在每行前</b>,保证切开后每个 chunk 仍带列语义。空值列可选择跳过或保留空。</p>
+
+<h2 id="s5"><span class="n">5.</span>具体改动点</h2>
+<table>
+  <tr><th>文件</th><th>改动</th></tr>
+  <tr><td><code>pom.xml</code></td><td>加 <code>commons-csv</code> 依赖</td></tr>
+  <tr><td>新增 <code>CsvToTextConverter</code></td><td>CSV→"表头: 值"行文本;含护栏(行数/字符上限、分隔符嗅探)</td></tr>
+  <tr><td><code>DocumentPipelineService.resolveText</code></td><td><code>text/csv</code> 特判 → 调转换器;markdown/txt/html 不动</td></tr>
+  <tr><td><code>SupportedDocumentTypes.DOC_EXTENSIONS</code></td><td>+csv(压缩包子文档白名单)</td></tr>
+  <tr><td><code>DocumentServiceImpl</code> ALLOWED_EXTENSIONS + MIME switch</td><td>+csv(<code>text/csv</code> \| <code>application/vnd.ms-excel</code> \| octet-stream 容忍)</td></tr>
+  <tr><td><code>ArchiveExpandConsumer.guessContentType</code></td><td>+<code>csv→text/csv</code></td></tr>
+  <tr><td>前端 <code>KnowledgeBase.vue</code> accept + <code>document.js</code> EXTENSION_CONTENT_TYPES</td><td>+<code>.csv</code> / <code>text/csv</code></td></tr>
+</table>
+<div class="callout c-green">
+  <div class="t">复用面</div>
+  分块、向量化、ES 索引、检索、三层展示、去重、护栏(压缩包内)全部<b>复用现成</b>,新逻辑只有"CSV→行文本"这一个转换器。
+</div>
+
+<h2 id="s6"><span class="n">6.</span>决策点(待拍板)</h2>
+<div class="decide"><div class="q">D1 · 分块粒度</div><div class="opts"><b>推荐</b>:每行 header-prefixed 段落,交现有 size 分块器(多行打包进一个 chunk,省事够用)。<b>备选</b>:严格"一行一 chunk"(需写专用 CsvChunker,稍重)。</div></div>
+<div class="decide"><div class="q">D2 · 表头假设</div><div class="opts"><b>推荐</b>:默认"第一行是表头"。无表头 CSV → 仍当表头 或 用 <code>列1/列2</code> 占位?</div></div>
+<div class="decide"><div class="q">D3 · 分隔符</div><div class="opts"><b>推荐</b>:<code>,</code> 默认 + 自动嗅探 <code>;</code> / <code>\t</code>(欧洲/Excel 常用 <code>;</code>)。</div></div>
+<div class="decide"><div class="q">D4 · 大表护栏</div><div class="opts"><b>推荐</b>:设上限(如<b>最多 5 万行 / 解析后总字符上限</b>),超限截断 + <code>log</code> + 写 summary 提示(与压缩包护栏同口径)。阈值待定。</div></div>
+<div class="decide"><div class="q">D5 · 超宽单行</div><div class="opts"><b>推荐</b>:某行拼出超 chunk 大小时按现有分块器正常切(可接受语义略碎)。</div></div>
+
+<h2 id="s7"><span class="n">7.</span>边界与护栏</h2>
+<ul>
+  <li><b>编码/BOM</b>:UTF-8 优先,带 BOM 剥除;非 UTF-8 尽力而为,失败回退原文并 log。</li>
+  <li><b>畸形行</b>:列数与表头不齐 → 多余列用序号列名、缺列留空,不因单行畸形中断整表。</li>
+  <li><b>空表 / 仅表头</b>:无数据行 → 按"无可入库内容"处理(与压缩包空包一致口径)。</li>
+  <li><b>超大文件</b>:受散传 50MB 与 D4 行数/字符上限双重约束;压缩包内 CSV 另受单 entry 50MB 约束。</li>
+  <li><b>失败友好</b>:解析异常走 <code>ErrorMessages.toUserFriendly</code> 净化为中文,不泄露内部细节(承接 BUG-A 修复口径)。</li>
+</ul>
+
+<h2 id="s8"><span class="n">8.</span>测试用例</h2>
+<p><b>单测</b>(本地验证,不提交):带引号、值内逗号、值内换行、BOM、空值、仅表头、无表头、<code>;</code> 分隔、超大截断、畸形行。</p>
+<p><b>云端回归</b>:传真实 CSV → 每行入库成 chunk、表头在、检索"张三 P7"命中;<b>散传 + 压缩包内 CSV 两条路都测</b>。</p>
+
+<h2 id="s9"><span class="n">9.</span>分阶段与目标日期</h2>
+<table>
+  <tr><th>阶段</th><th>内容</th><th>目标日</th></tr>
+  <tr><td><span class="pill p0">P0</span></td><td>方案评审定稿(D1~D5 拍板)</td><td>2026-07-04</td></tr>
+  <tr><td><span class="pill p1">P1</span></td><td>依赖 + 转换器 + 白名单 + 单测</td><td>2026-07-05</td></tr>
+  <tr><td><span class="pill p2">P2</span></td><td>云端回归(散传 + 压缩包)</td><td>2026-07-05</td></tr>
+</table>
+
+<h2 id="s10"><span class="n">10.</span>范围外(单独评估)</h2>
+<div class="callout c-amber">
+  <div class="t">聚合统计问答不在本期</div>
+  "平均薪资 / 总人数 / 按部门汇总"等聚合计算,向量 RAG 答不好,需 <b>NL2SQL / Pandas 引擎 + query 类型路由</b>,是另一个量级的大功能。若后续有明确"对表格算数"诉求,另立方案评估。
+</div>
+
+<div class="foot">
+  <b>修订记录</b>
+  <table>
+    <tr><th>版本</th><th>日期</th><th>修订人</th><th>说明</th></tr>
+    <tr><td>V1</td><td>2026-07-03</td><td>架构组</td><td>初稿:行即 chunk + 表头前缀方案,复用文本管道;5 个决策点待拍板</td></tr>
+  </table>
+  <p style="margin-top:14px">RAGForge · CSV 文档入库支持设计 · 承接 txt 散传白名单(<code>dfbff4a</code>)、压缩包图片+txt(<code>58a1df4</code>)</p>
+</div>
+
+</div>
+</body>
+</html>
