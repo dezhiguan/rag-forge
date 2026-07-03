@@ -143,6 +143,15 @@ class RemoteOcrClientTest {
     Thread.interrupted();
   }
 
+  @Test
+  void normalizeNoText_treatsBareZeroAsEmpty() {
+    // qwen-vl-ocr 无文字图返回 "0",应归一化为空,让上层走图片占位符。
+    assertThat(RemoteOcrClient.normalizeNoText("0")).isEmpty();
+    assertThat(RemoteOcrClient.normalizeNoText("  0 ")).isEmpty();
+    assertThat(RemoteOcrClient.normalizeNoText("2024 年营收")).isEqualTo("2024 年营收");
+    assertThat(RemoteOcrClient.normalizeNoText("100")).isEqualTo("100");
+  }
+
   private static EmbeddingProperties properties() {
     EmbeddingProperties properties = new EmbeddingProperties();
     properties.getOcr().setEndpoint("http://ocr.example.test/v1");

@@ -62,7 +62,7 @@ public class RemoteOcrClient implements OcrClient {
         throw new BizException("OCR_HTTP_" + response.statusCode());
       }
       JsonNode tree = objectMapper.readTree(response.body());
-      String text = extractOcrText(tree);
+      String text = normalizeNoText(extractOcrText(tree));
       int outTokens = estimateTokens(text);
       metrics.recordOcrCall(1, outTokens);
       // 计量并联：input=usage 的 image/input token，output=usage 或文本估算
@@ -104,6 +104,15 @@ public class RemoteOcrClient implements OcrClient {
         // 只返回检测框坐标(如 236,72,75,421,90)而非识别文字,导致索引里是坐标垃圾、检索不到。
         "parameters",
         Map.of("ocr_options", Map.of("task", "text_recognition")));
+  }
+
+  /**
+   * qwen-vl-ocr 对无文字图片会返回单字符 "0" 作为"未识别到文字"的信号。若原样入库,会把无意义的
+   * "0" 当作图片正文,既污染索引又可能误命中含 "0" 的查询。此处归一化为空串,交由上层改走
+   * "[图片：文件名]" 占位符。
+   */
+  static String normalizeNoText(String text) {
+    return text != null && "0".equals(text.trim()) ? "" : text;
   }
 
   static String extractOcrText(JsonNode root) {
