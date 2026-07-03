@@ -87,9 +87,13 @@ should_run_disk_cleanup() {
     return 0
   fi
   local threshold="${CLEANUP_DISK_THRESHOLD_PERCENT:-80}"
+  # 镜像实际落在 /var/lib/rancher/k3s（Server3 上 bind-mount 到 /data/fastdisk 数据盘），
+  # 检查根分区会永远低于阈值，导致清理从不触发。
+  local image_fs="/var/lib/rancher/k3s"
+  [[ -d "${image_fs}" ]] || image_fs="/"
   local used_pct
-  used_pct="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
-  echo "Root partition usage: ${used_pct}% (cleanup threshold: ${threshold}%)"
+  used_pct="$(df -P "${image_fs}" | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+  echo "Image filesystem (${image_fs}) usage: ${used_pct}% (cleanup threshold: ${threshold}%)"
   if [[ "${used_pct}" -ge "${threshold}" ]]; then
     return 0
   fi
@@ -123,23 +127,23 @@ RENDERED_FRONTEND_DEPLOY="$(mktemp)"
 ROLLOUT_TIMEOUT="${RAGFORGE_ROLLOUT_TIMEOUT:-600s}"
 trap 'rm -f "${RENDERED_DEPLOY}" "${RENDERED_FRONTEND_DEPLOY}"' EXIT
 
-echo "[0/6] Optional safe disk cleanup"
+echo "[0/7] Optional safe disk cleanup"
 if should_run_disk_cleanup; then
   step_start "disk cleanup"
   bash "${SCRIPT_DIR}/cleanup-server3-disk-safe.sh"
   step_end
 fi
 
-step_start "[1/6] Ensure file storage directory"
+step_start "[1/7] Ensure file storage directory"
 mkdir -p /data/files
 chown 10001:10001 /data/files
 step_end
 
-step_start "[2/6] Ensure k3s sandbox (pause) image"
+step_start "[2/7] Ensure k3s sandbox (pause) image"
 bash "${SCRIPT_DIR}/ensure-k3s-sandbox-image.sh"
 step_end
 
-step_start "[3/6] Build and import images"
+step_start "[3/7] Build and import images"
 if [[ "${USE_REMOTE_IMAGES:-0}" == "1" ]]; then
   echo "Use remote images; skip local docker build/import"
 elif [[ "${SKIP_IMAGE_BUILD:-0}" != "1" ]]; then
@@ -170,12 +174,12 @@ else
 fi
 step_end
 
-step_start "[4/6] Create backend secret from /opt/shared/env"
+step_start "[4/7] Create backend secret from /opt/shared/env"
 bash "${SCRIPT_DIR}/create-ragforge-k8s-secret.sh"
 ensure_image_pull_secret
 step_end
 
-step_start "[5/6] Apply manifests (backend=${BACKEND_IMAGE}, frontend=${FRONTEND_IMAGE})"
+step_start "[5/7] Apply manifests (backend=${BACKEND_IMAGE}, frontend=${FRONTEND_IMAGE})"
 cleanup_stale_pods
 if k3s kubectl -n "${NAMESPACE}" get deployment ragforge-backend >/dev/null 2>&1; then
   echo "Retiring legacy deployment/ragforge-backend before api/worker split rollout"
@@ -199,9 +203,19 @@ k3s kubectl apply -f "${RENDERED_FRONTEND_DEPLOY}"
 wait_rollout ragforge-frontend
 step_end
 
-step_start "[6/6] Current status"
+step_start "[6/7] Current status"
 k3s kubectl -n "${NAMESPACE}" get pods -o wide
 k3s kubectl -n "${NAMESPACE}" get svc,endpoints
+step_end
+
+step_start "[7/7] Prune unused container images"
+# 部署成功后清理历史镜像。按"是否被容器使用"判断而非仓库名匹配
+# （生产镜像是 ACR 全限定名，按 docker.io/ragforge/* 匹配一个都删不掉）。失败不阻塞部署。
+k3s crictl rmi --prune || true
+if command -v docker >/dev/null 2>&1; then
+  docker image prune -a -f --filter "until=72h" || true
+fi
+df -h /var/lib/rancher/k3s 2>/dev/null || df -h /
 step_end
 
 echo ""
