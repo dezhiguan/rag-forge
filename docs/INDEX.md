@@ -49,6 +49,8 @@
 | v5-acceptance-t11-summary.md | T11 验收套件总结 |
 | T11-headed-test-report.md | T11 有头执行报告 |
 | v6-stuck-running-recovery.sql | V6 Judge 卡 RUNNING 排障脚本 |
+| security/blackbox-security-assessment-V1.md | **生产黑盒+认证态安全评估 V1**(2026-07-03):IDOR/JWT/安全头/错误处理,8 gap + 11 已验证防护 |
+| security/*.sh · jwt-tamper-test.py | 可复现安全测试套件(黑盒 / 认证态 IDOR / JWT 篡改,令牌经环境变量注入) |
 
 ## deploy/ — 部署 / 运维 / 监控
 
