@@ -66,7 +66,7 @@ class UploadTokenServiceTest {
 
     assertThatThrownBy(() -> uploadTokenService.consume("uplt_missing"))
         .isInstanceOf(BizException.class)
-        .hasMessage("TOKEN_INVALID");
+        .hasMessage("UPLOAD_TOKEN_INVALID");
   }
 
   @Test
@@ -78,7 +78,7 @@ class UploadTokenServiceTest {
 
     assertThatThrownBy(() -> uploadTokenService.consume(token + "x"))
         .isInstanceOf(BizException.class)
-        .hasMessage("TOKEN_INVALID");
+        .hasMessage("UPLOAD_TOKEN_INVALID");
   }
 
   private TokenPayload payload() {

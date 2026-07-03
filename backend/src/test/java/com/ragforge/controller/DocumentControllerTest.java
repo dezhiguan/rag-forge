@@ -362,7 +362,7 @@ class DocumentControllerTest {
 
   @Test
   void registerUploadedDocument_replayReturnsTokenInvalid() throws Exception {
-    when(uploadTokenService.consume("uplt_replay")).thenThrow(new BizException(409, "TOKEN_INVALID"));
+    when(uploadTokenService.consume("uplt_replay")).thenThrow(new BizException(409, "UPLOAD_TOKEN_INVALID"));
 
     mockMvc
         .perform(
@@ -371,8 +371,8 @@ class DocumentControllerTest {
                 .content("{\"uploadToken\":\"uplt_replay\",\"kbId\":16}"))
         .andExpect(status().isConflict())
         // 新契约：机器码在 errorCode，msg 为中文用户提示。
-        .andExpect(jsonPath("$.errorCode").value("TOKEN_INVALID"))
-        .andExpect(jsonPath("$.msg").value("登录状态已失效，请重新登录"));
+        .andExpect(jsonPath("$.errorCode").value("UPLOAD_TOKEN_INVALID"))
+        .andExpect(jsonPath("$.msg").value("上传凭证已失效或已被使用，请重新上传该文件"));
   }
 
   @Test

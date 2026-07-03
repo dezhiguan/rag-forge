@@ -48,6 +48,9 @@ public final class ErrorMessages {
           Map.entry("UNAUTHORIZED", "登录状态已失效，请重新登录"),
           Map.entry("TOKEN_INVALID", "登录状态已失效，请重新登录"),
           Map.entry("LOGIN_REQUIRED", "请先登录后再操作"),
+          // 上传（uploadToken 是上传凭证，不是登录态，文案必须区分开）
+          Map.entry("UPLOAD_TOKEN_INVALID", "上传凭证已失效或已被使用，请重新上传该文件"),
+          Map.entry("UPLOAD_RATE_LIMITED", "上传过于频繁，请稍后再试"),
           // 知识库（常见用户可见）
           Map.entry("KB_ACCESS_DENIED", "无权访问该知识库或案例"),
           Map.entry("KB_WRITE_FORBIDDEN", "您没有该知识库的写权限"),

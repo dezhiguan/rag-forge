@@ -80,6 +80,9 @@ ragforge:
       cookie-secure: ${RAGFORGE_AUTH_PROXY_COOKIE_SECURE:true}
   files:
     upload-path: /data/files/
+  upload:
+    # presign/register 用户级限流（次/分钟/端点），<=0 关闭；对人宽松、拦失控脚本
+    rate-limit-per-minute: ${RAGFORGE_UPLOAD_RATE_LIMIT_PER_MINUTE:120}
   oss:
     orphan-cleanup:
       enabled: ${RAGFORGE_OSS_ORPHAN_CLEANUP_ENABLED:true}

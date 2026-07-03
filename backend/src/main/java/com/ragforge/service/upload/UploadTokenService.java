@@ -59,7 +59,7 @@ public class UploadTokenService {
   public TokenPayload consume(String token) {
     String payloadJson = redisTemplate.opsForValue().getAndDelete(redisKey(token));
     if (payloadJson == null) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
     try {
       TokenPayload payload = objectMapper.readValue(payloadJson, TokenPayload.class);
@@ -68,32 +68,32 @@ public class UploadTokenService {
     } catch (BizException e) {
       throw e;
     } catch (Exception e) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
   }
 
   private void verify(String token, TokenPayload payload) {
     if (token == null || !token.startsWith(TOKEN_PREFIX)) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
     if (!token.equals(payload.getUploadToken())) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
     String compact = token.substring(TOKEN_PREFIX.length());
     String[] parts = compact.split("\\.");
     if (parts.length != 3) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
     String expected = sign(parts[0] + "." + parts[1]);
     if (!constantTimeEquals(expected, parts[2])) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
     TokenPayload signedPayload = decodePayload(parts[1]);
     if (!sameSignedPayload(signedPayload, payload)) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
     if (payload.getExpiresAt() == null || payload.getExpiresAt() < Instant.now().getEpochSecond()) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
   }
 
@@ -101,7 +101,7 @@ public class UploadTokenService {
     try {
       return objectMapper.readValue(Base64.getUrlDecoder().decode(encoded), TokenPayload.class);
     } catch (Exception e) {
-      throw new BizException(409, "TOKEN_INVALID");
+      throw new BizException(409, "UPLOAD_TOKEN_INVALID");
     }
   }
 
