@@ -21,6 +21,15 @@ public class HttpClientConfig {
     return buildRestTemplate(3, 8);
   }
 
+  /**
+   * 认证网关代理专用：client_assertion 为单次使用（网关按 jti 去重），绝不能自动重试——重试会复用同一
+   * jti 被判 CLIENT_ASSERTION_REPLAYED，既偶发导致真实用户登录失败，又会掩盖 429 等真实响应。故禁用重试。
+   */
+  @Bean("authRestTemplate")
+  public RestTemplate authRestTemplate() {
+    return new RestTemplate(requestFactory(Duration.ofSeconds(3), Duration.ofSeconds(8), true));
+  }
+
   /** 调试台 LLM 生成：DashScope chat 在云环境常需 10s+，单独放宽读超时。 */
   @Bean
   public RestTemplate llmRestTemplate(
@@ -48,6 +57,11 @@ public class HttpClientConfig {
 
   static HttpComponentsClientHttpRequestFactory requestFactory(
       Duration connectTimeout, Duration responseTimeout) {
+    return requestFactory(connectTimeout, responseTimeout, false);
+  }
+
+  static HttpComponentsClientHttpRequestFactory requestFactory(
+      Duration connectTimeout, Duration responseTimeout, boolean disableRetries) {
     PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
     connectionManager.setMaxTotal(50);
     connectionManager.setDefaultMaxPerRoute(20);
@@ -58,11 +72,14 @@ public class HttpClientConfig {
             .setResponseTimeout(Timeout.ofMilliseconds(responseTimeout.toMillis()))
             .build();
 
-    CloseableHttpClient httpClient =
+    var httpClientBuilder =
         HttpClients.custom()
             .setConnectionManager(connectionManager)
-            .setDefaultRequestConfig(requestConfig)
-            .build();
+            .setDefaultRequestConfig(requestConfig);
+    if (disableRetries) {
+      httpClientBuilder.disableAutomaticRetries();
+    }
+    CloseableHttpClient httpClient = httpClientBuilder.build();
 
     HttpComponentsClientHttpRequestFactory factory =
         new HttpComponentsClientHttpRequestFactory(httpClient);

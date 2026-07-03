@@ -3,6 +3,7 @@ package com.ragforge.auth;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
 import lombok.Data;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
@@ -24,7 +25,7 @@ public class AuthGatewayProxyClient {
   public AuthGatewayProxyClient(
       AuthProxyProperties properties,
       ClientAssertionFactory clientAssertionFactory,
-      RestTemplate restTemplate) {
+      @Qualifier("authRestTemplate") RestTemplate restTemplate) {
     this.properties = properties;
     this.clientAssertionFactory = clientAssertionFactory;
     this.restTemplate = restTemplate;
