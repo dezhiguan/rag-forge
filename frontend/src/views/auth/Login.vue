@@ -433,8 +433,9 @@ onUnmounted(() => {
 
 .captcha-row {
   display: grid;
-  grid-template-columns: 1fr 100px;
+  grid-template-columns: 1fr 88px;
   gap: 8px;
+  align-items: center;
 }
 
 .captcha-row input {
@@ -444,14 +445,14 @@ onUnmounted(() => {
 
 .captcha-img,
 .captcha-fallback {
-  height: 40px;
+  height: 32px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #f8fafc;
 }
 
 .captcha-img {
-  width: 100px;
+  width: 88px;
   object-fit: cover;
 }
 
