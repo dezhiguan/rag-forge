@@ -444,7 +444,7 @@
               <input type="checkbox" v-model="kbForm.imageModeOn" />
             </span>
             <span class="toggle-hint">
-              开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
+              开启后，HTML/PDF/Word 文档中的内嵌图片会走 OCR + 向量化入库；关闭则文档内嵌图不处理、只走文本。纯图片文件不受此开关控制。
             </span>
           </label>
           </div>
@@ -567,7 +567,7 @@
               <input type="checkbox" v-model="editForm.imageModeOn" />
             </span>
             <span class="toggle-hint">
-              开启后，HTML/PDF/Word 内嵌图与纯图片文档会走 OCR + 向量化入库；关闭只走文本管道。
+              开启后，HTML/PDF/Word 文档中的内嵌图片会走 OCR + 向量化入库；关闭则文档内嵌图不处理、只走文本。纯图片文件不受此开关控制。
             </span>
           </label>
           </div>
