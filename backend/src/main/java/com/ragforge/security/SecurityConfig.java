@@ -62,13 +62,7 @@ public class SecurityConfig {
                 eh.authenticationEntryPoint(
                     (request, response, ex) ->
                         writeJson(
-                            response,
-                            HttpServletResponse.SC_UNAUTHORIZED,
-                            // 服务型接口（/search、/answer、/documents、/mcp…）缺 X-API-Key → 引导携带密钥；
-                            // 其余接口 → 登录态失效。都返回友好中文 + 机器码。
-                            isApiKeyServicePath(request) && request.getHeader("X-API-Key") == null
-                                ? "API_KEY_MISSING"
-                                : "UNAUTHORIZED"))
+                            response, HttpServletResponse.SC_UNAUTHORIZED, resolveUnauthenticatedCode(request)))
                     .accessDeniedHandler(
                         (request, response, ex) -> writeJson(response, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN")))
         .authorizeHttpRequests(
@@ -81,7 +75,7 @@ public class SecurityConfig {
                     // SSE 未读数推送：EventSource 不能带 Authorization header，故放行到 Controller，
                     // 由 NotificationSseService 用 query-param 的 token 自行验签鉴权。
                     .requestMatchers("/api/v1/notifications/stream").permitAll()
-                    .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/documents", "/api/v1/internal/**", "/mcp", "/mcp/**", "/sse", "/sse/**")
+                    .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/documents", "/api/v1/internal/**", "/mcp", "/mcp/**")
                     .access(
                         (authentication, context) ->
                             new AuthorizationDecision(
@@ -92,6 +86,22 @@ public class SecurityConfig {
                     .anyRequest().authenticated())
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
+  }
+
+  /**
+   * 未认证时的机器码分级：服务型接口缺 X-API-Key → 引导携带密钥；携带了 Bearer 令牌却仍到达入口点
+   * （少见，失效/过期令牌通常已在 JwtAuthenticationFilter 短路）→ 登录态失效;完全未携带任何凭证 → 引导先登录。
+   */
+  private static String resolveUnauthenticatedCode(HttpServletRequest request) {
+    if (isApiKeyServicePath(request) && request.getHeader("X-API-Key") == null) {
+      return "API_KEY_MISSING";
+    }
+    return hasBearerToken(request) ? "UNAUTHORIZED" : "LOGIN_REQUIRED";
+  }
+
+  private static boolean hasBearerToken(HttpServletRequest request) {
+    String authorization = request.getHeader("Authorization");
+    return authorization != null && authorization.startsWith("Bearer ");
   }
 
   /** 是否为 API Key 鉴权的服务型接口（与 authorizeHttpRequests 中的放行集合保持一致）。 */
@@ -105,9 +115,7 @@ public class SecurityConfig {
         || uri.startsWith("/api/v1/documents")
         || uri.startsWith("/api/v1/internal/")
         || uri.equals("/mcp")
-        || uri.startsWith("/mcp/")
-        || uri.equals("/sse")
-        || uri.startsWith("/sse/");
+        || uri.startsWith("/mcp/");
   }
 
   /** 安全层拒绝响应：机器码放 errorCode，msg 翻成友好中文（外部直连亦可读）。 */

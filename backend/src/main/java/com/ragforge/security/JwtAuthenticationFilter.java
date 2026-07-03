@@ -1,6 +1,7 @@
 package com.ragforge.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ragforge.common.ErrorMessages;
 import com.ragforge.common.Result;
 import com.ragforge.events.AuthEventService;
 import com.ragforge.events.AuthJwtToken;
@@ -132,7 +133,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   }
 
   private void writeUnauthorized(HttpServletResponse response) throws IOException {
-    writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
+    // 令牌失效/过期/被吊销 → 返回友好中文 + 机器码，与安全层入口点口径一致（前端按 errorCode 本地化）。
+    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    response.setCharacterEncoding("UTF-8");
+    response.setHeader(TraceIds.HEADER_TRACE_ID, TraceIds.current());
+    response.setHeader(TraceIds.HEADER_REQUEST_ID, TraceIds.currentRequestId());
+    objectMapper.writeValue(
+        response.getWriter(),
+        Result.error(
+            HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", ErrorMessages.toChinese("UNAUTHORIZED")));
   }
 
   private void writeError(HttpServletResponse response, int status, String message) throws IOException {
