@@ -133,7 +133,18 @@ public class AuthProxyController {
   @PostMapping("/login")
   public ResponseEntity<Result<Map<String, Object>>> login(@RequestBody PasswordLoginRequest request) {
     return loginResponse(
-        client.loginPassword(request.account(), request.password(), Boolean.TRUE.equals(request.remember())));
+        client.loginPassword(
+            request.account(),
+            request.password(),
+            request.captcha(),
+            request.challengeId(),
+            Boolean.TRUE.equals(request.remember())));
+  }
+
+  /** 换一张：前端"看不清"时获取一张新的图形验证码。返回 {captchaImage, challengeId}。 */
+  @GetMapping("/captcha")
+  public Result<Map<String, Object>> captcha() {
+    return Result.ok(client.getCaptcha());
   }
 
   @PostMapping("/login-mobile")

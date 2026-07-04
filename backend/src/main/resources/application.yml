@@ -119,7 +119,7 @@ ragforge:
       max-concurrent: ${RAGFORGE_RETRIEVAL_VECTOR_CONCURRENCY:5}
       timeout-ms: ${RAGFORGE_RETRIEVAL_VECTOR_TIMEOUT_MS:8000}
     hybrid:
-      max-concurrent: ${RAGFORGE_RETRIEVAL_HYBRID_CONCURRENCY:5}
+      max-concurrent: ${RAGFORGE_RETRIEVAL_HYBRID_CONCURRENCY:20}
       timeout-ms: ${RAGFORGE_RETRIEVAL_HYBRID_TIMEOUT_MS:12000}
     full:
       max-concurrent: ${RAGFORGE_RETRIEVAL_FULL_CONCURRENCY:1}
@@ -127,6 +127,10 @@ ragforge:
     rewrite:
       max-concurrent: ${RAGFORGE_RETRIEVAL_REWRITE_CONCURRENCY:3}
       timeout-ms: ${RAGFORGE_RETRIEVAL_REWRITE_TIMEOUT_MS:10000}
+    # 分布式并发限流(Redis 全局)。enabled=false 回退进程内 Semaphore(每 pod 本地)。
+    distributed-limit:
+      enabled: ${RAGFORGE_RETRIEVAL_DISTRIBUTED_LIMIT_ENABLED:true}
+      lease-ms: ${RAGFORGE_RETRIEVAL_DISTRIBUTED_LIMIT_LEASE_MS:20000}
 
 embedding:
   api-key: ${DASHSCOPE_API_KEY:}

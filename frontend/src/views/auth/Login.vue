@@ -69,9 +69,18 @@
                 :disabled="submitDisabled"
                 @input="errorMsg = ''"
               />
-              <img v-if="captchaImage" class="captcha-img" :src="captchaImage" alt="图形验证码" />
-              <div v-else class="captcha-fallback">R7A2</div>
+              <img
+                v-if="captchaImage"
+                class="captcha-img"
+                :src="captchaImage"
+                alt="图形验证码"
+                title="点击换一张"
+                style="cursor: pointer"
+                @click="onRefreshCaptcha"
+              />
+              <button v-else type="button" class="captcha-fallback" @click="onRefreshCaptcha">点击获取</button>
             </div>
+            <a class="captcha-refresh" href="#" @click.prevent="onRefreshCaptcha">看不清？换一张</a>
           </div>
           <div class="row-between">
             <label class="check" :class="{ on: form.remember }">
@@ -142,7 +151,7 @@
 <script setup>
 import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { loginByPassword, loginByMobile, sendSmsCode } from '../../api/auth'
+import { loginByPassword, loginByMobile, sendSmsCode, fetchCaptcha } from '../../api/auth'
 import { applySession } from '../../api/session'
 import { loadMe } from '../../api/account'
 
@@ -193,6 +202,19 @@ function switchTab(next) {
   if (loading.value) return
   tab.value = next
   errorMsg.value = ''
+}
+
+async function onRefreshCaptcha() {
+  try {
+    const c = await fetchCaptcha()
+    captchaRequired.value = true
+    captchaImage.value = c.captchaImage || ''
+    form.challengeId = c.challengeId || ''
+    form.captcha = ''
+    errorMsg.value = ''
+  } catch {
+    errorMsg.value = '获取验证码失败，请稍后重试'
+  }
 }
 
 async function handlePasswordLogin() {
@@ -411,20 +433,26 @@ onUnmounted(() => {
 
 .captcha-row {
   display: grid;
-  grid-template-columns: 1fr 104px;
-  gap: 10px;
+  grid-template-columns: 1fr 88px;
+  gap: 8px;
+  align-items: center;
+}
+
+.captcha-row input {
+  width: 100%;
+  min-width: 0;
 }
 
 .captcha-img,
 .captcha-fallback {
-  height: 40px;
+  height: 32px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #f8fafc;
 }
 
 .captcha-img {
-  width: 104px;
+  width: 88px;
   object-fit: cover;
 }
 
@@ -436,6 +464,22 @@ onUnmounted(() => {
   font-weight: 800;
   letter-spacing: 2px;
   user-select: none;
+  cursor: pointer;
+}
+
+.captcha-refresh {
+  display: block;
+  margin-top: 6px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 400;
+  color: #94a3b8;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.captcha-refresh:hover {
+  color: #1d4ed8;
 }
 
 .sms-btn {

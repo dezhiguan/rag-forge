@@ -15,18 +15,19 @@
 | --- | --- | --- |
 | V1 | 2026-07-03 | 首次评估:外部黑盒 + 认证态 IDOR / JWT / 输入校验;形成 8 项 gap + 11 项已验证防护 |
 | V1.1 | 2026-07-03 | 落地首轮修复:安全响应头 + server_tokens、/sse 收口、登录错误语义分级、CSP(缓解 SEC-BB-02);另 3 项(令牌存储重构 / aud-scope 改名 / 短信验证码)列为待办,见「修复状态」 |
+| V1.2 | 2026-07-03 | 已合并 main 并部署生产(deploy-k3s + deploy-ingress 均 success);生产实测复核 SEC-BB-01/02/03/04/08 全部生效,SPA 未被 CSP 打崩;同步修正 `run-blackbox-suite.sh` 的 /sse 判据(回退 SPA 亦视为已下线) |
 
 ## 修复状态（V1.1 · 2026-07-03）
 
-> 本轮修复分支 `docs/security-assessment`,后端 `mvn clean test-compile` 通过(362 主源 + 136 测试),CSP 已核线上 bundle 无 `eval`/`new Function`/wasm(`script-src 'self'` 不会白屏)。
+> 本轮修复后端 `mvn clean test-compile` 通过(362 主源 + 136 测试),CSP 已核线上 bundle 无 `eval`/`new Function`/wasm(`script-src 'self'` 不会白屏)。**已合并 main 并部署到生产(deploy-k3s + deploy-ingress 均 success),下表状态列已按生产实测复核。**
 
-| 发现 | 状态 | 落点 |
+| 发现 | 状态 | 落点 / 生产实测 |
 | --- | --- | --- |
-| SEC-BB-01 安全响应头 + 版本泄露 | ✅ 已修 | `nginx.conf` ragforge.net 443 块 + `= /index.html` 补 5 头 + `server_tokens off` |
-| SEC-BB-02 令牌 JS 存储 + 无 CSP | 🟡 部分修 | 已加 CSP `script-src 'self'`(缓解 XSS 窃取令牌);**HttpOnly 令牌下沉属认证架构改造,单列设计另行推进** |
-| SEC-BB-03 /sse 未下线 | ✅ 已修 | `SecurityConfig` 移除 `/sse`、`/sse/**`(不再回 MCP 专属 API_KEY_MISSING;MCP SSE 传输 yml 早已 `enabled:false`) |
-| SEC-BB-04 登录错误语义 | ✅ 已修 | 未带凭证→`LOGIN_REQUIRED`「请先登录」;令牌失效(过滤器)→友好中文「登录状态已失效」;新增 `resolveUnauthenticatedCode` + `ErrorMessages.LOGIN_REQUIRED` |
-| SEC-BB-08 nginx 版本泄露 | ✅ 已修 | `server_tokens off`(并入 SEC-BB-01) |
+| SEC-BB-01 安全响应头 + 版本泄露 | ✅ 已修·**已上线验证** | `nginx.conf` 443 块 + `= /index.html` 补 5 头 + `server_tokens off`。实测:HSTS/CSP/X-Frame-Options/X-Content-Type-Options/Referrer-Policy 全部返回,`Server: nginx` 无版本 |
+| SEC-BB-02 令牌 JS 存储 + 无 CSP | 🟡 部分修·**CSP 已上线** | CSP `script-src 'self'` 已生效且 SPA 未打崩(首页 200 + 主 JS 200);**HttpOnly 令牌下沉属认证架构改造,单列设计另行推进** |
+| SEC-BB-03 /sse 未下线 | ✅ 已修·**已上线验证** | `SecurityConfig` + `WebMvcConfig` 移除 `/sse`、`/sse/**`;nginx 无 /sse location。实测:/sse 回退 SPA(200),不再暴露 MCP 的 `API_KEY_MISSING`(比 404 更彻底,连后端都不再命中) |
+| SEC-BB-04 登录错误语义 | ✅ 已修·**已上线验证** | 未带凭证→`LOGIN_REQUIRED`「请先登录后再操作」;令牌失效(过滤器)→友好中文「登录状态已失效」+ errorCode。实测:`/api/login`、`/api/v1/kb` 均返回 `LOGIN_REQUIRED` |
+| SEC-BB-08 nginx 版本泄露 | ✅ 已修·**已上线验证** | `server_tokens off`;实测 `Server: nginx`(无版本号) |
 | SEC-BB-05 令牌 aud/scope 命名 | ⏸️ 待办 | JWT 契约,跨 Auth Gateway + 后端 + 存量令牌,爆炸半径大,需协同灰度,单列 |
 | SEC-BB-06 health 泄 traceId | ⏸️ 接受 | traceId 是全响应统一关联 ID(非机密),info 级,暂接受 |
 | SEC-BB-07 短信首发无验证码 | ⏸️ 待办 | 属功能项(验证码供应 + 前端流程);优先先核限流阈值是否够紧 |

@@ -78,7 +78,7 @@ class AuthProxyControllerTest {
   @Test
   void login_returnsAccessTokenAndSetsCookies() throws Exception {
     TokenResponse tokens = buildTokens(42L, "refresh-token-value");
-    when(client.loginPassword("alice@example.com", "P@ssw0rd", false)).thenReturn(tokens);
+    when(client.loginPassword("alice@example.com", "P@ssw0rd", null, null, false)).thenReturn(tokens);
     UserProfile profile = new UserProfile();
     profile.setAuthUserId(42L);
     profile.setDisplayName("Alice");
@@ -186,7 +186,7 @@ class AuthProxyControllerTest {
 
   @Test
   void authProxyException_proxiesStatusAndBody() throws Exception {
-    when(client.loginPassword(any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+    when(client.loginPassword(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
         .thenThrow(new AuthProxyException(
             org.springframework.http.HttpStatus.UNAUTHORIZED,
             "{\"error\":\"invalid_credentials\"}",
@@ -202,7 +202,7 @@ class AuthProxyControllerTest {
 
   @Test
   void authProxyException_emptyBody_returnsDefaultMessage() throws Exception {
-    when(client.loginPassword(any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+    when(client.loginPassword(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
         .thenThrow(new AuthProxyException(
             org.springframework.http.HttpStatus.BAD_GATEWAY, "", null));
 
