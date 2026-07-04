@@ -50,6 +50,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,25 +80,34 @@ public class AnswerService {
   private final AnswerJudgeProducer answerJudgeProducer;
   private final ModelResolver modelResolver;
   private final ModelUsageRecorder modelUsageRecorder;
+  // 应答流式专用有界池（M4）：按 bean 名 answerExecutor 注入，取代 commonPool。
+  private final Executor answerExecutor;
 
   public SseEmitter answer(AnswerRequest request) {
     validateRequest(request);
     RagAuthContext authContext = RagAuthContextHolder.get();
     SseEmitter emitter = new SseEmitter(600_000L);
-    CompletableFuture.runAsync(
-        () -> {
-          try {
-            RagAuthContextHolder.set(authContext);
-            answerInternal(request, delta -> send(emitter, "token", Map.of("delta", delta)), emitter);
-          } catch (BizException e) {
-            sendError(emitter, e.getMessage(), e.getMessage());
-          } catch (Exception e) {
-            log.error("answer stream failed", e);
-            sendError(emitter, "ANSWER_FAILED", e.getMessage());
-          } finally {
-            RagAuthContextHolder.clear();
-          }
-        });
+    try {
+      // 专用有界池(M4)，取代无界的 ForkJoinPool.commonPool；池满即拒绝，转成友好提示而非 500/无限积压。
+      CompletableFuture.runAsync(
+          () -> {
+            try {
+              RagAuthContextHolder.set(authContext);
+              answerInternal(request, delta -> send(emitter, "token", Map.of("delta", delta)), emitter);
+            } catch (BizException e) {
+              sendError(emitter, e.getMessage(), e.getMessage());
+            } catch (Exception e) {
+              log.error("answer stream failed", e);
+              sendError(emitter, "ANSWER_FAILED", e.getMessage());
+            } finally {
+              RagAuthContextHolder.clear();
+            }
+          },
+          answerExecutor);
+    } catch (RejectedExecutionException e) {
+      log.warn("answer executor saturated, rejecting request");
+      sendError(emitter, "ANSWER_BUSY", "服务繁忙，请稍后重试");
+    }
     return emitter;
   }
 

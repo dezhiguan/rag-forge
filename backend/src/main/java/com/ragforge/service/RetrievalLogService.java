@@ -24,7 +24,7 @@ public class RetrievalLogService {
   private final RetrievalLogMapper retrievalLogMapper;
   private final ObjectMapper objectMapper;
 
-  @Async
+  @Async("retrievalLogExecutor")
   public void logAsync(
       String query,
       String strategy,
@@ -36,7 +36,7 @@ public class RetrievalLogService {
     logAsync(query, strategy, kbIds, rewrittenQueries, topK, resultCount, latencyMs, null);
   }
 
-  @Async
+  @Async("retrievalLogExecutor")
   public void logAsync(
       String query,
       String strategy,
@@ -49,7 +49,7 @@ public class RetrievalLogService {
     logAsync(query, strategy, kbIds, rewrittenQueries, topK, resultCount, latencyMs, results, null);
   }
 
-  @Async
+  @Async("retrievalLogExecutor")
   public void logAsync(
       String query,
       String strategy,
@@ -65,7 +65,7 @@ public class RetrievalLogService {
         null);
   }
 
-  @Async
+  @Async("retrievalLogExecutor")
   public void logAsync(
       String query,
       String strategy,
@@ -100,7 +100,7 @@ public class RetrievalLogService {
   }
 
   /** 检索失败补记一条 ERROR，供「检索成功率」统计；日志落库自身异常不得连累主流程。 */
-  @Async
+  @Async("retrievalLogExecutor")
   public void logFailureAsync(
       String query, String strategy, List<Long> kbIds, long latencyMs, Long userId, Long orgId) {
     try {

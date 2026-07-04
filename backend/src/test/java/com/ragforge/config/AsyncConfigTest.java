@@ -68,4 +68,33 @@ class AsyncConfigTest {
       executor.shutdown();
     }
   }
+
+  @Test
+  void retrievalLogExecutor_isBoundedWithCallerRunsPolicy() {
+    ThreadPoolTaskExecutor executor = (ThreadPoolTaskExecutor) config.retrievalLogExecutor();
+    try {
+      assertThat(executor.getCorePoolSize()).isEqualTo(2);
+      assertThat(executor.getMaxPoolSize()).isEqualTo(4);
+      assertThat(executor.getThreadNamePrefix()).isEqualTo("retrieval-log-");
+      assertThat(executor.getThreadPoolExecutor().getRejectedExecutionHandler())
+          .isInstanceOf(java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy.class);
+    } finally {
+      executor.shutdown();
+    }
+  }
+
+  @Test
+  void answerExecutor_isBoundedNoQueueWithAbortPolicy() {
+    ThreadPoolTaskExecutor executor = (ThreadPoolTaskExecutor) config.answerExecutor();
+    try {
+      assertThat(executor.getCorePoolSize()).isEqualTo(4);
+      assertThat(executor.getMaxPoolSize()).isEqualTo(32);
+      assertThat(executor.getThreadNamePrefix()).isEqualTo("answer-stream-");
+      assertThat(executor.getThreadPoolExecutor().getQueue().remainingCapacity()).isZero();
+      assertThat(executor.getThreadPoolExecutor().getRejectedExecutionHandler())
+          .isInstanceOf(java.util.concurrent.ThreadPoolExecutor.AbortPolicy.class);
+    } finally {
+      executor.shutdown();
+    }
+  }
 }
