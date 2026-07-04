@@ -36,6 +36,15 @@
             </div>
             <div class="doc-header-actions">
               <button
+                v-if="isCompletedDoc"
+                type="button"
+                class="link-btn meta-btn"
+                title="查看文档元信息"
+                @click="metaOpen = true"
+              >
+                📊 文档元信息
+              </button>
+              <button
                 v-if="canWrite && !isArchiveContainer"
                 type="button"
                 class="link-btn"
@@ -121,148 +130,83 @@
           </div>
         </div>
 
-        <div v-else-if="isCompletedDoc" class="doc-layout">
-          <div class="doc-left" @scroll="onChunksScroll">
-            <div class="section-title">📄 Chunks</div>
-            <div class="doc-toolbar">
-              <div class="doc-search" :class="{ has: chunkKeyword }">
-                <span class="doc-search-ico">🔍</span>
-                <input
-                  v-model="chunkKeyword"
-                  type="text"
-                  placeholder="搜索分块内容"
-                  @input="onChunkSearchInput"
-                />
-                <span v-if="chunkKeyword" class="doc-search-clear" @click="clearChunkSearch">✕</span>
-              </div>
-              <span class="doc-search-count">{{ chunkKeyword ? `匹配 ${chunkTotal} 块` : `共 ${chunkTotal} 块` }}</span>
+        <div v-else-if="isCompletedDoc" class="doc-chunks-full">
+          <div class="section-title">📄 Chunks</div>
+          <div class="doc-toolbar">
+            <div class="doc-search" :class="{ has: chunkKeyword }">
+              <span class="doc-search-ico">🔍</span>
+              <input
+                v-model="chunkKeyword"
+                type="text"
+                placeholder="模糊搜索块内容，或输入 #编号 定位（如 #12）"
+                @input="onChunkSearchInput"
+              />
+              <span v-if="chunkKeyword" class="doc-search-clear" @click="clearChunkSearch">✕</span>
             </div>
-            <div v-if="!chunks.length && loadingChunks" class="state-hint" style="padding:24px 0">
-              <div class="state-desc">正在加载分块数据...</div>
-            </div>
-            <div v-else-if="!chunks.length && chunkKeyword" class="state-hint" style="padding:24px 0">
-              <div class="state-desc">未找到匹配「{{ chunkKeyword }}」的分块，换个关键词试试</div>
-            </div>
-            <div v-else-if="!chunks.length" class="state-hint" style="padding:24px 0">
-              <div class="state-desc">文档处理完成后将显示分块数据</div>
-            </div>
-            <div v-else>
-              <div v-for="c in chunks" :key="c.chunkIndex" class="chunk-card">
-                <div class="chunk-head">
-                  <span class="chunk-title">#{{ c.chunkIndex }}</span>
-                  <span v-if="c.chunkModality" class="chunk-modality">{{ c.chunkModality }}</span>
-                  <span class="chunk-tokens">{{ c.chunkerStrategy || (c.chunkModality?.startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW') }} · {{ c.tokenCount ?? 0 }} tokens</span>
-                </div>
-                <!--
-                  IMAGE chunk 缩略图来源：
-                  - 嵌入图（HTML/PDF/Word 抽出来的）：后端给 c.imageUrl（OSS presigned GET，10 分钟有效）
-                  - 纯图片文档（fileType=image/*）：直接用整篇下载 URL，那本身就是这张图
-                -->
-                <img
-                  v-if="c.imageUrl || (isImageDoc && c.imageKey)"
-                  class="chunk-thumb"
-                  :src="c.imageUrl || downloadUrl"
-                  alt="chunk 预览图"
-                >
-                <div v-if="c.headingPath" class="chunk-heading">{{ c.headingPath }}</div>
-                <!--
-                  TEXT chunk 里的 ![image N](rfimg://N) 占位符按 figureIndex 反查 IMAGE chunk
-                  的 imageUrl，inline 显示成 <img>；纯文字段落继续走 summarizeContent。
-                  用模板拼接而不是 v-html，避免 chunk 文本里的尖括号 / 脚本被当 HTML 注入。
-                -->
-                <div class="chunk-text" :title="c.content">
-                  <template v-for="(seg, i) in renderChunkSegments(c, figureMap)" :key="i">
-                    <img
-                      v-if="seg.type === 'image'"
-                      class="chunk-inline-img"
-                      :src="seg.url"
-                      :alt="seg.alt"
-                    >
-                    <span v-else>{{ seg.text }}</span>
-                  </template>
-                </div>
-              </div>
-              <div class="chunk-load-state">
-                <button v-if="chunkError" class="chunk-load-btn" @click="loadChunksPage(chunkPage)">
-                  加载失败，点击重试
-                </button>
-                <span v-else-if="loadingChunks">加载中...</span>
-                <span v-else-if="!hasMoreChunks">已加载全部</span>
-              </div>
+            <span class="doc-search-count">{{ chunkKeyword ? `匹配 ${chunkTotal} 块` : `共 ${chunkTotal} 块` }}</span>
+          </div>
+          <div v-if="!chunks.length && loadingChunks" class="state-hint" style="padding:24px 0">
+            <div class="state-desc">正在加载分块数据...</div>
+          </div>
+          <div v-else-if="chunkError" class="state-hint" style="padding:24px 0">
+            <div class="state-desc">
+              分块加载失败，<button class="chunk-load-btn" @click="loadChunksPage(chunkPage)">点击重试</button>
             </div>
           </div>
-
-          <div class="doc-right">
-            <div class="section-title">📊 文档元信息</div>
-            <div class="meta-list">
-              <div class="meta-row">
-                <span class="meta-key">文件名</span>
-                <span class="meta-val">
-                  {{ doc.filename }}
-                  <span v-if="doc.sourceArchiveName" class="from-tag">来自 {{ doc.sourceArchiveName }}</span>
-                </span>
+          <div v-else-if="!chunks.length && chunkKeyword" class="state-hint" style="padding:24px 0">
+            <div class="state-desc">没有匹配「{{ chunkKeyword }}」的块，换个关键词试试</div>
+          </div>
+          <div v-else-if="!chunks.length" class="state-hint" style="padding:24px 0">
+            <div class="state-desc">文档处理完成后将显示分块数据</div>
+          </div>
+          <div v-else>
+            <div v-for="c in chunks" :key="c.chunkIndex" class="chunk-card" :class="{ hit: !!chunkKeyword }">
+              <div class="chunk-head">
+                <span class="chunk-title">#{{ c.chunkIndex }}</span>
+                <span v-if="c.chunkModality" class="chunk-modality">{{ c.chunkModality }}</span>
+                <span class="chunk-tokens">{{ c.chunkerStrategy || (c.chunkModality?.startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW') }} · {{ c.tokenCount ?? 0 }} tokens</span>
               </div>
-              <div class="meta-row">
-                <span class="meta-key">大小</span>
-                <span class="meta-val">{{ formatBytes(doc.fileSize) }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">类型</span>
-                <span class="meta-val">{{ doc.fileType }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">版本</span>
-                <span class="meta-val">v{{ doc.version ?? 1 }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">总块数</span>
-                <span class="meta-val">{{ doc.chunkCount ?? 0 }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">向量模型</span>
-                <span class="meta-val">{{ doc.embeddingModel || '-' }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">分块策略</span>
-                <span class="meta-val">
-                  <span v-if="chunkerSummary">{{ chunkerSummary.text }}</span>
-                  <span v-else class="meta-muted">—</span>
-                </span>
-              </div>
-              <template v-if="showFixedSizeParams">
-                <div class="meta-row">
-                  <span class="meta-key">块大小</span>
-                  <span class="meta-val">{{ doc.chunkSize != null ? doc.chunkSize + ' 字符' : '-' }}</span>
-                </div>
-                <div class="meta-row">
-                  <span class="meta-key">块重叠</span>
-                  <span class="meta-val">{{ doc.chunkOverlap != null ? doc.chunkOverlap + ' 字符' : '-' }}</span>
-                </div>
-              </template>
-              <div class="meta-row">
-                <span class="meta-key">上传时间</span>
-                <span class="meta-val">{{ formatTime(doc.createdAt) }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">知识库</span>
-                <span class="meta-val">{{ doc.kbName || '-' }}</span>
-              </div>
-              <div v-if="doc.ingestSource" class="meta-row">
-                <span class="meta-key">来源通道</span>
-                <span class="meta-val">{{ doc.ingestSource }}</span>
-              </div>
-              <div v-if="doc.contentMd5" class="meta-row">
-                <span class="meta-key">内容 md5</span>
-                <span class="meta-val"><code>{{ doc.contentMd5 }}</code></span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">状态</span>
-                <span class="meta-val">
-                  <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
-                </span>
+              <!--
+                IMAGE chunk 缩略图来源：
+                - 嵌入图（HTML/PDF/Word 抽出来的）：后端给 c.imageUrl（OSS presigned GET，10 分钟有效）
+                - 纯图片文档（fileType=image/*）：直接用整篇下载 URL，那本身就是这张图
+              -->
+              <img
+                v-if="c.imageUrl || (isImageDoc && c.imageKey)"
+                class="chunk-thumb"
+                :src="c.imageUrl || downloadUrl"
+                alt="chunk 预览图"
+              >
+              <div v-if="c.headingPath" class="chunk-heading">{{ c.headingPath }}</div>
+              <!--
+                TEXT chunk 里的 ![image N](rfimg://N) 占位符按 figureIndex 反查 IMAGE chunk
+                的 imageUrl，inline 显示成 <img>；命中关键词的文字段用 <mark> 高亮。
+                用模板拼接 + <mark>，不用 v-html，避免 chunk 文本里的尖括号 / 脚本被当 HTML 注入。
+              -->
+              <div class="chunk-text" :title="c.content">
+                <template v-for="(seg, i) in renderChunkSegments(c, figureMap)" :key="i">
+                  <img
+                    v-if="seg.type === 'image'"
+                    class="chunk-inline-img"
+                    :src="seg.url"
+                    :alt="seg.alt"
+                  >
+                  <template v-else>
+                    <template v-for="(pt, k) in highlightParts(seg.text)" :key="k"
+                      ><mark v-if="pt.hit">{{ pt.t }}</mark><template v-else>{{ pt.t }}</template></template>
+                  </template>
+                </template>
               </div>
             </div>
-            <div class="search-action" @click="$router.push({ path: '/debug', query: { kbId: doc.kbId, docId: doc.id, docFilename: doc.filename } })">🔍 在此文档中检索 →</div>
+            <Pager
+              :total="chunkTotal"
+              :page="chunkPage"
+              :size="chunkSize"
+              :size-options="[5, 10, 20, 50]"
+              unit="块"
+              @update:page="goChunkPage"
+              @update:size="setChunkSize"
+            />
           </div>
         </div>
 
@@ -344,6 +288,91 @@
     </transition>
   </Teleport>
 
+  <!-- 文档元信息：右侧滑出抽屉（V4 抽屉版） -->
+  <Teleport to="body">
+    <transition name="drawer-fade">
+      <div v-if="metaOpen && doc" class="drawer-overlay" @click.self="metaOpen = false">
+        <div class="drawer">
+          <div class="drawer-head">
+            <span class="drawer-title">📊 文档元信息</span>
+            <button class="drawer-x" type="button" title="关闭" @click="metaOpen = false">✕</button>
+          </div>
+          <div class="drawer-body">
+            <div class="meta-list">
+              <div class="meta-row">
+                <span class="meta-key">文件名</span>
+                <span class="meta-val">
+                  {{ doc.filename }}
+                  <span v-if="doc.sourceArchiveName" class="from-tag">来自 {{ doc.sourceArchiveName }}</span>
+                </span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">大小</span>
+                <span class="meta-val">{{ formatBytes(doc.fileSize) }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">类型</span>
+                <span class="meta-val">{{ doc.fileType }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">版本</span>
+                <span class="meta-val">v{{ doc.version ?? 1 }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">总块数</span>
+                <span class="meta-val">{{ doc.chunkCount ?? 0 }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">向量模型</span>
+                <span class="meta-val">{{ doc.embeddingModel || '-' }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">分块策略</span>
+                <span class="meta-val">
+                  <span v-if="chunkerSummary">{{ chunkerSummary.text }}</span>
+                  <span v-else class="meta-muted">—</span>
+                </span>
+              </div>
+              <template v-if="showFixedSizeParams">
+                <div class="meta-row">
+                  <span class="meta-key">块大小</span>
+                  <span class="meta-val">{{ doc.chunkSize != null ? doc.chunkSize + ' 字符' : '-' }}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-key">块重叠</span>
+                  <span class="meta-val">{{ doc.chunkOverlap != null ? doc.chunkOverlap + ' 字符' : '-' }}</span>
+                </div>
+              </template>
+              <div class="meta-row">
+                <span class="meta-key">上传时间</span>
+                <span class="meta-val">{{ formatTime(doc.createdAt) }}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">知识库</span>
+                <span class="meta-val">{{ doc.kbName || '-' }}</span>
+              </div>
+              <div v-if="doc.ingestSource" class="meta-row">
+                <span class="meta-key">来源通道</span>
+                <span class="meta-val">{{ doc.ingestSource }}</span>
+              </div>
+              <div v-if="doc.contentMd5" class="meta-row">
+                <span class="meta-key">内容 md5</span>
+                <span class="meta-val"><code>{{ doc.contentMd5 }}</code></span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">状态</span>
+                <span class="meta-val">
+                  <StatusBadge :status="doc.parseStatus" :error="doc.errorMsg" />
+                </span>
+              </div>
+            </div>
+            <div class="search-action" @click="$router.push({ path: '/debug', query: { kbId: doc.kbId, docId: doc.id, docFilename: doc.filename } })">🔍 在此文档中检索 →</div>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
   <RechunkDialog
     v-model="showRechunkDialog"
     :doc="doc"
@@ -361,10 +390,12 @@ import { useToast } from '../composables/useToast'
 
 const toast = useToast()
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
+import Pager from '../components/Pager.vue'
 import RechunkDialog from '../components/RechunkDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rechunkDocument } from '../api/document'
 import { getKb } from '../api/kb'
+import { highlightParts as hlParts } from '../utils/highlight'
 import { translateErrorCode } from '../api/error-messages'
 import { navigateBackFromDocument } from '../composables/useDocumentNav'
 import { useOrg } from '../composables/useOrg'
@@ -396,15 +427,15 @@ const orgMismatch = computed(
 )
 const chunks = ref([])
 const chunkPage = ref(1)
-const chunkSize = 20
+const chunkSize = ref(10)
 const chunkTotal = ref(0)
 const loadingChunks = ref(false)
 const chunkError = ref(false)
 const chunkKeyword = ref('')
+const metaOpen = ref(false)
 let chunkSearchTimer = null
 const { start: startPolling, stop: stopPolling } = useDocumentPolling()
 
-const hasMoreChunks = computed(() => chunks.value.length < chunkTotal.value)
 const normalizedStatus = computed(() => normalizeDocStatus(doc.value?.parseStatus))
 const isCompletedDoc = computed(() => normalizedStatus.value === 'completed')
 const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
@@ -627,37 +658,38 @@ function resetChunks() {
   chunkKeyword.value = ''
 }
 
-// 输入即筛（防抖 250ms），与文档/知识库列表搜索一致；仅前端触发，实际过滤在后端按 content 搜。
+// 输入即筛（防抖 250ms），与文档/知识库列表搜索一致；实际过滤在后端按 content 搜，#编号 定位由后端识别。
 function onChunkSearchInput() {
   if (chunkSearchTimer) clearTimeout(chunkSearchTimer)
-  chunkSearchTimer = setTimeout(reloadChunksForSearch, 250)
+  chunkSearchTimer = setTimeout(() => loadChunksPage(1), 250)
 }
 
 function clearChunkSearch() {
   if (chunkSearchTimer) clearTimeout(chunkSearchTimer)
   chunkKeyword.value = ''
-  reloadChunksForSearch()
-}
-
-function reloadChunksForSearch() {
-  chunks.value = []
-  chunkPage.value = 1
-  chunkError.value = false
   loadChunksPage(1)
 }
 
+function goChunkPage(p) {
+  loadChunksPage(p)
+}
+
+function setChunkSize(n) {
+  chunkSize.value = n
+  loadChunksPage(1)
+}
+
+// 按页加载（分页器版）：整页替换，不再累加。空关键词=全部；内容模糊/#编号 定位均由后端过滤。
 async function loadChunksPage(page = chunkPage.value) {
   if (!doc.value || loadingChunks.value) return
-  if (page > 1 && !hasMoreChunks.value) return
   loadingChunks.value = true
   chunkError.value = false
   try {
-    const res = await listDocumentChunks(doc.value.id, page, chunkSize, chunkKeyword.value)
+    const res = await listDocumentChunks(doc.value.id, page, chunkSize.value, chunkKeyword.value)
     const data = res.data ?? {}
-    const list = data.list ?? []
-    chunkTotal.value = data.total ?? chunkTotal.value
-    chunks.value = page === 1 ? list : [...chunks.value, ...list]
-    chunkPage.value = page + 1
+    chunkTotal.value = data.total ?? 0
+    chunks.value = data.list ?? []
+    chunkPage.value = data.page ?? page
   } catch {
     chunkError.value = true
   } finally {
@@ -665,12 +697,9 @@ async function loadChunksPage(page = chunkPage.value) {
   }
 }
 
-function onChunksScroll(event) {
-  if (loadingChunks.value || chunkError.value || !hasMoreChunks.value) return
-  const el = event.target
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
-    loadChunksPage(chunkPage.value)
-  }
+// 命中关键词高亮（#编号 定位不高亮内容）——复用共享 util，按当前搜索词切片。
+function highlightParts(text) {
+  return hlParts(text, chunkKeyword.value)
 }
 
 function setupPolling() {
@@ -1134,6 +1163,41 @@ function piiLabel(key) {
 .doc-right {
   background: #fafbfc;
 }
+
+/* V4 抽屉版：Chunks 占满整宽单栏 */
+.doc-chunks-full {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+/* 顶部动作栏「📊 文档元信息」按钮（略强调，区别于纯文字链接） */
+.meta-btn {
+  border: 1px solid var(--primary-soft, #bfdbfe);
+  color: var(--primary);
+  background: var(--primary-soft, #eff6ff);
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+.meta-btn:hover { background: #e0ecff; }
+
+/* 命中关键词高亮 */
+.chunk-card.hit { border-color: var(--primary-soft, #bfdbfe); background: #fbfdff; }
+.chunk-text :deep(mark), .chunk-text mark { background: #fde68a; color: #78350f; border-radius: 3px; padding: 0 1px; }
+
+/* 文档元信息：右侧滑出抽屉 */
+.drawer-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(15, 23, 42, .42); display: flex; justify-content: flex-end; }
+.drawer { width: min(440px, 94vw); height: 100%; background: #fff; box-shadow: -10px 0 34px rgba(15, 23, 42, .16); display: flex; flex-direction: column; overflow: hidden; }
+.drawer-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.drawer-title { font-weight: 600; font-size: 15px; color: var(--slate); }
+.drawer-x { margin-left: auto; cursor: pointer; border: none; background: none; font-size: 18px; color: var(--text-muted); line-height: 1; }
+.drawer-x:hover { color: var(--slate); }
+.drawer-body { padding: 8px 20px 20px; overflow: auto; }
+.drawer-fade-enter-active, .drawer-fade-leave-active { transition: background .22s ease; }
+.drawer-fade-enter-active .drawer, .drawer-fade-leave-active .drawer { transition: transform .26s cubic-bezier(.4, 0, .2, 1); }
+.drawer-fade-enter-from, .drawer-fade-leave-to { background: rgba(15, 23, 42, 0); }
+.drawer-fade-enter-from .drawer, .drawer-fade-leave-to .drawer { transform: translateX(100%); }
 
 .section-title {
   font-weight: 600;

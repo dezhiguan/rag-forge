@@ -59,6 +59,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -305,7 +306,7 @@ class DocumentPipelineServiceTest {
     when(knowledgeBaseMapper.selectById(10L)).thenReturn(kb);
     when(objectStorage.get("bucket", "tn/kb/page.html"))
         .thenReturn(new ByteArrayInputStream("<h1>raw</h1>".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-    when(chunkingService.split(eq(doc), eq(kb), eq("<h1>raw</h1>")))
+    when(chunkingService.split(eq(doc), eq(kb), anyString()))
         .thenReturn(chunkingResult(chunks));
     when(embeddingService.embedBatch(List.of("<h1>raw</h1>"))).thenReturn(vectors);
     doReturn(inserted)
@@ -316,7 +317,10 @@ class DocumentPipelineServiceTest {
     documentPipelineService.processDocument(7L);
 
     verify(documentParser, never()).parse(anyString(), anyString());
-    verify(chunkingService).split(eq(doc), eq(kb), eq("<h1>raw</h1>"));
+    // text/html 走 htmlToPlainText 剥标签：split 收到的是纯文本（不含 <h1> 标签，保留正文 raw）
+    ArgumentCaptor<String> splitText = ArgumentCaptor.forClass(String.class);
+    verify(chunkingService).split(eq(doc), eq(kb), splitText.capture());
+    assertThat(splitText.getValue()).doesNotContain("<h1>").contains("raw");
   }
 
   @Test

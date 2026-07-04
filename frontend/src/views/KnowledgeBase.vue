@@ -188,14 +188,14 @@
                       <span class="expander">{{ expandedKbId === kb.id ? '▾' : '▸' }}</span>
                       <div class="kb-title">
                         <span class="kb-name-row">
-                          <strong>{{ kb.name }}</strong>
+                          <strong><template v-for="(pt, k) in highlightParts(kb.name, kbKeyword)" :key="k"><mark v-if="pt.hit">{{ pt.t }}</mark><template v-else>{{ pt.t }}</template></template></strong>
                           <span
                             v-if="kb.visibility === 'PUBLIC'"
                             class="kb-tag kb-tag-pub"
                             data-test="kb-public-badge"
                           >公开</span>
                         </span>
-                        <div v-if="kb.description" class="desc">{{ kb.description }}</div>
+                        <div v-if="kb.description" class="desc"><template v-for="(pt, k) in highlightParts(kb.description, kbKeyword)" :key="k"><mark v-if="pt.hit">{{ pt.t }}</mark><template v-else>{{ pt.t }}</template></template></div>
                         <span
                           v-if="kb.orgId || kb.visibility === 'ORG'"
                           class="kb-meta-row"
@@ -399,13 +399,14 @@
               </template>
             </tbody>
           </table>
-          <div v-if="kbTotalPages > 1" class="kb-pager">
-            <span class="kb-pager-info">共 {{ kbTotal }} 个 · 第 {{ kbPage }}/{{ kbTotalPages }} 页</span>
-            <div class="kb-pager-btns">
-              <button class="pager-btn" :disabled="kbPage <= 1" @click="goPage(kbPage - 1)">上一页</button>
-              <button class="pager-btn" :disabled="kbPage >= kbTotalPages" @click="goPage(kbPage + 1)">下一页</button>
-            </div>
-          </div>
+          <Pager
+            v-if="kbList.length"
+            :total="kbTotal"
+            :page="kbPage"
+            :size="kbSize"
+            @update:page="goPage"
+            @update:size="onKbSize"
+          />
         </div>
       </div>
 
@@ -587,6 +588,8 @@
 import { onMounted, onUnmounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createKb, deleteKb, listKb, listKbPaged, updateKb, getVisibilityImpact, changeVisibility } from '../api/kb'
+import Pager from '../components/Pager.vue'
+import { highlightParts } from '../utils/highlight'
 import { listOrgs } from '../api/org'
 import {
   deleteDocument,
@@ -646,11 +649,11 @@ const adminOverrideReason = ref('')
 const kbList = ref([]) // 当前页（服务端分页返回）
 const allKbs = ref([]) // 全量（仅供上传下拉/默认上传目标用）
 // 知识库列表分页（服务端分页，10 条/页）+ 名称模糊搜索
-const KB_PAGE_SIZE = 10
+const kbSize = ref(10)
 const kbPage = ref(1)
 const kbTotal = ref(0)
 const kbKeyword = ref('')
-const kbTotalPages = computed(() => Math.max(1, Math.ceil(kbTotal.value / KB_PAGE_SIZE)))
+const kbTotalPages = computed(() => Math.max(1, Math.ceil(kbTotal.value / kbSize.value)))
 let kbSearchTimer = null
 const loadingKb = ref(false)
 const expandedKbId = ref(null)
@@ -864,7 +867,7 @@ async function loadKbs() {
 async function loadKbPage(page) {
   const res = await listKbPaged({
     page,
-    size: KB_PAGE_SIZE,
+    size: kbSize.value,
     keyword: kbKeyword.value.trim() || undefined,
   })
   const data = res.data ?? {}
@@ -877,6 +880,11 @@ function goPage(page) {
   const target = Math.max(1, Math.min(page, kbTotalPages.value))
   if (target === kbPage.value) return
   loadKbPage(target)
+}
+
+function onKbSize(n) {
+  kbSize.value = n
+  loadKbPage(1)
 }
 
 // 输入即筛（防抖 250ms），搜索回到第 1 页
@@ -1596,6 +1604,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+mark { background: #fde68a; color: #78350f; border-radius: 3px; padding: 0 1px; }
 .page-body {
   padding: 20px 28px 32px;
 }

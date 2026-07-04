@@ -445,6 +445,12 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     String kw = keyword == null ? null : keyword.trim();
+    // #编号 定位：kw 形如 "#12" 时按 chunk_index 精确定位（限 9 位以内，避免溢出）；否则按 content 模糊搜。
+    Integer jumpIndex = null;
+    if (kw != null && kw.matches("#\\d{1,9}")) {
+      jumpIndex = Integer.parseInt(kw.substring(1));
+    }
+    boolean contentLike = jumpIndex == null && kw != null && !kw.isEmpty();
     int pageSize = Math.min(size, 100);
     Page<DocumentChunk> mpPage = new Page<>(page, pageSize);
     IPage<DocumentChunk> result =
@@ -452,7 +458,8 @@ public class DocumentServiceImpl implements DocumentService {
             mpPage,
             new LambdaQueryWrapper<DocumentChunk>()
                 .eq(DocumentChunk::getDocId, id)
-                .like(kw != null && !kw.isEmpty(), DocumentChunk::getContent, kw)
+                .eq(jumpIndex != null, DocumentChunk::getChunkIndex, jumpIndex)
+                .like(contentLike, DocumentChunk::getContent, kw)
                 .orderByAsc(DocumentChunk::getChunkIndex));
 
     String storageBucket = doc.getStorageBucket();

@@ -286,12 +286,62 @@ class DocumentServiceImplTest {
         .isInstanceOf(BizException.class);
   }
 
+  @Test
+  @SuppressWarnings("unchecked")
+  void listChunks_hashIndexKeyword_locatesByChunkIndexNotContent() {
+    Document doc = doc(3L, 1L, "a.pdf", "COMPLETED");
+    when(documentMapper.selectById(3L)).thenReturn(doc);
+    when(documentChunkMapper.selectPage(any(Page.class), any())).thenAnswer(inv -> {
+      Page<DocumentChunk> page = inv.getArgument(0);
+      page.setRecords(List.of());
+      page.setTotal(0);
+      return page;
+    });
+    ArgumentCaptor<Wrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(Wrapper.class);
+
+    documentService.listChunks(3L, 1, 20, "#5");
+
+    verify(documentChunkMapper).selectPage(any(Page.class), captor.capture());
+    // #编号 定位：按 chunk_index 精确匹配（doc_id + chunk_index 两个 = 段），不加 content LIKE
+    assertThat(hasLikeSegment(captor.getValue())).isFalse();
+    assertThat(countSqlKeyword(captor.getValue(), "=")).isEqualTo(2L);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void listChunks_oversizedHashNumber_fallsBackToContentLike() {
+    Document doc = doc(3L, 1L, "a.pdf", "COMPLETED");
+    when(documentMapper.selectById(3L)).thenReturn(doc);
+    when(documentChunkMapper.selectPage(any(Page.class), any())).thenAnswer(inv -> {
+      Page<DocumentChunk> page = inv.getArgument(0);
+      page.setRecords(List.of());
+      page.setTotal(0);
+      return page;
+    });
+    ArgumentCaptor<Wrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(Wrapper.class);
+
+    // 超过 9 位 → 不当作编号定位（避免 int 溢出），退回按内容模糊搜
+    documentService.listChunks(3L, 1, 20, "#12345678901");
+
+    verify(documentChunkMapper).selectPage(any(Page.class), captor.capture());
+    assertThat(hasLikeSegment(captor.getValue())).isTrue();
+  }
+
   /** 检查查询条件里是否包含 LIKE 关键词段（只调 SqlKeyword 段，避免触发列名解析需要 TableInfo）。 */
   private static boolean hasLikeSegment(Wrapper<DocumentChunk> wrapper) {
     return ((AbstractWrapper<?, ?, ?>) wrapper)
         .getExpression().getNormal().stream()
             .filter(s -> s instanceof SqlKeyword)
             .anyMatch(s -> "LIKE".equals(s.getSqlSegment()));
+  }
+
+  /** 统计查询条件里某个 SqlKeyword（如 "="）出现的次数。 */
+  private static long countSqlKeyword(Wrapper<DocumentChunk> wrapper, String sql) {
+    return ((AbstractWrapper<?, ?, ?>) wrapper)
+        .getExpression().getNormal().stream()
+            .filter(s -> s instanceof SqlKeyword)
+            .filter(s -> sql.equals(s.getSqlSegment()))
+            .count();
   }
 
   @Test

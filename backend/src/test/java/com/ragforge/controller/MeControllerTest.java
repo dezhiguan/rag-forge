@@ -73,10 +73,11 @@ class MeControllerTest {
 
   @Test
   void me_withNoAuthContext_returns401() throws Exception {
-    // No auth context set
+    // 无鉴权上下文：MeController 抛 BizException(401)，GlobalExceptionHandler 按 code 写 HTTP 401，
+    // 让前端 axios 走统一"静默续期+重放"（见 7d89bac 会话静默续期加固）。
     mockMvc
         .perform(get("/api/v1/me"))
-        .andExpect(status().isOk())
+        .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value(401));
   }
 

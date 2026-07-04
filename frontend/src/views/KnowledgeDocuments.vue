@@ -54,7 +54,8 @@
             <div class="doc-type">{{ fileTypeLabel(doc.filename) }}</div>
             <div class="doc-main">
               <h3>
-                {{ doc.filename }}
+                <template v-for="(pt, k) in highlightParts(doc.filename, docKeyword)" :key="k"
+                  ><mark v-if="pt.hit">{{ pt.t }}</mark><template v-else>{{ pt.t }}</template></template>
                 <span
                   v-if="doc.sourceArchiveName"
                   class="doc-from"
@@ -96,12 +97,14 @@
           </article>
         </div>
 
-        <div class="pager">
-          <span>共 {{ total }} 条</span>
-          <button class="btn btn-secondary btn-sm" :disabled="page <= 1 || loading" @click="loadDocs(page - 1)">上一页</button>
-          <span>第 {{ page }} / {{ totalPages }} 页</span>
-          <button class="btn btn-secondary btn-sm" :disabled="page >= totalPages || loading" @click="loadDocs(page + 1)">下一页</button>
-        </div>
+        <Pager
+          v-if="docs.length"
+          :total="total"
+          :page="page"
+          :size="size"
+          @update:page="loadDocs"
+          @update:size="onDocSize"
+        />
       </div>
     </div>
   </div>
@@ -112,6 +115,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
 import DocumentStatusBadge from '../components/DocumentStatusBadge.vue'
+import Pager from '../components/Pager.vue'
+import { highlightParts } from '../utils/highlight'
 import { listKb } from '../api/kb'
 import { deleteDocument, downloadDocument, listDocuments, reprocessDocument } from '../api/document'
 import { documentDetailRoute, parsePositiveId } from '../composables/useDocumentNav'
@@ -127,14 +132,14 @@ const kb = ref(null)
 const kbLoaded = ref(false)
 const docs = ref([])
 const page = ref(1)
-const size = 20
+const size = ref(10)
 const total = ref(0)
 const loading = ref(false)
 const docKeyword = ref('')
 let docSearchTimer = null
 
 const kbId = computed(() => parsePositiveId(route.params.kbId))
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size)))
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 // KB 已加载但不在当前可访问列表（无权限 / 不存在 / 不属于当前组织）→ 给明确提示，
 // 而非误导性的“暂无文档，请上传”。
 const kbInaccessible = computed(() => kbLoaded.value && !kb.value)
@@ -170,13 +175,18 @@ async function loadDocs(nextPage = 1) {
   try {
     // flatten=true：后端返回「解压出的子文档 + 独立文档」，排除压缩包容器本身，
     // 因此列表里平铺显示解压结果，不出现 isArchive 容器项。
-    const res = await listDocuments(kbId.value, nextPage, size, docKeyword.value.trim() || undefined, true)
+    const res = await listDocuments(kbId.value, nextPage, size.value, docKeyword.value.trim() || undefined, true)
     docs.value = res.data?.list ?? []
     total.value = res.data?.total ?? 0
     page.value = res.data?.page ?? nextPage
   } finally {
     loading.value = false
   }
+}
+
+function onDocSize(n) {
+  size.value = n
+  loadDocs(1)
 }
 
 watch(docKeyword, () => {
@@ -280,6 +290,7 @@ watch(kbId, (nextKbId, prevKbId) => {
 </script>
 
 <style scoped>
+mark { background: #fde68a; color: #78350f; border-radius: 3px; padding: 0 1px; }
 .page-body {
   padding: 20px 28px 32px;
 }
