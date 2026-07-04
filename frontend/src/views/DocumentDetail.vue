@@ -680,20 +680,25 @@ function setChunkSize(n) {
 }
 
 // 按页加载（分页器版）：整页替换，不再累加。空关键词=全部；内容模糊/#编号 定位均由后端过滤。
+// 请求序号 last-wins：不因"加载中"丢弃新请求（否则搜索/翻页会被在飞行中的初始加载吞掉），
+// 只应用最新一次请求的响应，过期响应丢弃，避免竞态覆盖。
+let chunkReqSeq = 0
 async function loadChunksPage(page = chunkPage.value) {
-  if (!doc.value || loadingChunks.value) return
+  if (!doc.value) return
+  const seq = ++chunkReqSeq
   loadingChunks.value = true
   chunkError.value = false
   try {
     const res = await listDocumentChunks(doc.value.id, page, chunkSize.value, chunkKeyword.value)
+    if (seq !== chunkReqSeq) return
     const data = res.data ?? {}
     chunkTotal.value = data.total ?? 0
     chunks.value = data.list ?? []
     chunkPage.value = data.page ?? page
   } catch {
-    chunkError.value = true
+    if (seq === chunkReqSeq) chunkError.value = true
   } finally {
-    loadingChunks.value = false
+    if (seq === chunkReqSeq) loadingChunks.value = false
   }
 }
 
