@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.events.AuthEventService;
+import com.ragforge.mapper.OrgMemberMapper;
 import jakarta.servlet.FilterChain;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +26,7 @@ class JwtAuthenticationFilterTest {
   private JwtVerifier jwtVerifier;
   private AuthEventService authEventService;
   private AdminAccessAuditService adminAccessAuditService;
+  private OrgMemberMapper orgMemberMapper;
   private JwtAuthenticationFilter filter;
 
   @BeforeEach
@@ -36,9 +38,15 @@ class JwtAuthenticationFilterTest {
     jwtVerifier = mock(JwtVerifier.class);
     authEventService = mock(AuthEventService.class);
     adminAccessAuditService = mock(AdminAccessAuditService.class);
+    orgMemberMapper = mock(OrgMemberMapper.class);
+    when(orgMemberMapper.isMember(any(), any())).thenReturn(true);
     filter =
         new JwtAuthenticationFilter(
-            jwtVerifier, new ObjectMapper(), authEventService, adminAccessAuditService);
+            jwtVerifier,
+            new ObjectMapper(),
+            authEventService,
+            adminAccessAuditService,
+            orgMemberMapper);
   }
 
   @Test

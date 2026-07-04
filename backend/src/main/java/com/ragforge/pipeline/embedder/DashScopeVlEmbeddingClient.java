@@ -64,6 +64,7 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
 
   private List<float[]> call(List<EmbeddingInput> inputs) {
     long start = System.currentTimeMillis();
+    boolean recorded = false;
     try {
       String body = objectMapper.writeValueAsString(buildPayload(inputs));
       HttpRequest.Builder builder =
@@ -100,18 +101,43 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
               0,
               System.currentTimeMillis() - start,
               true));
+      recorded = true;
       return parseEmbeddings(tree, inputs.size(), properties.getVl().getDimension());
     } catch (BizException e) {
+      if (!recorded) {
+        recordEmbeddingFailure(start);
+      }
       throw e; // 已是机器码(如 EMBEDDING_RATE_LIMITED)
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (!recorded) {
+        recordEmbeddingFailure(start);
+      }
       throw new BizException("EMBEDDING_CALL_FAILED");
     } catch (IllegalStateException e) {
+      if (!recorded) {
+        recordEmbeddingFailure(start);
+      }
       throw e;
     } catch (Exception e) {
       log.warn("VL Embedding 调用失败", e);
+      if (!recorded) {
+        recordEmbeddingFailure(start);
+      }
       throw new BizException("EMBEDDING_CALL_FAILED");
     }
+  }
+
+  /** 计量失败调用：让成功率能反映 429/超时/5xx 等硬失败（token 记 0、成本恒 0）。 */
+  private void recordEmbeddingFailure(long start) {
+    modelUsageRecorder.record(
+        new com.ragforge.modelcenter.ModelUsageEvent(
+            properties.getVl().getModel(),
+            com.ragforge.modelcenter.Purpose.EMBEDDING,
+            0,
+            0,
+            System.currentTimeMillis() - start,
+            false));
   }
 
   /** 429 / 5xx 指数退避重试（含抖动），缓解大批量入库时打爆嵌入 API 速率配额。 */

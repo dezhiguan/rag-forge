@@ -46,6 +46,7 @@ public class RemoteOcrClient implements OcrClient {
       return new OcrResult("");
     }
     long start = System.currentTimeMillis();
+    boolean recorded = false;
     try {
       String body = objectMapper.writeValueAsString(buildPayload(imageBytes, contentType));
       HttpRequest.Builder builder =
@@ -76,13 +77,32 @@ public class RemoteOcrClient implements OcrClient {
               outputTokens > 0 ? outputTokens : outTokens,
               System.currentTimeMillis() - start,
               true));
+      recorded = true;
       return new OcrResult(text);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (!recorded) {
+        recordOcrFailure(start);
+      }
       throw new BizException("OCR 调用被中断");
     } catch (Exception e) {
+      if (!recorded) {
+        recordOcrFailure(start);
+      }
       throw new BizException("OCR 调用失败: " + e.getMessage());
     }
+  }
+
+  /** 计量失败调用：让成功率能反映非 2xx / 超时等硬失败（token 记 0、成本恒 0）。 */
+  private void recordOcrFailure(long start) {
+    modelUsageRecorder.record(
+        new com.ragforge.modelcenter.ModelUsageEvent(
+            properties.getOcr().getModel(),
+            com.ragforge.modelcenter.Purpose.OCR,
+            0,
+            0,
+            System.currentTimeMillis() - start,
+            false));
   }
 
   private Map<String, Object> buildPayload(byte[] imageBytes, String contentType) {
