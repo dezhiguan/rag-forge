@@ -388,6 +388,38 @@ class DocumentPipelineServiceTest {
   }
 
   @Test
+  void processDocument_imageOnlyNoTextRoutesToImagePipeline() throws Exception {
+    // 纯图片文档(如纯图片 PDF):无可分块文字但有内嵌图片，应回退到图片管道而非抛 NO_CHUNKER 失败
+    Document doc = document(21L, 21L, "image-only.pdf");
+    KnowledgeBase kb = knowledgeBase(21L);
+    kb.setImageProcessingMode("ON");
+    DocumentChunk ocrText = chunkEntity(901L, 0);
+    ocrText.setChunkModality("OCR_TEXT");
+    List<DocumentChunk> imageChunks = List.of(ocrText);
+
+    when(documentMapper.selectById(21L)).thenReturn(doc);
+    when(knowledgeBaseMapper.selectById(21L)).thenReturn(kb);
+    when(documentParser.parse(anyString(), anyString()))
+        .thenReturn(new ParseResult("", 1L, 1, List.of(), List.of(extractedImage(0))));
+    doReturn(List.of())
+        .when(documentPipelineService)
+        .insertChunks(eq(21L), eq(21L), eq(List.of()), eq(List.of()), any(), eq("image-only"));
+    when(esIndexService.indexChunks(List.of(), doc)).thenReturn(true);
+    when(imagePipelineSupport.processSingleImage(any(), any(), eq(doc), any(ImageChunkContext.class), eq(0), anyString()))
+        .thenReturn(imageChunks);
+    when(imagePipelineService.insertImageChunks(imageChunks)).thenReturn(imageChunks);
+    when(esIndexService.indexChunks(imageChunks, doc)).thenReturn(true);
+
+    documentPipelineService.processDocument(21L);
+
+    // 关键：无文字时不调用文本分块（不会抛 NO_CHUNKER），改由图片管道产出 chunk，文档正常完成
+    verify(chunkingService, never()).split(any(), any(), anyString());
+    verify(imagePipelineSupport)
+        .processSingleImage(any(), eq("image/png"), eq(doc), any(ImageChunkContext.class), eq(0), anyString());
+    verify(documentPipelineService).updateDocumentChunkCount(21L, 1);
+  }
+
+  @Test
   void processDocument_pdfInObjectStorageDownloadsTempFileAndParsesWithTika() throws Exception {
     Document doc = document(14L, 10L, "remote.pdf");
     doc.setStorageBucket("bucket");

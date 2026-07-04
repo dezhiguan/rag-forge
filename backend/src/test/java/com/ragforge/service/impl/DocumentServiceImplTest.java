@@ -150,6 +150,18 @@ class DocumentServiceImplTest {
   }
 
   @Test
+  void upload_rejectsArchiveWithFriendlyHint() {
+    when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+    // 压缩包直传应给出明确指引，而非笼统"不支持的文件格式"
+    assertThatThrownBy(
+            () ->
+                documentService.upload(
+                    1L, new MockMultipartFile("file", "bundle.zip", "application/zip", "PK".getBytes())))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("压缩包");
+  }
+
+  @Test
   void upload_rejectsMismatchedMimeUnlessOctetStream() {
     when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
 

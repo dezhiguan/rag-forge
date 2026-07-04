@@ -14,8 +14,8 @@ public class ImageSearchRequest {
   private List<Long> kbIds;
   private List<Long> docIds;
 
-  @Min(1)
-  @Max(50)
+  @Min(value = 1, message = "topK 需在 1~50 之间")
+  @Max(value = 50, message = "topK 需在 1~50 之间")
   private int topK = 8;
 
   @Valid

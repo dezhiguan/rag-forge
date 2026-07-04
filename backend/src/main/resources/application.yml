@@ -125,10 +125,12 @@ ragforge:
       # 超时 12s→5s:越限快速失败,不长时间占线程拖成 504
       timeout-ms: ${RAGFORGE_RETRIEVAL_HYBRID_TIMEOUT_MS:5000}
     full:
-      max-concurrent: ${RAGFORGE_RETRIEVAL_FULL_CONCURRENCY:1}
+      # 1→4:full=改写+混合+rerank,受 DashScope LLM/rerank 配额约束;放大后盯 DashScope 429
+      max-concurrent: ${RAGFORGE_RETRIEVAL_FULL_CONCURRENCY:4}
       timeout-ms: ${RAGFORGE_RETRIEVAL_FULL_TIMEOUT_MS:15000}
     rewrite:
-      max-concurrent: ${RAGFORGE_RETRIEVAL_REWRITE_CONCURRENCY:3}
+      # 3→8:rewrite=LLM改写+多路向量,受 DashScope LLM 配额约束
+      max-concurrent: ${RAGFORGE_RETRIEVAL_REWRITE_CONCURRENCY:8}
       timeout-ms: ${RAGFORGE_RETRIEVAL_REWRITE_TIMEOUT_MS:10000}
     # 分布式并发限流(Redis 全局)。enabled=false 回退进程内 Semaphore(每 pod 本地)。
     distributed-limit:
