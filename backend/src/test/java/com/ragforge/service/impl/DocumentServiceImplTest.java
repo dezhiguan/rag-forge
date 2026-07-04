@@ -3,6 +3,8 @@ package com.ragforge.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
@@ -46,6 +48,8 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentServiceImplTest {
@@ -439,24 +443,82 @@ class DocumentServiceImplTest {
   }
 
   @Test
-  void delete_removesArtifactsAndUpdatesKbCounters() {
+  void delete_removesArtifacts_atomicallyDecrementsKbCounters() {
     Document doc = doc(10L, 1L, "done.pdf", "COMPLETED");
     doc.setFilePath("/data/done.pdf");
     doc.setChunkCount(5);
-    kb.setDocCount(2);
-    kb.setChunkCount(10);
     when(documentMapper.selectById(10L)).thenReturn(doc);
-    when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
 
     documentService.delete(10L);
 
+    // 外部清理走 afterCommit（单测无事务 → 立即执行）
     verify(esIndexService).deleteByDocId(10L);
+    verify(qdrantVectorStore).deleteByDocId(10L);
     verify(fileStorageService).delete("/data/done.pdf");
     verify(documentMapper).deleteById(10L);
-    ArgumentCaptor<KnowledgeBase> captor = ArgumentCaptor.forClass(KnowledgeBase.class);
-    verify(knowledgeBaseMapper).updateById(captor.capture());
-    assertThat(captor.getValue().getDocCount()).isEqualTo(1);
-    assertThat(captor.getValue().getChunkCount()).isEqualTo(5);
+    // 计数原子回减（chunk -5, doc -1），不再 selectById + updateById 全行回写
+    verify(knowledgeBaseMapper).adjustCounters(1L, -5, -1);
+    verify(knowledgeBaseMapper, never()).updateById(any(KnowledgeBase.class));
+  }
+
+  @Test
+  void delete_nonCompletedDoc_skipsCounterAdjust_stillCleansArtifacts() {
+    Document doc = doc(11L, 1L, "pending.pdf", "PENDING");
+    doc.setFilePath("/data/pending.pdf");
+    when(documentMapper.selectById(11L)).thenReturn(doc);
+
+    documentService.delete(11L);
+
+    verify(esIndexService).deleteByDocId(11L);
+    verify(documentMapper).deleteById(11L);
+    // 未完成文档从未计入 KB 计数，删除时不应回减
+    verify(knowledgeBaseMapper, never()).adjustCounters(anyLong(), anyInt(), anyInt());
+  }
+
+  @Test
+  void delete_archiveContainer_cleansChildrenAndContainerArtifacts() {
+    Document container = archiveDoc(30L, 1L, "bundle.zip", "zip"); // EXPANDED，非 COMPLETED
+    Document child = doc(31L, 1L, "a.pdf", "COMPLETED");
+    child.setFilePath("/data/a.pdf");
+    when(documentMapper.selectById(30L)).thenReturn(container);
+    when(documentMapper.selectChildren(30L)).thenReturn(List.of(child));
+
+    documentService.delete(30L);
+
+    verify(documentMapper).deleteById(30L);
+    verify(esIndexService).deleteByDocId(31L); // 子文档索引
+    verify(qdrantVectorStore).deleteByDocId(31L);
+    verify(esIndexService).deleteByDocId(30L); // 容器自身
+    verify(fileStorageService).delete("/data/a.pdf"); // 子文件
+    // 容器本身非 COMPLETED，不回减计数
+    verify(knowledgeBaseMapper, never()).adjustCounters(anyLong(), anyInt(), anyInt());
+  }
+
+  @Test
+  void delete_withinActiveTransaction_defersExternalCleanupToAfterCommit() {
+    Document doc = doc(12L, 1L, "x.pdf", "COMPLETED");
+    doc.setFilePath("/data/x.pdf");
+    when(documentMapper.selectById(12L)).thenReturn(doc);
+
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      documentService.delete(12L);
+
+      // 事务内：DB 删除 + 原子计数已做，但外部清理尚未执行（应延到提交后）
+      verify(documentMapper).deleteById(12L);
+      verify(knowledgeBaseMapper).adjustCounters(1L, -1, -1);
+      verify(esIndexService, never()).deleteByDocId(12L);
+
+      // 触发 afterCommit → 外部清理才执行
+      for (TransactionSynchronization s : TransactionSynchronizationManager.getSynchronizations()) {
+        s.afterCommit();
+      }
+      verify(esIndexService).deleteByDocId(12L);
+      verify(qdrantVectorStore).deleteByDocId(12L);
+      verify(fileStorageService).delete("/data/x.pdf");
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
   }
 
   @Test

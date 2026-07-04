@@ -439,19 +439,8 @@ public class DocumentPipelineService {
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void incrementKbCount(Long kbId, int chunkCount, boolean incrementDocCount) {
-    KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
-    if (kb == null) {
-      return;
-    }
-    int newChunkCount = coalesce(kb.getChunkCount(), 0) + chunkCount;
-    int newDocCount = coalesce(kb.getDocCount(), 0) + (incrementDocCount ? 1 : 0);
-    knowledgeBaseMapper.update(
-        null,
-        new LambdaUpdateWrapper<KnowledgeBase>()
-            .eq(KnowledgeBase::getId, kbId)
-            .set(KnowledgeBase::getChunkCount, newChunkCount)
-            .set(KnowledgeBase::getDocCount, newDocCount)
-            .set(KnowledgeBase::getUpdatedAt, LocalDateTime.now()));
+    // 原子自增,避免 select→内存+→update 的读改写在多 worker 并发处理同一 KB 时丢更新。
+    knowledgeBaseMapper.adjustCounters(kbId, chunkCount, incrementDocCount ? 1 : 0);
   }
 
   private static String truncateError(String message) {
