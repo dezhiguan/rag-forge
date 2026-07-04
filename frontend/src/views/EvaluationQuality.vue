@@ -308,7 +308,17 @@
             <h2>质量评测设置</h2>
             <p>配置本组织如何评测应答质量：① 线上抽样（被动监控）② 黄金集回放（主动验证）。评测由 AI 评审打分，会产生少量成本。</p>
           </div>
-          <button class="drawer-close" @click="closeSamplingDrawer">关闭</button>
+          <button
+            class="drawer-close"
+            type="button"
+            aria-label="关闭"
+            title="关闭"
+            @click="closeSamplingDrawer"
+          >
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
         </div>
 
         <div v-if="settingsError" class="quality-error-banner">{{ settingsError }}</div>
@@ -1590,12 +1600,35 @@ watch(
   margin-top: 4px;
 }
 
-.drawer-close,
 .link-button {
   border: none;
   background: transparent;
   color: var(--primary);
   cursor: pointer;
+}
+
+.drawer-close {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.drawer-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.drawer-close:active {
+  background: #e2e8f0;
 }
 
 .link-button.danger {
