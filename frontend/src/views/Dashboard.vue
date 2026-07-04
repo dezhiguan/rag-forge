@@ -5,7 +5,7 @@
       <span class="ub-txt">
         <b>当前为个人组织</b> —— 需要和同事协作？升级为团队组织即可邀请成员、共享知识库，<b>组织 ID 不变、知识库零迁移</b>。
       </span>
-      <button class="btn btn-primary btn-sm" :disabled="upgrading" @click="onUpgrade">升级到团队组织</button>
+      <button class="btn btn-sm ub-btn-todo" @click="onUpgradeTodo" title="该功能待开发">升级到团队组织</button>
     </div>
 
     <div v-if="isPlatform" class="breakglass-banner">
@@ -205,34 +205,17 @@ import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { getDashboardMetrics } from '../api/metrics'
 import { reprocessDocument } from '../api/document'
 import { useOrg } from '../composables/useOrg'
-import { listMembers, upgradeOrg } from '../api/org'
+import { listMembers } from '../api/org'
 import { useToast } from '../composables/useToast'
-import { confirm as confirmDialog } from '../composables/useConfirm'
 
 const { current, isPersonal, isPlatform, load: loadOrgs } = useOrg()
 const toast = useToast()
 const loading = ref(false)
-const upgrading = ref(false)
 const lastUpdated = ref('')
 
-async function onUpgrade() {
-  if (upgrading.value || !current.value.id) return
-  const ok = await confirmDialog({
-    title: '升级为团队组织',
-    message: '升级后可邀请成员、共享知识库；组织 ID 不变、知识库零迁移。确认升级？',
-    confirmText: '升级',
-  })
-  if (!ok) return
-  upgrading.value = true
-  try {
-    await upgradeOrg(current.value.id)
-    await loadOrgs()
-    toast.success('已升级为团队组织')
-  } catch (e) {
-    /* 错误由全局拦截提示 */
-  } finally {
-    upgrading.value = false
-  }
+function onUpgradeTodo() {
+  // 升级到团队组织功能待开发：按钮置灰，点击仅提示。
+  toast.info('该功能待开发')
 }
 
 // ===== 组织成员概览（仅团队组织展示，复用 /orgs/{id}/members） =====
@@ -626,6 +609,9 @@ watch(() => current.value?.id, () => loadMembers(), { immediate: true })
 .upgrade-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-radius: 14px; padding: 12px 16px; background: linear-gradient(95deg, #eef4ff, #f7faff); border: 1px solid var(--primary-border); }
 .upgrade-banner .ub-ico { width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
 .upgrade-banner .ub-txt { flex: 1; font-size: 13px; color: var(--slate); } .upgrade-banner .ub-txt b { color: var(--navy); }
+/* 升级到团队组织功能待开发：置灰但仍可点击（点击后 toast 提示）。 */
+.upgrade-banner .ub-btn-todo { background: #e5e7eb; color: #9ca3af; border: 1px solid #d1d5db; cursor: not-allowed; box-shadow: none; }
+.upgrade-banner .ub-btn-todo:hover { background: #e5e7eb; color: #9ca3af; }
 
 /* ===== 破玻璃横幅 + 权限矩阵（全平台视图） ===== */
 .breakglass-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-radius: 14px; padding: 12px 16px; background: linear-gradient(95deg, #fff7ed, #fffbeb); border: 1px solid #fed7aa; }

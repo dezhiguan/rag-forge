@@ -216,6 +216,22 @@ class RetrievalServiceTest {
   }
 
   @Test
+  void internalError_returnsFriendlyMessage_withoutLeakingCause() {
+    when(vectorSearchService.search(anyString(), anyList(), any(), anyInt(), any()))
+        .thenThrow(new RuntimeException("内部数据库连接串 secret-xyz"));
+
+    assertThatThrownBy(
+            () -> retrievalService.retrieve("q", List.of(1L), null, "vector", null, 5, 5))
+        .isInstanceOfSatisfying(
+            BizException.class,
+            ex -> {
+              assertThat(ex.getCode()).isEqualTo(500);
+              assertThat(ex.getMessage()).isEqualTo("检索失败，请稍后重试");
+              assertThat(ex.getMessage()).doesNotContain("secret");
+            });
+  }
+
+  @Test
   void vectorWeightIsClampedForHybrid() {
     HybridSearchOutput hybridOutput =
         new HybridSearchOutput(List.of(), null, null, "hybrid");
