@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -143,6 +144,20 @@ class DocumentPipelineServiceTest {
     verify(documentPipelineService).updateDocumentChunkCount(1L, 2);
     verify(documentPipelineService).updateCleanReport(eq(1L), eq(null), anyString());
     verify(documentPipelineService).incrementKbCount(10L, 2, true);
+  }
+
+  @Test
+  void incrementKbCount_atomicallyAdjustsCounters() {
+    // setUp 里把 incrementKbCount 打了桩，这里放开跑真实内部，验证走原子 adjustCounters。
+    doCallRealMethod()
+        .when(documentPipelineService)
+        .incrementKbCount(anyLong(), anyInt(), anyBoolean());
+
+    documentPipelineService.incrementKbCount(10L, 3, true);
+    verify(knowledgeBaseMapper).adjustCounters(10L, 3, 1);
+
+    documentPipelineService.incrementKbCount(10L, 5, false);
+    verify(knowledgeBaseMapper).adjustCounters(10L, 5, 0);
   }
 
   @Test
