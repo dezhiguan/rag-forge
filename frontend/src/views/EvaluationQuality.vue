@@ -305,8 +305,8 @@
       <aside class="settings-drawer">
         <div class="drawer-head">
           <div>
-            <h2>抽样与 Golden Set（黄金集）</h2>
-            <p>控制线上 LLM-as-Judge 抽样率；超过 10% 保存时需要二次确认。</p>
+            <h2>质量评测设置</h2>
+            <p>配置本组织如何评测应答质量：① 线上抽样（被动监控）② 黄金集回放（主动验证）。评测由 AI 评审打分，会产生少量成本。</p>
           </div>
           <button class="drawer-close" @click="closeSamplingDrawer">关闭</button>
         </div>
@@ -314,60 +314,10 @@
         <div v-if="settingsError" class="quality-error-banner">{{ settingsError }}</div>
 
         <section class="drawer-section">
-          <h3>全局抽样率</h3>
-          <p v-if="!isPlatformAdmin" class="global-readonly-hint">
-            全局抽样率与月度预算仅平台管理员可修改，此处为只读。你可在下方「知识库覆盖」配置自己知识库的抽样。
+          <h3>① 线上质量抽样</h3>
+          <p class="muted golden-empty-hint">
+            从本组织的线上应答里按知识库抽样，交 AI 评审打分持续监控质量。未列出的知识库默认不抽样。
           </p>
-          <div class="rate-row">
-            <input
-              v-model.number="globalRatePercent"
-              type="range"
-              min="0"
-              max="20"
-              step="0.5"
-              :disabled="!isPlatformAdmin"
-            />
-            <strong>{{ globalRatePercent.toFixed(1) }}%</strong>
-          </div>
-          <label class="inline-check">
-            <input v-model="globalSamplingEnabled" type="checkbox" :disabled="!isPlatformAdmin" />
-            启用全局抽样
-          </label>
-          <div v-if="globalRatePercent > 10" class="cost-warning">
-            <label class="inline-check">
-              <input v-model="highCostConfirmed" type="checkbox" />
-              我已确认成本风险
-            </label>
-          </div>
-          <div v-else-if="globalRatePercent > 5" class="cost-warning">
-            当前抽样率超过 5%，请结合调用量评估月度成本。
-          </div>
-          <div class="drawer-action-row">
-            <button
-              class="btn-save-config"
-              :class="{ 'is-saving': savingGlobal }"
-              :disabled="savingGlobal || !isPlatformAdmin"
-              :title="isPlatformAdmin ? '' : '全局配置仅平台管理员可修改'"
-              @click="saveGlobalSampling"
-            >
-              <span v-if="savingGlobal" class="btn-save-spinner" aria-hidden="true" />
-              <svg v-else class="btn-save-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <path
-                  d="M4 3.5h8.5L16 7v9.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
-                  stroke="currentColor"
-                  stroke-width="1.4"
-                  stroke-linejoin="round"
-                />
-                <path d="M8 3.5v4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M6 13.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
-              </svg>
-              <span>{{ savingGlobal ? '保存中...' : '保存全局配置' }}</span>
-            </button>
-          </div>
-        </section>
-
-        <section class="drawer-section">
-          <h3>知识库覆盖</h3>
           <div class="kb-override-form">
             <select v-model="kbOverrideForm.scopeId">
               <option :value="null" disabled>选择知识库</option>
@@ -389,29 +339,28 @@
         </section>
 
         <section class="drawer-section">
-          <h3>Golden Set（黄金集）回放</h3>
-          <p>当前启用题数：<strong>{{ goldenEnabledCount }}</strong></p>
+          <h3>② 黄金集回归测试</h3>
+          <p class="muted golden-empty-hint">
+            从「评测数据集」勾选黄金问题作为本组织的质量基准；改动分块/模型/内容后一键回放，直接点亮本组织质量看板。
+          </p>
+          <p>本组织已启用：<strong>{{ goldenEnabledCount }}</strong> 道黄金题</p>
           <button
             class="btn-save-config btn-save-config--secondary"
-            :disabled="replayingGolden || goldenEnabledCount <= 0 || !isPlatformAdmin"
-            :title="isPlatformAdmin ? replayDisabledReason : '全量黄金集回放仅平台管理员可触发'"
+            :disabled="replayingGolden || goldenEnabledCount <= 0 || !canManageOrg"
+            :title="canManageOrg ? replayDisabledReason : '仅组织所有者 / 管理员可触发回放'"
             @click="replayGoldenNow"
           >
-            {{ replayingGolden ? '任务进行中...' : '立即回放' }}
+            {{ replayingGolden ? '任务进行中...' : `立即回放本组织 ${goldenEnabledCount} 题` }}
           </button>
-          <p v-if="!isPlatformAdmin" class="muted golden-empty-hint">
-            全量黄金集回放仅平台管理员可触发（避免占用全平台 judge 预算）。
+          <p v-if="!canManageOrg" class="muted golden-empty-hint">
+            仅组织所有者 / 管理员可触发回放。
           </p>
           <p v-else-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
-            当前没有启用的黄金集题目，请先在「评测实验室」里把题目的 judgeEnabled 设为 true。
+            本组织还没有黄金题，请先到「评测数据集」勾选要纳入回归的问题。
           </p>
-          <p v-else class="muted">手动触发会异步排队执行，每题间隔 500ms。</p>
-        </section>
-
-        <section class="drawer-section">
-          <h3>月度预算</h3>
-          <p>当前预算：<strong>¥{{ monthlyBudgetCny }}</strong></p>
-          <p class="muted">预算配置只读，如需调整请找架构师修改部署环境变量。</p>
+          <p v-else class="muted">
+            异步执行，每题间隔 500ms · 结果进本组织质量看板 · 单次最多 50 题、每 5 分钟一次 · 点击需二次确认。
+          </p>
         </section>
       </aside>
     </div>
@@ -430,11 +379,13 @@ import {
   fetchWorstCases,
   listSamplingConfigs,
   replayGoldenSetNow,
+  replayGoldenSetForOrg,
   upsertSamplingConfig,
 } from '../api/quality'
 import { listKb } from '../api/kb'
 import { bottleneckLabel, resolveHttpError } from '../api/error-messages'
 import { useAuth } from '../composables/useAuth'
+import { useOrg } from '../composables/useOrg'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 
@@ -443,6 +394,11 @@ const toast = useToast()
 const { clearSession, ragRole } = useAuth()
 // 全局抽样率与月度预算仅平台管理员可改;非管理员时全局区控件置灰(与后端 SAMPLING_GLOBAL_ADMIN_ONLY 一致)。
 const isPlatformAdmin = computed(() => ragRole.value === 'ADMIN')
+// 组织级回放/抽样配置权限：当前组织的所有者/管理员，或平台管理员。
+const { current: currentOrg } = useOrg()
+const canManageOrg = computed(
+  () => isPlatformAdmin.value || ['OWNER', 'ADMIN'].includes(currentOrg.value?.myRole),
+)
 const router = useRouter()
 const route = useRoute()
 
@@ -762,10 +718,10 @@ async function replayGoldenNow() {
     toast.error('当前启用题数为 0，请先在评测实验室启用黄金集题目')
     return
   }
-  // 回放会对启用题目逐题发起 LLM-as-Judge 判分，产生调用与成本，触发前二次确认。
+  // 回放会对本组织启用题目逐题发起 LLM-as-Judge 判分，产生调用与成本，触发前二次确认。
   const ok = await confirmDialog({
-    title: '立即回放黄金集',
-    message: `将对当前启用的 ${goldenEnabledCount.value} 道黄金集题目发起 LLM-as-Judge 评测，会产生判分调用与相应成本。确定继续？`,
+    title: '立即回放本组织黄金集',
+    message: `将对本组织启用的 ${goldenEnabledCount.value} 道黄金题发起 LLM-as-Judge 评测（单次最多 50 题），会产生判分调用与相应成本，结果进本组织质量看板。确定继续？`,
     confirmText: '开始回放',
     cancelText: '取消',
   })
@@ -773,7 +729,7 @@ async function replayGoldenNow() {
   replayingGolden.value = true
   settingsError.value = ''
   try {
-    await replayGoldenSetNow({ limit: 100 })
+    await replayGoldenSetForOrg({ limit: 50 })
     await loadSamplingSettings()
     toast.success('回放已开始')
   } catch (error) {

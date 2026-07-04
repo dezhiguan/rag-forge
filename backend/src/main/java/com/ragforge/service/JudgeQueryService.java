@@ -25,4 +25,10 @@ public interface JudgeQueryService {
   BigDecimal costThisMonth();
 
   int goldenSetEnabledQuestionCount();
+
+  /**
+   * 组织级启用题数：只统计 dataset 归属 KB 落在给定范围内的启用黄金题。scopeKbIds 为 null 表示平台口径
+   * （全量，等价于无参版本）；空集表示无可见 KB → 0。
+   */
+  int goldenSetEnabledQuestionCount(Set<Long> scopeKbIds);
 }

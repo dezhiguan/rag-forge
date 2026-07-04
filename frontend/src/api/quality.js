@@ -34,3 +34,7 @@ export const fetchGoldenSetEnabledCount = () => request.get('/evaluation/golden-
 
 export const replayGoldenSetNow = (params = {}) =>
   request.post('/evaluation/golden-set/replay', null, { params })
+
+// 组织级回放：回放本组织启用的黄金题，样本落本组织（仅组织所有者/管理员或平台管理员可触发）。
+export const replayGoldenSetForOrg = (params = {}) =>
+  request.post('/evaluation/golden-set/replay/org', null, { params })

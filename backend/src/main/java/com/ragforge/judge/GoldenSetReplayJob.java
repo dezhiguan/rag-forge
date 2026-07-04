@@ -36,9 +36,17 @@ public class GoldenSetReplayJob {
   }
 
   public ReplayResultVo replay(Long datasetId, int limit) {
+    return runReplay(loadQuestions(datasetId), limit, datasetId);
+  }
+
+  /** 组织级回放：只跑 dataset 归属 KB 落在 kbIds 范围内的启用黄金题（样本经 OrgContextHolder 归属该组织）。 */
+  public ReplayResultVo replayForKbScope(java.util.Set<Long> kbIds, int limit) {
+    return runReplay(loadQuestionsForKbScope(kbIds), limit, null);
+  }
+
+  private ReplayResultVo runReplay(List<EvalQuestion> questions, int limit, Long datasetId) {
     ReplayResultVo result = new ReplayResultVo();
     int safeLimit = limit <= 0 ? 0 : limit;
-    List<EvalQuestion> questions = loadQuestions(datasetId);
     int requested = safeLimit > 0 ? Math.min(safeLimit, questions.size()) : questions.size();
     int success = 0;
     int failed = 0;
@@ -97,6 +105,26 @@ public class GoldenSetReplayJob {
       query.eq(EvalQuestion::getDatasetId, datasetId);
     }
     return questionMapper.selectList(query);
+  }
+
+  private List<EvalQuestion> loadQuestionsForKbScope(java.util.Set<Long> kbIds) {
+    if (kbIds == null || kbIds.isEmpty()) {
+      return List.of();
+    }
+    List<Long> datasetIds =
+        datasetMapper
+            .selectList(new LambdaQueryWrapper<EvalDataset>().in(EvalDataset::getKbId, kbIds))
+            .stream()
+            .map(EvalDataset::getId)
+            .toList();
+    if (datasetIds.isEmpty()) {
+      return List.of();
+    }
+    return questionMapper.selectList(
+        new LambdaQueryWrapper<EvalQuestion>()
+            .eq(EvalQuestion::getJudgeEnabled, true)
+            .in(EvalQuestion::getDatasetId, datasetIds)
+            .orderByAsc(EvalQuestion::getId));
   }
 
   private List<Long> parseKbIds(EvalQuestion question) {

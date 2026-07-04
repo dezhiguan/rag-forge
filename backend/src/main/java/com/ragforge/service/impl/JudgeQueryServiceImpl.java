@@ -406,6 +406,26 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
     return count == null ? 0 : count;
   }
 
+  @Override
+  public int goldenSetEnabledQuestionCount(Set<Long> scopeKbIds) {
+    if (scopeKbIds == null) {
+      return goldenSetEnabledQuestionCount(); // 平台口径：全量
+    }
+    if (scopeKbIds.isEmpty()) {
+      return 0; // 无可见 KB
+    }
+    List<Long> ids = new ArrayList<>(scopeKbIds);
+    String inSql = ids.stream().map(i -> "?").collect(Collectors.joining(","));
+    String sql =
+        "SELECT COUNT(1) FROM eval_questions q "
+            + "JOIN eval_datasets d ON q.dataset_id = d.id "
+            + "WHERE q.judge_enabled = TRUE AND d.kb_id IN ("
+            + inSql
+            + ")";
+    Integer count = jdbcTemplate.queryForObject(sql, Integer.class, ids.toArray());
+    return count == null ? 0 : count;
+  }
+
   /** 按当前组织的 KB 范围聚合：按 date 分组，p50/p95/mean 按样本数加权，counts/cost 求和。 */
   private List<Map<String, Object>> queryScopedMetricsRows(Set<Long> scopeKbIds, LocalDate start) {
     List<Long> ids = new ArrayList<>(scopeKbIds);

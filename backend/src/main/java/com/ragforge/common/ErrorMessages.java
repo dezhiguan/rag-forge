@@ -99,6 +99,9 @@ public final class ErrorMessages {
           // 评测
           Map.entry("JUDGE_RESULT_NOT_FOUND", "评测结果不存在或已被清理"),
           Map.entry("EVAL_DATASET_NOT_FOUND", "评测数据集不存在"),
+          Map.entry("GOLDEN_SET_EMPTY", "当前组织还没有启用黄金题，请先到评测数据集勾选后再回放"),
+          Map.entry("GOLDEN_REPLAY_COOLDOWN", "刚刚已发起回放，请稍后再试（每 5 分钟一次）"),
+          Map.entry("ORG_CONTEXT_REQUIRED", "请先选择组织后再操作"),
           Map.entry("EVAL_RESOURCE_NOT_IN_ORG", "所选评测资源不属于当前组织"),
           Map.entry("ALREADY_IN_PROGRESS", "任务正在进行中，请稍候再试"),
           // 通用兜底码

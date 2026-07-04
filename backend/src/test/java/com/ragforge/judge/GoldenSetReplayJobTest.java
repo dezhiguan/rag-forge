@@ -59,6 +59,33 @@ class GoldenSetReplayJobTest {
   }
 
   @Test
+  void replayForKbScope_只跑本组织KB范围内启用题() {
+    // dataset#7 归属 kb99；启用题 3 道
+    when(datasetMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(dataset(99L)));
+    when(questionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(questions(3));
+    when(datasetMapper.selectById(7L)).thenReturn(dataset(99L));
+    when(answerService.answerSync(any(AnswerRequest.class))).thenReturn(new AnswerResponse());
+
+    GoldenSetReplayJob job =
+        new GoldenSetReplayJob(questionMapper, datasetMapper, answerService, knowledgeBaseMapper);
+    ReplayResultVo result = job.replayForKbScope(java.util.Set.of(99L), 50);
+
+    assertThat(result.getRequested()).isEqualTo(3);
+    assertThat(result.getSuccess()).isEqualTo(3);
+    verify(answerService, times(3)).answerSync(any(AnswerRequest.class));
+  }
+
+  @Test
+  void replayForKbScope_空范围_不回放() {
+    GoldenSetReplayJob job =
+        new GoldenSetReplayJob(questionMapper, datasetMapper, answerService, knowledgeBaseMapper);
+    ReplayResultVo result = job.replayForKbScope(java.util.Set.of(), 50);
+
+    assertThat(result.getRequested()).isZero();
+    assertThat(result.getSuccess()).isZero();
+  }
+
+  @Test
   void scheduledReplay_hasShedLockAndCron() throws NoSuchMethodException {
     Method method = GoldenSetReplayJob.class.getMethod("replay");
     SchedulerLock lock = method.getAnnotation(SchedulerLock.class);
