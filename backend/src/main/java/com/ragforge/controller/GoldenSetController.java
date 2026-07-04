@@ -53,6 +53,9 @@ public class GoldenSetController {
 
   private static final String COOLDOWN_KEY_PREFIX = "golden:replay:cooldown:org:";
 
+  /** 平台基准题数：全平台视图（破玻璃）下固定展示为冻结 Core Set 的 100 题。 */
+  static final int PLATFORM_BASELINE_QUESTION_COUNT = 100;
+
   private final GoldenSetReplayJob replayJob;
   private final JudgeQueryService judgeQueryService;
   private final EvalDatasetMapper evalDatasetMapper;
@@ -145,10 +148,14 @@ public class GoldenSetController {
     return Result.ok(accepted);
   }
 
-  /** 启用题数：平台破玻璃返回全量口径；否则只统计当前组织范围内的启用黄金题。 */
+  /** 启用题数：平台破玻璃返回固定平台基准 100（冻结 Core Set）；否则只统计当前组织范围内的启用黄金题。 */
   @GetMapping("/enabled-count")
   public Result<Integer> enabledCount() {
-    return Result.ok(judgeQueryService.goldenSetEnabledQuestionCount(currentScopeForCount()));
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    if (ctx != null && ctx.isAdmin() && AdminOverrideHolder.isActive()) {
+      return Result.ok(PLATFORM_BASELINE_QUESTION_COUNT);
+    }
+    return Result.ok(judgeQueryService.goldenSetEnabledQuestionCount(orgKbIds(OrgContextHolder.get())));
   }
 
   // ---- helpers ----
@@ -192,15 +199,6 @@ public class GoldenSetController {
       replayLock.unlock();
       throw e;
     }
-  }
-
-  /** 平台破玻璃 → null(全量口径)；否则当前组织的 KB 范围。 */
-  private Set<Long> currentScopeForCount() {
-    RagAuthContext ctx = RagAuthContextHolder.get();
-    if (ctx != null && ctx.isAdmin() && AdminOverrideHolder.isActive()) {
-      return null;
-    }
-    return orgKbIds(OrgContextHolder.get());
   }
 
   /** 当前组织自有的 KB id 集（不含公开库；黄金题按 dataset 归属 KB 判定组织）。 */

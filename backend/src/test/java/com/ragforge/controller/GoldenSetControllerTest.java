@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -303,15 +302,17 @@ class GoldenSetControllerTest {
   }
 
   @Test
-  void enabledCount_平台破玻璃_返回全量口径() throws Exception {
+  void enabledCount_平台破玻璃_返回固定平台基准100() throws Exception {
     RagAuthContextHolder.set(adminCtx(1L));
     AdminOverrideHolder.activate("governance");
-    when(judgeQueryService.goldenSetEnabledQuestionCount(isNull())).thenReturn(100);
 
     mockMvc
         .perform(get("/api/v1/evaluation/golden-set/enabled-count"))
         .andExpect(status().isOk())
+        // 平台基准固定 100，不查库（不随实际启用数漂移）
         .andExpect(jsonPath("$.data").value(100));
+
+    verify(judgeQueryService, never()).goldenSetEnabledQuestionCount(anySet());
   }
 
   // ===================== helpers =====================

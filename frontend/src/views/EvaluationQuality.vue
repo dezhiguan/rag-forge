@@ -336,6 +336,10 @@
               <button class="link-button danger" @click="removeSampling(item.id)">删除</button>
             </div>
           </div>
+          <p class="sampling-cost-hint">
+            💰 本组织评审成本：本月已用 <strong>¥{{ formatMoney(cost.totalCny) }}</strong>，按当前用量预计本月
+            <strong>¥{{ formatMoney(cost.monthlyProjectedCny) }}</strong>。抽样越高越全面，成本也越高。
+          </p>
         </section>
 
         <section class="drawer-section">
@@ -1712,6 +1716,17 @@ watch(
 
 .golden-empty-hint {
   color: #b45309;
+}
+
+.sampling-cost-hint {
+  margin: 10px 0 0;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: #eafaf0;
+  border: 1px solid #bfe6cf;
+  color: #0e7a41;
+  font-size: 12.5px;
+  line-height: 1.6;
 }
 
 .global-readonly-hint {
