@@ -5,6 +5,7 @@ import com.ragforge.common.BizException;
 import com.ragforge.config.RetrievalProperties;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.search.limit.ConcurrencyLimiter;
+import com.ragforge.web.TraceIds;
 import com.ragforge.search.RerankerClient.RerankOutput;
 import com.ragforge.search.RerankerClient.RerankResult;
 import java.util.ArrayList;
@@ -143,14 +144,21 @@ public class RetrievalService {
       if (cause instanceof BizException bizException) {
         throw bizException;
       }
-      throw new BizException(500, "检索失败：" + (cause == null ? e.getMessage() : cause.getMessage()));
+      // 真实原因记日志(含 traceId)，对外只给固定友好文案，避免把内部异常细节吐给用户。
+      log.error(
+          "检索失败 strategy={} traceId={}",
+          normalizedStrategy,
+          TraceIds.current(),
+          cause == null ? e : cause);
+      throw new BizException(500, "检索失败，请稍后重试");
     } catch (BizException e) {
       throw e;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new BizException(500, "检索被中断");
     } catch (Exception e) {
-      throw new BizException(500, "检索失败：" + e.getMessage());
+      log.error("检索失败(未预期) strategy={} traceId={}", normalizedStrategy, TraceIds.current(), e);
+      throw new BizException(500, "检索失败，请稍后重试");
     } finally {
       guard.close();
     }
