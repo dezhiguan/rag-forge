@@ -37,6 +37,13 @@ public class StuckDocumentRecoveryJob {
   @Value("${ragforge.maintenance.stuck-recovery-batch:200}")
   private int batchLimit;
 
+  /**
+   * PROCESSING 卡住阈值（分钟）：updated_at 超过该时长仍处于 PROCESSING，视为 worker 处理途中崩溃残留。
+   * 必须严格大于消费者 CAS 的 5 分钟重认领窗口，否则重投也不会被重新认领（实际取 max(6, 本值)）。
+   */
+  @Value("${ragforge.maintenance.stuck-processing-minutes:15}")
+  private int stuckProcessingMinutes;
+
   @Scheduled(fixedDelayString = "${ragforge.maintenance.stuck-recovery-interval-ms:120000}")
   @SchedulerLock(
       name = "StuckDocumentRecoveryJob_recoverStuckPending",
@@ -66,5 +73,43 @@ public class StuckDocumentRecoveryJob {
     }
     log.warn(
         "Stuck PENDING recovery: re-dispatched {} document(s) stuck > {} min", resent, stuckMinutes);
+  }
+
+  /**
+   * 兜底恢复卡在 PROCESSING 的文档。worker 在处理途中崩溃/重启时，未 ack 的消息重投会因 doc 仍 PROCESSING
+   * 且 updated_at &lt; 5min 被消费者 CAS 跳过并静默 ack 丢弃；而 {@link #recoverStuckPending()} 只捞 PENDING，
+   * 导致此类文档永久卡 PROCESSING（此前只能手工 SQL 救）。此任务按 updated_at 超阈值重新投递，消费者
+   * CAS(PROCESSING AND updated_at &lt; now-5min) 会重新认领；阈值取 max(6, 配置值) 确保严格大于 CAS 窗口。
+   */
+  @Scheduled(fixedDelayString = "${ragforge.maintenance.stuck-processing-recovery-interval-ms:120000}")
+  @SchedulerLock(
+      name = "StuckDocumentRecoveryJob_recoverStuckProcessing",
+      lockAtMostFor = "PT5M",
+      lockAtLeastFor = "PT0S")
+  public void recoverStuckProcessing() {
+    int minutes = Math.max(6, stuckProcessingMinutes);
+    LocalDateTime threshold = LocalDateTime.now().minusMinutes(minutes);
+    List<Document> stuck =
+        documentMapper.selectList(
+            new LambdaQueryWrapper<Document>()
+                .eq(Document::getParseStatus, "PROCESSING")
+                .lt(Document::getUpdatedAt, threshold)
+                .orderByAsc(Document::getId)
+                .last("LIMIT " + Math.max(1, batchLimit)));
+    if (stuck.isEmpty()) {
+      return;
+    }
+    int resent = 0;
+    for (Document d : stuck) {
+      try {
+        // 重投；消费者 CAS 的 5min 陈旧窗口保证只有真卡住的才被重新认领，先清后建幂等安全。
+        documentProcessProducer.send(d.getId());
+        resent++;
+      } catch (RuntimeException e) {
+        log.warn("Stuck PROCESSING recovery re-dispatch failed docId={}: {}", d.getId(), e.getMessage());
+      }
+    }
+    log.warn(
+        "Stuck PROCESSING recovery: re-dispatched {} document(s) stuck > {} min", resent, minutes);
   }
 }

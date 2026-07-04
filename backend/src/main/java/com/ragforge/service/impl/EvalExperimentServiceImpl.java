@@ -50,6 +50,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
+import com.ragforge.web.TraceIds;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -79,7 +80,6 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   private EvalExperimentServiceImpl self;
 
   @Override
-  @Transactional
   public EvalExperimentVO runExperiment(Long datasetId, String strategy, Double vectorWeight, Integer topK) {
     EvalDataset dataset = requireDataset(datasetId);
     List<EvalQuestion> questions =
@@ -107,6 +107,8 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     int total = questions.size();
     List<EvalResult> evalResults = new ArrayList<>(total);
 
+    // 检索(数十题 × 远程 embedding/ES/rerank，可达分钟级)在事务外跑，避免整场实验持 DB 连接 + 行锁。
+    // experiment 已在上面无事务地 insert（自动提交），故 catch 里的 markAsFailed(REQUIRES_NEW) 能看到该行。
     try {
       long searchStart = System.currentTimeMillis();
       List<EvalQuestionRunResult> runResults =
@@ -115,21 +117,28 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       for (EvalQuestionRunResult runResult : runResults) {
         evalResults.add(runResult.getResult());
       }
-      long searchElapsed = System.currentTimeMillis() - searchStart;
-      long insertStart = System.currentTimeMillis();
-      insertEvalResultsBatch(evalResults);
       log.info(
-          "Eval experiment questions completed: experimentId={} questions={} searchElapsedMs={} batchInsertElapsedMs={}",
+          "Eval experiment questions completed: experimentId={} questions={} searchElapsedMs={}",
           experiment.getId(),
           total,
-          searchElapsed,
-          System.currentTimeMillis() - insertStart);
+          System.currentTimeMillis() - searchStart);
+
+      applyMetrics(experiment, evalResults, total);
+      // 结果批插 + 置 completed 放同一短事务原子提交。
+      self.finalizeExperiment(experiment, evalResults);
     } catch (Exception e) {
-      log.error("Experiment run failed: {}", e.getMessage(), e);
+      // 真实原因记日志(含 traceId)，对外统一友好文案，不把内部异常细节吐给用户。
+      log.error(
+          "评测实验运行失败 experimentId={} traceId={}", experiment.getId(), TraceIds.current(), e);
       self.markAsFailed(experiment);
-      throw new BizException(500, "实验运行失败: " + e.getMessage());
+      throw new BizException(500, "评测实验运行失败，请稍后重试");
     }
 
+    return getDetail(experiment.getId());
+  }
+
+  /** 从各题结果算 top1/top3/mrr/平均延迟并置为 completed（仅在内存对象上，落库由 finalizeExperiment 负责）。 */
+  private void applyMetrics(EvalExperiment experiment, List<EvalResult> evalResults, int total) {
     int top1HitCount = 0;
     int top3HitCount = 0;
     long latencySum = 0;
@@ -152,9 +161,13 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     experiment.setMrr(BigDecimal.valueOf(mrrSum / total).setScale(4, RoundingMode.HALF_UP));
     experiment.setAvgLatencyMs((int) Math.round((double) latencySum / total));
     experiment.setStatus("completed");
-    evalExperimentMapper.updateById(experiment);
+  }
 
-    return getDetail(experiment.getId());
+  /** 结果批插 + 实验置 completed，同一短事务原子提交（检索已在事务外完成，事务只覆盖这两步 DB 写）。 */
+  @Transactional
+  public void finalizeExperiment(EvalExperiment experiment, List<EvalResult> evalResults) {
+    insertEvalResultsBatch(evalResults);
+    evalExperimentMapper.updateById(experiment);
   }
 
   /** 当前组织的 KB ids；破玻璃(全平台)或无组织上下文返回 null（表示不按组织过滤）。 */

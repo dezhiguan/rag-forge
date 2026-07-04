@@ -29,6 +29,7 @@ class StuckDocumentRecoveryJobTest {
   void setUp() {
     job = new StuckDocumentRecoveryJob(documentMapper, producer);
     ReflectionTestUtils.setField(job, "stuckMinutes", 3);
+    ReflectionTestUtils.setField(job, "stuckProcessingMinutes", 15);
     ReflectionTestUtils.setField(job, "batchLimit", 200);
   }
 
@@ -69,5 +70,36 @@ class StuckDocumentRecoveryJobTest {
 
     verify(producer).send(1L);
     verify(producer).send(2L); // 第一个失败不影响第二个
+  }
+
+  @Test
+  void redispatchesStuckProcessingDocuments() {
+    when(documentMapper.selectList(any())).thenReturn(List.of(doc(5L), doc(6L)));
+
+    job.recoverStuckProcessing();
+
+    verify(producer).send(5L);
+    verify(producer).send(6L);
+    verify(producer, times(2)).send(any());
+  }
+
+  @Test
+  void noStuckProcessing_doesNothing() {
+    when(documentMapper.selectList(any())).thenReturn(List.of());
+
+    job.recoverStuckProcessing();
+
+    verify(producer, never()).send(any());
+  }
+
+  @Test
+  void stuckProcessingRedispatchFailureDoesNotStopOthers() {
+    when(documentMapper.selectList(any())).thenReturn(List.of(doc(7L), doc(8L)));
+    org.mockito.Mockito.doThrow(new RuntimeException("mq down")).when(producer).send(7L);
+
+    job.recoverStuckProcessing(); // 不抛异常
+
+    verify(producer).send(7L);
+    verify(producer).send(8L);
   }
 }
