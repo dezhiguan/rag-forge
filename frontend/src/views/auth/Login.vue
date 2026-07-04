@@ -7,6 +7,10 @@
           登录会话已过期，登录后将自动跳回 <code>{{ redirectNotice }}</code>
         </div>
 
+        <div v-if="resetSuccessNotice" class="tip tip-ok">
+          密码已重置成功，请使用新密码登录。
+        </div>
+
         <div class="tabs" role="tablist">
           <button
             type="button"
@@ -183,6 +187,8 @@ const form = reactive({
 const redirectNotice = computed(() => {
   return route.query.reason === 'expired' ? route.query.redirect || null : null
 })
+
+const resetSuccessNotice = computed(() => route.query.reason === 'reset-success')
 
 const smsBtnLabel = computed(() => {
   if (sendingSms.value) return '发送中…'
@@ -586,6 +592,11 @@ onUnmounted(() => {
   background: #fff7ed;
   color: #b54708;
   border: 1px solid #fed7aa;
+}
+.tip-ok {
+  background: #ecfdf3;
+  color: #027a48;
+  border: 1px solid #abefc6;
 }
 
 .footer-mini {

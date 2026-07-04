@@ -8,7 +8,7 @@
 
     <template v-if="step === 1">
       <h1 class="form-title">验证身份</h1>
-      <p class="form-sub">填写账号与手机号，系统会发送一次性验证码。</p>
+      <p class="form-sub">填写账号（或邮箱）与绑定手机号，系统会发送一次性验证码。</p>
 
       <div v-if="errorMsg" class="tip tip-err">{{ errorMsg }}</div>
 
@@ -61,8 +61,8 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { refreshAccessToken, resetPasswordConfirm, resetPasswordInit, resetPasswordVerify } from '../../api/auth'
-import { applySession } from '../../api/session'
+import { resetPasswordConfirm, resetPasswordInit, resetPasswordVerify } from '../../api/auth'
+import { notifyLoggedOut, silentRefresh } from '../../api/session'
 import { loadMe } from '../../api/account'
 import { useAuth } from '../../composables/useAuth'
 
@@ -94,9 +94,10 @@ async function handleInit() {
     await resetPasswordInit({ account: form.account, phone: form.phone })
     notice.value = '如果账号信息匹配，验证码将发送到绑定手机号。'
     step.value = 2
-  } catch {
-    notice.value = '如果账号信息匹配，验证码将发送到绑定手机号。'
-    step.value = 2
+  } catch (e) {
+    // 限流/手机号格式/短信服务故障/网络异常必须留在本步明确提示；
+    // "账号是否存在/是否匹配"后端恒定返回成功，不会走到这里，无枚举泄露
+    errorMsg.value = e?.message || '验证码发送失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -121,24 +122,32 @@ async function handleConfirm() {
       throw new Error('reset ticket missing')
     }
     setResetTicket(ticket)
-    const res = await resetPasswordConfirm({
+    await resetPasswordConfirm({
       account: form.account,
       reset_ticket: state.resetTicket,
       new_password: form.newPassword,
     })
     clearResetTicket()
-    // 改密会 bump 后端 session_version，使 confirm 返回的 token 一出生即过期；
-    // 改用已轮换的 refresh cookie 换取 session_version 正确的新 token，再进首页。
-    try {
-      const fresh = await refreshAccessToken()
-      applySession({ ...fresh, user: fresh.user || res.user })
-    } catch {
-      // 兜底：refresh 不可用时退回 confirm 返回的 token（退化为旧行为）
-      applySession(res)
-    }
-    loadMe() // 后台补全 capabilities/显示名，不阻塞跳转
+    // 改密会灭族全部旧会话并 bump session_version：confirm 返回的 token 一出生即过期。
+    // 先复位残留的续期定时器（并让其他标签页下线），再走 silentRefresh 的跨标签页
+    // 单飞锁换新 token——裸调 refresh 会与定时续期双刷，触发网关重放检测，
+    // 正是"重置成功后偶发提示登录已过期"的根因。
+    notifyLoggedOut()
     step.value = 3
-    setTimeout(() => router.replace('/'), 450)
+    let sessionReady = false
+    try {
+      await silentRefresh()
+      await loadMe() // 用新 token 补全用户信息后再进主页，避免半登录态
+      sessionReady = true
+    } catch {
+      sessionReady = false
+    }
+    if (sessionReady) {
+      setTimeout(() => router.replace('/'), 450)
+    } else {
+      // 换不到有效会话就不硬闯主页（否则必弹"登录已过期"），引导用新密码登录
+      setTimeout(() => router.replace('/login?reason=reset-success'), 450)
+    }
   } catch (e) {
     errorMsg.value = e.message === 'reset ticket missing' ? '验证码已失效，请重新获取' : (e.message || '密码重置失败，请稍后重试')
   } finally {

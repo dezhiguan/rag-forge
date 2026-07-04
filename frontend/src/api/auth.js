@@ -117,14 +117,21 @@ function normalizeAuthError(error) {
 function friendlyAuthMessage(code, message) {
   const text = `${code || ''} ${message || ''}`.toUpperCase()
   if (text.includes('SMS_SEND_TOO_FREQUENT')) return '验证码已发送，请稍后再试'
+  // 日上限与"稍后再试"语义不同：要等明日才有额度，单独提示
+  if (text.includes('SMS_PHONE_DAY_LIMITED') || text.includes('SMS_IP_DAY_LIMITED')) {
+    return '今日验证码发送已达上限，请明日再试'
+  }
   if (
-    text.includes('SMS_PHONE_DAY_LIMITED') ||
     text.includes('SMS_IP_MINUTE_LIMITED') ||
     text.includes('SMS_PROVIDER_RATE_LIMITED') ||
     text.includes('TOO MANY') ||
     text.includes('LIMIT')
   ) {
     return '验证码发送过于频繁，请稍后再试'
+  }
+  if (text.includes('PHONE_FORMAT_INVALID')) return '请输入正确的 11 位大陆手机号'
+  if (text.includes('NETWORK') || text.includes('ECONNABORTED') || text.includes('TIMEOUT')) {
+    return '网络异常，请检查网络后重试'
   }
   if (text.includes('SMS_LOGIN_NOT_REGISTERED')) return '该手机号尚未注册 RAGForge，请先点击「立即注册」'
   if (text.includes('SMS_CODE_INVALID')) return '验证码错误或已过期，请重新获取'
