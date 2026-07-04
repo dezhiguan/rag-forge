@@ -103,7 +103,7 @@
       </div>
       <div class="panel-body">
         <div v-if="loading.overview" class="state-hint">加载中...</div>
-        <div v-else-if="sampleCount <= 0 && trendPoints.length === 0" class="state-hint">暂无评测数据，请检查 Golden Set 是否启用</div>
+        <div v-else-if="sampleCount <= 0 && trendPoints.length === 0" class="state-hint">暂无评测数据。质量指标来自线上流量抽样判分，或由管理员触发黄金集回放，产生样本后将自动展示</div>
         <div v-else class="trend-chart-wrap">
           <div class="trend-meta">hover 查看当日样本与分数</div>
           <svg
@@ -762,6 +762,14 @@ async function replayGoldenNow() {
     toast.error('当前启用题数为 0，请先在评测实验室启用黄金集题目')
     return
   }
+  // 回放会对启用题目逐题发起 LLM-as-Judge 判分，产生调用与成本，触发前二次确认。
+  const ok = await confirmDialog({
+    title: '立即回放黄金集',
+    message: `将对当前启用的 ${goldenEnabledCount.value} 道黄金集题目发起 LLM-as-Judge 评测，会产生判分调用与相应成本。确定继续？`,
+    confirmText: '开始回放',
+    cancelText: '取消',
+  })
+  if (!ok) return
   replayingGolden.value = true
   settingsError.value = ''
   try {

@@ -29,6 +29,26 @@ public class JudgeQualityController {
   private final KbAccessGuard kbAccessGuard;
   private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
+  /** 时间窗上限（天）：看板最长按钮为 90 天，留足冗余并防超大范围拖库。 */
+  private static final int MAX_DAYS = 365;
+
+  /** worst-cases 返回条数上限：前端固定取 10，设 100 上限防资源放大。 */
+  private static final int MAX_LIMIT = 100;
+
+  /** 时间窗范围校验：非法（<1 或超上限）与非数字一样返回 400 INVALID_PARAM:days（一致性）。 */
+  private void validateDays(int days) {
+    if (days < 1 || days > MAX_DAYS) {
+      throw new BizException(400, "INVALID_PARAM:days");
+    }
+  }
+
+  /** 条数范围校验：<1 或超上限返回 400 INVALID_PARAM:limit。 */
+  private void validateLimit(int limit) {
+    if (limit < 1 || limit > MAX_LIMIT) {
+      throw new BizException(400, "INVALID_PARAM:limit");
+    }
+  }
+
   /** 当前组织的 KB 范围；破玻璃返回 null(全平台)，无组织上下文返回空集(无数据)。 */
   private Set<Long> currentOrgScope() {
     com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
@@ -59,14 +79,21 @@ public class JudgeQualityController {
   public Result<OverviewVo> overview(
       @RequestParam(defaultValue = "7") int days,
       @RequestParam(required = false) Long kbId) {
+    validateDays(days);
     Set<Long> scope = currentOrgScope();
     requireKbInScope(kbId, scope);
     return Result.ok(queryService.overview(days, kbId, scope));
   }
 
   @GetMapping("/by-kb")
-  public Result<List<KbSliceVo>> byKb(@RequestParam(defaultValue = "7") int days) {
-    return Result.ok(queryService.byKb(days, currentOrgScope()));
+  public Result<List<KbSliceVo>> byKb(
+      @RequestParam(defaultValue = "7") int days,
+      @RequestParam(required = false) Long kbId) {
+    validateDays(days);
+    // 与 overview/cost/worst-cases 一致：传 kbId 时同样先鉴权（越权/越组织 → 403），再收窄到该 KB。
+    Set<Long> scope = currentOrgScope();
+    requireKbInScope(kbId, scope);
+    return Result.ok(queryService.byKb(days, kbId != null ? Set.of(kbId) : scope));
   }
 
   @GetMapping("/worst-cases")
@@ -74,6 +101,8 @@ public class JudgeQualityController {
       @RequestParam(defaultValue = "10") int limit,
       @RequestParam(defaultValue = "7") int days,
       @RequestParam(required = false) Long kbId) {
+    validateDays(days);
+    validateLimit(limit);
     Set<Long> scope = currentOrgScope();
     requireKbInScope(kbId, scope);
     return Result.ok(queryService.worstCases(limit, days, kbId, scope));
@@ -115,6 +144,7 @@ public class JudgeQualityController {
   public Result<CostSummaryVo> cost(
       @RequestParam(defaultValue = "30") int days,
       @RequestParam(required = false) Long kbId) {
+    validateDays(days);
     Set<Long> scope = currentOrgScope();
     requireKbInScope(kbId, scope);
     // 与 overview/worst-cases 一致:按知识库筛选时,成本也只统计该知识库(联动)。
