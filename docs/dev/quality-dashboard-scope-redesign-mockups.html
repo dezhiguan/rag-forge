@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>质量看板作用域改造 · 页面改动线框图 · RAGForge</title>
+<style>
+  :root{
+    --bg:#eef1f5; --card:#fff; --ink:#1f2733; --sub:#5b6b7f; --line:#e2e7ee;
+    --primary:#2f6bff; --primary-soft:#eaf1ff; --ok:#12a150; --warn:#c8860a; --danger:#d64545;
+    --nav:#0f1b2e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;line-height:1.6;font-size:14px}
+  .wrap{max-width:1120px;margin:0 auto;padding:34px 24px 70px}
+  header.doc{background:linear-gradient(135deg,#1c2b4a,#2f6bff);color:#fff;border-radius:16px;padding:26px 30px;margin-bottom:22px}
+  header.doc .badge{display:inline-block;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);padding:3px 12px;border-radius:999px;font-size:12px;margin-bottom:12px}
+  header.doc h1{margin:0 0 6px;font-size:23px}
+  header.doc p{margin:0;opacity:.85;font-size:13.5px}
+  header.doc .lk{color:#cfe0ff;font-size:12.5px;margin-top:10px;display:block}
+  .legend{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 18px;margin-bottom:22px;display:flex;gap:22px;flex-wrap:wrap;font-size:13px}
+  .legend b{font-weight:600}
+  .mk{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:13px;height:13px;border-radius:4px;display:inline-block}
+  .d-rm{background:#fde2e2;border:1px solid #e9a4a4}
+  .d-add{background:#dcf5e6;border:1px solid #97d8b3}
+  .d-chg{background:#fdeecb;border:1px solid #eac874}
+  h2.sec{font-size:18px;margin:30px 0 4px;display:flex;align-items:center;gap:10px}
+  h2.sec .no{background:var(--primary);color:#fff;width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+  .sub{color:var(--sub);margin:2px 0 14px;font-size:13.5px}
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.ba{grid-template-columns:1fr}}
+  .frameCard{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.05)}
+  .frameCard .cap{padding:8px 14px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .cap.before{background:#fdf1f1;color:#a23b3b;border-bottom:1px solid #f2d3d3}
+  .cap.after{background:#eefaf2;color:#137a45;border-bottom:1px solid #cdeeda}
+  .cap.newp{background:#eef2ff;color:#3949ab;border-bottom:1px solid #d5deff}
+  .screen{padding:14px}
+  /* --- UI component wireframe styles --- */
+  .drawer{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  .drawer .dh{background:#f6f8fc;border-bottom:1px solid var(--line);padding:10px 14px;font-weight:700;font-size:13.5px;display:flex;justify-content:space-between}
+  .drawer .db{padding:12px 14px}
+  .block{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin:9px 0;background:#fbfcfe}
+  .block .bt{font-weight:600;font-size:13px;margin-bottom:6px}
+  .block .muted{color:var(--sub);font-size:12px}
+  .slider{height:6px;background:#e6ebf3;border-radius:99px;position:relative;margin:8px 0}
+  .slider:after{content:"";position:absolute;left:12%;top:-4px;width:14px;height:14px;border-radius:50%;background:var(--primary)}
+  .btn{display:inline-block;padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:600;border:1px solid transparent}
+  .btn.pri{background:var(--primary);color:#fff}
+  .btn.gho{background:#fff;border-color:var(--line);color:var(--ink)}
+  .btn.dis{background:#eef1f6;color:#9aa6b5;border-color:#e2e7ee}
+  .ro-badge{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:#eef2ff;color:#3949ab}
+  .rm-badge{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:#fde2e2;color:#a23b3b}
+  .strike{position:relative;opacity:.6}
+  .strike:after{content:"";position:absolute;left:-4px;right:-4px;top:50%;height:2px;background:#d64545;transform:rotate(-1.5deg)}
+  .kpirow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+  .kpi{border:1px solid var(--line);border-radius:8px;padding:8px;background:#fbfcfe}
+  .kpi .l{font-size:10.5px;color:var(--sub)}
+  .kpi .v{font-size:18px;font-weight:700;color:#c3cbd6}
+  .empty{border:1px dashed #cfd7e2;border-radius:10px;padding:22px 16px;text-align:center;color:var(--sub);background:#fafbfd;font-size:13px}
+  .empty .big{font-size:26px;opacity:.5;margin-bottom:6px}
+  .empty .cta{margin-top:10px}
+  .note{border-left:3px solid var(--primary);background:var(--primary-soft);padding:8px 12px;border-radius:0 8px 8px 0;font-size:12.5px;margin:9px 0}
+  .note.warn{border-color:var(--warn);background:#fff7e8}
+  .anno{font-size:11.5px;color:#a23b3b;font-weight:600;margin:4px 0 0}
+  .anno.add{color:#137a45}
+  .anno.chg{color:#8a5a00}
+  .fp{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:11px;background:#0f1b2e;color:#c7d6ee;border-radius:8px;padding:9px 11px;line-height:1.6;overflow:auto}
+  .fp .k{color:#7fa8e6}
+  table.map{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+  table.map th,table.map td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+  table.map th{background:#f3f6fb;font-weight:600}
+  code{background:#f1f4f9;color:#334155;padding:1px 6px;border-radius:5px;font-size:12px;font-family:"SF Mono",Menlo,Consolas,monospace}
+  .role{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px}
+  .role.t{background:#e6f7ee;color:#12864a}
+  .role.p{background:#eef2ff;color:#3949ab}
+  footer{color:var(--sub);font-size:12px;text-align:center;margin-top:34px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <span class="badge">RAGForge · 页面改动线框图（Mockups）</span>
+  <h1>质量看板作用域改造 · 需改动页面</h1>
+  <p>配套《质量看板作用域改造设计方案 v0.3》· 拟制 2026-07-04 · 待架构评审</p>
+  <span class="lk">↳ 主文档：docs/dev/quality-dashboard-scope-redesign.html</span>
+</header>
+
+<div class="legend">
+  <span class="mk"><span class="dot d-rm"></span><b>移除 / 收敛</b>（租户侧不再可见）</span>
+  <span class="mk"><span class="dot d-chg"></span><b>改文案 / 改口径</b></span>
+  <span class="mk"><span class="dot d-add"></span><b>新增 / 迁移到平台视图</b></span>
+  <span class="mk"><span class="role t">租户视图</span> 普通组织用户</span>
+  <span class="mk"><span class="role p">平台视图</span> 平台管理员 / 破玻璃</span>
+</div>
+
+<!-- ============ 1. 租户设置抽屉 ============ -->
+<h2 class="sec"><span class="no">1</span>质量看板 · 设置抽屉 <span class="role t">租户视图</span></h2>
+<p class="sub">入口：质量看板右上角「⚙ 设置」。当前把平台全局值与黄金集回放控件暴露给租户，造成误导 —— 收敛后只保留租户自己能配的部分。</p>
+<div class="ba">
+  <div class="frameCard">
+    <div class="cap before">✕ Before（现状 · 概念混淆）</div>
+    <div class="screen">
+      <div class="drawer">
+        <div class="dh"><span>抽样与 Golden Set（黄金集）</span><span style="color:var(--sub);font-weight:400">关闭 ✕</span></div>
+        <div class="db">
+          <div class="block">
+            <div class="bt">全局抽样率 <span class="ro-badge">平台只读</span></div>
+            <div class="slider"></div><div class="muted">8.0% · 仅平台管理员可改</div>
+          </div>
+          <div class="block">
+            <div class="bt">知识库覆盖</div>
+            <div class="muted">知识库 #599 · 1.0% · 启用 · 删除</div>
+          </div>
+          <div class="block" style="border-color:#e9a4a4;background:#fdf3f3">
+            <div class="bt">Golden Set（黄金集）回放</div>
+            <div class="muted">当前启用题数：<b>20</b>（平台全局值，却显示给租户）</div>
+            <div style="margin-top:8px"><span class="btn dis">立即回放（禁用·非管理员）</span></div>
+            <div class="anno">❌ 平台全局题数 + 回放入口对租户无意义、无权限 → 误导</div>
+          </div>
+          <div class="block" style="border-color:#e9a4a4;background:#fdf3f3">
+            <div class="bt">月度预算 <span class="ro-badge">平台只读</span></div>
+            <div class="muted">当前预算：¥200（平台级）</div>
+            <div class="anno">❌ 平台预算，对租户无操作意义</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frameCard">
+    <div class="cap after">✓ After（收敛 · 只留租户可配）</div>
+    <div class="screen">
+      <div class="drawer">
+        <div class="dh"><span>抽样设置</span><span style="color:var(--sub);font-weight:400">关闭 ✕</span></div>
+        <div class="db">
+          <div class="block">
+            <div class="bt">我的知识库抽样覆盖</div>
+            <div class="muted">为自己组织的知识库配置线上抽样率（受平台上限约束）</div>
+            <div style="margin-top:8px"><span class="btn gho">+ 添加覆盖</span> <span class="btn pri" style="margin-left:6px">保存</span></div>
+            <div class="anno add">✅ 保留：这是租户真正能配的部分</div>
+          </div>
+          <div class="note">全局抽样率与月度预算由平台统一管理，此处不再展示。</div>
+          <div style="border:1px dashed #cdd6e2;border-radius:9px;padding:10px 12px;color:var(--sub);font-size:12.5px;background:#fafbfd">
+            <b>Golden Set 回放板块已移除</b><br>
+            <span class="anno add" style="font-weight:400;color:var(--sub)">黄金集是平台基准（固定 100 题），由平台团队维护，不在租户设置内。</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2. 租户空态 ============ -->
+<h2 class="sec"><span class="no">2</span>质量看板 · 空态 <span class="role t">租户视图</span></h2>
+<p class="sub">当组织尚无判分样本时的趋势区文案。当前指向租户无法操作的方向，改为诚实、可操作的引导。</p>
+<div class="ba">
+  <div class="frameCard">
+    <div class="cap before">✕ Before</div>
+    <div class="screen">
+      <div class="kpirow">
+        <div class="kpi"><div class="l">综合质量</div><div class="v">0.00</div></div>
+        <div class="kpi"><div class="l">忠实度</div><div class="v">0.00</div></div>
+        <div class="kpi"><div class="l">上下文精度</div><div class="v">0.00</div></div>
+        <div class="kpi"><div class="l">答案相关性</div><div class="v">0.00</div></div>
+      </div>
+      <div class="empty">
+        <div class="big">📉</div>
+        暂无评测数据，请检查 Golden Set 是否启用
+        <div class="anno" style="justify-self:center">❌ Golden Set 已启用且租户无权动它 → 死胡同</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frameCard">
+    <div class="cap after">✓ After（诚实 + 可操作）</div>
+    <div class="screen">
+      <div class="kpirow">
+        <div class="kpi"><div class="l">综合质量</div><div class="v">0.00</div></div>
+        <div class="kpi"><div class="l">忠实度</div><div class="v">0.00</div></div>
+        <div class="kpi"><div class="l">上下文精度</div><div class="v">0.00</div></div>
+        <div class="kpi"><div class="l">答案相关性</div><div class="v">0.00</div></div>
+      </div>
+      <div class="empty">
+        <div class="big">📈</div>
+        暂无评测数据。质量指标来自你的<b>线上流量抽样判分</b>，随着应答使用量增加将自动显示。
+        <div class="cta"><span class="btn pri">去应答调试台 →</span></div>
+        <div class="anno add" style="justify-self:center">✅ 指向租户能做的事：先产生流量</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 3. 平台基准回放 ============ -->
+<h2 class="sec"><span class="no">3</span>平台基准回放 <span class="role p">平台视图</span>（新增 / 迁移）</h2>
+<p class="sub">原「全量黄金集回放」从租户抽屉<b>迁出并改名</b>，落到「全平台视图 / 破玻璃」。绑定系统组织的<b>冻结基线知识库</b>，回放样本进平台健康视图；每次回放记录链路指纹 + 噪声带告警。</p>
+<div class="frameCard">
+  <div class="cap newp">＋ New（仅平台管理员可见可触发）</div>
+  <div class="screen">
+    <div class="drawer">
+      <div class="dh"><span>平台基准回放 · Platform Baseline</span><span class="role p">全平台视图</span></div>
+      <div class="db" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div class="block">
+            <div class="bt">基准配置（冻结）</div>
+            <div class="muted">题集：固定 <b>100 题</b>（Core Set，禁止扩展）</div>
+            <div class="muted">语料：基线知识库 <code>#sys-golden</code> · <b>已冻结</b> · v3 <span class="ro-badge">防删</span></div>
+            <div class="muted">归属：系统组织 <code>platform-system</code></div>
+            <div class="anno add">✅ 题 + 语料都冻结、系统组织自持</div>
+          </div>
+          <div class="block">
+            <div class="bt">触发回放</div>
+            <div class="muted">对 100 题跑判分，成本计入<b>平台预算</b>。</div>
+            <div style="margin-top:8px"><span class="btn pri">平台基准回放</span></div>
+            <div class="note warn" style="margin-top:8px">点击弹二次确认（B5 已上线）：<i>「将对 100 题发起 LLM-as-Judge 评测，产生判分调用与成本。确定继续？」</i></div>
+          </div>
+        </div>
+        <div>
+          <div class="block">
+            <div class="bt">链路指纹（本次回放快照）</div>
+            <div class="fp">
+<span class="k">embedding</span>: qwen3-vl-embedding@2026-06<br>
+<span class="k">rerank</span>&nbsp;&nbsp;&nbsp;: qwen3-rerank (DashScope)<br>
+<span class="k">answer</span>&nbsp;&nbsp;&nbsp;: qwen-plus, temp=0<br>
+<span class="k">judge</span>&nbsp;&nbsp;&nbsp;&nbsp;: qwen-judge, prompt#a1f3<br>
+<span class="k">retrieval</span>: hybrid w=.5, topK=10<br>
+<span class="k">index</span>&nbsp;&nbsp;&nbsp;&nbsp;: es-v7 / IK-v2
+            </div>
+            <div class="anno add">✅ 分数一动即可归因到哪次改动/漂移</div>
+          </div>
+          <div class="block">
+            <div class="bt">噪声带 &amp; 告警</div>
+            <div class="muted">同配置连跑基线波动：Composite ±0.02</div>
+            <div class="muted">告警阈值：delta &gt; 0.05 触发</div>
+            <div class="anno add">✅ 低于噪声带视为噪声、不误报</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note" style="margin:12px 0 0">回放结果进<b>平台健康视图</b>（不混入任何租户看板）；租户看板不受影响。</div>
+  </div>
+</div>
+
+<!-- ============ 变更映射 ============ -->
+<h2 class="sec"><span class="no">4</span>页面 / 组件改动映射</h2>
+<table class="map">
+  <thead><tr><th style="width:22%">页面 / 组件</th><th style="width:8%">角色</th><th>改动</th><th style="width:26%">大致落点</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>质量看板 · 设置抽屉</td>
+      <td><span class="role t">租户</span></td>
+      <td><span class="dot d-rm" style="vertical-align:-2px"></span> 移除 Golden Set 回放板块 + 启用题数 + 月度预算；仅留「我的知识库抽样覆盖」；全局抽样率隐藏或只读</td>
+      <td><code>frontend/…/EvaluationQuality.vue</code>（设置抽屉，按 <code>isPlatformAdmin</code> 分角色渲染）</td>
+    </tr>
+    <tr>
+      <td>质量看板 · 空态</td>
+      <td><span class="role t">租户</span></td>
+      <td><span class="dot d-chg" style="vertical-align:-2px"></span> 文案改为「来自线上流量抽样…」+「去应答调试台」CTA</td>
+      <td><code>EvaluationQuality.vue</code>（state-hint，v0.3 已改一版，配合 CTA）</td>
+    </tr>
+    <tr>
+      <td>平台基准回放面板</td>
+      <td><span class="role p">平台</span></td>
+      <td><span class="dot d-add" style="vertical-align:-2px"></span> 「全量黄金集回放」迁到全平台视图并改名；展示链路指纹 + 噪声带阈值</td>
+      <td><code>EvaluationQuality.vue</code> / 平台视图组件 + 破玻璃 <code>AdminOverride</code> 门控</td>
+    </tr>
+    <tr>
+      <td>回放接口 · 样本归属</td>
+      <td><span class="role p">平台</span></td>
+      <td><span class="dot d-chg" style="vertical-align:-2px"></span> 回放样本归属<b>系统组织</b>而非触发者个人 org；成本计平台账</td>
+      <td><code>GoldenSetController</code> / 回放服务 · scope 到系统组织</td>
+    </tr>
+    <tr>
+      <td>基线知识库</td>
+      <td><span class="role p">平台</span></td>
+      <td><span class="dot d-add" style="vertical-align:-2px"></span> 迁入系统组织、内容冻结、<b>防删标记 + 版本化</b></td>
+      <td>KB 归属/保护策略 · 系统组织 seed</td>
+    </tr>
+  </tbody>
+</table>
+
+<footer>
+  RAGForge · 质量看板作用域改造 · 页面改动线框图 · v0.3 · 2026-07-04 · 内部产品设计稿 · docs/dev/
+</footer>
+
+</div>
+</body>
+</html>
