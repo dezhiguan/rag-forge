@@ -27,6 +27,8 @@ const ERROR_CODE_LABELS = {
   EVAL_DATASET_NOT_FOUND: '数据集不存在',
   REPLAY_ALREADY_RUNNING: '已有回放任务正在进行，请稍后再试',
   GOLDEN_SET_EMPTY: '当前组织还没有启用黄金题，请先到评测数据集勾选后再回放',
+  GOLDEN_BUDGET_EXCEEDED: '本月评测额度已用完，请联系平台管理员或下月再试',
+  BUDGET_ADMIN_ONLY: '月度评测预算仅平台管理员可配置，请联系平台管理员',
   GOLDEN_REPLAY_COOLDOWN: '刚刚已发起回放，请稍后再试（每 5 分钟一次）',
   ORG_CONTEXT_REQUIRED: '请先选择组织后再操作',
   SAMPLE_RATE_TOO_HIGH_REQUIRES_CONFIRM: '当前抽样率超过 10%，月度成本会显著增加，请勾选确认后再保存',

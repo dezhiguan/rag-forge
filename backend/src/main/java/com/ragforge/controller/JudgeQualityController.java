@@ -29,6 +29,10 @@ public class JudgeQualityController {
   private final KbAccessGuard kbAccessGuard;
   private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
   private final com.ragforge.judge.JudgeCostGuardProperties costGuardProperties;
+  private final com.ragforge.judge.JudgeBudgetService budgetService;
+
+  /** 组织月度评测预算上限（防误填天价）。 */
+  private static final java.math.BigDecimal MAX_MONTHLY_BUDGET = new java.math.BigDecimal("1000000");
 
   /** 时间窗上限（天）：看板最长按钮为 90 天，留足冗余并防超大范围拖库。 */
   private static final int MAX_DAYS = 365;
@@ -157,13 +161,52 @@ public class JudgeQualityController {
    * 平台评测预算（全平台共享）：月度预算取部署配置 {@code ragforge.judge.cost-guard.monthly-budget-cny}，
    * 本月已用取全平台本月 judge 成本。用于抽屉「本月评测配额」进度条，均为后端真实值（不前端写死）。
    */
+  /**
+   * 本月评测配额（按组织）：破玻璃平台视图返回平台默认预算 + 全平台本月已用（只读、共享）；否则返回当前组织的
+   * 预算（组织自配或回退默认）+ 本组织本月已用 + 是否超支 + 当前用户是否可编辑。均为后端真实值。
+   */
   @GetMapping("/budget")
   public Result<java.util.Map<String, Object>> budget() {
-    java.math.BigDecimal budget = costGuardProperties.getMonthlyBudgetCny();
-    java.math.BigDecimal used = queryService.costThisMonth();
+    com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
+    boolean platformView =
+        ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive();
+    Long orgId = platformView ? null : com.ragforge.security.OrgContextHolder.get();
+    com.ragforge.judge.JudgeBudgetService.BudgetSnapshot snap = budgetService.snapshotForOrg(orgId);
+    // 预算按组织分配、由平台管理员配置：仅平台管理员在具体组织上下文下可编辑。
+    boolean editable = !platformView && orgId != null && ctx != null && ctx.isAdmin();
+
     java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
-    body.put("monthlyBudgetCny", budget);
-    body.put("monthUsedCny", used);
+    body.put("monthlyBudgetCny", snap.monthlyBudgetCny());
+    body.put("monthUsedCny", snap.monthUsedCny());
+    body.put("exceeded", snap.exceeded());
+    body.put("editable", editable);
+    body.put("platformShared", platformView);
     return Result.ok(body);
+  }
+
+  /** 配置当前组织的月度评测预算：仅组织所有者/管理员或平台管理员。 */
+  @org.springframework.web.bind.annotation.PutMapping("/budget")
+  public Result<java.util.Map<String, Object>> setBudget(
+      @org.springframework.web.bind.annotation.RequestBody java.util.Map<String, Object> body) {
+    com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
+    Long orgId = com.ragforge.security.OrgContextHolder.get();
+    if (ctx == null || ctx.userId() == null || orgId == null) {
+      throw new BizException(400, "ORG_CONTEXT_REQUIRED");
+    }
+    // 月度评测预算按组织分配，仅平台管理员可配置（组织超支时联系平台管理员）。
+    if (!ctx.isAdmin()) {
+      throw new BizException(403, "BUDGET_ADMIN_ONLY");
+    }
+    java.math.BigDecimal amount;
+    try {
+      amount = new java.math.BigDecimal(String.valueOf(body.get("monthlyBudgetCny")));
+    } catch (RuntimeException e) {
+      throw new BizException(400, "INVALID_PARAM:monthlyBudgetCny");
+    }
+    if (amount.signum() <= 0 || amount.compareTo(MAX_MONTHLY_BUDGET) > 0) {
+      throw new BizException(400, "INVALID_PARAM:monthlyBudgetCny");
+    }
+    budgetService.setBudget(orgId, amount);
+    return budget();
   }
 }

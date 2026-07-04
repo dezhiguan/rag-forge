@@ -65,6 +65,7 @@ public class GoldenSetController {
   private final Executor goldenReplayExecutor;
   private final LockProvider lockProvider;
   private final StringRedisTemplate redisTemplate;
+  private final com.ragforge.judge.JudgeBudgetService budgetService;
 
   public GoldenSetController(
       GoldenSetReplayJob replayJob,
@@ -75,7 +76,8 @@ public class GoldenSetController {
       KbAccessGuard kbAccessGuard,
       @Qualifier("goldenReplayExecutor") Executor goldenReplayExecutor,
       LockProvider lockProvider,
-      StringRedisTemplate redisTemplate) {
+      StringRedisTemplate redisTemplate,
+      com.ragforge.judge.JudgeBudgetService budgetService) {
     this.replayJob = replayJob;
     this.judgeQueryService = judgeQueryService;
     this.evalDatasetMapper = evalDatasetMapper;
@@ -85,6 +87,7 @@ public class GoldenSetController {
     this.goldenReplayExecutor = goldenReplayExecutor;
     this.lockProvider = lockProvider;
     this.redisTemplate = redisTemplate;
+    this.budgetService = budgetService;
   }
 
   /** 平台级/单数据集回放（保留原语义）：datasetId=null 限平台管理员；带 datasetId 需 canRead。 */
@@ -121,6 +124,10 @@ public class GoldenSetController {
     int enabled = judgeQueryService.goldenSetEnabledQuestionCount(scopeKbIds);
     if (enabled <= 0) {
       throw new BizException(400, "GOLDEN_SET_EMPTY");
+    }
+    // 真实拦截：本月评测已用达组织预算 → 拒绝回放。
+    if (budgetService.isExceeded(orgId, scopeKbIds)) {
+      throw new BizException(403, "GOLDEN_BUDGET_EXCEEDED");
     }
     int effectiveLimit = Math.min(limit <= 0 ? MAX_ORG_GOLDEN_QUESTIONS : limit, MAX_ORG_GOLDEN_QUESTIONS);
 

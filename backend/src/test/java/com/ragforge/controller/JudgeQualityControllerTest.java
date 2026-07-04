@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
@@ -22,6 +23,7 @@ import com.ragforge.model.vo.KpiVo;
 import com.ragforge.model.vo.OverviewVo;
 import com.ragforge.model.vo.SampleStatsVo;
 import com.ragforge.security.KbAccessGuard;
+import com.ragforge.security.RagAuthContext;
 import com.ragforge.service.JudgeQueryService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -41,6 +43,7 @@ class JudgeQualityControllerTest {
   @Mock private JudgeQueryService queryService;
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
+  @Mock private com.ragforge.judge.JudgeBudgetService budgetService;
 
   private MockMvc mockMvc;
   private JudgeQualityController controller;
@@ -50,12 +53,20 @@ class JudgeQualityControllerTest {
   @BeforeEach
   void setUp() {
     controller =
-        new JudgeQualityController(queryService, kbAccessGuard, knowledgeBaseMapper, costGuardProperties);
+        new JudgeQualityController(
+            queryService, kbAccessGuard, knowledgeBaseMapper, costGuardProperties, budgetService);
     mockMvc =
         standaloneSetup(controller)
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .build();
+  }
+
+  @org.junit.jupiter.api.AfterEach
+  void clearHolders() {
+    com.ragforge.security.RagAuthContextHolder.clear();
+    com.ragforge.security.OrgContextHolder.clear();
+    com.ragforge.security.AdminOverrideHolder.clear();
   }
 
   @Test
@@ -268,16 +279,82 @@ class JudgeQualityControllerTest {
   }
 
   @Test
-  void budget_返回配置预算与本月已用() throws Exception {
-    // 默认配置预算 200；本月已用取全平台 costThisMonth
-    when(queryService.costThisMonth()).thenReturn(new BigDecimal("46.00"));
+  void budget_组织口径_返回预算已用超支与可编辑() throws Exception {
+    com.ragforge.security.RagAuthContextHolder.set(userCtx(42L));
+    com.ragforge.security.OrgContextHolder.set(5L);
+    when(budgetService.snapshotForOrg(5L))
+        .thenReturn(
+            new com.ragforge.judge.JudgeBudgetService.BudgetSnapshot(
+                new BigDecimal("100.0000"), new BigDecimal("100.0000"), true));
 
     mockMvc
         .perform(get("/api/v1/evaluation/quality/budget"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.code").value(200))
-        .andExpect(jsonPath("$.data.monthlyBudgetCny").value(200))
-        .andExpect(jsonPath("$.data.monthUsedCny").value(46.00));
+        .andExpect(jsonPath("$.data.monthlyBudgetCny").value(100.0))
+        .andExpect(jsonPath("$.data.monthUsedCny").value(100.0))
+        .andExpect(jsonPath("$.data.exceeded").value(true))
+        // 普通组织用户不可编辑预算（仅平台管理员）
+        .andExpect(jsonPath("$.data.editable").value(false));
+  }
+
+  @Test
+  void setBudget_普通组织用户_返回403仅平台管理员() throws Exception {
+    com.ragforge.security.RagAuthContextHolder.set(userCtx(42L));
+    com.ragforge.security.OrgContextHolder.set(5L);
+
+    mockMvc
+        .perform(
+            put("/api/v1/evaluation/quality/budget")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content("{\"monthlyBudgetCny\":100}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.errorCode").value("BUDGET_ADMIN_ONLY"));
+
+    verify(budgetService, never()).setBudget(any(), any());
+  }
+
+  @Test
+  void setBudget_平台管理员_设置成功() throws Exception {
+    com.ragforge.security.RagAuthContextHolder.set(adminCtx(1L));
+    com.ragforge.security.OrgContextHolder.set(5L);
+    when(budgetService.snapshotForOrg(5L))
+        .thenReturn(
+            new com.ragforge.judge.JudgeBudgetService.BudgetSnapshot(
+                new BigDecimal("100.0000"), new BigDecimal("0.0000"), false));
+
+    mockMvc
+        .perform(
+            put("/api/v1/evaluation/quality/budget")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content("{\"monthlyBudgetCny\":100}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.monthlyBudgetCny").value(100.0));
+
+    verify(budgetService).setBudget(eq(5L), eq(new BigDecimal("100")));
+  }
+
+  @Test
+  void setBudget_非法金额_返回400() throws Exception {
+    com.ragforge.security.RagAuthContextHolder.set(adminCtx(1L));
+    com.ragforge.security.OrgContextHolder.set(5L);
+
+    mockMvc
+        .perform(
+            put("/api/v1/evaluation/quality/budget")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content("{\"monthlyBudgetCny\":0}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.errorCode").value("INVALID_PARAM:monthlyBudgetCny"));
+
+    verify(budgetService, never()).setBudget(any(), any());
+  }
+
+  private static RagAuthContext userCtx(Long userId) {
+    return new RagAuthContext(userId, "USER", Set.of(), Set.of(), Set.of(), "USER", String.valueOf(userId));
+  }
+
+  private static RagAuthContext adminCtx(Long userId) {
+    return new RagAuthContext(userId, "ADMIN", Set.of(), Set.of(), Set.of(), "USER", String.valueOf(userId));
   }
 
   private OverviewVo buildOverview() {

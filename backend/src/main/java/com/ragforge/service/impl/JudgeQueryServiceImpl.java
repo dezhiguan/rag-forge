@@ -400,6 +400,29 @@ public class JudgeQueryServiceImpl implements JudgeQueryService {
   }
 
   @Override
+  public BigDecimal judgeCostThisMonth(Set<Long> scopeKbIds) {
+    if (scopeKbIds == null) {
+      return costThisMonth(); // 平台口径
+    }
+    String arr =
+        scopeKbIds.stream()
+            .filter(java.util.Objects::nonNull)
+            .map(String::valueOf)
+            .collect(Collectors.joining(","));
+    if (arr.isEmpty()) {
+      return BigDecimal.ZERO; // 无可见 KB
+    }
+    LocalDate monthStart = LocalDate.now().withDayOfMonth(1);
+    // kb_ids 为 bigint[]；用数组重叠 && 判定判分是否落在本组织的 KB 范围内（scopeKbIds 均为数值，内联安全）。
+    String sql =
+        "SELECT COALESCE(SUM(judge_cost_cny), 0) FROM judge_results "
+            + "WHERE created_at >= ? AND kb_ids && ARRAY["
+            + arr
+            + "]::bigint[]";
+    return toBigDecimal(jdbcTemplate.queryForObject(sql, Object.class, monthStart.atStartOfDay()));
+  }
+
+  @Override
   public int goldenSetEnabledQuestionCount() {
     String sql = "SELECT COUNT(1) FROM eval_questions WHERE judge_enabled = TRUE";
     Integer count = jdbcTemplate.queryForObject(sql, Integer.class);

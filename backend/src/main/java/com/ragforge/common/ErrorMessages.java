@@ -100,6 +100,8 @@ public final class ErrorMessages {
           Map.entry("JUDGE_RESULT_NOT_FOUND", "评测结果不存在或已被清理"),
           Map.entry("EVAL_DATASET_NOT_FOUND", "评测数据集不存在"),
           Map.entry("GOLDEN_SET_EMPTY", "当前组织还没有启用黄金题，请先到评测数据集勾选后再回放"),
+          Map.entry("GOLDEN_BUDGET_EXCEEDED", "本月评测额度已用完，请联系平台管理员或下月再试"),
+          Map.entry("BUDGET_ADMIN_ONLY", "月度评测预算仅平台管理员可配置，请联系平台管理员"),
           Map.entry("GOLDEN_REPLAY_COOLDOWN", "刚刚已发起回放，请稍后再试（每 5 分钟一次）"),
           Map.entry("ORG_CONTEXT_REQUIRED", "请先选择组织后再操作"),
           Map.entry("EVAL_RESOURCE_NOT_IN_ORG", "所选评测资源不属于当前组织"),

@@ -24,8 +24,12 @@ export const fetchCaseDetail = (id) => request.get(`/evaluation/quality/case/${i
 export const fetchCost = (days, kbId) =>
   request.get('/evaluation/quality/cost', { params: { days, ...(kbId ? { kbId } : {}) } })
 
-// 平台评测预算（全平台共享）：monthlyBudgetCny 取部署配置、monthUsedCny 取全平台本月成本。
+// 本月评测配额（按组织）：monthlyBudgetCny 组织自配或默认、monthUsedCny 本组织本月已用、exceeded/editable。
 export const fetchJudgeBudget = () => request.get('/evaluation/quality/budget')
+
+// 配置当前组织的月度评测预算（仅平台管理员）。
+export const updateJudgeBudget = (monthlyBudgetCny) =>
+  request.put('/evaluation/quality/budget', { monthlyBudgetCny })
 
 export const listSamplingConfigs = () => request.get('/evaluation/quality/sampling')
 

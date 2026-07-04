@@ -24,6 +24,12 @@ public interface JudgeQueryService {
 
   BigDecimal costThisMonth();
 
+  /**
+   * 本月已用 judge 成本（实时，读 judge_results）。scopeKbIds 为 null = 平台全量口径；空集 = 0；
+   * 非空 = 只统计 kb_ids 与该范围有交集的判分。用于按组织展示/拦截月度评测预算。
+   */
+  BigDecimal judgeCostThisMonth(Set<Long> scopeKbIds);
+
   int goldenSetEnabledQuestionCount();
 
   /**

@@ -344,13 +344,16 @@
                     role="switch"
                     :aria-checked="item.enabled ? 'true' : 'false'"
                     :aria-label="item.enabled ? '停用抽样' : '启用抽样'"
-                    :disabled="togglingSamplingId === item.id"
+                    :disabled="togglingSamplingId === item.id || !canManageOrg"
+                    :title="canManageOrg ? '' : '仅组织所有者 / 管理员可配置'"
                     @click="toggleSampling(item)"
                   >
                     <span class="switch-knob" />
                   </button>
                 </td>
-                <td class="st-a"><button class="link-button" @click="editSampling(item)">编辑</button></td>
+                <td class="st-a">
+                  <button class="link-button" :disabled="!canManageOrg" @click="editSampling(item)">编辑</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -367,7 +370,16 @@
             <button v-if="editingSamplingId != null" class="link-button danger" @click="removeSampling(editingSamplingId)">删除</button>
             <button class="link-button" @click="closeKbForm">取消</button>
           </div>
-          <button v-else class="add-sampling-btn" @click="openNewKbForm">＋ 为知识库设置抽样</button>
+          <button
+            v-else
+            class="add-sampling-btn"
+            :disabled="!canManageOrg"
+            :title="canManageOrg ? '' : '仅组织所有者 / 管理员可配置'"
+            @click="openNewKbForm"
+          >
+            ＋ 为知识库设置抽样
+          </button>
+          <p v-if="!canManageOrg" class="muted golden-empty-hint">抽样配置仅组织所有者 / 管理员可修改。</p>
           <p class="sampling-cost-hint">
             💰 本组织评审成本：本月已用 <strong>¥{{ formatMoney(cost.totalCny) }}</strong>，按当前用量预计本月
             <strong>¥{{ formatMoney(cost.monthlyProjectedCny) }}</strong>。抽样越高越全面，成本也越高。
@@ -402,13 +414,16 @@
             <p>本组织已启用：<strong>{{ goldenEnabledCount }}</strong> 道黄金题</p>
             <button
               class="btn-save-config btn-save-config--secondary"
-              :disabled="replayingGolden || goldenEnabledCount <= 0 || !canManageOrg"
-              :title="canManageOrg ? replayDisabledReason : '仅组织所有者 / 管理员可触发回放'"
+              :disabled="replayingGolden || goldenEnabledCount <= 0 || !canManageOrg || budgetExceeded"
+              :title="replayButtonTitle"
               @click="replayGoldenNow"
             >
               {{ replayingGolden ? '任务进行中...' : `立即回放本组织 ${goldenEnabledCount} 题` }}
             </button>
             <p v-if="!canManageOrg" class="muted golden-empty-hint">仅组织所有者 / 管理员可触发回放。</p>
+            <p v-else-if="budgetExceeded" class="budget-over-hint">
+              本月评测额度已用完，回放已暂停；请联系平台管理员调高配额或下月再试。
+            </p>
             <p v-else-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
               本组织还没有黄金题，请先到「评测数据集」勾选要纳入回归的问题。
             </p>
@@ -419,15 +434,35 @@
         </section>
 
         <section class="drawer-section">
-          <h3>本月评测配额<span class="budget-scope">全平台共享</span></h3>
-          <div class="budget-bar">
-            <div class="budget-fill" :class="`budget-fill--${budgetLevel}`" :style="{ width: budgetPercent + '%' }" />
+          <h3>
+            本月评测配额
+            <span v-if="judgeBudget.platformShared" class="budget-scope">全平台共享</span>
+            <button
+              v-if="judgeBudget.editable && !editingBudget"
+              class="link-button budget-edit-btn"
+              @click="startEditBudget"
+            >
+              编辑
+            </button>
+          </h3>
+          <div v-if="editingBudget" class="budget-edit-form">
+            <span>配额 ¥</span>
+            <input v-model.number="budgetInput" type="number" min="1" step="10" />
+            <span>/ 月</span>
+            <button class="btn btn-secondary btn-sm" :disabled="savingBudget" @click="saveBudget">保存</button>
+            <button class="link-button" @click="editingBudget = false">取消</button>
           </div>
-          <div class="budget-meta">
-            <span>已用 <strong>¥{{ formatMoney(judgeBudget.monthUsedCny) }}</strong></span>
-            <span class="muted">配额 ¥{{ formatMoney(judgeBudget.monthlyBudgetCny) }} / 月</span>
-          </div>
-          <p class="muted">线上抽样与黄金集回放共享此预算；接近预算时线上判分会自动降级以控成本。</p>
+          <template v-else>
+            <div class="budget-bar">
+              <div class="budget-fill" :class="`budget-fill--${budgetLevel}`" :style="{ width: budgetPercent + '%' }" />
+            </div>
+            <div class="budget-meta">
+              <span :class="{ 'budget-over': budgetExceeded }">已用 <strong>¥{{ formatMoney(judgeBudget.monthUsedCny) }}</strong></span>
+              <span class="muted">配额 ¥{{ formatMoney(judgeBudget.monthlyBudgetCny) }} / 月</span>
+            </div>
+            <p v-if="budgetExceeded" class="budget-over-hint">本月评测额度已用完，回放已暂停；请联系平台管理员调高配额或下月再试。</p>
+            <p v-else class="muted">线上抽样与黄金集回放共用本组织此预算；用完后组织回放会被拦截。</p>
+          </template>
         </section>
       </aside>
     </div>
@@ -442,6 +477,7 @@ import {
   fetchByKb,
   fetchCost,
   fetchJudgeBudget,
+  updateJudgeBudget,
   fetchGoldenSetEnabledCount,
   fetchOverview,
   fetchWorstCases,
@@ -544,7 +580,14 @@ const savingOverride = ref(false)
 const replayingGolden = ref(false)
 const settingsError = ref('')
 // 平台评测预算（全平台共享）：真实值来自后端 /budget（配置预算 + 全平台本月已用），不前端写死。
-const judgeBudget = ref({ monthlyBudgetCny: 0, monthUsedCny: 0 })
+const judgeBudget = ref({
+  monthlyBudgetCny: 0,
+  monthUsedCny: 0,
+  exceeded: false,
+  editable: false,
+  platformShared: false,
+})
+const budgetExceeded = computed(() => !!judgeBudget.value?.exceeded)
 const budgetPercent = computed(() => {
   const b = Number(judgeBudget.value?.monthlyBudgetCny) || 0
   const u = Number(judgeBudget.value?.monthUsedCny) || 0
@@ -552,8 +595,40 @@ const budgetPercent = computed(() => {
   return Math.min(100, Math.round((u / b) * 1000) / 10)
 })
 const budgetLevel = computed(() => {
+  if (budgetExceeded.value) return 'critical'
   const p = budgetPercent.value
   return p >= 100 ? 'critical' : p >= 80 ? 'warn' : 'normal'
+})
+const editingBudget = ref(false)
+const budgetInput = ref(0)
+const savingBudget = ref(false)
+function startEditBudget() {
+  budgetInput.value = Number(judgeBudget.value?.monthlyBudgetCny) || 0
+  editingBudget.value = true
+}
+async function saveBudget() {
+  const amount = Number(budgetInput.value)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    toast.error('配额必须大于 0')
+    return
+  }
+  savingBudget.value = true
+  try {
+    const resp = await updateJudgeBudget(amount)
+    const data = unwrapResponse(resp)
+    if (data) judgeBudget.value = data
+    editingBudget.value = false
+    toast.success('配额已更新')
+  } catch (error) {
+    toast.error(resolveHttpError(error, { kind: 'budget' }))
+  } finally {
+    savingBudget.value = false
+  }
+}
+const replayButtonTitle = computed(() => {
+  if (!canManageOrg.value) return '仅组织所有者 / 管理员可触发回放'
+  if (budgetExceeded.value) return '本月评测额度已用完，请联系平台管理员'
+  return replayDisabledReason.value
 })
 const highCostConfirmed = ref(false)
 const kbFilterError = ref('')
@@ -1940,6 +2015,50 @@ watch(
   justify-content: space-between;
   align-items: baseline;
   font-size: 13px;
+}
+
+.budget-over {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.budget-over-hint {
+  margin: 6px 0 0;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: #fdecec;
+  border: 1px solid #f4b8b8;
+  color: #b42318;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.budget-edit-btn {
+  margin-left: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.budget-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin: 6px 0 4px;
+}
+
+.budget-edit-form input {
+  width: 96px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.link-button:disabled,
+.add-sampling-btn:disabled,
+.switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 线上抽样表格 */

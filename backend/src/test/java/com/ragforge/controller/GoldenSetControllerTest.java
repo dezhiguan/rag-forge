@@ -60,6 +60,7 @@ class GoldenSetControllerTest {
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private StringRedisTemplate redisTemplate;
   @Mock private ValueOperations<String, String> valueOps;
+  @Mock private com.ragforge.judge.JudgeBudgetService budgetService;
 
   private final List<Runnable> queuedTasks = new ArrayList<>();
   private final FakeLockProvider lockProvider = new FakeLockProvider();
@@ -78,7 +79,8 @@ class GoldenSetControllerTest {
             kbAccessGuard,
             queuedExecutor,
             lockProvider,
-            redisTemplate);
+            redisTemplate,
+            budgetService);
     mockMvc =
         standaloneSetup(controller)
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -209,6 +211,7 @@ class GoldenSetControllerTest {
     when(orgMemberMapper.isOrgAdmin(5L, 42L)).thenReturn(true);
     when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb(99L, 5L)));
     when(judgeQueryService.goldenSetEnabledQuestionCount(anySet())).thenReturn(12);
+    when(budgetService.isExceeded(anyLong(), anySet())).thenReturn(false);
     when(redisTemplate.opsForValue()).thenReturn(valueOps);
     when(valueOps.setIfAbsent(anyString(), eq("1"), eq(GoldenSetController.REPLAY_COOLDOWN)))
         .thenReturn(true);
@@ -231,6 +234,7 @@ class GoldenSetControllerTest {
     when(orgMemberMapper.isOrgAdmin(5L, 42L)).thenReturn(true);
     when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb(99L, 5L)));
     when(judgeQueryService.goldenSetEnabledQuestionCount(anySet())).thenReturn(12);
+    when(budgetService.isExceeded(anyLong(), anySet())).thenReturn(false);
     when(redisTemplate.opsForValue()).thenReturn(valueOps);
     when(valueOps.setIfAbsent(anyString(), eq("1"), eq(GoldenSetController.REPLAY_COOLDOWN)))
         .thenReturn(false);
@@ -250,6 +254,7 @@ class GoldenSetControllerTest {
     when(orgMemberMapper.isOrgAdmin(5L, 42L)).thenReturn(true);
     when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb(99L, 5L)));
     when(judgeQueryService.goldenSetEnabledQuestionCount(anySet())).thenReturn(12);
+    when(budgetService.isExceeded(anyLong(), anySet())).thenReturn(false);
     when(redisTemplate.opsForValue()).thenReturn(valueOps);
     when(valueOps.setIfAbsent(anyString(), eq("1"), eq(GoldenSetController.REPLAY_COOLDOWN)))
         .thenReturn(true);
@@ -273,6 +278,7 @@ class GoldenSetControllerTest {
     OrgContextHolder.set(5L);
     when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb(99L, 5L)));
     when(judgeQueryService.goldenSetEnabledQuestionCount(anySet())).thenReturn(8);
+    when(budgetService.isExceeded(anyLong(), anySet())).thenReturn(false);
     when(redisTemplate.opsForValue()).thenReturn(valueOps);
     when(valueOps.setIfAbsent(anyString(), eq("1"), eq(GoldenSetController.REPLAY_COOLDOWN)))
         .thenReturn(true);
@@ -284,6 +290,25 @@ class GoldenSetControllerTest {
 
     assertThat(queuedTasks).hasSize(1);
     verify(orgMemberMapper, never()).isOrgAdmin(anyLong(), anyLong());
+  }
+
+  @Test
+  void replayOrg_预算超支_返回403拦截() throws Exception {
+    RagAuthContextHolder.set(userCtx(42L));
+    OrgContextHolder.set(5L);
+    when(orgMemberMapper.isOrgAdmin(5L, 42L)).thenReturn(true);
+    when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb(99L, 5L)));
+    when(judgeQueryService.goldenSetEnabledQuestionCount(anySet())).thenReturn(12);
+    when(budgetService.isExceeded(anyLong(), anySet())).thenReturn(true);
+
+    mockMvc
+        .perform(post("/api/v1/evaluation/golden-set/replay/org"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.errorCode").value("GOLDEN_BUDGET_EXCEEDED"))
+        .andExpect(jsonPath("$.msg").value("本月评测额度已用完，请联系平台管理员或下月再试"));
+
+    assertThat(queuedTasks).isEmpty();
+    verify(replayJob, never()).replayForKbScope(anySet(), eq(50));
   }
 
   // ===================== /enabled-count 组织级 =====================
