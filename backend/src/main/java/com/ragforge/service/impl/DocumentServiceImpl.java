@@ -178,12 +178,11 @@ public class DocumentServiceImpl implements DocumentService {
     String fileMd5 = calculateSha256(file);
 
     int oldChunkCount = coalesce(existing.getChunkCount(), 0);
+    String oldFilePath = existing.getFilePath();
 
-    // delete previous artifacts
-    fileStorageService.delete(existing.getFilePath());
+    // 旧分块 DB 删除留在事务内；旧文件/ES/Qdrant 外部删除移到提交后(M5,同 H2)：
+    // 避免"事务内删外部 → 后续回滚 → 外部已删"的孤儿/不一致。
     documentChunkMapper.delete(new LambdaQueryWrapper<DocumentChunk>().eq(DocumentChunk::getDocId, existingDocId));
-    esIndexService.deleteByDocId(existingDocId);
-    qdrantVectorStore.deleteByDocId(existingDocId);
 
     // store new file
     String newFilePath = fileStorageService.store(file);
@@ -206,6 +205,13 @@ public class DocumentServiceImpl implements DocumentService {
       // name/visibility 等其它字段，与 H1 修复同源(M5)。GREATEST(0,..) 保证不下溢。
       knowledgeBaseMapper.adjustCounters(kbId, -oldChunkCount, 0);
     }
+
+    afterCommit(
+        () -> {
+          fileStorageService.delete(oldFilePath);
+          esIndexService.deleteByDocId(existingDocId);
+          qdrantVectorStore.deleteByDocId(existingDocId);
+        });
 
     documentProcessProducer.send(existing.getId());
 

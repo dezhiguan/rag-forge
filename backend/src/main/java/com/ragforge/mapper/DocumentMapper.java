@@ -107,6 +107,19 @@ public interface DocumentMapper extends BaseMapper<Document> {
       """)
   int markProcessingIfRunnable(@Param("id") Long id);
 
+  /**
+   * 处理中心跳：仅当仍处于 PROCESSING 时刷新 updated_at(M1)。长阶段(如 embedding 超 5min)期间周期性调用，
+   * 使 markProcessingIfRunnable 的「PROCESSING 且 updated_at 陈旧 5min」重认领分支不会误判为卡死而并发重跑；
+   * 一旦已完成/失败(状态非 PROCESSING)则不匹配、静默无副作用。
+   */
+  @Update(
+      """
+      UPDATE documents
+      SET updated_at = NOW()
+      WHERE id = #{id} AND parse_status = 'PROCESSING'
+      """)
+  int touchProcessingHeartbeat(@Param("id") Long id);
+
   @Update(
       """
       UPDATE documents

@@ -45,12 +45,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -89,8 +92,13 @@ public class DocumentPipelineService {
   private final MultimodalProperties multimodalProperties;
   private final com.ragforge.pipeline.parser.CsvToTextConverter csvToTextConverter;
   private final com.ragforge.search.QdrantVectorStore qdrantVectorStore;
+  private final ScheduledExecutorService documentHeartbeatScheduler;
 
   @Lazy @Autowired private DocumentPipelineService self;
+
+  // 处理中心跳间隔(秒)：须显著小于 markProcessingIfRunnable 的 5min 重认领窗口(M1)。
+  @Value("${ragforge.pipeline.heartbeat-interval-seconds:120}")
+  private long heartbeatIntervalSeconds;
 
   /** Main flow — no transaction; each step commits in its own REQUIRES_NEW transaction. */
   public void processDocument(Long documentId) {
@@ -107,6 +115,14 @@ public class DocumentPipelineService {
     String fileType = null;
     int textLength = 0;
     int chunkCount = 0;
+    // 处理期间心跳刷新 updated_at，避免长阶段(如 embedding >5min)被 markProcessingIfRunnable 的
+    // 5min 陈旧窗口误判卡死而被重投消息并发重跑(M1)。worker 崩溃 → 心跳停 → updated_at 老化 → 由 CAS/H4 恢复。
+    ScheduledFuture<?> heartbeat =
+        documentHeartbeatScheduler.scheduleAtFixedRate(
+            () -> touchHeartbeat(documentId),
+            heartbeatIntervalSeconds,
+            heartbeatIntervalSeconds,
+            TimeUnit.SECONDS);
     try {
       long stageStart = System.currentTimeMillis();
       Document doc = documentMapper.selectById(documentId);
@@ -270,10 +286,22 @@ public class DocumentPipelineService {
         throw runtimeException;
       }
       throw new BizException("文档处理失败: " + e.getMessage());
+    } finally {
+      heartbeat.cancel(false);
     }
   }
 
-  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  /** 处理中心跳：刷新 updated_at(仅当仍 PROCESSING)。自身异常不得影响主处理流程(M1)。 */
+  private void touchHeartbeat(Long documentId) {
+    try {
+      documentMapper.touchProcessingHeartbeat(documentId);
+    } catch (Exception e) {
+      log.debug("Document heartbeat refresh failed docId={}: {}", documentId, e.getMessage());
+    }
+  }
+
+  // 无事务(M5)：DB 分块删除自动提交后连接立即归还，ES/Qdrant 外部删除在事务外做，避免持 DB 连接期间做网络 IO。
+  // 纯 best-effort 清理(先清后建 / 失败补清)，三步无需原子性。
   public void cleanupArtifacts(Long documentId) {
     documentChunkMapper.delete(
         new LambdaQueryWrapper<DocumentChunk>().eq(DocumentChunk::getDocId, documentId));
