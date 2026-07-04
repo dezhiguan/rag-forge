@@ -24,10 +24,38 @@ public class HttpClientConfig {
   /**
    * 认证网关代理专用：client_assertion 为单次使用（网关按 jti 去重），绝不能自动重试——重试会复用同一
    * jti 被判 CLIENT_ASSERTION_REPLAYED，既偶发导致真实用户登录失败，又会掩盖 429 等真实响应。故禁用重试。
+   * 另统一透传调用方真实 IP（X-Forwarded-For）：网关的发码/找回限流按 IP 计数，
+   * 不透传则全部请求算在本服务出口 IP 上，一个共享桶会放大成全站限流。
    */
   @Bean("authRestTemplate")
   public RestTemplate authRestTemplate() {
-    return new RestTemplate(requestFactory(Duration.ofSeconds(3), Duration.ofSeconds(8), true));
+    RestTemplate template =
+        new RestTemplate(requestFactory(Duration.ofSeconds(3), Duration.ofSeconds(8), true));
+    template.getInterceptors().add(HttpClientConfig::forwardClientIp);
+    return template;
+  }
+
+  private static org.springframework.http.client.ClientHttpResponse forwardClientIp(
+      org.springframework.http.HttpRequest request,
+      byte[] body,
+      org.springframework.http.client.ClientHttpRequestExecution execution)
+      throws java.io.IOException {
+    var attrs =
+        org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+    if (attrs
+        instanceof org.springframework.web.context.request.ServletRequestAttributes servletAttrs) {
+      var servletRequest = servletAttrs.getRequest();
+      String forwarded = servletRequest.getHeader("X-Forwarded-For");
+      // 入口 Nginx 已写入客户端 IP；无该头（如内网直连）时退回对端地址。只取第一跳。
+      String clientIp =
+          (forwarded != null && !forwarded.isBlank())
+              ? forwarded.split(",")[0].trim()
+              : servletRequest.getRemoteAddr();
+      if (clientIp != null && !clientIp.isBlank()) {
+        request.getHeaders().set("X-Forwarded-For", clientIp);
+      }
+    }
+    return execution.execute(request, body);
   }
 
   /** 调试台 LLM 生成：DashScope chat 在云环境常需 10s+，单独放宽读超时。 */
