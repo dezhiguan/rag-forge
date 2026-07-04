@@ -164,6 +164,8 @@ class AuthEventServiceTest {
     when(valueOperations.get(AuthEventService.USER_REVOKED_AFTER_PREFIX + "42")).thenReturn("100");
 
     assertThat(service.isJwtRevoked(new AuthJwtToken("jti-1", "42", 99L))).isTrue();
+    // 同秒签发的 token 必须放行：改密后新 token 与吊销水位常落在同一整秒
+    assertThat(service.isJwtRevoked(new AuthJwtToken("jti-1", "42", 100L))).isFalse();
     assertThat(service.isJwtRevoked(new AuthJwtToken("jti-1", "42", 101L))).isFalse();
   }
 

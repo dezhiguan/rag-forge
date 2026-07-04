@@ -85,7 +85,9 @@ public class AuthEventService {
     if (StringUtils.hasText(token.userKey()) && token.issuedAtEpochSeconds() != null) {
       String revokedAfter = redisTemplate.opsForValue().get(USER_REVOKED_AFTER_PREFIX + token.userKey());
       if (StringUtils.hasText(revokedAfter)) {
-        return token.issuedAtEpochSeconds() <= Long.parseLong(revokedAfter);
+        // 严格小于：iat 与 occurred_at 均为秒级，改密后网关在同一秒内就会签发新 token，
+        // 包含式 <= 会把这枚新 token 误杀（偶发"登录已过期"），同秒 token 必须放行。
+        return token.issuedAtEpochSeconds() < Long.parseLong(revokedAfter);
       }
     }
     return false;
