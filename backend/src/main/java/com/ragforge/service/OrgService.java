@@ -141,6 +141,9 @@ public class OrgService {
   }
 
   /** 我所属的组织列表（含我的角色）。 */
+  // @Transactional 覆盖懒创建：ensureIndividualOrg 是本类自调用(代理失效,其自身注解不生效)，
+  // 靠此处的外层事务保证"插 organizations + 插 org_members"两次写原子，避免只插了组织没插 OWNER 成员的孤儿组织(M6)。
+  @Transactional
   public List<Map<String, Object>> listMyOrganizations() {
     Long uid = currentUserId();
     ensureIndividualOrg(uid); // 保证有个人组织（Claude Code 式：一切皆组织）

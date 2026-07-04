@@ -236,6 +236,8 @@ class DocumentPipelineServiceTest {
     assertThatThrownBy(() -> documentPipelineService.processDocument(3L))
         .isInstanceOf(BizException.class)
         .hasMessageContaining("ES 索引写入失败");
+    // M7：失败时在 catch 里补清一次残留(PG/ES/Qdrant)，避免 FAILED 文档留孤儿 → cleanupArtifacts 共 2 次(开头 + catch)
+    verify(documentPipelineService, org.mockito.Mockito.times(2)).cleanupArtifacts(3L);
   }
 
   @Test

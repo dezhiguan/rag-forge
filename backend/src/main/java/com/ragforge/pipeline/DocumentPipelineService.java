@@ -255,6 +255,16 @@ public class DocumentPipelineService {
           finalizeLatencyMs,
           System.currentTimeMillis() - totalStart,
           e);
+      // 失败时清理本次已写入的 PG chunk/ES/Qdrant，避免 FAILED 文档残留孤儿(重试耗尽进 DLQ 后无人清理)(M7)。
+      // 包 try/catch，清理自身异常不得掩盖原始失败原因。
+      try {
+        self.cleanupArtifacts(documentId);
+      } catch (Exception cleanupEx) {
+        log.warn(
+            "Document pipeline failed-state cleanup skipped docId={}: {}",
+            documentId,
+            cleanupEx.getMessage());
+      }
       self.updateStatusWithError(documentId, STATUS_FAILED, e.getMessage());
       if (e instanceof RuntimeException runtimeException) {
         throw runtimeException;

@@ -200,7 +200,9 @@ class DocumentServiceImplTest {
 
     assertThat(vo.getFilename()).isEqualTo("new.md");
     assertThat(vo.getVersion()).isEqualTo(existing.getVersion());
-    verify(knowledgeBaseMapper).updateById(any(KnowledgeBase.class));
+    // 计数原子回减旧 chunk 数（-2, doc 不变），不再整行 updateById(M5)
+    verify(knowledgeBaseMapper).adjustCounters(1L, -2, 0);
+    verify(knowledgeBaseMapper, never()).updateById(any(KnowledgeBase.class));
   }
 
   @Test
