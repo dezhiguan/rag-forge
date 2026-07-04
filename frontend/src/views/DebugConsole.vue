@@ -210,7 +210,7 @@
                   Score {{ formatScore(displayScore(r)) }}
                 </span>
               </div>
-              <div class="result-text" :title="r.content" v-html="highlightContent(r.content, query)"></div>
+              <div class="result-text clickable" title="点击查看完整内容" @click="openResult(r)" v-html="highlightContent(r.content, query)"></div>
               <img
                 v-if="r.imageUrl"
                 :src="r.imageUrl"
@@ -334,6 +334,16 @@
       </div>
     </div>
     <ImageLightbox :src="previewImage" @close="previewImage = ''" />
+    <ContentModal
+      v-model="resultModal"
+      :title="activeResult ? `${activeResult.filename} #${activeResult.chunkIndex}` : ''"
+      :content="activeResult?.content || ''"
+    >
+      <template #meta>
+        <span v-if="activeResult?.chunkModality" class="result-modality">{{ activeResult.chunkModality }}</span>
+        <span class="result-score">Score {{ formatScore(displayScore(activeResult)) }}</span>
+      </template>
+    </ContentModal>
   </div>
 </template>
 
@@ -347,9 +357,17 @@ import { listEvalDatasets, saveQuestionFromSearch } from '../api/eval'
 import { llmGenerate } from '../api/llm'
 import { useToast } from '../composables/useToast'
 import ImageLightbox from '../components/ImageLightbox.vue'
+import ContentModal from '../components/ContentModal.vue'
 
 const toast = useToast()
 const previewImage = ref('')
+const resultModal = ref(false)
+const activeResult = ref(null)
+
+function openResult(r) {
+  activeResult.value = r
+  resultModal.value = true
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -1099,6 +1117,8 @@ onMounted(async () => {
 .result-score { font-weight: 700; font-size: 13px; flex-shrink: 0; }
 .result-modality { border: 1px solid rgba(14, 165, 233, 0.28); border-radius: 6px; background: rgba(14, 165, 233, 0.08); color: #0369a1; flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 2px 6px; }
 .result-text { color: var(--gray); line-height: 1.5; margin-bottom: 4px; word-break: break-word; }
+.result-text.clickable { cursor: pointer; }
+.result-text.clickable:hover { color: var(--slate); }
 .result-text :deep(mark.hl) { background: #fef08a; color: inherit; padding: 0 2px; border-radius: 2px; }
 .result-thumb { max-width: 120px; max-height: 90px; border: 1px solid var(--border); border-radius: 6px; margin: 2px 0 6px; cursor: zoom-in; display: block; object-fit: cover; background: #fff; }
 .result-meta { color: var(--text-muted); font-size: 9px; line-height: 1.5; word-break: break-word; }

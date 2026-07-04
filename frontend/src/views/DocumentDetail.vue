@@ -160,11 +160,11 @@
             <div class="state-desc">文档处理完成后将显示分块数据</div>
           </div>
           <div v-else>
-            <div v-for="c in chunks" :key="c.chunkIndex" class="chunk-card" :class="{ hit: !!chunkKeyword }">
+            <div v-for="c in chunks" :key="c.chunkIndex" class="chunk-card clickable" :class="{ hit: !!chunkKeyword }" title="点击查看完整内容" @click="openChunk(c)">
               <div class="chunk-head">
                 <span class="chunk-title">#{{ c.chunkIndex }}</span>
                 <span v-if="c.chunkModality" class="chunk-modality">{{ c.chunkModality }}</span>
-                <span class="chunk-tokens">{{ c.chunkerStrategy || (c.chunkModality?.startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW') }} · {{ c.tokenCount ?? 0 }} tokens</span>
+                <span class="chunk-tokens">{{ chunkerStrategyLabel(c.chunkerStrategy || (c.chunkModality?.startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW')) }} · {{ c.tokenCount ?? 0 }} tokens</span>
               </div>
               <!--
                 IMAGE chunk 缩略图来源：
@@ -204,6 +204,7 @@
               :size="chunkSize"
               :size-options="[5, 10, 20, 50]"
               unit="块"
+              flush
               @update:page="goChunkPage"
               @update:size="setChunkSize"
             />
@@ -373,6 +374,18 @@
     </transition>
   </Teleport>
 
+  <!-- 分块全文弹窗 -->
+  <ContentModal
+    v-model="chunkModal"
+    :title="activeChunk ? `#${activeChunk.chunkIndex}` : ''"
+    :content="activeChunk?.content || ''"
+  >
+    <template #meta>
+      <span v-if="activeChunk?.chunkModality" class="chunk-modality">{{ activeChunk.chunkModality }}</span>
+      <span class="chunk-tokens">{{ chunkerStrategyLabel(activeChunk?.chunkerStrategy || (activeChunk?.chunkModality?.startsWith('IMAGE') ? 'IMAGE_PIPELINE' : 'FIXED_WINDOW')) }} · {{ activeChunk?.tokenCount ?? 0 }} tokens</span>
+    </template>
+  </ContentModal>
+
   <RechunkDialog
     v-model="showRechunkDialog"
     :doc="doc"
@@ -391,11 +404,13 @@ import { useToast } from '../composables/useToast'
 const toast = useToast()
 import PageBreadcrumb from '../components/PageBreadcrumb.vue'
 import Pager from '../components/Pager.vue'
+import ContentModal from '../components/ContentModal.vue'
 import RechunkDialog from '../components/RechunkDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rechunkDocument } from '../api/document'
 import { getKb } from '../api/kb'
 import { highlightParts as hlParts } from '../utils/highlight'
+import { chunkerStrategyLabel } from '../utils/chunker'
 import { translateErrorCode } from '../api/error-messages'
 import { navigateBackFromDocument } from '../composables/useDocumentNav'
 import { useOrg } from '../composables/useOrg'
@@ -433,7 +448,14 @@ const loadingChunks = ref(false)
 const chunkError = ref(false)
 const chunkKeyword = ref('')
 const metaOpen = ref(false)
+const chunkModal = ref(false)
+const activeChunk = ref(null)
 let chunkSearchTimer = null
+
+function openChunk(c) {
+  activeChunk.value = c
+  chunkModal.value = true
+}
 const { start: startPolling, stop: stopPolling } = useDocumentPolling()
 
 const normalizedStatus = computed(() => normalizeDocStatus(doc.value?.parseStatus))
@@ -1186,6 +1208,10 @@ function piiLabel(key) {
   padding: 4px 10px;
 }
 .meta-btn:hover { background: #e0ecff; }
+
+/* 分块卡片可点击查看全文 */
+.chunk-card.clickable { cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+.chunk-card.clickable:hover { border-color: var(--primary-soft, #bfdbfe); box-shadow: 0 1px 6px rgba(37, 99, 235, .08); }
 
 /* 命中关键词高亮 */
 .chunk-card.hit { border-color: var(--primary-soft, #bfdbfe); background: #fbfdff; }

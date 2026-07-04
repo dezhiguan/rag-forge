@@ -1,5 +1,5 @@
 <template>
-  <div class="pager">
+  <div class="pager" :class="{ flush }">
     <span class="range">
       第 <b>{{ total ? start + 1 : 0 }}</b>–<b>{{ Math.min(start + size, total) }}</b> 条 / 共 <b>{{ total }}</b> 条
     </span>
@@ -31,6 +31,8 @@ const props = defineProps({
   size: { type: Number, default: 10 },
   sizeOptions: { type: Array, default: () => [10, 20, 50] },
   unit: { type: String, default: '条' },
+  // flush=true 去掉左右内边距（用于外层已有 padding 的容器，如文档详情整宽 Chunks）
+  flush: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:page', 'update:size'])
 
@@ -66,7 +68,8 @@ function onSize(e) {
 </script>
 
 <style scoped>
-.pager { display: flex; align-items: center; gap: 10px; padding: 14px 0 2px; flex-wrap: wrap; }
+.pager { display: flex; align-items: center; gap: 10px; padding: 16px 20px 6px; flex-wrap: wrap; }
+.pager.flush { padding-left: 0; padding-right: 0; }
 .pager .range { font-size: 13px; color: var(--text-muted); }
 .pager .range b { color: var(--slate); }
 .pager .spacer { flex: 1; }
