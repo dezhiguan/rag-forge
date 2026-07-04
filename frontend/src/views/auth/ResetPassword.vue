@@ -145,7 +145,9 @@ async function handleConfirm() {
     if (sessionReady) {
       setTimeout(() => router.replace('/'), 450)
     } else {
-      // 换不到有效会话就不硬闯主页（否则必弹"登录已过期"），引导用新密码登录
+      // 换不到有效会话就不硬闯主页（否则必弹"登录已过期"），引导用新密码登录。
+      // sessionStorage 标记兜底：整页跳转会被入口 Nginx 302 剥掉 query。
+      sessionStorage.setItem('rf_reset_success', '1')
       setTimeout(() => router.replace('/login?reason=reset-success'), 450)
     }
   } catch (e) {

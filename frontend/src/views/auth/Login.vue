@@ -153,7 +153,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { loginByPassword, loginByMobile, sendSmsCode, fetchCaptcha } from '../../api/auth'
 import { applySession } from '../../api/session'
@@ -188,7 +188,15 @@ const redirectNotice = computed(() => {
   return route.query.reason === 'expired' ? route.query.redirect || null : null
 })
 
-const resetSuccessNotice = computed(() => route.query.reason === 'reset-success')
+// 入口 Nginx 会把直达 /login 的整页请求 302 到 /（query 丢失），
+// 故除 query 外用 sessionStorage 标记兜底，保证横幅在整页跳转链路下也能显示。
+const resetSuccessNotice = ref(false)
+onMounted(() => {
+  if (route.query.reason === 'reset-success' || sessionStorage.getItem('rf_reset_success') === '1') {
+    resetSuccessNotice.value = true
+    sessionStorage.removeItem('rf_reset_success')
+  }
+})
 
 const smsBtnLabel = computed(() => {
   if (sendingSms.value) return '发送中…'
