@@ -1,6 +1,7 @@
 package com.ragforge.answer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -61,6 +62,7 @@ class AnswerServiceTest {
   @Mock private AnswerJudgeProducer answerJudgeProducer;
   @Mock private com.ragforge.modelcenter.ModelResolver modelResolver;
   @Mock private com.ragforge.modelcenter.ModelUsageRecorder modelUsageRecorder;
+  @Mock private java.util.concurrent.Executor answerExecutor;
 
   private AnswerService answerService;
 
@@ -80,7 +82,8 @@ class AnswerServiceTest {
             new RagforgeMetrics(new SimpleMeterRegistry()),
             answerJudgeProducer,
             modelResolver,
-            modelUsageRecorder);
+            modelUsageRecorder,
+            answerExecutor);
     lenient()
         .when(modelResolver.resolveCodeOrDefault(any(), any()))
         .thenReturn("qwen-plus");
@@ -345,6 +348,25 @@ class AnswerServiceTest {
     kb.setAnswerMode(mode);
     kb.setAnswerModel("qwen-max");
     when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb));
+  }
+
+  @Test
+  void answer_dispatchesOnDedicatedExecutor_notCommonPool() {
+    // SSE 应答走专用有界池,而非 ForkJoinPool.commonPool。
+    answerService.answer(request());
+
+    verify(answerExecutor).execute(any());
+  }
+
+  @Test
+  void answer_executorSaturated_handledGracefully_noThrow() {
+    // 池满(拒绝)时不应把 RejectedExecutionException 冒泡成 500,而是转成友好提示优雅收尾。
+    doThrow(new java.util.concurrent.RejectedExecutionException())
+        .when(answerExecutor)
+        .execute(any());
+
+    assertThatCode(() -> answerService.answer(request())).doesNotThrowAnyException();
+    verify(answerExecutor).execute(any());
   }
 
   private AnswerRequest request() {

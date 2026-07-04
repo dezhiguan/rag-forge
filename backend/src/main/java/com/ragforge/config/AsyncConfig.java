@@ -60,4 +60,40 @@ public class AsyncConfig {
     executor.initialize();
     return executor;
   }
+
+  /**
+   * 检索日志写入专用池（M3）。此前 RetrievalLogService 的裸 @Async 因无 @Primary/无 taskExecutor 而回退到
+   * SimpleAsyncTaskExecutor —— 每次检索都新建线程、无界，高 QPS 下线程暴涨。这里绑定有界池；溢出退化为
+   * 调用方同步写（CallerRunsPolicy），既不丢日志也不爆线程（日志是旁路，极端负载下宁可慢一点）。
+   */
+  @Bean
+  public Executor retrievalLogExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(2);
+    executor.setMaxPoolSize(4);
+    executor.setQueueCapacity(1000);
+    executor.setThreadNamePrefix("retrieval-log-");
+    executor.setTaskDecorator(MdcContext.taskDecorator());
+    executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+    executor.initialize();
+    return executor;
+  }
+
+  /**
+   * RAG 应答流式专用池（M4）。此前 AnswerService 的 CompletableFuture.runAsync 无 executor，落到全 JVM 共享的
+   * ForkJoinPool.commonPool；而应答是 SSE 长任务（可达 600s），会占满公共池拖累并行流等其它使用者。这里绑定
+   * 有界池、不排队（长流任务无限积压无意义）、满即拒绝，由调用方转成友好「服务繁忙」提示。
+   */
+  @Bean
+  public Executor answerExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(4);
+    executor.setMaxPoolSize(32);
+    executor.setQueueCapacity(0);
+    executor.setThreadNamePrefix("answer-stream-");
+    executor.setTaskDecorator(MdcContext.taskDecorator());
+    executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+    executor.initialize();
+    return executor;
+  }
 }
