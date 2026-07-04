@@ -239,7 +239,9 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
       applyFileMd5(cmd, fileContentHash);
 
       // 分流：relay 通道同样按 magic number 判定压缩包（拒 7z/rar；zip/tar.gz 标记容器）
-      ArchiveFormat archiveFormat = detectArchiveFormatFromFile(tempFile);
+      // OOXML 文档按文件名排除，避免 docx/xlsx 被误当压缩包。
+      ArchiveFormat archiveFormat =
+          detectArchiveFormatFromFile(tempFile, file.getOriginalFilename());
       if (archiveFormat.isArchive() && !archiveFormat.isSupported()) {
         throw new BizException(415, ArchiveErrorCodes.UNSUPPORTED_FORMAT);
       }
@@ -485,11 +487,33 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     return "kb_" + kbId + "/" + UUID.randomUUID() + "/" + filename;
   }
 
+  /** OOXML/Office 文档扩展名——它们本质是 zip，但必须按文档解析，不能当压缩包展开。 */
+  private static final java.util.Set<String> OFFICE_DOC_EXTENSIONS =
+      java.util.Set.of("docx", "xlsx", "pptx", "doc", "xls", "ppt");
+
+  /** 是否为 Office 文档（docx/xlsx/pptx 等）——按扩展名判定。 */
+  static boolean isOfficeDocument(String filename) {
+    if (filename == null) {
+      return false;
+    }
+    int dot = filename.lastIndexOf('.');
+    if (dot < 0 || dot == filename.length() - 1) {
+      return false;
+    }
+    return OFFICE_DOC_EXTENSIONS.contains(
+        filename.substring(dot + 1).toLowerCase(java.util.Locale.ROOT));
+  }
+
   /** 从 OSS 对象读取文件头，按 magic number 判定压缩格式（读取失败按非压缩包处理，不阻断上传）。 */
   private ArchiveFormat detectArchiveFormat(String bucket, String key) {
     try (InputStream in = objectStorage.get(bucket, key)) {
       byte[] header = in.readNBytes(ArchiveFormatDetector.HEADER_BYTES);
-      return archiveFormatDetector.detect(header);
+      ArchiveFormat fmt = archiveFormatDetector.detect(header);
+      // OOXML(docx/xlsx/pptx) 是 zip 结构，magic 会误判为 ZIP——按文档处理，不展开。
+      if (fmt == ArchiveFormat.ZIP && isOfficeDocument(leafName(key))) {
+        return ArchiveFormat.UNKNOWN;
+      }
+      return fmt;
     } catch (Exception e) {
       log.warn("archive magic detect failed bucket={} key={} err={}", bucket, key, e.getMessage());
       return ArchiveFormat.UNKNOWN;
@@ -497,14 +521,26 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
   }
 
   /** 从本地临时文件读取文件头，按 magic number 判定压缩格式（relay 通道用）。 */
-  private ArchiveFormat detectArchiveFormatFromFile(Path file) {
+  private ArchiveFormat detectArchiveFormatFromFile(Path file, String filename) {
     try (InputStream in = Files.newInputStream(file)) {
       byte[] header = in.readNBytes(ArchiveFormatDetector.HEADER_BYTES);
-      return archiveFormatDetector.detect(header);
+      ArchiveFormat fmt = archiveFormatDetector.detect(header);
+      if (fmt == ArchiveFormat.ZIP && isOfficeDocument(filename)) {
+        return ArchiveFormat.UNKNOWN;
+      }
+      return fmt;
     } catch (Exception e) {
       log.warn("archive magic detect (relay) failed err={}", e.getMessage());
       return ArchiveFormat.UNKNOWN;
     }
+  }
+
+  private static String leafName(String key) {
+    if (key == null) {
+      return null;
+    }
+    int slash = key.lastIndexOf('/');
+    return slash >= 0 ? key.substring(slash + 1) : key;
   }
 
   private String defaultBucket(String requestedBucket) {
