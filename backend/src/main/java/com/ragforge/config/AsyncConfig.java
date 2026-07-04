@@ -2,6 +2,9 @@ package com.ragforge.config;
 
 import com.ragforge.common.MdcContext;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -95,5 +98,21 @@ public class AsyncConfig {
     executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
     executor.initialize();
     return executor;
+  }
+
+  /**
+   * 文档处理心跳调度器（M1）：processDocument 期间周期性刷新 updated_at，避免长阶段(embedding >5min)被
+   * markProcessingIfRunnable 的 5min 陈旧窗口误判卡死而并发重跑。守护线程 + 池大小 2(处理并发上限 4，心跳任务极短)。
+   */
+  @Bean(destroyMethod = "shutdown")
+  public ScheduledExecutorService documentHeartbeatScheduler() {
+    AtomicInteger idx = new AtomicInteger();
+    return Executors.newScheduledThreadPool(
+        2,
+        r -> {
+          Thread t = new Thread(r, "doc-heartbeat-" + idx.incrementAndGet());
+          t.setDaemon(true);
+          return t;
+        });
   }
 }

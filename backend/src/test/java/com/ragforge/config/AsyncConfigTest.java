@@ -97,4 +97,15 @@ class AsyncConfigTest {
       executor.shutdown();
     }
   }
+
+  @Test
+  void documentHeartbeatScheduler_isRunnableScheduledExecutor() {
+    java.util.concurrent.ScheduledExecutorService scheduler = config.documentHeartbeatScheduler();
+    try {
+      assertThat(scheduler).isNotNull();
+      assertThat(scheduler.isShutdown()).isFalse();
+    } finally {
+      scheduler.shutdown();
+    }
+  }
 }

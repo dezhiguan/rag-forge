@@ -91,6 +91,8 @@ class DocumentPipelineServiceTest {
   @Mock private ImagePipelineSupport imagePipelineSupport;
   @Mock private ImagePipelineService imagePipelineService;
   @Spy private MultimodalProperties multimodalProperties = new MultimodalProperties();
+  @Mock private java.util.concurrent.ScheduledExecutorService documentHeartbeatScheduler;
+  @Mock private java.util.concurrent.ScheduledFuture<?> heartbeatFuture;
 
   @Spy @InjectMocks private DocumentPipelineService documentPipelineService;
 
@@ -99,6 +101,11 @@ class DocumentPipelineServiceTest {
     ReflectionTestUtils.setField(documentPipelineService, "self", documentPipelineService);
     ReflectionTestUtils.setField(documentPipelineService, "objectMapper", new ObjectMapper());
     ReflectionTestUtils.setField(documentPipelineService, "embeddedImageExtractors", List.<EmbeddedImageExtractor>of());
+    ReflectionTestUtils.setField(documentPipelineService, "heartbeatIntervalSeconds", 120L);
+    doReturn(heartbeatFuture)
+        .when(documentHeartbeatScheduler)
+        .scheduleAtFixedRate(
+            any(Runnable.class), anyLong(), anyLong(), any(java.util.concurrent.TimeUnit.class));
     stubPipelineSideEffects();
     when(cleanProfileService.resolveForKb(anyLong()))
         .thenReturn(new ResolvedCleanProfile(null, new CleanProfile()));
@@ -114,6 +121,36 @@ class DocumentPipelineServiceTest {
     doNothing().when(documentPipelineService).updateCleanReport(anyLong(), any(), anyString());
     doNothing().when(documentPipelineService).incrementKbCount(anyLong(), anyInt(), anyBoolean());
     doNothing().when(documentPipelineService).clearRechunkRequest(anyLong());
+  }
+
+  @Test
+  void processDocument_schedulesHeartbeatAndCancelsWhenDone() {
+    // M1：处理期间调度心跳(刷新 updated_at 防 5min 陈旧误判重跑)，结束(含失败)必取消。
+    org.mockito.ArgumentCaptor<Runnable> beat = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+    doReturn(heartbeatFuture)
+        .when(documentHeartbeatScheduler)
+        .scheduleAtFixedRate(
+            beat.capture(), anyLong(), anyLong(), any(java.util.concurrent.TimeUnit.class));
+    when(documentMapper.selectById(404L)).thenReturn(null);
+
+    assertThatThrownBy(() -> documentPipelineService.processDocument(404L))
+        .isInstanceOf(BizException.class);
+
+    verify(heartbeatFuture).cancel(false);
+    beat.getValue().run(); // 心跳任务：仅刷新仍处于 PROCESSING 的 updated_at
+    verify(documentMapper).touchProcessingHeartbeat(404L);
+  }
+
+  @Test
+  void cleanupArtifacts_deletesChunksEsAndQdrant() {
+    // M5：无事务清理，DB 分块删除 + ES/Qdrant 外部删除(其余用例均 stub 掉、未覆盖真实体)。
+    doCallRealMethod().when(documentPipelineService).cleanupArtifacts(7L);
+
+    documentPipelineService.cleanupArtifacts(7L);
+
+    verify(documentChunkMapper).delete(any());
+    verify(esIndexService).deleteByDocId(7L);
+    verify(qdrantVectorStore).deleteByDocId(7L);
   }
 
   @Test
