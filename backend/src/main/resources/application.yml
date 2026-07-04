@@ -135,6 +135,7 @@ embedding:
     endpoint: https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding
     timeoutMs: 15000
     batchSize: 10
+    dimension: ${RAGFORGE_VL_DIM:1024}
   ocr:
     model: qwen-vl-ocr
     endpoint: https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
@@ -147,6 +148,17 @@ embedding:
       min-image-bytes: ${RAGFORGE_EMBEDDED_IMAGE_MIN_BYTES:8192}
       max-concurrent-image-tasks: ${RAGFORGE_EMBEDDED_IMAGE_MAX_CONCURRENT:3}
       max-processing-ms-per-doc: ${RAGFORGE_EMBEDDED_IMAGE_MAX_PROCESSING_MS_PER_DOC:120000}
+
+# Qdrant 向量库（承载向量存储 + ANN 检索）。内网 gRPC，API Key 由 env 注入。
+qdrant:
+  host: ${QDRANT_HOST:172.25.90.183}
+  grpc-port: ${QDRANT_GRPC_PORT:6334}
+  use-tls: ${QDRANT_USE_TLS:false}
+  api-key: ${QDRANT_API_KEY:}
+  collection: ${QDRANT_COLLECTION:ragforge_chunks}
+  vector-dim: ${RAGFORGE_VL_DIM:1024}
+  timeout-ms: ${QDRANT_TIMEOUT_MS:10000}
+  oversampling: ${QDRANT_OVERSAMPLING:2.0}
 
 server:
   error:

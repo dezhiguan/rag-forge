@@ -40,6 +40,7 @@ class IngestServiceImplTest {
   @Mock private DocumentProcessProducer mqProducer;
   @Mock private ArchiveExpandProducer archiveExpandProducer;
   @Mock private EsIndexService esIndexService;
+  @Mock private com.ragforge.search.QdrantVectorStore qdrantVectorStore;
   @Mock private ObjectStorage objectStorage;
 
   private IngestServiceImpl ingestService;
@@ -53,6 +54,7 @@ class IngestServiceImplTest {
             mqProducer,
             archiveExpandProducer,
             esIndexService,
+            qdrantVectorStore,
             objectStorage,
             new RagforgeMetrics(new SimpleMeterRegistry()));
     TransactionSynchronizationManager.initSynchronization();

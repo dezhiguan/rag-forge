@@ -55,6 +55,7 @@ public class IngestServiceImpl implements IngestService {
   private final DocumentProcessProducer mqProducer;
   private final ArchiveExpandProducer archiveExpandProducer;
   private final EsIndexService esIndexService;
+  private final com.ragforge.search.QdrantVectorStore qdrantVectorStore;
   private final ObjectStorage objectStorage;
   private final RagforgeMetrics metrics;
 
@@ -208,6 +209,7 @@ public class IngestServiceImpl implements IngestService {
     afterCommit(
         () -> {
           esIndexService.deleteByDocId(oldDocId);
+          qdrantVectorStore.deleteByDocId(oldDocId);
           if (StringUtils.hasText(oldBucket) && StringUtils.hasText(oldKey)) {
             objectStorage.delete(oldBucket, oldKey);
           }

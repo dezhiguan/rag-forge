@@ -81,6 +81,7 @@ class DocumentPipelineServiceTest {
   @Mock private ChunkingService chunkingService;
   @Mock private EmbeddingService embeddingService;
   @Mock private EsIndexService esIndexService;
+  @Mock private com.ragforge.search.QdrantVectorStore qdrantVectorStore;
   @Mock private JdbcTemplate jdbcTemplate;
   @Mock private ObjectStorage objectStorage;
   @Mock private CleaningPipeline cleaningPipeline;

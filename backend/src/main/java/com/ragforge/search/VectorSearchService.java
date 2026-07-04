@@ -1,11 +1,10 @@
 package com.ragforge.search;
 
-import com.pgvector.PGvector;
-import java.util.Base64;
-import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.embedder.EmbeddingInput;
+import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.embedder.VlEmbeddingClient;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +14,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+/**
+ * 向量检索服务（Qdrant 后端）。
+ *
+ * <p>流程：query → embedding(1024) → Qdrant ANN(按 kb_id/doc_id/chunk_type 过滤) → 拿 chunkId+score → 回 PG
+ * 按 chunkId 批量取正文/元数据 → 组装 {@link SearchResult}。向量存储与检索由 {@link QdrantVectorStore}
+ * 承载；PG 仍是正文/元数据的唯一事实源。返回结构与调用方保持不变。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -23,6 +29,7 @@ public class VectorSearchService {
   private final EmbeddingService embedder;
   private final VlEmbeddingClient vlEmbeddingClient;
   private final JdbcTemplate jdbcTemplate;
+  private final QdrantVectorStore qdrantVectorStore;
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
     return search(query, kbIds, docIds, topK, null);
@@ -39,93 +46,23 @@ public class VectorSearchService {
     long embedStart = System.currentTimeMillis();
     float[] queryVector = embedder.embed(query);
     long embedLatencyMs = System.currentTimeMillis() - embedStart;
-    PGvector pgVector = new PGvector(queryVector);
 
-    StringBuilder sql =
-        new StringBuilder(
-            """
-            SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
-                   dc.chunk_modality,
-                   1 - (dc.vl_vector <=> ?::vector) AS similarity
-            FROM document_chunks dc
-            JOIN documents d ON dc.doc_id = d.id
-            WHERE dc.vl_vector IS NOT NULL
-              AND d.parse_status = 'COMPLETED'
-            """);
+    long qStart = System.currentTimeMillis();
+    List<QdrantVectorStore.ScoredChunk> hits =
+        qdrantVectorStore.search(queryVector, kbIds, docIds, chunkTypes(filter), topK);
+    long qLatencyMs = System.currentTimeMillis() - qStart;
 
-    if (kbIds != null && !kbIds.isEmpty()) {
-      sql.append(" AND dc.kb_id IN (");
-      sql.append("?,".repeat(kbIds.size()));
-      sql.setLength(sql.length() - 1);
-      sql.append(")");
-    }
-
-    if (docIds != null && !docIds.isEmpty()) {
-      sql.append(" AND dc.doc_id IN (");
-      sql.append("?,".repeat(docIds.size()));
-      sql.setLength(sql.length() - 1);
-      sql.append(")");
-    }
-
-    if (filter != null
-        && filter.getChunkType() != null
-        && !filter.getChunkType().isEmpty()) {
-      sql.append(" AND dc.chunk_type = ANY(?)");
-    }
-
-    sql.append(" ORDER BY dc.vl_vector <=> ?::vector LIMIT ?");
-
-    long dbStart = System.currentTimeMillis();
-    List<SearchResult> results =
-        jdbcTemplate.query(
-            sql.toString(),
-            ps -> {
-              int idx = 1;
-              ps.setObject(idx++, pgVector);
-              if (kbIds != null) {
-                for (Long kbId : kbIds) {
-                  ps.setLong(idx++, kbId);
-                }
-              }
-              if (docIds != null) {
-                for (Long docId : docIds) {
-                  ps.setLong(idx++, docId);
-                }
-              }
-              if (filter != null
-                  && filter.getChunkType() != null
-                  && !filter.getChunkType().isEmpty()) {
-                java.sql.Array arr =
-                    ps.getConnection()
-                        .createArrayOf("varchar", filter.getChunkType().toArray(new String[0]));
-                ps.setArray(idx++, arr);
-              }
-              ps.setObject(idx++, pgVector);
-              ps.setInt(idx, topK);
-            },
-            (rs, rowNum) -> {
-              SearchResult result = new SearchResult();
-              result.setChunkId(rs.getLong("id"));
-              result.setContent(rs.getString("content"));
-              result.setDocId(rs.getLong("doc_id"));
-              result.setFilename(rs.getString("filename"));
-              result.setChunkIndex(rs.getInt("chunk_index"));
-              result.setVectorScore(rs.getDouble("similarity"));
-              result.setChunkType(rs.getString("chunk_type"));
-              result.setChunkModality(rs.getString("chunk_modality"));
-              return result;
-            });
-    long dbLatencyMs = System.currentTimeMillis() - dbStart;
-    long totalLatencyMs = System.currentTimeMillis() - start;
+    List<SearchResult> results = hydrate(hits);
     log.info(
-        "Vector search stage completed: topK={} kbCount={} docFilterCount={} resultCount={} embedLatency={}ms pgLatency={}ms totalLatency={}ms",
+        "Vector search stage completed: topK={} kbCount={} docFilterCount={} resultCount={} "
+            + "embedLatency={}ms qdrantLatency={}ms totalLatency={}ms",
         topK,
         kbIds == null ? 0 : kbIds.size(),
         docIds == null ? 0 : docIds.size(),
         results.size(),
         embedLatencyMs,
-        dbLatencyMs,
-        totalLatencyMs);
+        qLatencyMs,
+        System.currentTimeMillis() - start);
     return results;
   }
 
@@ -144,7 +81,6 @@ public class VectorSearchService {
     if (queries == null || queries.isEmpty()) {
       return List.of();
     }
-
     long start = System.currentTimeMillis();
     long embedStart = System.currentTimeMillis();
     List<float[]> vectors = embedder.embedBatch(queries);
@@ -153,149 +89,36 @@ public class VectorSearchService {
       throw new IllegalStateException("Embedding 数量与改写查询数量不一致");
     }
 
-    String sql = buildBatchVectorSql(queries.size(), kbIds, docIds, filter);
-    long dbStart = System.currentTimeMillis();
-    List<SearchResult> rawResults =
-        jdbcTemplate.query(
-            sql,
-            ps -> {
-              int idx = 1;
-              for (float[] vector : vectors) {
-                PGvector pgVector = new PGvector(vector);
-                ps.setObject(idx++, pgVector);
-                idx = bindFilters(ps, idx, kbIds, docIds, filter);
-                ps.setObject(idx++, pgVector);
-                ps.setInt(idx++, topK);
-              }
-            },
-            (rs, rowNum) -> mapSearchResult(rs.getLong("id"), rs));
-
-    Map<Long, SearchResult> dedup = new LinkedHashMap<>();
-    for (SearchResult item : rawResults) {
-      if (item.getChunkId() == null) {
-        continue;
-      }
-      SearchResult existing = dedup.get(item.getChunkId());
-      if (existing == null || item.getVectorScore() > existing.getVectorScore()) {
-        dedup.put(item.getChunkId(), item);
+    // 多路 query 各自检索，按 chunkId 去重保留最高分。
+    List<String> types = chunkTypes(filter);
+    Map<Long, Double> bestScore = new LinkedHashMap<>();
+    long qStart = System.currentTimeMillis();
+    for (float[] vector : vectors) {
+      for (QdrantVectorStore.ScoredChunk hit :
+          qdrantVectorStore.search(vector, kbIds, docIds, types, topK)) {
+        bestScore.merge(hit.chunkId(), hit.score(), Math::max);
       }
     }
-    List<SearchResult> merged = new ArrayList<>(dedup.values());
-    merged.sort(Comparator.comparingDouble(SearchResult::getVectorScore).reversed());
-    if (merged.size() > topK) {
-      merged = new ArrayList<>(merged.subList(0, topK));
-    }
+    long qLatencyMs = System.currentTimeMillis() - qStart;
 
-    long dbLatencyMs = System.currentTimeMillis() - dbStart;
+    List<QdrantVectorStore.ScoredChunk> merged = new ArrayList<>(bestScore.size());
+    bestScore.forEach((cid, score) -> merged.add(new QdrantVectorStore.ScoredChunk(cid, score)));
+    merged.sort(Comparator.comparingDouble(QdrantVectorStore.ScoredChunk::score).reversed());
+    List<QdrantVectorStore.ScoredChunk> top =
+        merged.size() > topK ? merged.subList(0, topK) : merged;
+
+    List<SearchResult> results = hydrate(top);
     log.info(
-        "Batch vector search completed: queryCount={} topK={} kbCount={} docFilterCount={} rawResults={} mergedResults={} embedLatency={}ms pgLatency={}ms totalLatency={}ms",
+        "Batch vector search completed: queryCount={} topK={} kbCount={} mergedResults={} "
+            + "embedLatency={}ms qdrantLatency={}ms totalLatency={}ms",
         queries.size(),
         topK,
         kbIds == null ? 0 : kbIds.size(),
-        docIds == null ? 0 : docIds.size(),
-        rawResults.size(),
-        merged.size(),
+        results.size(),
         embedLatencyMs,
-        dbLatencyMs,
+        qLatencyMs,
         System.currentTimeMillis() - start);
-    return merged;
-  }
-
-  private String buildBatchVectorSql(
-      int queryCount,
-      List<Long> kbIds,
-      List<Long> docIds,
-      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
-    StringBuilder sql = new StringBuilder();
-    for (int i = 0; i < queryCount; i++) {
-      if (i > 0) {
-        sql.append(" UNION ALL ");
-      }
-      sql.append(
-          """
-          SELECT * FROM (
-            SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
-                   dc.chunk_modality,
-                   1 - (dc.vl_vector <=> ?::vector) AS similarity
-            FROM document_chunks dc
-            JOIN documents d ON dc.doc_id = d.id
-            WHERE dc.vl_vector IS NOT NULL
-              AND d.parse_status = 'COMPLETED'
-          """);
-      appendFilters(sql, kbIds, docIds, filter);
-      sql.append(
-          """
-            ORDER BY dc.vl_vector <=> ?::vector
-            LIMIT ?
-          ) q
-          """);
-    }
-    return sql.toString();
-  }
-
-  private void appendFilters(
-      StringBuilder sql,
-      List<Long> kbIds,
-      List<Long> docIds,
-      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
-    if (kbIds != null && !kbIds.isEmpty()) {
-      sql.append(" AND dc.kb_id IN (");
-      sql.append("?,".repeat(kbIds.size()));
-      sql.setLength(sql.length() - 1);
-      sql.append(")");
-    }
-    if (docIds != null && !docIds.isEmpty()) {
-      sql.append(" AND dc.doc_id IN (");
-      sql.append("?,".repeat(docIds.size()));
-      sql.setLength(sql.length() - 1);
-      sql.append(")");
-    }
-    if (filter != null
-        && filter.getChunkType() != null
-        && !filter.getChunkType().isEmpty()) {
-      sql.append(" AND dc.chunk_type = ANY(?)");
-    }
-  }
-
-  private int bindFilters(
-      java.sql.PreparedStatement ps,
-      int idx,
-      List<Long> kbIds,
-      List<Long> docIds,
-      com.ragforge.model.dto.SearchRequest.SearchFilter filter)
-      throws java.sql.SQLException {
-    if (kbIds != null && !kbIds.isEmpty()) {
-      for (Long kbId : kbIds) {
-        ps.setLong(idx++, kbId);
-      }
-    }
-    if (docIds != null && !docIds.isEmpty()) {
-      for (Long docId : docIds) {
-        ps.setLong(idx++, docId);
-      }
-    }
-    if (filter != null
-        && filter.getChunkType() != null
-        && !filter.getChunkType().isEmpty()) {
-      java.sql.Array arr =
-          ps.getConnection().createArrayOf("varchar", filter.getChunkType().toArray(new String[0]));
-      ps.setArray(idx++, arr);
-    }
-    return idx;
-  }
-
-  private SearchResult mapSearchResult(long chunkId, java.sql.ResultSet rs)
-      throws java.sql.SQLException {
-    SearchResult result = new SearchResult();
-    result.setChunkId(chunkId);
-    result.setContent(rs.getString("content"));
-    result.setDocId(rs.getLong("doc_id"));
-    result.setFilename(rs.getString("filename"));
-    result.setChunkIndex(rs.getInt("chunk_index"));
-    result.setVectorScore(rs.getDouble("similarity"));
-    result.setChunkType(rs.getString("chunk_type"));
-    result.setChunkModality(rs.getString("chunk_modality"));
-    return result;
+    return results;
   }
 
   public List<SearchResult> searchImage(
@@ -308,41 +131,75 @@ public class VectorSearchService {
     requireKbScope(kbIds);
     float[] vector =
         hasText(queryImageBase64)
-            ? vlEmbeddingClient.embed(List.of(EmbeddingInput.image(decodeImageBase64(queryImageBase64), "image/*"))).get(0)
+            ? vlEmbeddingClient
+                .embed(List.of(EmbeddingInput.image(decodeImageBase64(queryImageBase64), "image/*")))
+                .get(0)
             : vlEmbeddingClient.embed(List.of(EmbeddingInput.text(query == null ? "" : query))).get(0);
-    return searchByVector(vector, kbIds, docIds, topK, filter);
+    return hydrate(qdrantVectorStore.search(vector, kbIds, docIds, chunkTypes(filter), topK));
   }
 
-  private List<SearchResult> searchByVector(
-      float[] vector,
-      List<Long> kbIds,
-      List<Long> docIds,
-      int topK,
-      com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
-    PGvector pgVector = new PGvector(vector);
+  /** 用 Qdrant 命中的 chunkId 批量回 PG 取正文/元数据，保持 Qdrant 的分数与顺序。 */
+  private List<SearchResult> hydrate(List<QdrantVectorStore.ScoredChunk> hits) {
+    if (hits == null || hits.isEmpty()) {
+      return List.of();
+    }
+    List<Long> ids = new ArrayList<>(hits.size());
+    for (QdrantVectorStore.ScoredChunk h : hits) {
+      ids.add(h.chunkId());
+    }
     StringBuilder sql =
         new StringBuilder(
             """
             SELECT dc.id, dc.content, dc.doc_id, d.filename, dc.chunk_index, dc.chunk_type,
-                   dc.chunk_modality,
-                   1 - (dc.vl_vector <=> ?::vector) AS similarity
+                   dc.chunk_modality, dc.image_key
             FROM document_chunks dc
             JOIN documents d ON dc.doc_id = d.id
-            WHERE dc.vl_vector IS NOT NULL
-              AND d.parse_status = 'COMPLETED'
+            WHERE d.parse_status = 'COMPLETED' AND dc.id IN (
             """);
-    appendFilters(sql, kbIds, docIds, filter);
-    sql.append(" ORDER BY dc.vl_vector <=> ?::vector LIMIT ?");
-    return jdbcTemplate.query(
+    sql.append("?,".repeat(ids.size()));
+    sql.setLength(sql.length() - 1);
+    sql.append(")");
+
+    Map<Long, SearchResult> byId = new java.util.HashMap<>();
+    jdbcTemplate.query(
         sql.toString(),
         ps -> {
-          int idx = 1;
-          ps.setObject(idx++, pgVector);
-          idx = bindFilters(ps, idx, kbIds, docIds, filter);
-          ps.setObject(idx++, pgVector);
-          ps.setInt(idx, topK);
+          for (int i = 0; i < ids.size(); i++) {
+            ps.setLong(i + 1, ids.get(i));
+          }
         },
-        (rs, rowNum) -> mapSearchResult(rs.getLong("id"), rs));
+        (rs, rowNum) -> {
+          SearchResult r = new SearchResult();
+          r.setChunkId(rs.getLong("id"));
+          r.setContent(rs.getString("content"));
+          r.setDocId(rs.getLong("doc_id"));
+          r.setFilename(rs.getString("filename"));
+          r.setChunkIndex(rs.getInt("chunk_index"));
+          r.setChunkType(rs.getString("chunk_type"));
+          r.setChunkModality(rs.getString("chunk_modality"));
+          r.setImageKey(rs.getString("image_key"));
+          byId.put(r.getChunkId(), r);
+          return r;
+        });
+
+    // 按 Qdrant 的分数顺序输出，回填 vectorScore；PG 中不存在的命中（已删/未完成）跳过。
+    List<SearchResult> ordered = new ArrayList<>(hits.size());
+    for (QdrantVectorStore.ScoredChunk h : hits) {
+      SearchResult r = byId.get(h.chunkId());
+      if (r == null) {
+        continue;
+      }
+      r.setVectorScore(h.score());
+      ordered.add(r);
+    }
+    return ordered;
+  }
+
+  private static List<String> chunkTypes(com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
+    if (filter == null || filter.getChunkType() == null || filter.getChunkType().isEmpty()) {
+      return null;
+    }
+    return filter.getChunkType();
   }
 
   private static boolean hasText(String value) {

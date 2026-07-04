@@ -20,6 +20,8 @@ public class EmbeddingProperties {
         "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding";
     private int timeoutMs = 15000;
     private int batchSize = 10;
+    /** 输出向量维度（qwen3-vl-embedding 支持 Matryoshka 256~2560，默认 1024 以匹配 Qdrant collection）。 */
+    private int dimension = 1024;
   }
 
   @Data

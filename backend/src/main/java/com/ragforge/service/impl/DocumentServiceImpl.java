@@ -75,6 +75,7 @@ public class DocumentServiceImpl implements DocumentService {
   private final ObjectStorage objectStorage;
   private final DocumentProcessProducer documentProcessProducer;
   private final EsIndexService esIndexService;
+  private final com.ragforge.search.QdrantVectorStore qdrantVectorStore;
   private final ObjectMapper objectMapper;
   // image_key 单独走原生 JDBC 读，避免 V25 在云上没真正应用时整条 SELECT 500。
   private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
@@ -172,6 +173,7 @@ public class DocumentServiceImpl implements DocumentService {
     fileStorageService.delete(existing.getFilePath());
     documentChunkMapper.delete(new LambdaQueryWrapper<DocumentChunk>().eq(DocumentChunk::getDocId, existingDocId));
     esIndexService.deleteByDocId(existingDocId);
+    qdrantVectorStore.deleteByDocId(existingDocId);
 
     // store new file
     String newFilePath = fileStorageService.store(file);
@@ -607,6 +609,7 @@ public class DocumentServiceImpl implements DocumentService {
     if (isArchiveContainer(doc)) {
       for (Document child : documentMapper.selectChildren(id)) {
         esIndexService.deleteByDocId(child.getId());
+        qdrantVectorStore.deleteByDocId(child.getId());
         if (child.getFilePath() != null && !child.getFilePath().isBlank()) {
           try {
             fileStorageService.delete(child.getFilePath());
@@ -618,6 +621,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     esIndexService.deleteByDocId(id);
+    qdrantVectorStore.deleteByDocId(id);
 
     fileStorageService.delete(doc.getFilePath());
 

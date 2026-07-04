@@ -81,7 +81,7 @@ class DashScopeVlEmbeddingClientTest {
 
   @Test
   void parseEmbeddings_ordersByIndexAndValidatesDimension() throws Exception {
-    String vector = vectorJson(2560);
+    String vector = vectorJson(1024);
     String json =
         """
         {"output":{"embeddings":[
@@ -92,11 +92,11 @@ class DashScopeVlEmbeddingClientTest {
             .formatted(vector, vector);
 
     List<float[]> vectors =
-        DashScopeVlEmbeddingClient.parseEmbeddings(objectMapper.readTree(json), 2);
+        DashScopeVlEmbeddingClient.parseEmbeddings(objectMapper.readTree(json), 2, 1024);
 
     assertThat(vectors).hasSize(2);
-    assertThat(vectors.get(0)).hasSize(2560);
-    assertThat(vectors.get(1)).hasSize(2560);
+    assertThat(vectors.get(0)).hasSize(1024);
+    assertThat(vectors.get(1)).hasSize(1024);
   }
 
   @Test
@@ -107,10 +107,10 @@ class DashScopeVlEmbeddingClientTest {
           {"index":0,"type":"text","embedding":%s}
         ]}}
         """
-            .formatted(vectorJson(2560));
+            .formatted(vectorJson(1024));
 
     assertThatThrownBy(
-            () -> DashScopeVlEmbeddingClient.parseEmbeddings(objectMapper.readTree(json), 1))
+            () -> DashScopeVlEmbeddingClient.parseEmbeddings(objectMapper.readTree(json), 1, 1024))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("type must be vl");
   }
@@ -125,9 +125,9 @@ class DashScopeVlEmbeddingClientTest {
         """;
 
     assertThatThrownBy(
-            () -> DashScopeVlEmbeddingClient.parseEmbeddings(objectMapper.readTree(json), 1))
+            () -> DashScopeVlEmbeddingClient.parseEmbeddings(objectMapper.readTree(json), 1, 1024))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("dimension must be 2560");
+        .hasMessageContaining("dimension must be 1024");
   }
 
   private static String vectorJson(int size) {
@@ -146,6 +146,8 @@ class DashScopeVlEmbeddingClientTest {
     properties.setApiKey("test-key");
     properties.getVl().setEndpoint(endpoint);
     properties.getVl().setBatchSize(10);
+    // MockEmbeddingServer 固定产出 2560 维，测试维度对齐它。
+    properties.getVl().setDimension(2560);
     return properties;
   }
 

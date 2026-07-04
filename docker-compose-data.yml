@@ -83,6 +83,25 @@ services:
     mem_limit: 512m
     command: redis-server --maxmemory 384mb --maxmemory-policy allkeys-lru
 
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: ragforge-qdrant
+    restart: unless-stopped
+    ports:
+      # 仅绑内网 IP，禁止公网暴露；叠加 API Key 兜底
+      - "172.25.90.183:6333:6333"   # REST
+      - "172.25.90.183:6334:6334"   # gRPC
+    environment:
+      # 密钥由 .env 注入，未设置则启动失败（禁止空鉴权）
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?QDRANT_API_KEY required}
+      QDRANT__STORAGE__ON_DISK_PAYLOAD: "true"
+      QDRANT__STORAGE__PERFORMANCE__MAX_OPTIMIZATION_THREADS: "2"
+    # 资源护栏：与 PG/ES/MQ 同机，限内存防 overcommit、限 CPU 防抢核
+    mem_limit: 6g
+    cpus: 2.0
+    volumes:
+      - /data/qdrant:/qdrant/storage   # 新挂 50G SSD
+
   reranker:
     build: ./reranker
     container_name: ragforge-reranker

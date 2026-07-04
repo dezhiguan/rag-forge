@@ -2,7 +2,6 @@ package com.ragforge.pipeline;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.pgvector.PGvector;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
@@ -89,6 +88,7 @@ public class DocumentPipelineService {
   private final List<EmbeddedImageExtractor> embeddedImageExtractors;
   private final MultimodalProperties multimodalProperties;
   private final com.ragforge.pipeline.parser.CsvToTextConverter csvToTextConverter;
+  private final com.ragforge.search.QdrantVectorStore qdrantVectorStore;
 
   @Lazy @Autowired private DocumentPipelineService self;
 
@@ -182,6 +182,9 @@ public class DocumentPipelineService {
               chunking.getStrategy());
       pgInsertLatencyMs = System.currentTimeMillis() - stageStart;
 
+      // 向量写入 Qdrant（PG 不再存向量）。point id=chunk_id，payload=kb_id/doc_id/chunk_type。
+      upsertVectorsToQdrant(documentChunks, vectors);
+
       stageStart = System.currentTimeMillis();
       boolean esIndexed = esIndexService.indexChunks(documentChunks, doc);
       esIndexLatencyMs = System.currentTimeMillis() - stageStart;
@@ -248,6 +251,7 @@ public class DocumentPipelineService {
     documentChunkMapper.delete(
         new LambdaQueryWrapper<DocumentChunk>().eq(DocumentChunk::getDocId, documentId));
     esIndexService.deleteByDocId(documentId);
+    qdrantVectorStore.deleteByDocId(documentId);
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -300,6 +304,26 @@ public class DocumentPipelineService {
     return inserted;
   }
 
+  /** 将已入 PG 的 chunk 向量写入 Qdrant。chunks 与 vectors 按下标一一对应。 */
+  private void upsertVectorsToQdrant(List<DocumentChunk> chunks, List<float[]> vectors) {
+    if (chunks == null || chunks.isEmpty() || vectors == null) {
+      return;
+    }
+    List<com.ragforge.search.QdrantVectorStore.ChunkPoint> points = new ArrayList<>(chunks.size());
+    int n = Math.min(chunks.size(), vectors.size());
+    for (int i = 0; i < n; i++) {
+      DocumentChunk dc = chunks.get(i);
+      points.add(
+          new com.ragforge.search.QdrantVectorStore.ChunkPoint(
+              dc.getId(),
+              dc.getKbId(),
+              dc.getDocId(),
+              dc.getChunkType() == null ? "" : dc.getChunkType(),
+              vectors.get(i)));
+    }
+    qdrantVectorStore.upsert(points);
+  }
+
   private List<DocumentChunk> insertChunkBatch(
       Long docId,
       Long kbId,
@@ -310,11 +334,12 @@ public class DocumentPipelineService {
       LocalDateTime now,
       String docChunkType,
       String chunkerStrategy) {
+    // 向量不再入 PG（改由 Qdrant 承载），vl_vector 列留空。
     StringBuilder sql =
         new StringBuilder(
             """
             INSERT INTO document_chunks (
-              doc_id, kb_id, chunk_index, content, vl_vector, token_count, chunk_type,
+              doc_id, kb_id, chunk_index, content, token_count, chunk_type,
               chunker_strategy, chunker_params_json, heading_path, created_at
             )
             VALUES
@@ -323,7 +348,7 @@ public class DocumentPipelineService {
       if (i > start) {
         sql.append(", ");
       }
-      sql.append("(?, ?, ?, ?, ?::vector, ?, ?, ?, ?::jsonb, ?, ?)");
+      sql.append("(?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)");
     }
     sql.append(" RETURNING id, chunk_index");
 
@@ -338,7 +363,6 @@ public class DocumentPipelineService {
             ps.setLong(idx++, kbId);
             ps.setInt(idx++, chunk.getIndex());
             ps.setString(idx++, chunk.getContent());
-            ps.setObject(idx++, new PGvector(vectors.get(i)));
             ps.setInt(idx++, chunk.getTokenCount());
             ps.setString(idx++, docChunkType);
             ps.setString(idx++, chunkerStrategy);
@@ -366,7 +390,6 @@ public class DocumentPipelineService {
         throw new BizException("批量插入 chunk 失败，缺少返回记录: chunkIndex=" + chunk.getIndex());
       }
       entity.setContent(chunk.getContent());
-      entity.setVlVector(new PGvector(vectors.get(i)));
       entity.setTokenCount(chunk.getTokenCount());
       entity.setChunkType(docChunkType);
       entity.setChunkerStrategy(chunkerStrategy);

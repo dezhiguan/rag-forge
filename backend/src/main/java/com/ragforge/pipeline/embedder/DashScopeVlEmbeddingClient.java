@@ -100,7 +100,7 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
               0,
               System.currentTimeMillis() - start,
               true));
-      return parseEmbeddings(tree, inputs.size());
+      return parseEmbeddings(tree, inputs.size(), properties.getVl().getDimension());
     } catch (BizException e) {
       throw e; // 已是机器码(如 EMBEDDING_RATE_LIMITED)
     } catch (InterruptedException e) {
@@ -181,10 +181,14 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
         contents.add(Map.of("text", input == null ? "" : value(input.getText())));
       }
     }
-    return Map.of("model", properties.getVl().getModel(), "input", Map.of("contents", contents));
+    // parameters.dimension 指定输出维度（qwen3-vl-embedding Matryoshka 截断，默认 1024）。
+    return Map.of(
+        "model", properties.getVl().getModel(),
+        "input", Map.of("contents", contents),
+        "parameters", Map.of("dimension", properties.getVl().getDimension()));
   }
 
-  static List<float[]> parseEmbeddings(JsonNode root, int expectedCount) {
+  static List<float[]> parseEmbeddings(JsonNode root, int expectedCount, int expectedDim) {
     JsonNode embeddings = root.path("output").path("embeddings");
     if (!embeddings.isArray()) {
       throw new IllegalStateException("VL Embedding 响应缺少 output.embeddings");
@@ -201,9 +205,9 @@ public class DashScopeVlEmbeddingClient implements VlEmbeddingClient {
         throw new IllegalStateException("VL Embedding type must be vl, actual=" + type);
       }
       float[] vector = toFloatArray(item.path("embedding"));
-      if (vector.length != VL_DIMENSION) {
+      if (vector.length != expectedDim) {
         throw new IllegalStateException(
-            "VL Embedding dimension must be 2560, actual=" + vector.length);
+            "VL Embedding dimension must be " + expectedDim + ", actual=" + vector.length);
       }
       ordered.set(index, vector);
     }

@@ -3,18 +3,20 @@ package com.ragforge.search;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ragforge.model.dto.SearchRequest.SearchFilter;
+import com.ragforge.pipeline.embedder.EmbeddingInput;
 import com.ragforge.pipeline.embedder.EmbeddingService;
 import com.ragforge.pipeline.embedder.VlEmbeddingClient;
-import java.sql.Array;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
+import com.ragforge.search.QdrantVectorStore.ScoredChunk;
 import java.sql.ResultSet;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,196 +35,142 @@ class VectorSearchServiceTest {
   @Mock private EmbeddingService embedder;
   @Mock private VlEmbeddingClient vlEmbeddingClient;
   @Mock private JdbcTemplate jdbcTemplate;
+  @Mock private QdrantVectorStore qdrantVectorStore;
 
-  private VectorSearchService vectorSearchService;
+  private VectorSearchService service;
 
   @BeforeEach
   void setUp() {
-    vectorSearchService = new VectorSearchService(embedder, vlEmbeddingClient, jdbcTemplate);
+    service = new VectorSearchService(embedder, vlEmbeddingClient, jdbcTemplate, qdrantVectorStore);
   }
 
-  @Test
-  void search_appliesKbDocAndChunkTypeFilters() throws Exception {
-    when(embedder.embed("query")).thenReturn(new float[] {0.1f, 0.2f});
+  /** 模拟一行 document_chunks 结果。 */
+  private ResultSet row(long id, String content, long docId) throws Exception {
+    ResultSet rs = mock(ResultSet.class);
+    when(rs.getLong("id")).thenReturn(id);
+    when(rs.getString("content")).thenReturn(content);
+    when(rs.getLong("doc_id")).thenReturn(docId);
+    when(rs.getString("filename")).thenReturn("f-" + docId);
+    when(rs.getInt("chunk_index")).thenReturn((int) id);
+    when(rs.getString("chunk_type")).thenReturn("TEXT");
+    when(rs.getString("chunk_modality")).thenReturn("TEXT");
+    when(rs.getString("image_key")).thenReturn(null);
+    return rs;
+  }
+
+  /** 让 jdbcTemplate.query 回放给定 id 的行，驱动 RowMapper 的 byId 副作用。 */
+  private void stubHydrate(long... ids) {
     when(jdbcTemplate.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
         .thenAnswer(
             inv -> {
-              PreparedStatementSetter pss = inv.getArgument(1);
-              RowMapper<SearchResult> mapper = inv.getArgument(2);
-
-              Connection conn = mock(Connection.class);
-              PreparedStatement ps = mock(PreparedStatement.class);
-              Array sqlArray = mock(Array.class);
-              when(ps.getConnection()).thenReturn(conn);
-              when(conn.createArrayOf("varchar", new String[] {"RESUME"})).thenReturn(sqlArray);
-              pss.setValues(ps);
-
-              ResultSet rs = mock(ResultSet.class);
-              when(rs.getLong("id")).thenReturn(11L);
-              when(rs.getString("content")).thenReturn("chunk text");
-              when(rs.getLong("doc_id")).thenReturn(5L);
-              when(rs.getString("filename")).thenReturn("cv.pdf");
-              when(rs.getInt("chunk_index")).thenReturn(2);
-              when(rs.getDouble("similarity")).thenReturn(0.88);
-              when(rs.getString("chunk_type")).thenReturn("RESUME");
-              return List.of(mapper.mapRow(rs, 0));
+              RowMapper<SearchResult> m = inv.getArgument(2);
+              List<SearchResult> out = new ArrayList<>();
+              int n = 0;
+              for (long id : ids) {
+                out.add(m.mapRow(row(id, "c" + id, 10L), n++));
+              }
+              return out;
             });
-
-    SearchFilter filter = new SearchFilter();
-    filter.setChunkType(List.of("RESUME"));
-
-    List<SearchResult> results =
-        vectorSearchService.search("query", List.of(1L, 2L), List.of(9L), 5, filter);
-
-    assertThat(results).hasSize(1);
-    assertThat(results.get(0).getChunkId()).isEqualTo(11L);
-    assertThat(results.get(0).getVectorScore()).isEqualTo(0.88);
-    assertThat(results.get(0).getChunkType()).isEqualTo("RESUME");
-
-    ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-    verify(jdbcTemplate).query(sqlCaptor.capture(), any(PreparedStatementSetter.class), any(RowMapper.class));
-    assertThat(sqlCaptor.getValue()).contains("dc.kb_id IN");
-    assertThat(sqlCaptor.getValue()).contains("dc.doc_id IN");
-    assertThat(sqlCaptor.getValue()).contains("chunk_type = ANY");
   }
 
   @Test
-  void search_withoutFilters_stillReturnsMappedRows() throws Exception {
-    when(embedder.embed("hello")).thenReturn(new float[] {0.3f});
-    when(jdbcTemplate.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
-        .thenAnswer(
-            inv -> {
-              PreparedStatementSetter pss = inv.getArgument(1);
-              RowMapper<SearchResult> mapper = inv.getArgument(2);
-              PreparedStatement ps = mock(PreparedStatement.class);
-              pss.setValues(ps);
+  void search_queriesQdrantThenHydratesAndKeepsScoreOrder() {
+    when(embedder.embed("q")).thenReturn(new float[] {0.1f, 0.2f});
+    when(qdrantVectorStore.search(any(), eq(List.of(1L)), any(), any(), eq(5)))
+        .thenReturn(List.of(new ScoredChunk(1L, 0.9), new ScoredChunk(2L, 0.7)));
+    stubHydrate(1L, 2L);
 
-              ResultSet rs = mock(ResultSet.class);
-              when(rs.getLong("id")).thenReturn(1L);
-              when(rs.getString("content")).thenReturn("c");
-              when(rs.getLong("doc_id")).thenReturn(2L);
-              when(rs.getString("filename")).thenReturn("f.md");
-              when(rs.getInt("chunk_index")).thenReturn(0);
-              when(rs.getDouble("similarity")).thenReturn(0.5);
-              when(rs.getString("chunk_type")).thenReturn(null);
-              return List.of(mapper.mapRow(rs, 0));
-            });
+    List<SearchResult> results = service.search("q", List.of(1L), null, 5);
 
-    List<SearchResult> results = vectorSearchService.search("hello", List.of(1L), null, 3);
-
-    assertThat(results).hasSize(1);
-    assertThat(results.get(0).getFilename()).isEqualTo("f.md");
-  }
-
-  @Test
-  void searchByQueries_emptyInput_returnsEmptyList() {
-    assertThat(vectorSearchService.searchByQueries(List.of(), List.of(1L), null, 5)).isEmpty();
-    assertThat(vectorSearchService.searchByQueries(null, List.of(1L), null, 5)).isEmpty();
-  }
-
-  @Test
-  void searchByQueries_deduplicatesByHighestScoreAndTruncatesTopK() throws Exception {
-    when(embedder.embedBatch(List.of("q1", "q2")))
-        .thenReturn(List.of(new float[] {0.1f}, new float[] {0.2f}));
-    when(jdbcTemplate.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
-        .thenAnswer(
-            inv -> {
-              RowMapper<SearchResult> mapper = inv.getArgument(2);
-              ResultSet rs1 = row(100L, 0.6);
-              ResultSet rs2 = row(100L, 0.9);
-              ResultSet rs3 = row(200L, 0.7);
-              return List.of(mapper.mapRow(rs1, 0), mapper.mapRow(rs2, 1), mapper.mapRow(rs3, 2));
-            });
-
-    List<SearchResult> results =
-        vectorSearchService.searchByQueries(List.of("q1", "q2"), List.of(1L), List.of(3L), 1);
-
-    assertThat(results).hasSize(1);
-    assertThat(results.get(0).getChunkId()).isEqualTo(100L);
+    assertThat(results).hasSize(2);
+    assertThat(results.get(0).getChunkId()).isEqualTo(1L);
     assertThat(results.get(0).getVectorScore()).isEqualTo(0.9);
+    assertThat(results.get(1).getChunkId()).isEqualTo(2L);
+    assertThat(results.get(1).getVectorScore()).isEqualTo(0.7);
   }
 
   @Test
-  void searchByQueries_embeddingCountMismatch_throws() {
-    when(embedder.embedBatch(List.of("q1"))).thenReturn(List.of());
+  @SuppressWarnings("unchecked")
+  void search_passesChunkTypeFilterToQdrant() {
+    when(embedder.embed("q")).thenReturn(new float[] {0.1f});
+    when(qdrantVectorStore.search(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+    SearchFilter filter = new SearchFilter();
+    filter.setChunkType(List.of("IMAGE"));
 
-    assertThatThrownBy(
-            () -> vectorSearchService.searchByQueries(List.of("q1"), List.of(1L), null, 5))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Embedding 数量");
+    service.search("q", List.of(1L), List.of(9L), 3, filter);
+
+    ArgumentCaptor<List<String>> typeCap = ArgumentCaptor.forClass(List.class);
+    verify(qdrantVectorStore)
+        .search(any(), eq(List.of(1L)), eq(List.of(9L)), typeCap.capture(), eq(3));
+    assertThat(typeCap.getValue()).containsExactly("IMAGE");
   }
 
   @Test
-  void search_emptyKbIds_throwsIllegalState() {
-    assertThatThrownBy(() ->
-        vectorSearchService.search("query", List.of(), null, 5))
-        .isInstanceOf(IllegalStateException.class);
+  void search_skipsHitsMissingInPg() {
+    when(embedder.embed("q")).thenReturn(new float[] {0.1f});
+    when(qdrantVectorStore.search(any(), any(), any(), any(), anyInt()))
+        .thenReturn(List.of(new ScoredChunk(1L, 0.9), new ScoredChunk(404L, 0.5)));
+    stubHydrate(1L); // 只有 chunk 1 在 PG，404 已删
+
+    List<SearchResult> results = service.search("q", List.of(1L), null, 5);
+
+    assertThat(results).extracting(SearchResult::getChunkId).containsExactly(1L);
   }
 
   @Test
-  void searchImage_textQuery_embedsAndReturnsResults() throws Exception {
-    when(vlEmbeddingClient.embed(any())).thenReturn(List.of(new float[]{0.5f, 0.6f}));
-    when(jdbcTemplate.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
-        .thenAnswer(inv -> {
-          RowMapper<SearchResult> mapper = inv.getArgument(2);
-          ResultSet rs = row(99L, 0.9);
-          return List.of(mapper.mapRow(rs, 1));
-        });
-    // mock pgvector connection callback
-    when(jdbcTemplate.execute(any(org.springframework.jdbc.core.ConnectionCallback.class)))
-        .thenReturn(null);
+  void searchByQueries_dedupsByMaxScoreAcrossQueries() {
+    when(embedder.embedBatch(List.of("a", "b")))
+        .thenReturn(List.of(new float[] {0.1f}, new float[] {0.2f}));
+    when(qdrantVectorStore.search(any(), any(), any(), any(), anyInt()))
+        .thenReturn(List.of(new ScoredChunk(1L, 0.6)))
+        .thenReturn(List.of(new ScoredChunk(1L, 0.9), new ScoredChunk(2L, 0.8)));
+    stubHydrate(1L, 2L);
+
+    List<SearchResult> results = service.searchByQueries(List.of("a", "b"), List.of(1L), null, 5);
+
+    assertThat(results).hasSize(2);
+    assertThat(results.get(0).getChunkId()).isEqualTo(1L);
+    assertThat(results.get(0).getVectorScore()).isEqualTo(0.9); // 取跨 query 最高分
+  }
+
+  @Test
+  void searchByQueries_emptyReturnsEmpty() {
+    assertThat(service.searchByQueries(List.of(), List.of(1L), null, 5)).isEmpty();
+  }
+
+  @Test
+  void searchImage_embedsImageAndQueriesQdrant() {
+    when(vlEmbeddingClient.embed(any())).thenReturn(List.of(new float[] {0.3f}));
+    when(qdrantVectorStore.search(any(), any(), any(), any(), anyInt()))
+        .thenReturn(List.of(new ScoredChunk(7L, 0.95)));
+    stubHydrate(7L);
 
     List<SearchResult> results =
-        vectorSearchService.searchImage("keyword", null, List.of(1L), null, 5, null);
+        service.searchImage(null, "data:image/png;base64,QUJD", List.of(1L), null, 5, null);
 
     assertThat(results).hasSize(1);
-    assertThat(results.get(0).getChunkId()).isEqualTo(99L);
-  }
-
-  @Test
-  void searchImage_base64WithDataUri_stripsPrefix() throws Exception {
-    String base64 = "data:image/png;base64,iVBORw0KGgo=";
-    when(vlEmbeddingClient.embed(any())).thenReturn(List.of(new float[]{0.3f}));
-    when(jdbcTemplate.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
-        .thenReturn(List.of());
-
-    List<SearchResult> results =
-        vectorSearchService.searchImage(null, base64, List.of(2L), null, 3, null);
-
-    assertThat(results).isEmpty();
+    assertThat(results.get(0).getChunkId()).isEqualTo(7L);
     verify(vlEmbeddingClient).embed(any());
   }
 
   @Test
-  void searchByQueries_skipsNullChunkIds() throws Exception {
-    when(embedder.embedBatch(List.of("q1"))).thenReturn(List.of(new float[] {0.1f}));
-    when(jdbcTemplate.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
-        .thenAnswer(
-            inv -> {
-              RowMapper<SearchResult> mapper = inv.getArgument(2);
-              SearchResult nullId = new SearchResult();
-              nullId.setChunkId(null);
-              nullId.setVectorScore(0.1);
-              ResultSet rs = row(300L, 0.4);
-              return List.of(nullId, mapper.mapRow(rs, 1));
-            });
+  @SuppressWarnings("unchecked")
+  void searchImage_fallsBackToTextWhenNoImage() {
+    when(vlEmbeddingClient.embed(any())).thenReturn(List.of(new float[] {0.3f}));
+    when(qdrantVectorStore.search(any(), any(), any(), any(), anyInt())).thenReturn(List.of());
 
-    List<SearchResult> results =
-        vectorSearchService.searchByQueries(List.of("q1"), List.of(1L), null, 5, null);
+    service.searchImage("hello", null, List.of(1L), null, 5, null);
 
-    assertThat(results).hasSize(1);
-    assertThat(results.get(0).getChunkId()).isEqualTo(300L);
+    ArgumentCaptor<List<EmbeddingInput>> cap = ArgumentCaptor.forClass(List.class);
+    verify(vlEmbeddingClient).embed(cap.capture());
+    assertThat(cap.getValue()).hasSize(1);
+    assertThat(cap.getValue().get(0).isImage()).isFalse();
   }
 
-  private static ResultSet row(long chunkId, double score) throws Exception {
-    ResultSet rs = mock(ResultSet.class);
-    when(rs.getLong("id")).thenReturn(chunkId);
-    when(rs.getString("content")).thenReturn("content-" + chunkId);
-    when(rs.getLong("doc_id")).thenReturn(chunkId);
-    when(rs.getString("filename")).thenReturn("file-" + chunkId);
-    when(rs.getInt("chunk_index")).thenReturn(0);
-    when(rs.getDouble("similarity")).thenReturn(score);
-    when(rs.getString("chunk_type")).thenReturn("TEXT");
-    return rs;
+  @Test
+  void search_rejectsEmptyKbScope() {
+    assertThatThrownBy(() -> service.search("q", List.of(), null, 5))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("kbIds");
   }
 }

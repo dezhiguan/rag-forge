@@ -54,6 +54,7 @@ class DocumentServiceImplTest {
   @Mock private ObjectStorage objectStorage;
   @Mock private DocumentProcessProducer documentProcessProducer;
   @Mock private EsIndexService esIndexService;
+  @Mock private com.ragforge.search.QdrantVectorStore qdrantVectorStore;
 
   // 真实 ObjectMapper：容器聚合需解析 expand_summary，@InjectMocks 会注入 @Spy。
   @Spy private ObjectMapper objectMapper = new ObjectMapper();

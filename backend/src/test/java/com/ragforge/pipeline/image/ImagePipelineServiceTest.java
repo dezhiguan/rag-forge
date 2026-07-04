@@ -42,6 +42,7 @@ class ImagePipelineServiceTest {
   @Mock private ImagePipelineSupport imagePipelineSupport;
   @Mock private EsIndexService esIndexService;
   @Mock private JdbcTemplate jdbcTemplate;
+  @Mock private com.ragforge.search.QdrantVectorStore qdrantVectorStore;
 
   private ImagePipelineService service;
   private MultimodalProperties multimodalProperties;
@@ -56,7 +57,8 @@ class ImagePipelineServiceTest {
             imagePipelineSupport,
             esIndexService,
             jdbcTemplate,
-            multimodalProperties);
+            multimodalProperties,
+            qdrantVectorStore);
   }
 
   @Test

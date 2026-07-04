@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,7 @@ public class ImagePipelineService {
   private final EsIndexService esIndexService;
   private final JdbcTemplate jdbcTemplate;
   private final MultimodalProperties multimodalProperties;
+  private final com.ragforge.search.QdrantVectorStore qdrantVectorStore;
 
   public void processImageDocument(Long documentId) {
     long start = System.currentTimeMillis();
@@ -81,6 +83,7 @@ public class ImagePipelineService {
   public void cleanup(Long documentId) {
     jdbcTemplate.update("DELETE FROM document_chunks WHERE doc_id = ?", documentId);
     esIndexService.deleteByDocId(documentId);
+    qdrantVectorStore.deleteByDocId(documentId);
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -88,11 +91,12 @@ public class ImagePipelineService {
     if (chunks == null || chunks.isEmpty()) {
       return List.of();
     }
+    // 向量改由 Qdrant 承载，PG 不再写 vl_vector 列。
     StringBuilder sql =
         new StringBuilder(
             """
             INSERT INTO document_chunks (
-              doc_id, kb_id, chunk_index, content, vl_vector,
+              doc_id, kb_id, chunk_index, content,
               token_count, chunk_type, chunk_modality, chunk_metadata_json, image_key, created_at
             )
             VALUES
@@ -101,7 +105,7 @@ public class ImagePipelineService {
       if (i > 0) {
         sql.append(", ");
       }
-      sql.append("(?, ?, ?, ?, ?::vector, ?, ?, ?, ?::jsonb, ?, ?)");
+      sql.append("(?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)");
     }
     sql.append(" RETURNING id, chunk_index");
 
@@ -115,7 +119,6 @@ public class ImagePipelineService {
             ps.setLong(idx++, chunk.getKbId());
             ps.setInt(idx++, chunk.getChunkIndex());
             ps.setString(idx++, chunk.getContent());
-            ps.setObject(idx++, chunk.getVlVector());
             ps.setInt(idx++, chunk.getTokenCount());
             ps.setString(idx++, chunk.getChunkType());
             ps.setString(idx++, chunk.getChunkModality());
@@ -135,6 +138,22 @@ public class ImagePipelineService {
             }
           }
         });
+
+    // 图片 chunk 向量写入 Qdrant（PG 不再存向量）。失败抛异常回滚本事务，保持两侧一致。
+    List<com.ragforge.search.QdrantVectorStore.ChunkPoint> points = new ArrayList<>(chunks.size());
+    for (DocumentChunk chunk : chunks) {
+      if (chunk.getId() == null || chunk.getVlVector() == null) {
+        continue;
+      }
+      points.add(
+          new com.ragforge.search.QdrantVectorStore.ChunkPoint(
+              chunk.getId(),
+              chunk.getKbId(),
+              chunk.getDocId(),
+              chunk.getChunkType() == null ? "" : chunk.getChunkType(),
+              chunk.getVlVector().toArray()));
+    }
+    qdrantVectorStore.upsert(points);
     return chunks;
   }
 
