@@ -132,6 +132,11 @@ ragforge:
       # 3→8:rewrite=LLM改写+多路向量,受 DashScope LLM 配额约束
       max-concurrent: ${RAGFORGE_RETRIEVAL_REWRITE_CONCURRENCY:8}
       timeout-ms: ${RAGFORGE_RETRIEVAL_REWRITE_TIMEOUT_MS:10000}
+    # query 向量缓存:命中即跳过 DashScope embedding(检索最大头延迟~90%),提升 vector/hybrid QPS。
+    query-embedding-cache:
+      enabled: ${RAGFORGE_QUERY_EMBED_CACHE_ENABLED:true}
+      max-size: ${RAGFORGE_QUERY_EMBED_CACHE_MAX_SIZE:20000}
+      ttl-seconds: ${RAGFORGE_QUERY_EMBED_CACHE_TTL_SECONDS:900}
     # 分布式并发限流(Redis 全局)。enabled=false 回退进程内 Semaphore(每 pod 本地)。
     distributed-limit:
       enabled: ${RAGFORGE_RETRIEVAL_DISTRIBUTED_LIMIT_ENABLED:true}

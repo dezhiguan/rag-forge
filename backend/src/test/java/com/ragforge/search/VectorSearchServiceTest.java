@@ -41,7 +41,13 @@ class VectorSearchServiceTest {
 
   @BeforeEach
   void setUp() {
-    service = new VectorSearchService(embedder, vlEmbeddingClient, jdbcTemplate, qdrantVectorStore);
+    // 缓存置为禁用（纯透传），保留既有 embedder.embed 调用断言
+    QueryEmbeddingCache passthroughCache =
+        new QueryEmbeddingCache(
+            false, 100, 60, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    service =
+        new VectorSearchService(
+            embedder, vlEmbeddingClient, jdbcTemplate, qdrantVectorStore, passthroughCache);
   }
 
   /** 模拟一行 document_chunks 结果。 */
