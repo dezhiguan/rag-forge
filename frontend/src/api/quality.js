@@ -24,6 +24,9 @@ export const fetchCaseDetail = (id) => request.get(`/evaluation/quality/case/${i
 export const fetchCost = (days, kbId) =>
   request.get('/evaluation/quality/cost', { params: { days, ...(kbId ? { kbId } : {}) } })
 
+// 平台评测预算（全平台共享）：monthlyBudgetCny 取部署配置、monthUsedCny 取全平台本月成本。
+export const fetchJudgeBudget = () => request.get('/evaluation/quality/budget')
+
 export const listSamplingConfigs = () => request.get('/evaluation/quality/sampling')
 
 export const upsertSamplingConfig = (data) => request.post('/evaluation/quality/sampling', data)

@@ -376,6 +376,18 @@
             异步执行，每题间隔 500ms · 结果进本组织质量看板 · 单次最多 50 题、每 5 分钟一次 · 点击需二次确认。
           </p>
         </section>
+
+        <section class="drawer-section">
+          <h3>本月评测配额<span class="budget-scope">全平台共享</span></h3>
+          <div class="budget-bar">
+            <div class="budget-fill" :class="`budget-fill--${budgetLevel}`" :style="{ width: budgetPercent + '%' }" />
+          </div>
+          <div class="budget-meta">
+            <span>已用 <strong>¥{{ formatMoney(judgeBudget.monthUsedCny) }}</strong></span>
+            <span class="muted">配额 ¥{{ formatMoney(judgeBudget.monthlyBudgetCny) }} / 月</span>
+          </div>
+          <p class="muted">线上抽样与黄金集回放共享此预算；接近预算时线上判分会自动降级以控成本。</p>
+        </section>
       </aside>
     </div>
   </div>
@@ -388,6 +400,7 @@ import {
   deleteSamplingConfig,
   fetchByKb,
   fetchCost,
+  fetchJudgeBudget,
   fetchGoldenSetEnabledCount,
   fetchOverview,
   fetchWorstCases,
@@ -487,7 +500,18 @@ const savingGlobal = ref(false)
 const savingOverride = ref(false)
 const replayingGolden = ref(false)
 const settingsError = ref('')
-const monthlyBudgetCny = ref(200)
+// 平台评测预算（全平台共享）：真实值来自后端 /budget（配置预算 + 全平台本月已用），不前端写死。
+const judgeBudget = ref({ monthlyBudgetCny: 0, monthUsedCny: 0 })
+const budgetPercent = computed(() => {
+  const b = Number(judgeBudget.value?.monthlyBudgetCny) || 0
+  const u = Number(judgeBudget.value?.monthUsedCny) || 0
+  if (b <= 0) return 0
+  return Math.min(100, Math.round((u / b) * 1000) / 10)
+})
+const budgetLevel = computed(() => {
+  const p = budgetPercent.value
+  return p >= 100 ? 'critical' : p >= 80 ? 'warn' : 'normal'
+})
 const highCostConfirmed = ref(false)
 const kbFilterError = ref('')
 const kbOverrideForm = reactive({
@@ -633,14 +657,17 @@ function closeSamplingDrawer() {
 async function loadSamplingSettings() {
   settingsError.value = ''
   try {
-    const [configsResp, kbResp, goldenResp] = await Promise.all([
+    const [configsResp, kbResp, goldenResp, budgetResp] = await Promise.all([
       listSamplingConfigs(),
       listKb(),
       fetchGoldenSetEnabledCount(),
+      fetchJudgeBudget(),
     ])
     samplingConfigs.value = unwrapResponse(configsResp) || []
     kbOptions.value = unwrapResponse(kbResp) || []
     goldenEnabledCount.value = toCount(unwrapResponse(goldenResp))
+    const budget = unwrapResponse(budgetResp)
+    if (budget) judgeBudget.value = budget
     const globalConfig = samplingConfigs.value.find((item) => item.scopeType === 'GLOBAL')
     if (globalConfig) {
       globalRatePercent.value = ratePercent(globalConfig.sampleRate)
@@ -1760,6 +1787,50 @@ watch(
   color: #0e7a41;
   font-size: 12.5px;
   line-height: 1.6;
+}
+
+.budget-scope {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  background: #eef2f7;
+  border-radius: 999px;
+  padding: 2px 8px;
+  vertical-align: middle;
+}
+
+.budget-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: #eef1f6;
+  overflow: hidden;
+  margin: 6px 0 6px;
+}
+
+.budget-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+
+.budget-fill--normal {
+  background: linear-gradient(90deg, #2f6bff, #5a8bff);
+}
+
+.budget-fill--warn {
+  background: linear-gradient(90deg, #d9930b, #f0b24a);
+}
+
+.budget-fill--critical {
+  background: linear-gradient(90deg, #dc2626, #f26d6d);
+}
+
+.budget-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
 }
 
 .global-readonly-hint {

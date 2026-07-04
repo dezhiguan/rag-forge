@@ -28,6 +28,7 @@ public class JudgeQualityController {
   private final JudgeQueryService queryService;
   private final KbAccessGuard kbAccessGuard;
   private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
+  private final com.ragforge.judge.JudgeCostGuardProperties costGuardProperties;
 
   /** 时间窗上限（天）：看板最长按钮为 90 天，留足冗余并防超大范围拖库。 */
   private static final int MAX_DAYS = 365;
@@ -150,5 +151,19 @@ public class JudgeQualityController {
     // 与 overview/worst-cases 一致:按知识库筛选时,成本也只统计该知识库(联动)。
     Set<Long> effectiveScope = kbId != null ? Set.of(kbId) : scope;
     return Result.ok(queryService.cost(days, effectiveScope));
+  }
+
+  /**
+   * 平台评测预算（全平台共享）：月度预算取部署配置 {@code ragforge.judge.cost-guard.monthly-budget-cny}，
+   * 本月已用取全平台本月 judge 成本。用于抽屉「本月评测配额」进度条，均为后端真实值（不前端写死）。
+   */
+  @GetMapping("/budget")
+  public Result<java.util.Map<String, Object>> budget() {
+    java.math.BigDecimal budget = costGuardProperties.getMonthlyBudgetCny();
+    java.math.BigDecimal used = queryService.costThisMonth();
+    java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("monthlyBudgetCny", budget);
+    body.put("monthUsedCny", used);
+    return Result.ok(body);
   }
 }

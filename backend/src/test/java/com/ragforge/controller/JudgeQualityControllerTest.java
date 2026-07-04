@@ -44,10 +44,13 @@ class JudgeQualityControllerTest {
 
   private MockMvc mockMvc;
   private JudgeQualityController controller;
+  private final com.ragforge.judge.JudgeCostGuardProperties costGuardProperties =
+      new com.ragforge.judge.JudgeCostGuardProperties();
 
   @BeforeEach
   void setUp() {
-    controller = new JudgeQualityController(queryService, kbAccessGuard, knowledgeBaseMapper);
+    controller =
+        new JudgeQualityController(queryService, kbAccessGuard, knowledgeBaseMapper, costGuardProperties);
     mockMvc =
         standaloneSetup(controller)
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -262,6 +265,19 @@ class JudgeQualityControllerTest {
         .andExpect(jsonPath("$.code").value(200));
 
     verify(queryService).cost(eq(30), any());
+  }
+
+  @Test
+  void budget_返回配置预算与本月已用() throws Exception {
+    // 默认配置预算 200；本月已用取全平台 costThisMonth
+    when(queryService.costThisMonth()).thenReturn(new BigDecimal("46.00"));
+
+    mockMvc
+        .perform(get("/api/v1/evaluation/quality/budget"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(200))
+        .andExpect(jsonPath("$.data.monthlyBudgetCny").value(200))
+        .andExpect(jsonPath("$.data.monthUsedCny").value(46.00));
   }
 
   private OverviewVo buildOverview() {
