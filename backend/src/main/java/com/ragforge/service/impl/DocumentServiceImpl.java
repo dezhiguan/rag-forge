@@ -165,7 +165,7 @@ public class DocumentServiceImpl implements DocumentService {
   @Override
   @Transactional
   public DocumentVO replaceDocument(Long kbId, MultipartFile file, Long existingDocId) {
-    KnowledgeBase kb = requireActiveKb(kbId);
+    requireActiveKb(kbId); // 校验 KB 存在且未删除（计数改为原子 adjustCounters，不再需要整行 kb 快照）
     validateFile(file);
 
     Document existing = documentMapper.selectById(existingDocId);
@@ -201,10 +201,10 @@ public class DocumentServiceImpl implements DocumentService {
     existing.setCreatedAt(now);
     documentMapper.updateById(existing);
 
-    if (coalesce(kb.getChunkCount(), 0) > 0 && oldChunkCount > 0) {
-      kb.setChunkCount(Math.max(0, coalesce(kb.getChunkCount(), 0) - oldChunkCount));
-      kb.setUpdatedAt(now);
-      knowledgeBaseMapper.updateById(kb);
+    if (oldChunkCount > 0) {
+      // 原子回减旧 chunk 数(重切后由 pipeline 重新累加)：避免 updateById 全行回写用陈旧快照覆盖
+      // name/visibility 等其它字段，与 H1 修复同源(M5)。GREATEST(0,..) 保证不下溢。
+      knowledgeBaseMapper.adjustCounters(kbId, -oldChunkCount, 0);
     }
 
     documentProcessProducer.send(existing.getId());

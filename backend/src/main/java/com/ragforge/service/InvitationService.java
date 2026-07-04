@@ -23,6 +23,8 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -42,6 +44,9 @@ public class InvitationService {
   private final NotificationMapper notificationMapper;
   private final OrgMemberMapper orgMemberMapper;
   private final OrganizationMapper organizationMapper;
+
+  // 自身代理：让 persistInvitation 的 @Transactional 在同类调用中生效(M5：网关 HTTP 解析与 DB 写分离)。
+  @Lazy @Autowired private InvitationService self;
   private final AuthGatewayProxyClient gatewayClient;
   private final NotificationPusher notificationPusher;
 
@@ -54,7 +59,6 @@ public class InvitationService {
   }
 
   /** 发起邀请（仅 OWNER/ADMIN）。按手机号解析：已注册绑 user + 站内通知；未注册暂存待短信拉新。 */
-  @Transactional
   public Map<String, Object> invite(Long orgId, String phone, String role) {
     Long uid = currentUserId();
     if (!orgMemberMapper.isOrgAdmin(orgId, uid)) {
@@ -70,7 +74,17 @@ public class InvitationService {
     }
     String normalizedRole = "ADMIN".equalsIgnoreCase(role) ? "ADMIN" : "MEMBER";
 
+    // 手机号解析走认证网关(HTTP)：放在事务外，避免持 DB 连接期间做网络 IO 拖慢连接归还(M5)。
     Map<String, Object> resolved = gatewayClient.resolveByPhone(phone);
+
+    // 查重 + 插入邀请 + 站内通知在短事务内原子完成。
+    return self.persistInvitation(orgId, uid, normalizedRole, org, resolved);
+  }
+
+  /** 邀请落库：查重 + 插入邀请 + 站内通知 + 提交后推送。与网关 HTTP 解析分离，事务只覆盖 DB 写(M5)。 */
+  @Transactional
+  public Map<String, Object> persistInvitation(
+      Long orgId, Long uid, String normalizedRole, Organization org, Map<String, Object> resolved) {
     boolean registered = Boolean.TRUE.equals(resolved.get("registered"));
     Long inviteeUserId =
         resolved.get("authUserId") instanceof Number n ? n.longValue() : null;

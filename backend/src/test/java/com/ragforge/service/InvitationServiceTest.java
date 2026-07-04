@@ -49,6 +49,8 @@ class InvitationServiceTest {
 
   @BeforeEach
   void setAuth() {
+    // invite() 拆分后经 self.persistInvitation 落库(M5)，单测里把 self 指回自身。
+    org.springframework.test.util.ReflectionTestUtils.setField(invitationService, "self", invitationService);
     RagAuthContextHolder.set(new RagAuthContext(7L, "USER", Set.of(16L), Set.of(16L), Set.of(), "USER", "7"));
   }
 
@@ -122,6 +124,25 @@ class InvitationServiceTest {
     assertThatThrownBy(() -> invitationService.invite(16L, "13800000000", "MEMBER"))
         .isInstanceOf(BizException.class)
         .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(409));
+  }
+
+  @Test
+  void invite_notOrgAdmin_throws403() {
+    when(orgMemberMapper.isOrgAdmin(16L, 7L)).thenReturn(false);
+
+    assertThatThrownBy(() -> invitationService.invite(16L, "13800000000", "MEMBER"))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(403));
+  }
+
+  @Test
+  void invite_orgNotFound_throws404() {
+    when(orgMemberMapper.isOrgAdmin(16L, 7L)).thenReturn(true);
+    when(organizationMapper.selectById(16L)).thenReturn(null);
+
+    assertThatThrownBy(() -> invitationService.invite(16L, "13800000000", "MEMBER"))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(404));
   }
 
   @Test
