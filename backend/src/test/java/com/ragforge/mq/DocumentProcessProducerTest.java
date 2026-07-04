@@ -54,6 +54,35 @@ class DocumentProcessProducerTest {
   }
 
   @Test
+  void send_inTransaction_defersDispatchUntilAfterCommit() {
+    RocketMQTemplate rocketMQTemplate = org.mockito.Mockito.mock(RocketMQTemplate.class);
+    ObjectProvider<DocumentProcessConsumer> provider = org.mockito.Mockito.mock(ObjectProvider.class);
+    Environment environment = org.mockito.Mockito.mock(Environment.class);
+    when(environment.getActiveProfiles()).thenReturn(new String[] {});
+    DocumentProcessProducer producer =
+        new DocumentProcessProducer(rocketMQTemplate, provider, environment, new ThreadPoolTaskExecutor());
+    ReflectionTestUtils.setField(producer, "dispatchMode", "mq");
+
+    org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+    try {
+      producer.send(42L);
+      // 事务未提交前：不应发消息（否则消费者可能早于 documents 行提交而 CAS 跳过）
+      verify(rocketMQTemplate, never()).convertAndSend(DocumentProcessProducer.TOPIC, 42L);
+
+      // 触发提交后回调
+      var syncs =
+          org.springframework.transaction.support.TransactionSynchronizationManager
+              .getSynchronizations();
+      org.junit.jupiter.api.Assertions.assertEquals(1, syncs.size());
+      syncs.forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+
+      verify(rocketMQTemplate).convertAndSend(DocumentProcessProducer.TOPIC, 42L);
+    } finally {
+      org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+    }
+  }
+
+  @Test
   void send_inlineMode_processesWithoutRocketMq() {
     RocketMQTemplate rocketMQTemplate = org.mockito.Mockito.mock(RocketMQTemplate.class);
     DocumentProcessConsumer consumer = org.mockito.Mockito.mock(DocumentProcessConsumer.class);

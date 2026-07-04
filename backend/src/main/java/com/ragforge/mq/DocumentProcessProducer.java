@@ -26,6 +26,23 @@ public class DocumentProcessProducer {
   private String dispatchMode;
 
   public void send(Long documentId) {
+    // 关键：若处在事务中，必须等事务提交后再发消息。否则消费者可能在 documents 行提交可见前
+    // 就消费到消息，markProcessingIfRunnable 的 CAS 更新 0 行 → 被跳过 → 文档永久卡 PENDING。
+    if (org.springframework.transaction.support.TransactionSynchronizationManager
+        .isSynchronizationActive()) {
+      org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+          new org.springframework.transaction.support.TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              dispatch(documentId);
+            }
+          });
+      return;
+    }
+    dispatch(documentId);
+  }
+
+  private void dispatch(Long documentId) {
     if ("inline".equalsIgnoreCase(dispatchMode)) {
       if (Arrays.asList(environment.getActiveProfiles()).contains("prod")) {
         throw new IllegalStateException("INLINE_DISPATCH_FORBIDDEN_IN_PROD");
