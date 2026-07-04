@@ -143,7 +143,7 @@ class DocumentServiceImplTest {
                 documentService.upload(
                     1L, new MockMultipartFile("file", "bad.exe", "application/octet-stream", "x".getBytes())))
         .isInstanceOf(BizException.class)
-        .hasMessageContaining("只允许");
+        .hasMessageContaining("不支持的文件格式");
   }
 
   @Test

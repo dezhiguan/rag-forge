@@ -61,7 +61,10 @@ public class DocumentServiceImpl implements DocumentService {
   private static final String PARSE_STATUS_PENDING = "PENDING";
 
   private static final Set<String> ALLOWED_EXTENSIONS =
-      Set.of("pdf", "doc", "docx", "md", "markdown", "html", "htm", "txt", "csv");
+      Set.of(
+          "pdf", "doc", "docx", "md", "markdown", "html", "htm", "txt", "csv",
+          // 图片：与前端上传保持一致，走图片管道（OCR + 多模态 embedding）
+          "png", "jpg", "jpeg", "gif", "webp");
 
   /** 压缩包容器判定的 file_type 集合（配合 parentDocumentId == null）。 */
   private static final Set<String> ARCHIVE_FILE_TYPES = Set.of("zip", "tar.gz");
@@ -666,7 +669,8 @@ public class DocumentServiceImpl implements DocumentService {
 
     String ext = extractExtension(originalFilename);
     if (!ALLOWED_EXTENSIONS.contains(ext)) {
-      throw new BizException(400, "只允许 PDF / Word / Markdown / HTML / TXT / CSV");
+      throw new BizException(
+          400, "不支持的文件格式，仅支持 PDF / Word / Markdown / HTML / TXT / CSV / 图片(PNG/JPG/GIF/WEBP)");
     }
 
     // MIME 校验：contentType 可能为空，此时仅依赖扩展名
@@ -691,6 +695,10 @@ public class DocumentServiceImpl implements DocumentService {
                   || contentType.equals("application/csv")
                   || contentType.equals("application/vnd.ms-excel")
                   || contentType.equals("text/plain");
+          case "png" -> contentType.equals("image/png");
+          case "jpg", "jpeg" -> contentType.equals("image/jpeg") || contentType.equals("image/jpg");
+          case "gif" -> contentType.equals("image/gif");
+          case "webp" -> contentType.equals("image/webp");
           default -> false;
         };
 

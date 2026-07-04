@@ -7,17 +7,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "ragforge.retrieval")
 public class RetrievalProperties {
 
-  private Strategy keyword = new Strategy(20, 5000);
-  private Strategy vector = new Strategy(5, 8000);
-  // hybrid 默认并发由 5 提到 20：单次混合检索并不重，5 太保守导致早限流；配合各阶段超时兜底放大 QPS。
-  private Strategy hybrid = new Strategy(20, 12000);
+  private Strategy keyword = new Strategy(40, 5000);
+  // vector 5→16：Qdrant 检索仅 ~5ms、硬件余量大，5 太保守；提升 QPS（受 DashScope embedding 配额约束）。
+  private Strategy vector = new Strategy(16, 5000);
+  // hybrid 并发 20；超时 12s→5s，越限快速失败不拖成 504。
+  private Strategy hybrid = new Strategy(20, 5000);
   private Strategy full = new Strategy(1, 15000);
   private Strategy rewrite = new Strategy(3, 10000);
 
-  private int executorCoreSize = 4;
-  private int executorMaxSize = 12;
-  private int executorQueueCapacity = 100;
-  private int stageTimeoutMs = 8000;
+  private int executorCoreSize = 8;
+  private int executorMaxSize = 48;
+  private int executorQueueCapacity = 200;
+  private int stageTimeoutMs = 6000;
 
   /** 分布式并发限流（Redis）配置。 */
   private DistributedLimit distributedLimit = new DistributedLimit();
