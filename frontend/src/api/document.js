@@ -182,8 +182,10 @@ export const listDocumentChildren = (containerId) => {
   return request.get(`/documents/${id}/children`)
 }
 
-export const listDocumentChunks = (id, page = 1, size = 20) =>
-  request.get(`/documents/${id}/chunks`, { params: { page, size } })
+export const listDocumentChunks = (id, page = 1, size = 20, keyword = '') =>
+  request.get(`/documents/${id}/chunks`, {
+    params: keyword ? { page, size, keyword } : { page, size },
+  })
 
 export const getDocumentStatus = (id) => request.get(`/documents/${id}/status`)
 

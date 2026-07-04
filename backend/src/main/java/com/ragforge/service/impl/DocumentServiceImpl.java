@@ -435,12 +435,13 @@ public class DocumentServiceImpl implements DocumentService {
   }
 
   @Override
-  public PageResult<DocumentChunkVO> listChunks(Long id, int page, int size) {
+  public PageResult<DocumentChunkVO> listChunks(Long id, int page, int size, String keyword) {
     Document doc = documentMapper.selectById(id);
     if (doc == null) {
       throw new BizException(404, "文档不存在");
     }
 
+    String kw = keyword == null ? null : keyword.trim();
     int pageSize = Math.min(size, 100);
     Page<DocumentChunk> mpPage = new Page<>(page, pageSize);
     IPage<DocumentChunk> result =
@@ -448,6 +449,7 @@ public class DocumentServiceImpl implements DocumentService {
             mpPage,
             new LambdaQueryWrapper<DocumentChunk>()
                 .eq(DocumentChunk::getDocId, id)
+                .like(kw != null && !kw.isEmpty(), DocumentChunk::getContent, kw)
                 .orderByAsc(DocumentChunk::getChunkIndex));
 
     String storageBucket = doc.getStorageBucket();

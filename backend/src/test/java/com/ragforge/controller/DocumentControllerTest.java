@@ -536,13 +536,27 @@ class DocumentControllerTest {
     DocumentChunkVO chunk = new DocumentChunkVO();
     chunk.setChunkIndex(0);
     chunk.setContent("chunk text");
-    when(documentService.listChunks(8L, 1, 20))
+    when(documentService.listChunks(8L, 1, 20, null))
         .thenReturn(PageResult.of(1, 1, 20, List.of(chunk)));
 
     mockMvc
         .perform(get("/api/v1/documents/8/chunks"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.list[0].chunkIndex").value(0));
+  }
+
+  @Test
+  void listChunks_passesKeywordToService() throws Exception {
+    DocumentChunkVO chunk = new DocumentChunkVO();
+    chunk.setChunkIndex(2);
+    chunk.setContent("hello world");
+    when(documentService.listChunks(8L, 1, 20, "hello"))
+        .thenReturn(PageResult.of(1, 1, 20, List.of(chunk)));
+
+    mockMvc
+        .perform(get("/api/v1/documents/8/chunks").param("keyword", "hello"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.list[0].chunkIndex").value(2));
   }
 
   @Test

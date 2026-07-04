@@ -123,11 +123,25 @@
 
         <div v-else-if="isCompletedDoc" class="doc-layout">
           <div class="doc-left" @scroll="onChunksScroll">
-            <div class="section-title">
-              📄 Chunks（{{ chunks.length }} / {{ chunkTotal }}）
+            <div class="section-title">📄 Chunks</div>
+            <div class="doc-toolbar">
+              <div class="doc-search" :class="{ has: chunkKeyword }">
+                <span class="doc-search-ico">🔍</span>
+                <input
+                  v-model="chunkKeyword"
+                  type="text"
+                  placeholder="搜索分块内容"
+                  @input="onChunkSearchInput"
+                />
+                <span v-if="chunkKeyword" class="doc-search-clear" @click="clearChunkSearch">✕</span>
+              </div>
+              <span class="doc-search-count">{{ chunkKeyword ? `匹配 ${chunkTotal} 块` : `共 ${chunkTotal} 块` }}</span>
             </div>
             <div v-if="!chunks.length && loadingChunks" class="state-hint" style="padding:24px 0">
               <div class="state-desc">正在加载分块数据...</div>
+            </div>
+            <div v-else-if="!chunks.length && chunkKeyword" class="state-hint" style="padding:24px 0">
+              <div class="state-desc">未找到匹配「{{ chunkKeyword }}」的分块，换个关键词试试</div>
             </div>
             <div v-else-if="!chunks.length" class="state-hint" style="padding:24px 0">
               <div class="state-desc">文档处理完成后将显示分块数据</div>
@@ -386,6 +400,8 @@ const chunkSize = 20
 const chunkTotal = ref(0)
 const loadingChunks = ref(false)
 const chunkError = ref(false)
+const chunkKeyword = ref('')
+let chunkSearchTimer = null
 const { start: startPolling, stop: stopPolling } = useDocumentPolling()
 
 const hasMoreChunks = computed(() => chunks.value.length < chunkTotal.value)
@@ -608,6 +624,26 @@ function resetChunks() {
   chunkPage.value = 1
   chunkTotal.value = doc.value?.chunkCount ?? 0
   chunkError.value = false
+  chunkKeyword.value = ''
+}
+
+// 输入即筛（防抖 250ms），与文档/知识库列表搜索一致；仅前端触发，实际过滤在后端按 content 搜。
+function onChunkSearchInput() {
+  if (chunkSearchTimer) clearTimeout(chunkSearchTimer)
+  chunkSearchTimer = setTimeout(reloadChunksForSearch, 250)
+}
+
+function clearChunkSearch() {
+  if (chunkSearchTimer) clearTimeout(chunkSearchTimer)
+  chunkKeyword.value = ''
+  reloadChunksForSearch()
+}
+
+function reloadChunksForSearch() {
+  chunks.value = []
+  chunkPage.value = 1
+  chunkError.value = false
+  loadChunksPage(1)
 }
 
 async function loadChunksPage(page = chunkPage.value) {
@@ -616,7 +652,7 @@ async function loadChunksPage(page = chunkPage.value) {
   loadingChunks.value = true
   chunkError.value = false
   try {
-    const res = await listDocumentChunks(doc.value.id, page, chunkSize)
+    const res = await listDocumentChunks(doc.value.id, page, chunkSize, chunkKeyword.value)
     const data = res.data ?? {}
     const list = data.list ?? []
     chunkTotal.value = data.total ?? chunkTotal.value
@@ -1105,6 +1141,16 @@ function piiLabel(key) {
   margin-bottom: 14px;
   color: var(--slate);
 }
+
+/* 分块搜索工具栏：搜索框 + 计数，样式对齐文档/知识库列表（.doc-search / .doc-search-count） */
+.doc-toolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.doc-search { position: relative; }
+.doc-search input { height: 34px; width: 260px; max-width: 60vw; padding: 0 32px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; background: #fff; outline: none; transition: .15s; }
+.doc-search input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft, #eff4ff); }
+.doc-search-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+.doc-search-clear { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer; font-size: 12px; }
+.doc-search-clear:hover { color: var(--slate); }
+.doc-search-count { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
 
 .chunk-card {
   padding: 10px 12px;

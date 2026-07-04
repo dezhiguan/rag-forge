@@ -9,6 +9,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.enums.SqlKeyword;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ragforge.common.BizException;
@@ -230,10 +233,65 @@ class DocumentServiceImplTest {
       return page;
     });
 
-    var page = documentService.listChunks(3L, 1, 500);
+    var page = documentService.listChunks(3L, 1, 500, null);
 
     assertThat(page.getSize()).isEqualTo(100);
     assertThat(page.getList().get(0).getContent()).isEqualTo("chunk");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void listChunks_withKeyword_appliesTrimmedContentLikeFilter() {
+    Document doc = doc(3L, 1L, "a.pdf", "COMPLETED");
+    when(documentMapper.selectById(3L)).thenReturn(doc);
+    when(documentChunkMapper.selectPage(any(Page.class), any())).thenAnswer(inv -> {
+      Page<DocumentChunk> page = inv.getArgument(0);
+      page.setRecords(List.of());
+      page.setTotal(0);
+      return page;
+    });
+    ArgumentCaptor<Wrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(Wrapper.class);
+
+    documentService.listChunks(3L, 1, 20, "  hello  ");
+
+    verify(documentChunkMapper).selectPage(any(Page.class), captor.capture());
+    assertThat(hasLikeSegment(captor.getValue())).isTrue(); // 去空格后 content 加了 LIKE 条件
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void listChunks_blankKeyword_appliesNoContentFilter() {
+    Document doc = doc(3L, 1L, "a.pdf", "COMPLETED");
+    when(documentMapper.selectById(3L)).thenReturn(doc);
+    when(documentChunkMapper.selectPage(any(Page.class), any())).thenAnswer(inv -> {
+      Page<DocumentChunk> page = inv.getArgument(0);
+      page.setRecords(List.of());
+      page.setTotal(0);
+      return page;
+    });
+    ArgumentCaptor<Wrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(Wrapper.class);
+
+    documentService.listChunks(3L, 1, 20, "   ");
+
+    verify(documentChunkMapper).selectPage(any(Page.class), captor.capture());
+    // 仅空白 → trim 后为空 → 不加 LIKE（证明了 trim 生效）
+    assertThat(hasLikeSegment(captor.getValue())).isFalse();
+  }
+
+  @Test
+  void listChunks_documentNotFound_throwsBizException() {
+    when(documentMapper.selectById(99L)).thenReturn(null);
+
+    assertThatThrownBy(() -> documentService.listChunks(99L, 1, 20, "any"))
+        .isInstanceOf(BizException.class);
+  }
+
+  /** 检查查询条件里是否包含 LIKE 关键词段（只调 SqlKeyword 段，避免触发列名解析需要 TableInfo）。 */
+  private static boolean hasLikeSegment(Wrapper<DocumentChunk> wrapper) {
+    return ((AbstractWrapper<?, ?, ?>) wrapper)
+        .getExpression().getNormal().stream()
+            .filter(s -> s instanceof SqlKeyword)
+            .anyMatch(s -> "LIKE".equals(s.getSqlSegment()));
   }
 
   @Test

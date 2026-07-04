@@ -29,7 +29,7 @@ public interface DocumentService {
 
   java.util.List<DocumentVO> listChildren(Long containerId);
 
-  PageResult<DocumentChunkVO> listChunks(Long id, int page, int size);
+  PageResult<DocumentChunkVO> listChunks(Long id, int page, int size, String keyword);
 
   DocumentStatusVO getStatus(Long id);
 
