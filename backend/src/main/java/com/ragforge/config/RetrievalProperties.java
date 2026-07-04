@@ -12,8 +12,9 @@ public class RetrievalProperties {
   private Strategy vector = new Strategy(16, 5000);
   // hybrid 并发 20；超时 12s→5s，越限快速失败不拖成 504。
   private Strategy hybrid = new Strategy(20, 5000);
-  private Strategy full = new Strategy(1, 15000);
-  private Strategy rewrite = new Strategy(3, 10000);
+  // full 1→4 / rewrite 3→8：受 DashScope LLM/rerank 配额约束（非硬件），放大后需盯 DashScope 429。
+  private Strategy full = new Strategy(4, 15000);
+  private Strategy rewrite = new Strategy(8, 10000);
 
   private int executorCoreSize = 8;
   private int executorMaxSize = 48;

@@ -69,6 +69,10 @@ public class DocumentServiceImpl implements DocumentService {
   /** 压缩包容器判定的 file_type 集合（配合 parentDocumentId == null）。 */
   private static final Set<String> ARCHIVE_FILE_TYPES = Set.of("zip", "tar.gz");
 
+  /** 压缩包扩展名：直传接口不解压，命中时给出明确指引（区别于笼统的"不支持格式"）。 */
+  private static final Set<String> ARCHIVE_EXTENSIONS =
+      Set.of("zip", "tar", "gz", "tgz", "tar.gz", "rar", "7z", "bz2");
+
   private static final String STATUS_PROCESSING = "PROCESSING";
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
@@ -677,6 +681,11 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     String ext = extractExtension(originalFilename);
+    if (ARCHIVE_EXTENSIONS.contains(ext)) {
+      // 压缩包需走带自动解压的上传通道（前端上传/presign），此直传接口不做解压，明确提示而非笼统拒绝。
+      throw new BizException(
+          400, "压缩包请通过前端上传（会自动解压并批量入库），当前直传接口暂不支持压缩包");
+    }
     if (!ALLOWED_EXTENSIONS.contains(ext)) {
       throw new BizException(
           400, "不支持的文件格式，仅支持 PDF / Word / Markdown / HTML / TXT / CSV / 图片(PNG/JPG/GIF/WEBP)");

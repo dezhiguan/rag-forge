@@ -153,7 +153,24 @@ public class DocumentPipelineService {
       self.updateStatus(documentId, STATUS_CHUNKING);
 
       stageStart = System.currentTimeMillis();
-      ChunkingResult chunking = resolveChunking(doc, kb, text);
+      // 纯图片文档(如纯图片 PDF)无可分块文字：若开启多模态且有内嵌图片，跳过文本分块，
+      // 由后续内嵌图片管道产出 IMAGE chunk，而非直接抛 NO_CHUNKER 失败。
+      boolean imageOnlyFallback =
+          !StringUtils.hasText(text)
+              && multimodalProperties.isEnabled()
+              && "ON".equalsIgnoreCase(kb.getImageProcessingMode())
+              && parseResult.getImages() != null
+              && !parseResult.getImages().isEmpty();
+      ChunkingResult chunking;
+      if (imageOnlyFallback) {
+        log.info(
+            "Document has no extractable text but {} embedded image(s); routing to image-only pipeline: docId={}",
+            parseResult.getImages().size(),
+            documentId);
+        chunking = new ChunkingResult("image-only", null, List.of());
+      } else {
+        chunking = resolveChunking(doc, kb, text);
+      }
       List<Chunk> chunks = chunking.getChunks();
       chunkCount = chunks.size();
       chunkLatencyMs = System.currentTimeMillis() - stageStart;

@@ -34,12 +34,12 @@ public class SearchRequest {
   private Double vectorWeight = 0.55;
 
   /** used by full strategy rerank */
-  @Min(1)
-  @Max(50)
+  @Min(value = 1, message = "rerankTopN 需在 1~50 之间")
+  @Max(value = 50, message = "rerankTopN 需在 1~50 之间")
   private int rerankTopN = 5;
 
-  @Min(1)
-  @Max(50)
+  @Min(value = 1, message = "topK 需在 1~50 之间")
+  @Max(value = 50, message = "topK 需在 1~50 之间")
   private int topK = 8;
 
   @Valid
