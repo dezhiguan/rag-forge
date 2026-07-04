@@ -37,6 +37,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private final ObjectMapper objectMapper;
   private final AuthEventService authEventService;
   private final AdminAccessAuditService adminAccessAuditService;
+  private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
 
   @Override
   protected void doFilterInternal(
@@ -68,7 +69,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         RagAuthContextHolder.set(context);
         maybeActivateAdminOverride(context, request);
-        OrgContextHolder.set(parseOrgId(request.getHeader("X-Org-Id")));
+        OrgContextHolder.set(resolveOrgContext(context, request));
         UsernamePasswordAuthenticationToken authentication =
             new UsernamePasswordAuthenticationToken(
                 context,
@@ -94,6 +95,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     } catch (NumberFormatException e) {
       return null; // 非数字（如 'platform'）忽略
     }
+  }
+
+  /**
+   * 解析并校验组织上下文。X-Org-Id 仅在其为当前用户所属组织时才生效；否则忽略（置 null，按无组织上下文处理），
+   * 避免用户伪造 X-Org-Id 越权读取他组织的数据（成本看板 / Dashboard 概览等均按此上下文过滤）。
+   *
+   * <p>破玻璃（全平台视图，AdminOverrideHolder 已激活）豁免成员校验：超管显式提权后按全平台口径取数。
+   */
+  private Long resolveOrgContext(RagAuthContext context, HttpServletRequest request) {
+    Long orgId = parseOrgId(request.getHeader("X-Org-Id"));
+    if (orgId == null) {
+      return null;
+    }
+    if (AdminOverrideHolder.isActive()) {
+      return orgId; // 破玻璃：平台视图不做成员校验
+    }
+    if (context == null || context.userId() == null) {
+      return null;
+    }
+    if (!orgMemberMapper.isMember(orgId, context.userId())) {
+      log.warn(
+          "Ignored X-Org-Id={} for non-member userId={} (org context reset to null)",
+          orgId,
+          context.userId());
+      return null;
+    }
+    return orgId;
   }
 
   /** 仅 ADMIN 显式携带 X-Admin-Override 头时才提权，并写审计；其它情况一律按默认口径。 */

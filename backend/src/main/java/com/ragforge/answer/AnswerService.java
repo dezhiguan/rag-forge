@@ -182,15 +182,24 @@ public class AnswerService {
     llmRequest.setTemperature(0.2);
     llmRequest.setMessages(List.of(Map.of("role", "user", "content", prompt)));
     long llmStart = System.currentTimeMillis();
-    LlmService.StreamResult llmResult =
-        llmService.streamGenerate(
-            llmRequest,
-            clamp(request.getMaxTokens(), 64, 4000),
-            delta -> {
-              if (tokenSink != null) {
-                tokenSink.accept(delta);
-              }
-            });
+    LlmService.StreamResult llmResult;
+    try {
+      llmResult =
+          llmService.streamGenerate(
+              llmRequest,
+              clamp(request.getMaxTokens(), 64, 4000),
+              delta -> {
+                if (tokenSink != null) {
+                  tokenSink.accept(delta);
+                }
+              });
+    } catch (RuntimeException e) {
+      // 应答模型硬失败(超时/5xx/限流)也要计量，否则成功率永远 100% 掩盖故障。token 记 0、成本恒 0。
+      modelUsageRecorder.record(
+          new ModelUsageEvent(
+              llmModel, Purpose.ANSWER, 0, 0, System.currentTimeMillis() - llmStart, false));
+      throw e;
+    }
     long llmLatency = llmResult.latencyMs() > 0 ? llmResult.latencyMs() : System.currentTimeMillis() - llmStart;
     // 规范化答案里的 [n] 引用编号:应答 LLM 常把编号写飘(如只检索到 1 个块却引用 [5]),
     // 越界编号收敛到有效范围,避免用户看到指向不存在块的悬空编号(与检索块显示对齐)。

@@ -47,6 +47,7 @@ public class RerankerClient {
       return new RerankOutput(List.of(), 0L);
     }
 
+    boolean recorded = false;
     try {
       HttpHeaders headers = new HttpHeaders();
       headers.setContentType(MediaType.APPLICATION_JSON);
@@ -102,6 +103,7 @@ public class RerankerClient {
       modelUsageRecorder.record(
           new com.ragforge.modelcenter.ModelUsageEvent(
               model, com.ragforge.modelcenter.Purpose.RERANK, inputTokens, 0, latencyMs, true));
+      recorded = true;
       log.info("Reranker completed: docCount={} topN={} latency={}ms scores={}",
           documents.size(),
           results.size(),
@@ -111,6 +113,11 @@ public class RerankerClient {
     } catch (Exception e) {
       long latencyMs = System.currentTimeMillis() - start;
       log.warn("Reranker unavailable, fallback to original order: latency={}ms err={}", latencyMs, e.getMessage());
+      if (!recorded) {
+        modelUsageRecorder.record(
+            new com.ragforge.modelcenter.ModelUsageEvent(
+                model, com.ragforge.modelcenter.Purpose.RERANK, 0, 0, latencyMs, false));
+      }
       return new RerankOutput(fallback(topN, documents.size()), latencyMs);
     }
   }

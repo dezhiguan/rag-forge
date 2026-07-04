@@ -59,13 +59,15 @@ public class QueryRewriter {
       return fallback;
     }
 
+    String effectiveModel = model;
+    boolean recorded = false;
     try {
       HttpHeaders headers = new HttpHeaders();
       headers.setContentType(MediaType.APPLICATION_JSON);
       headers.setBearerAuth(apiKey);
 
       // 动态解析 REWRITE 生效模型；无可用模型时回退到 yml 默认值（改写本身可优雅降级）
-      String effectiveModel = modelResolver.resolveCodeOrDefault(Purpose.REWRITE, model);
+      effectiveModel = modelResolver.resolveCodeOrDefault(Purpose.REWRITE, model);
 
       String requestBody =
           objectMapper
@@ -112,6 +114,7 @@ public class QueryRewriter {
               completionTokens,
               System.currentTimeMillis() - start,
               true));
+      recorded = true;
 
       if (content.isBlank()) {
         log.info("Query rewrite fallback: reason=empty_content latency={}ms", System.currentTimeMillis() - start);
@@ -139,6 +142,11 @@ public class QueryRewriter {
           "Query rewrite failed, fallback to original query: latency={}ms err={}",
           System.currentTimeMillis() - start,
           e.getMessage());
+      if (!recorded) {
+        modelUsageRecorder.record(
+            new ModelUsageEvent(
+                effectiveModel, Purpose.REWRITE, 0, 0, System.currentTimeMillis() - start, false));
+      }
       return fallback;
     }
   }

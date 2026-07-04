@@ -104,6 +104,13 @@ public final class ErrorMessages {
           Map.entry("ORG_CONTEXT_REQUIRED", "请先选择组织后再操作"),
           Map.entry("EVAL_RESOURCE_NOT_IN_ORG", "所选评测资源不属于当前组织"),
           Map.entry("ALREADY_IN_PROGRESS", "任务正在进行中，请稍候再试"),
+          // 模型 & 成本中心
+          Map.entry("MODEL_TOGGLE_REQUIRES_PLATFORM_VIEW", "启停模型需切换到「全平台视图」（平台管理员）"),
+          Map.entry("MODEL_NOT_FOUND", "模型不存在或已下线"),
+          Map.entry("ENABLED_REQUIRED", "缺少启用状态参数，请刷新页面后重试"),
+          Map.entry(
+              "MODEL_DISABLE_WOULD_LEAVE_PURPOSE_UNAVAILABLE",
+              "停用后该用途将没有可用模型，请先启用备用模型"),
           // 通用兜底码
           Map.entry("INVALID_REQUEST", "请求格式有误，请检查后重试"),
           Map.entry("INVALID_PARAM", "请求参数有误，请检查后重试"),
