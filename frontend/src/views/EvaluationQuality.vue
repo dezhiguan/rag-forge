@@ -328,24 +328,46 @@
           <p class="muted golden-empty-hint">
             从本组织的线上应答里按知识库抽样，交 AI 评审打分持续监控质量。未列出的知识库默认不抽样。
           </p>
-          <div class="kb-override-form">
-            <select v-model="kbOverrideForm.scopeId">
+          <table v-if="kbSamplingConfigs.length" class="sampling-table">
+            <thead>
+              <tr><th>知识库</th><th>抽样率</th><th>状态</th><th class="st-a" /></tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in kbSamplingConfigs" :key="item.id">
+                <td class="st-name">{{ kbName(item.scopeId) }}</td>
+                <td class="st-rate">{{ ratePercent(item.sampleRate).toFixed(1) }}%</td>
+                <td>
+                  <button
+                    type="button"
+                    class="switch"
+                    :class="{ 'switch--on': item.enabled }"
+                    role="switch"
+                    :aria-checked="item.enabled ? 'true' : 'false'"
+                    :aria-label="item.enabled ? '停用抽样' : '启用抽样'"
+                    :disabled="togglingSamplingId === item.id"
+                    @click="toggleSampling(item)"
+                  >
+                    <span class="switch-knob" />
+                  </button>
+                </td>
+                <td class="st-a"><button class="link-button" @click="editSampling(item)">编辑</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="state-hint">还没有为任何知识库设置抽样</div>
+
+          <div v-if="showKbForm" class="kb-override-form">
+            <select v-model="kbOverrideForm.scopeId" :disabled="editingSamplingId != null">
               <option :value="null" disabled>选择知识库</option>
               <option v-for="kb in kbOptions" :key="kb.id" :value="kb.id">{{ kb.name || kbDisplayName(kb.id) }}</option>
             </select>
             <input v-model.number="kbOverrideForm.ratePercent" type="number" min="0" max="10" step="0.5" />
             <label><input v-model="kbOverrideForm.enabled" type="checkbox" /> 启用</label>
-            <button class="btn btn-secondary btn-sm" :disabled="savingOverride" @click="saveKbOverride">保存覆盖</button>
+            <button class="btn btn-secondary btn-sm" :disabled="savingOverride" @click="saveKbOverride">保存</button>
+            <button v-if="editingSamplingId != null" class="link-button danger" @click="removeSampling(editingSamplingId)">删除</button>
+            <button class="link-button" @click="closeKbForm">取消</button>
           </div>
-          <div v-if="kbSamplingConfigs.length === 0" class="state-hint">暂无知识库单独覆盖</div>
-          <div v-else class="override-list">
-            <div v-for="item in kbSamplingConfigs" :key="item.id" class="override-item">
-              <span>{{ kbName(item.scopeId) }}</span>
-              <span>{{ ratePercent(item.sampleRate).toFixed(1) }}%</span>
-              <span>{{ item.enabled ? '启用' : '停用' }}</span>
-              <button class="link-button danger" @click="removeSampling(item.id)">删除</button>
-            </div>
-          </div>
+          <button v-else class="add-sampling-btn" @click="openNewKbForm">＋ 为知识库设置抽样</button>
           <p class="sampling-cost-hint">
             💰 本组织评审成本：本月已用 <strong>¥{{ formatMoney(cost.totalCny) }}</strong>，按当前用量预计本月
             <strong>¥{{ formatMoney(cost.monthlyProjectedCny) }}</strong>。抽样越高越全面，成本也越高。
@@ -354,27 +376,46 @@
 
         <section class="drawer-section">
           <h3>② 黄金集回归测试</h3>
-          <p class="muted golden-empty-hint">
-            从「评测数据集」勾选黄金问题作为本组织的质量基准；改动分块/模型/内容后一键回放，直接点亮本组织质量看板。
-          </p>
-          <p>本组织已启用：<strong>{{ goldenEnabledCount }}</strong> 道黄金题</p>
-          <button
-            class="btn-save-config btn-save-config--secondary"
-            :disabled="replayingGolden || goldenEnabledCount <= 0 || !canManageOrg"
-            :title="canManageOrg ? replayDisabledReason : '仅组织所有者 / 管理员可触发回放'"
-            @click="replayGoldenNow"
-          >
-            {{ replayingGolden ? '任务进行中...' : `立即回放本组织 ${goldenEnabledCount} 题` }}
-          </button>
-          <p v-if="!canManageOrg" class="muted golden-empty-hint">
-            仅组织所有者 / 管理员可触发回放。
-          </p>
-          <p v-else-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
-            本组织还没有黄金题，请先到「评测数据集」勾选要纳入回归的问题。
-          </p>
-          <p v-else class="muted">
-            异步执行，每题间隔 500ms · 结果进本组织质量看板 · 单次最多 50 题、每 5 分钟一次 · 点击需二次确认。
-          </p>
+
+          <!-- 平台管理员 · 全平台视图：平台基准卡片 -->
+          <div v-if="isPlatformView" class="platform-baseline">
+            <div class="pb-head">
+              <span class="pb-title">🎯 平台基准</span>
+              <span class="pb-badge">Core Set</span>
+            </div>
+            <p class="pb-count"><strong>{{ goldenEnabledCount }}</strong> <span>道 · 固定，不可增删</span></p>
+            <p class="muted">绑定系统组织的冻结基线库；回放进「平台健康视图」，不混入租户看板。</p>
+            <button
+              class="btn-save-config btn-save-config--secondary"
+              :disabled="replayingGolden"
+              @click="replayPlatformBaseline"
+            >
+              {{ replayingGolden ? '任务进行中...' : '平台基准回放' }}
+            </button>
+          </div>
+
+          <!-- 组织视图：本组织黄金集回归 -->
+          <template v-else>
+            <p class="muted golden-empty-hint">
+              从「评测数据集」勾选黄金问题作为本组织的质量基准；改动分块/模型/内容后一键回放，直接点亮本组织质量看板。
+            </p>
+            <p>本组织已启用：<strong>{{ goldenEnabledCount }}</strong> 道黄金题</p>
+            <button
+              class="btn-save-config btn-save-config--secondary"
+              :disabled="replayingGolden || goldenEnabledCount <= 0 || !canManageOrg"
+              :title="canManageOrg ? replayDisabledReason : '仅组织所有者 / 管理员可触发回放'"
+              @click="replayGoldenNow"
+            >
+              {{ replayingGolden ? '任务进行中...' : `立即回放本组织 ${goldenEnabledCount} 题` }}
+            </button>
+            <p v-if="!canManageOrg" class="muted golden-empty-hint">仅组织所有者 / 管理员可触发回放。</p>
+            <p v-else-if="goldenEnabledCount <= 0" class="muted golden-empty-hint">
+              本组织还没有黄金题，请先到「评测数据集」勾选要纳入回归的问题。
+            </p>
+            <p v-else class="muted">
+              异步执行，每题间隔 500ms · 结果进本组织质量看板 · 单次最多 50 题、每 5 分钟一次 · 点击需二次确认。
+            </p>
+          </template>
         </section>
 
         <section class="drawer-section">
@@ -422,10 +463,12 @@ const { clearSession, ragRole } = useAuth()
 // 全局抽样率与月度预算仅平台管理员可改;非管理员时全局区控件置灰(与后端 SAMPLING_GLOBAL_ADMIN_ONLY 一致)。
 const isPlatformAdmin = computed(() => ragRole.value === 'ADMIN')
 // 组织级回放/抽样配置权限：当前组织的所有者/管理员，或平台管理员。
-const { current: currentOrg } = useOrg()
+const { current: currentOrg, isPlatform } = useOrg()
 const canManageOrg = computed(
   () => isPlatformAdmin.value || ['OWNER', 'ADMIN'].includes(currentOrg.value?.myRole),
 )
+// 全平台视图（破玻璃）：② 段展示「平台基准」卡片而非组织黄金集。
+const isPlatformView = computed(() => isPlatformAdmin.value && isPlatform.value)
 const router = useRouter()
 const route = useRoute()
 
@@ -689,6 +732,46 @@ async function saveGlobalSampling() {
   )
 }
 
+const showKbForm = ref(false)
+const editingSamplingId = ref(null)
+const togglingSamplingId = ref(null)
+
+function openNewKbForm() {
+  editingSamplingId.value = null
+  kbOverrideForm.scopeId = null
+  kbOverrideForm.ratePercent = 1
+  kbOverrideForm.enabled = true
+  settingsError.value = ''
+  showKbForm.value = true
+}
+
+function editSampling(item) {
+  editingSamplingId.value = item.id
+  kbOverrideForm.scopeId = item.scopeId
+  kbOverrideForm.ratePercent = ratePercent(item.sampleRate)
+  kbOverrideForm.enabled = item.enabled !== false
+  settingsError.value = ''
+  showKbForm.value = true
+}
+
+function closeKbForm() {
+  showKbForm.value = false
+  editingSamplingId.value = null
+  settingsError.value = ''
+}
+
+async function toggleSampling(item) {
+  togglingSamplingId.value = item.id
+  try {
+    await saveSampling(
+      { scopeType: 'KB', scopeId: item.scopeId, sampleRate: item.sampleRate, enabled: !item.enabled },
+      'kb',
+    )
+  } finally {
+    togglingSamplingId.value = null
+  }
+}
+
 async function saveKbOverride() {
   if (!kbOverrideForm.scopeId) {
     settingsError.value = '请选择知识库'
@@ -703,6 +786,32 @@ async function saveKbOverride() {
     },
     'kb',
   )
+  if (!settingsError.value) closeKbForm()
+}
+
+// 平台基准回放（全平台视图）：跑全量黄金集，样本进平台健康视图。
+async function replayPlatformBaseline() {
+  const ok = await confirmDialog({
+    title: '平台基准回放',
+    message: '将对平台基准（固定 100 题）发起 LLM-as-Judge 评测，结果进「平台健康视图」，会产生判分调用与成本。确定继续？',
+    confirmText: '开始回放',
+    cancelText: '取消',
+  })
+  if (!ok) return
+  replayingGolden.value = true
+  settingsError.value = ''
+  try {
+    await replayGoldenSetNow({ limit: 100 })
+    toast.success('平台基准回放已开始')
+  } catch (error) {
+    const msg = resolveHttpError(error, { kind: 'replay' })
+    settingsError.value = msg
+    toast.error(msg)
+  } finally {
+    setTimeout(() => {
+      replayingGolden.value = false
+    }, 1000)
+  }
 }
 
 async function saveSampling(payload, which = 'global') {
@@ -1830,6 +1939,142 @@ watch(
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  font-size: 13px;
+}
+
+/* 线上抽样表格 */
+.sampling-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 6px 0 4px;
+}
+
+.sampling-table th {
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 8px 8px;
+}
+
+.sampling-table td {
+  padding: 9px 8px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.sampling-table .st-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.sampling-table .st-rate {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.sampling-table .st-a {
+  text-align: right;
+  width: 48px;
+}
+
+.switch {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: #cbd5e1;
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.18s ease;
+}
+
+.switch--on {
+  background: #16a34a;
+}
+
+.switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
+  transition: transform 0.18s ease;
+}
+
+.switch--on .switch-knob {
+  transform: translateX(16px);
+}
+
+.add-sampling-btn {
+  margin-top: 8px;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-sampling-btn:hover {
+  background: #f8fafc;
+}
+
+/* 平台基准卡片 */
+.platform-baseline {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: #fbfcfe;
+}
+
+.pb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.pb-title {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: #0f172a;
+}
+
+.pb-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3949ab;
+  background: #eef2ff;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.pb-count {
+  margin: 4px 0;
+}
+
+.pb-count strong {
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.pb-count span {
+  color: var(--text-muted);
   font-size: 13px;
 }
 
