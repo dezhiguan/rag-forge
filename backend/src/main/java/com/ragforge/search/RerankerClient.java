@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -36,6 +37,9 @@ public class RerankerClient {
   @Value("${app.dashscope.rerank-instruction:根据文档是否直接、准确地包含用户问题的答案来判断相关性;越能直接回答问题的文档相关性越高。}")
   private String rerankInstruction;
 
+  // 缓存 rerank 结果：key 含 query + 候选文档内容 + topN。同 query 在稳定语料上召回同一批候选即命中，
+  // 跳过 DashScope rerank 调用（命中不进方法体 → 不记 token，正确）；候选集变化会自动换 key 失效，无 stale。
+  @Cacheable(value = "rerankResult", key = "{#query, #topN, #documents}", unless = "#result == null")
   public RerankOutput rerank(String query, List<String> documents, int topN) {
     long start = System.currentTimeMillis();
     if (documents == null || documents.isEmpty()) {

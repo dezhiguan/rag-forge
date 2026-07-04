@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -48,6 +49,8 @@ import org.springframework.core.io.InputStreamResource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -620,42 +623,67 @@ public class DocumentServiceImpl implements DocumentService {
       throw new BizException(404, "文档不存在");
     }
 
-    // 压缩包容器：DB 的 ON DELETE CASCADE 只删子文档行与其 chunk 行，ES 索引不会级联。
-    // 删容器前须逐个清理子文档的 ES 与本地文件，避免留下 ES 孤儿（设计稿 §5「不留孤儿」）。
+    // 收集需在事务外清理的外部产物(ES/Qdrant 索引 + 本地文件):不可回滚的网络/磁盘 IO 不进事务,
+    // 移到 afterCommit,避免"事务内删外部 → 后续 DB 回滚 → 外部已删"的孤儿/不一致(设计稿 §5「不留孤儿」)。
+    // 压缩包容器：DB 的 ON DELETE CASCADE 只删子文档行与其 chunk 行，ES/Qdrant 不会级联,须逐个收集。
+    List<Long> indexDocIds = new ArrayList<>();
+    List<String> filePaths = new ArrayList<>();
     if (isArchiveContainer(doc)) {
       for (Document child : documentMapper.selectChildren(id)) {
-        esIndexService.deleteByDocId(child.getId());
-        qdrantVectorStore.deleteByDocId(child.getId());
+        indexDocIds.add(child.getId());
         if (child.getFilePath() != null && !child.getFilePath().isBlank()) {
-          try {
-            fileStorageService.delete(child.getFilePath());
-          } catch (Exception ignored) {
-            // 子文件清理 best-effort，不阻断容器删除
-          }
+          filePaths.add(child.getFilePath());
         }
       }
     }
-
-    esIndexService.deleteByDocId(id);
-    qdrantVectorStore.deleteByDocId(id);
-
-    fileStorageService.delete(doc.getFilePath());
+    indexDocIds.add(id);
+    if (doc.getFilePath() != null && !doc.getFilePath().isBlank()) {
+      filePaths.add(doc.getFilePath());
+    }
 
     documentMapper.deleteById(id);
 
-    // 3) update knowledge base counters
-    KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
-    if (kb != null && !STATUS_DELETED.equals(kb.getStatus())) {
-      int kbDocCount = coalesce(kb.getDocCount(), 0);
-      int kbChunkCount = coalesce(kb.getChunkCount(), 0);
-      int docChunkCount = coalesce(doc.getChunkCount(), 0);
+    // KB 计数原子回减(只对已完成文档,与入库自增对称):col=col-delta 避免读改写丢更新 / updateById 全行覆盖;
+    // status<>'deleted' 的守卫在 SQL 里,无需先 selectById。
+    if ("COMPLETED".equals(doc.getParseStatus())) {
+      knowledgeBaseMapper.adjustCounters(doc.getKbId(), -coalesce(doc.getChunkCount(), 0), -1);
+    }
 
-      if ("COMPLETED".equals(doc.getParseStatus())) {
-        kb.setDocCount(Math.max(0, kbDocCount - 1));
-        kb.setChunkCount(Math.max(0, kbChunkCount - docChunkCount));
-      }
-      kb.setUpdatedAt(LocalDateTime.now());
-      knowledgeBaseMapper.updateById(kb);
+    afterCommit(
+        () -> {
+          for (Long docId : indexDocIds) {
+            try {
+              esIndexService.deleteByDocId(docId);
+              qdrantVectorStore.deleteByDocId(docId);
+            } catch (Exception e) {
+              log.warn("删除文档后索引清理失败 docId={}: {}", docId, e.getMessage());
+            }
+          }
+          for (String path : filePaths) {
+            try {
+              fileStorageService.delete(path);
+            } catch (Exception e) {
+              log.warn("删除文档后文件清理失败 path={}: {}", path, e.getMessage());
+            }
+          }
+        });
+  }
+
+  /**
+   * 事务提交后执行给定动作;无活动事务时(如单测)立即执行。用于把不可回滚的外部清理(ES/Qdrant/文件)
+   * 移出事务边界,保证 DB 为准、外部为 best-effort(失败由 EsIndexRepairJob / 对账作业兜底)。
+   */
+  private void afterCommit(Runnable action) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              action.run();
+            }
+          });
+    } else {
+      action.run();
     }
   }
 

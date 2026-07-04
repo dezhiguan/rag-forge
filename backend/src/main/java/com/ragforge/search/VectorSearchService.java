@@ -30,6 +30,7 @@ public class VectorSearchService {
   private final VlEmbeddingClient vlEmbeddingClient;
   private final JdbcTemplate jdbcTemplate;
   private final QdrantVectorStore qdrantVectorStore;
+  private final QueryEmbeddingCache queryEmbeddingCache;
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
     return search(query, kbIds, docIds, topK, null);
@@ -44,7 +45,8 @@ public class VectorSearchService {
     requireKbScope(kbIds);
     long start = System.currentTimeMillis();
     long embedStart = System.currentTimeMillis();
-    float[] queryVector = embedder.embed(query);
+    // 命中查询向量缓存则跳过 DashScope embedding（检索链路最大头延迟），vector/hybrid QPS 显著提升。
+    float[] queryVector = queryEmbeddingCache.get(query, embedder::embed);
     long embedLatencyMs = System.currentTimeMillis() - embedStart;
 
     long qStart = System.currentTimeMillis();

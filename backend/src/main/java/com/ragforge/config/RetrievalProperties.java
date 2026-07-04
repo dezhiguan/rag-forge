@@ -8,16 +8,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class RetrievalProperties {
 
   private Strategy keyword = new Strategy(40, 5000);
-  // vector 5→16：Qdrant 检索仅 ~5ms、硬件余量大，5 太保守；提升 QPS（受 DashScope embedding 配额约束）。
-  private Strategy vector = new Strategy(16, 5000);
-  // hybrid 并发 20；超时 12s→5s，越限快速失败不拖成 504。
-  private Strategy hybrid = new Strategy(20, 5000);
+  // vector 16→48：query 向量缓存命中后单请求 ~15ms（embedding 归零），限流器成新瓶颈，放大吃满 Qdrant 余量。
+  private Strategy vector = new Strategy(48, 5000);
+  // hybrid 20→32：缓存降低 vector 臂延迟后放大；配合执行器扩容缓解 504 尾。
+  private Strategy hybrid = new Strategy(32, 5000);
   // full 1→4 / rewrite 3→8：受 DashScope LLM/rerank 配额约束（非硬件），放大后需盯 DashScope 429。
   private Strategy full = new Strategy(4, 15000);
   private Strategy rewrite = new Strategy(8, 10000);
 
-  private int executorCoreSize = 8;
-  private int executorMaxSize = 48;
+  private int executorCoreSize = 12;
+  private int executorMaxSize = 64;
   private int executorQueueCapacity = 200;
   private int stageTimeoutMs = 6000;
 

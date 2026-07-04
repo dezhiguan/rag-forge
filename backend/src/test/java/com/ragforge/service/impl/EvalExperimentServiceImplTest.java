@@ -38,6 +38,7 @@ import java.util.concurrent.Executor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -124,6 +125,42 @@ class EvalExperimentServiceImplTest {
     assertThat(vo.getTotalQuestions()).isEqualTo(2);
     verify(evalExperimentMapper).updateById(any(EvalExperiment.class));
     verify(jdbcTemplate).batchUpdate(anyString(), anyList(), eq(100), any());
+  }
+
+  @Test
+  void runExperiment_persistenceFails_marksFailed_withFriendlyMessage() {
+    EvalDataset dataset = dataset(1L, 10L, "ds-1");
+    EvalQuestion q1 = question(1L, 1L, "什么是 RAG？", "[101]");
+    when(evalDatasetMapper.selectById(1L)).thenReturn(dataset);
+    when(evalQuestionMapper.selectList(any())).thenReturn(List.of(q1));
+    doAnswer(
+            inv -> {
+              ((EvalExperiment) inv.getArgument(0)).setId(200L);
+              return 1;
+            })
+        .when(evalExperimentMapper)
+        .insert(any(EvalExperiment.class));
+    when(retrievalService.retrieve(anyString(), anyList(), any(), anyString(), any(), anyInt(), anyInt()))
+        .thenReturn(
+            new RetrievalOutput(
+                List.of(searchResult(101L, 0.9, 0.0)), 5L, "vector", null, null, null, null, null));
+    // 检索成功、但结果落库(批插)失败 → 触发外层 catch。
+    when(jdbcTemplate.batchUpdate(anyString(), anyList(), anyInt(), any()))
+        .thenThrow(new RuntimeException("内部错误 secret-detail-xyz"));
+
+    assertThatThrownBy(() -> evalExperimentService.runExperiment(1L, "vector", null, 8))
+        .isInstanceOfSatisfying(
+            BizException.class,
+            ex -> {
+              assertThat(ex.getCode()).isEqualTo(500);
+              assertThat(ex.getMessage()).isEqualTo("评测实验运行失败，请稍后重试"); // 友好、不泄露
+              assertThat(ex.getMessage()).doesNotContain("secret");
+            });
+
+    // markAsFailed 生效:实验置 failed 落库(证明 experiment 已提交、REQUIRES_NEW 能看到该行)。
+    ArgumentCaptor<EvalExperiment> captor = ArgumentCaptor.forClass(EvalExperiment.class);
+    verify(evalExperimentMapper).updateById(captor.capture());
+    assertThat(captor.getValue().getStatus()).isEqualTo("failed");
   }
 
   @Test

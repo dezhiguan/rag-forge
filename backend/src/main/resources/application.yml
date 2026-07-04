@@ -34,7 +34,8 @@ spring:
       file-size-threshold: 1MB
   cache:
     type: caffeine
-    cache-names: queryRewrite
+    # queryRewrite: 改写结果缓存(跳过LLM改写); rerankResult: rerank结果缓存(跳过rerank调用)
+    cache-names: queryRewrite,rerankResult
     caffeine:
       spec: maximumSize=500,expireAfterWrite=1h
 
@@ -109,19 +110,20 @@ ragforge:
     question-timeout-ms: 30000
   retrieval:
     # 执行器扩容：hybrid 每请求并行跑 vector+keyword 两个子任务，池子要够大避免排队超时
-    executor-core-size: ${RAGFORGE_RETRIEVAL_CORE_SIZE:8}
-    executor-max-size: ${RAGFORGE_RETRIEVAL_MAX_SIZE:48}
+    executor-core-size: ${RAGFORGE_RETRIEVAL_CORE_SIZE:12}
+    executor-max-size: ${RAGFORGE_RETRIEVAL_MAX_SIZE:64}
     executor-queue-capacity: ${RAGFORGE_RETRIEVAL_QUEUE_CAPACITY:200}
     stage-timeout-ms: ${RAGFORGE_RETRIEVAL_STAGE_TIMEOUT_MS:6000}
     keyword:
       max-concurrent: ${RAGFORGE_RETRIEVAL_KEYWORD_CONCURRENCY:40}
       timeout-ms: ${RAGFORGE_RETRIEVAL_KEYWORD_TIMEOUT_MS:5000}
     vector:
-      # Qdrant 检索 ~5ms + embedding ~190ms,硬件余量大;5→16 提升 QPS(注意 DashScope embedding 并发配额)
-      max-concurrent: ${RAGFORGE_RETRIEVAL_VECTOR_CONCURRENCY:16}
+      # 16→48:query 向量缓存命中后单请求~15ms(embedding归零),限流器成新瓶颈,放大吃满 Qdrant 余量
+      max-concurrent: ${RAGFORGE_RETRIEVAL_VECTOR_CONCURRENCY:48}
       timeout-ms: ${RAGFORGE_RETRIEVAL_VECTOR_TIMEOUT_MS:5000}
     hybrid:
-      max-concurrent: ${RAGFORGE_RETRIEVAL_HYBRID_CONCURRENCY:20}
+      # 20→32:缓存降低 vector 臂延迟后放大;配合执行器扩容缓解 504 尾
+      max-concurrent: ${RAGFORGE_RETRIEVAL_HYBRID_CONCURRENCY:32}
       # 超时 12s→5s:越限快速失败,不长时间占线程拖成 504
       timeout-ms: ${RAGFORGE_RETRIEVAL_HYBRID_TIMEOUT_MS:5000}
     full:
@@ -132,6 +134,11 @@ ragforge:
       # 3→8:rewrite=LLM改写+多路向量,受 DashScope LLM 配额约束
       max-concurrent: ${RAGFORGE_RETRIEVAL_REWRITE_CONCURRENCY:8}
       timeout-ms: ${RAGFORGE_RETRIEVAL_REWRITE_TIMEOUT_MS:10000}
+    # query 向量缓存:命中即跳过 DashScope embedding(检索最大头延迟~90%),提升 vector/hybrid QPS。
+    query-embedding-cache:
+      enabled: ${RAGFORGE_QUERY_EMBED_CACHE_ENABLED:true}
+      max-size: ${RAGFORGE_QUERY_EMBED_CACHE_MAX_SIZE:20000}
+      ttl-seconds: ${RAGFORGE_QUERY_EMBED_CACHE_TTL_SECONDS:900}
     # 分布式并发限流(Redis 全局)。enabled=false 回退进程内 Semaphore(每 pod 本地)。
     distributed-limit:
       enabled: ${RAGFORGE_RETRIEVAL_DISTRIBUTED_LIMIT_ENABLED:true}
