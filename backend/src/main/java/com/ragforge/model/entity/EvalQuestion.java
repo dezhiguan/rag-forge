@@ -26,4 +26,7 @@ public class EvalQuestion {
 
   @TableField(value = "judge_tags", typeHandler = StringArrayTypeHandler.class)
   private String[] judgeTags;
+
+  /** 核心题（平台级黄金集冻结基线）：TRUE 时禁止编辑/删除。 */
+  private Boolean isCore;
 }

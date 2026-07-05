@@ -159,7 +159,10 @@
                             </td>
                           </tr>
                           <tr v-for="q in questionsMap[ds.id]?.list || []" :key="q.id">
-                            <td class="question-text">{{ q.question }}</td>
+                            <td class="question-text">
+                              <span v-if="q.isCore" class="core-badge" title="平台级黄金集核心题·质量基线已冻结，不可编辑/删除">🔒 核心</span>
+                              {{ q.question }}
+                            </td>
                             <td class="chunk-ids">
                               <div :title="formatChunkIds(q.expectedChunkIds)">Chunk: {{ formatChunkIds(q.expectedChunkIds) }}</div>
                               <div v-if="(q.expectedTextSnippets || []).length" class="text-snippet-line">
@@ -171,6 +174,7 @@
                                 <input
                                   type="checkbox"
                                   :checked="q.judgeEnabled"
+                                  :disabled="q.isCore"
                                   @change="onToggleJudgeEnabled(ds.id, q, $event.target.checked)"
                                 >
                                 <span>{{ q.judgeEnabled ? '启用' : '关闭' }}</span>
@@ -181,6 +185,7 @@
                                 class="tag-select"
                                 multiple
                                 :value="q.judgeTags || []"
+                                :disabled="q.isCore"
                                 @click.stop
                                 @change="onJudgeTagsChange(ds.id, q, $event)"
                               >
@@ -188,12 +193,17 @@
                               </select>
                             </td>
                             <td>
-                              <span class="link-action" @click.stop="openEditQuestion(ds.id, q)">
-                                编辑
-                              </span>
-                              <span class="link-action danger" @click.stop="onDeleteQuestion(ds.id, q)">
-                                删除
-                              </span>
+                              <template v-if="q.isCore">
+                                <span class="link-action is-locked" title="平台级黄金集核心题，已冻结">🔒 已锁定</span>
+                              </template>
+                              <template v-else>
+                                <span class="link-action" @click.stop="openEditQuestion(ds.id, q)">
+                                  编辑
+                                </span>
+                                <span class="link-action danger" @click.stop="onDeleteQuestion(ds.id, q)">
+                                  删除
+                                </span>
+                              </template>
                             </td>
                           </tr>
                         </tbody>
@@ -1751,6 +1761,22 @@ onMounted(async () => {
   gap: 6px;
   font-size: 12px;
   color: var(--text);
+}
+.core-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #a35a00;
+  background: #fff6e9;
+  border: 1px solid #f0d29a;
+  white-space: nowrap;
+}
+.link-action.is-locked {
+  color: #a35a00;
+  cursor: not-allowed;
 }
 .tag-select {
   width: 132px;

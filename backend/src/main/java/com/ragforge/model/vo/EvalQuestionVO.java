@@ -13,4 +13,7 @@ public class EvalQuestionVO {
   private List<String> expectedTextSnippets;
   private Boolean judgeEnabled;
   private List<String> judgeTags;
+
+  /** 核心题（平台级黄金集冻结基线）：前端据此显示 🔒 并禁用编辑/删除。 */
+  private Boolean isCore;
 }

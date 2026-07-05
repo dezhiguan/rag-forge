@@ -15,6 +15,8 @@ import com.ragforge.model.dto.SaveQuestionFromSearchDTO;
 import com.ragforge.model.entity.EvalDataset;
 import com.ragforge.model.entity.EvalQuestion;
 import com.ragforge.model.vo.EvalQuestionVO;
+import com.ragforge.security.RagAuthContext;
+import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.EvalDatasetService;
 import com.ragforge.service.EvalQuestionService;
 import java.util.Collections;
@@ -111,6 +113,10 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     if (question == null || !datasetId.equals(question.getDatasetId())) {
       throw new BizException(404, "评测问题不存在");
     }
+    // 核心题（平台级黄金集冻结基线）禁止编辑。
+    if (Boolean.TRUE.equals(question.getIsCore())) {
+      throw new BizException(403, "CORE_QUESTION_LOCKED");
+    }
     question.setQuestion(dto.getQuestion().trim());
     question.setExpectedDocIds(serializeChunkIds(dto.getExpectedChunkIds()));
     question.setExpectedTextSnippets(serializeTextSnippets(dto.getExpectedTextSnippets()));
@@ -128,6 +134,10 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     if (question == null || !datasetId.equals(question.getDatasetId())) {
       throw new BizException(404, "评测问题不存在");
     }
+    // 核心题（平台级黄金集冻结基线）禁止删除。
+    if (Boolean.TRUE.equals(question.getIsCore())) {
+      throw new BizException(403, "CORE_QUESTION_LOCKED");
+    }
 
     evalQuestionMapper.deleteById(questionId);
     incrementQuestionCount(datasetId, -1);
@@ -142,13 +152,21 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     question.setExpectedTextSnippets(serializeTextSnippets(textSnippets));
     question.setJudgeEnabled(Boolean.FALSE);
     question.setJudgeTags(null);
+    question.setIsCore(Boolean.FALSE);
     return question;
   }
 
   private EvalQuestion applyJudgeFields(EvalQuestion question, CreateEvalQuestionDTO dto) {
     question.setJudgeEnabled(Boolean.TRUE.equals(dto.getJudgeEnabled()));
     question.setJudgeTags(dedupTags(dto.getJudgeTags()));
+    // is_core 仅平台超管可置 TRUE（内置平台级黄金集冻结基线），普通调用一律 FALSE，防越权冻结。
+    question.setIsCore(Boolean.TRUE.equals(dto.getIsCore()) && isPlatformAdmin());
     return question;
+  }
+
+  private boolean isPlatformAdmin() {
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    return ctx != null && ctx.isAdmin();
   }
 
   private String[] dedupTags(List<String> tags) {
@@ -177,6 +195,7 @@ public class EvalQuestionServiceImpl implements EvalQuestionService {
     vo.setExpectedTextSnippets(parseTextSnippets(entity.getExpectedTextSnippets()));
     vo.setJudgeEnabled(entity.getJudgeEnabled() != null ? entity.getJudgeEnabled() : Boolean.FALSE);
     vo.setJudgeTags(parseTagArray(entity.getJudgeTags()));
+    vo.setIsCore(Boolean.TRUE.equals(entity.getIsCore()));
     return vo;
   }
 

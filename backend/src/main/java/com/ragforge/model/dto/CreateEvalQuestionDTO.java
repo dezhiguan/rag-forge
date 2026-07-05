@@ -14,4 +14,7 @@ public class CreateEvalQuestionDTO {
   private List<String> expectedTextSnippets;
   private Boolean judgeEnabled = Boolean.FALSE;
   private List<String> judgeTags;
+
+  /** 核心题标记；仅平台超管可置 TRUE（服务端二次校验），用于内置平台级黄金集冻结基线。 */
+  private Boolean isCore = Boolean.FALSE;
 }
