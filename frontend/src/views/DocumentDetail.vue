@@ -484,8 +484,16 @@ async function resolveLocalImage() {
   if (!isImageDoc.value || !doc.value?.id) return
   try {
     const res = await downloadDocument(doc.value.id)
-    const blob = res?.data ?? res
-    if (blob instanceof Blob) localImageBlobUrl.value = URL.createObjectURL(blob)
+    const raw = res?.data ?? res
+    if (raw instanceof Blob) {
+      // /download 返回 application/octet-stream + nosniff，blob 会继承该类型导致 <img> 不解码。
+      // 重贴成文档真实图片 MIME（如 image/webp），确保浏览器按图片解码。
+      const typed =
+        raw.type && raw.type.startsWith('image/')
+          ? raw
+          : new Blob([raw], { type: doc.value.fileType || 'image/*' })
+      localImageBlobUrl.value = URL.createObjectURL(typed)
+    }
   } catch {
     /* 拉取失败则退化为无预览，不影响 chunk 列表 */
   }
