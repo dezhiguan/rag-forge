@@ -371,10 +371,8 @@
             <button class="link-button" @click="closeKbForm">取消</button>
           </div>
           <button
-            v-else
+            v-else-if="canManageOrg"
             class="add-sampling-btn"
-            :disabled="!canManageOrg"
-            :title="canManageOrg ? '' : '仅组织所有者 / 管理员可配置'"
             @click="openNewKbForm"
           >
             ＋ 为知识库设置抽样
