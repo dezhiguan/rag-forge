@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统组织 &amp; 侧栏授权收敛设计 · RAGForge</title>
+<style>
+  :root{--bg:#eef1f5;--card:#fff;--ink:#1f2733;--sub:#5b6b7f;--line:#e2e7ee;--primary:#2f6bff;--primary-soft:#eef4ff;--ok:#12a150;--ok-soft:#eafaf0;--warn:#c8860a;--warn-soft:#fff7e8;--danger:#d64545}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;line-height:1.7;font-size:14.5px}
+  .wrap{max-width:1000px;margin:0 auto;padding:38px 26px 80px}
+  header.doc{background:linear-gradient(135deg,#1c2b4a,#2f6bff);color:#fff;border-radius:16px;padding:30px 32px;margin-bottom:24px}
+  header.doc .badge{display:inline-block;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);padding:3px 12px;border-radius:999px;font-size:12px;margin-bottom:12px}
+  header.doc h1{margin:0 0 6px;font-size:24px}
+  header.doc p{margin:0;opacity:.86;font-size:13.5px}
+  .meta{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.18);border-radius:10px;overflow:hidden;margin-top:20px}
+  .meta div{background:rgba(12,20,40,.28);padding:11px 13px}
+  .meta .k{font-size:11px;opacity:.7}.meta .v{font-size:13.5px;font-weight:600}
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 28px;margin-bottom:20px}
+  h2{font-size:18px;margin:0 0 8px;display:flex;align-items:center;gap:10px}
+  h2 .no{background:var(--primary);color:#fff;width:25px;height:25px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+  h3{font-size:15px;margin:18px 0 6px}
+  p{margin:8px 0}.lead{color:var(--sub)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+  th{background:#f3f6fb;font-weight:600;color:#2a3646}
+  code{background:#f1f4f9;color:#334155;padding:1px 6px;border-radius:5px;font-size:12.5px;font-family:"SF Mono",Menlo,monospace}
+  .tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:700}
+  .t-sys{background:#eef2ff;color:#3949ab}.t-per{background:#e6f7ee;color:#12864a}.t-bg{background:#fff2e0;color:#a35a00}
+  .st{font-weight:700;font-size:12px;padding:1px 8px;border-radius:6px;white-space:nowrap}
+  .st.ok{background:var(--ok-soft);color:#0e7a41}.st.fix{background:#fdeecb;color:#8a5a00}.st.no{background:#eef1f5;color:#5b6b7f}
+  .callout{border-left:4px solid var(--primary);background:var(--primary-soft);padding:11px 15px;border-radius:0 9px 9px 0;margin:14px 0}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  .callout.rec{border-color:var(--ok);background:var(--ok-soft)}
+  ul.clean{list-style:none;padding-left:0}
+  ul.clean li{padding-left:22px;position:relative;margin:6px 0}
+  ul.clean li:before{content:"▸";color:var(--primary);position:absolute;left:5px}
+  .phase{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:12px 0}
+  .phase .h{display:flex;justify-content:space-between;padding:12px 16px;background:#f7f9fc;border-bottom:1px solid var(--line)}
+  .phase .h .n{font-weight:700;font-size:14.5px}.phase .h .d{font-size:12px;color:var(--sub);background:#fff;border:1px solid var(--line);padding:2px 9px;border-radius:999px}
+  .phase .b{padding:12px 16px}
+  footer{color:var(--sub);font-size:12px;text-align:center;margin-top:28px}
+  .rev td{font-size:12.5px}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px}
+  .pill.on{background:#fff2e0;color:#a35a00;border:1px solid #f0cf9a}
+  .pill.off{background:#eef4ff;color:#2f6bff;border:1px solid #cfe0ff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <span class="badge">RAGForge · 架构设计（待确认）</span>
+  <h1>系统组织 &amp; 侧栏授权收敛设计</h1>
+  <p>平台团队身份/资源/成本独立为系统组织，支持多超管；跨组织访问改为按 Tab 的"提权审计"开关</p>
+  <div class="meta">
+    <div><div class="k">拟制日期</div><div class="v">2026-07-05</div></div>
+    <div><div class="k">版本</div><div class="v">v0.3</div></div>
+    <div><div class="k">状态</div><div class="v">待确认</div></div>
+    <div><div class="k">编制</div><div class="v">架构 / QA</div></div>
+  </div>
+</header>
+
+<section>
+  <h2><span class="no">0</span>修订记录</h2>
+  <table class="rev"><thead><tr><th style="width:70px">版本</th><th style="width:104px">日期</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><b>v0.1</b></td><td>2026-07-05</td><td>初稿：系统组织模型、三概念边界、侧栏 9 页面授权审计</td></tr>
+    <tr><td><b>v0.2</b></td><td>2026-07-05</td><td>按评审决策定稿：① 系统组织方向确认；② judge 成本归系统组织；③ 超管一切活动在（系统）组织内；④ 跨组织由"全局全平台视图"改为<b>按 Tab 的提权审计开关（可开可关、随时切换）</b>；⑤ 明确 5 个 Tab 放提权按钮、4 个 Tab 无需提权；⑥ 手机号/姓名脱敏（公开仓库）</td></tr>
+    <tr><td><b>v0.3</b></td><td>2026-07-05</td><td>提权开启改为<b>强制弹窗、必填访问理由</b>（不能一键随意提权），理由写入审计；关闭仍一键。§7 相应待确认点收敛。</td></tr>
+  </tbody></table>
+</section>
+
+<section>
+  <h2><span class="no">1</span>决策纪要（本版已确认）</h2>
+  <div class="callout rec">
+    <ul class="clean" style="margin:0">
+      <li><b>系统组织方向：认可。</b>把 <code>org_id=0</code> 正式定义为<b>系统组织</b>，默认绑超管账号 <b>185****0934</b>（userId=4）。</li>
+      <li><b>成员构成：</b>系统组织里的成员都是超管；<b>个人组织 = 超管的私人空间</b>（互不混）。</li>
+      <li><b>活动归属：</b>超管的一切活动都在（系统）组织内进行 → 用量/成本天然归系统组织。</li>
+      <li><b>judge 成本：归系统组织</b>（评测判分记 org=系统组织，不再是无主的 org_id=0）。</li>
+      <li><b>跨组织访问：</b>取消全局"全平台视图"，改为<b>按 Tab 的"提权审计"开关</b>，提权后可关闭、可随时切换。</li>
+    </ul>
+  </div>
+  <p class="lead">动机：若"超管=个人组织"，单超管勉强、<b>多超管必崩</b>（邀请第 2、3 个超管后各有各的个人组织，平台统计散、平台成本无主）。系统组织让多超管共享同一份平台身份与统计。</p>
+</section>
+
+<section>
+  <h2><span class="no">2</span>三概念模型（边界分清）</h2>
+  <table>
+    <thead><tr><th style="width:15%">概念</th><th>是什么</th><th>身份/成本</th><th>跨组织</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag t-sys">系统组织</span></td><td>平台团队自己的工作区（org_id=0，绑超管）</td><td>成员皆超管；平台级资源(基准库/Core Set)与平台级成本(judge)归此；<b>超管默认在此活动</b></td><td>否（就是平台方自己的）</td></tr>
+      <tr><td><span class="tag t-per">个人组织</span></td><td>每个超管的私人空间</td><td>个人自己的库/成本</td><td>否</td></tr>
+      <tr><td><span class="tag t-bg">提权（按 Tab）</span></td><td>临时、留审计的跨组织"读"，<b>在具体 Tab 上开关</b></td><td>不拥有资源、不记成本</td><td>是（开=看全平台，关=回系统组织）</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    与旧版差异：旧"全平台视图"是<b>全局</b>切换（切一次到处生效、还会粘住）；新方案是<b>按 Tab 的局部开关</b>——只在你需要的那个页面提权，看完即关，互不影响。
+  </div>
+</section>
+
+<section>
+  <h2><span class="no">3</span>侧栏 9 页面 · 提权矩阵</h2>
+  <p class="lead">默认（未提权）一律只看<b>系统组织</b>数据；仅带提权按钮的 5 个 Tab 可临时跨组织看全平台（留审计）。</p>
+  <table>
+    <thead><tr><th style="width:15%">页面</th><th>默认（未提权）</th><th style="width:15%">提权按钮</th><th>提权后</th></tr></thead>
+    <tbody>
+      <tr><td>🏠 驾驶舱</td><td>系统组织指标</td><td><span class="st fix">✅ 放按钮</span></td><td>全平台聚合指标（审计）</td></tr>
+      <tr><td>📁 知识库管理</td><td>系统组织知识库</td><td><span class="st fix">✅ 放按钮</span></td><td>全部组织知识库（审计）</td></tr>
+      <tr><td>🔍 检索调试台</td><td>系统组织库检索</td><td><span class="st no">✕ 无需</span></td><td>—</td></tr>
+      <tr><td>💬 应答调试台</td><td>系统组织库应答</td><td><span class="st no">✕ 无需</span></td><td>—</td></tr>
+      <tr><td>⏱ 性能诊断</td><td>系统组织性能</td><td><span class="st no">✕ 无需</span></td><td>—</td></tr>
+      <tr><td>🧪 评测实验室</td><td>系统组织数据集</td><td><span class="st no">✕ 无需</span></td><td>—</td></tr>
+      <tr><td>📈 质量看板</td><td>系统组织质量/成本</td><td><span class="st fix">✅ 放按钮</span></td><td>全平台质量（审计）</td></tr>
+      <tr><td>🧠 模型 &amp; 成本</td><td>系统组织成本（含 judge）</td><td><span class="st fix">✅ 放按钮</span></td><td>全平台成本（审计）</td></tr>
+      <tr><td>🔌 开发者中心</td><td>系统组织密钥</td><td><span class="st fix">✅ 放按钮</span></td><td>全部组织密钥（审计）</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>小结：</b>5 个放提权按钮（驾驶舱 / 知识库 / 质量看板 / 模型&成本 / 开发者中心），4 个无需提权（检索 / 应答 / 性能 / 评测）。</div>
+</section>
+
+<section>
+  <h2><span class="no">4</span>"提权审计"开关 · 交互</h2>
+  <table>
+    <thead><tr><th style="width:16%">状态</th><th>按钮</th><th>行为</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill off">🛡 未提权</span></td><td>「提权查看全平台 · 审计」</td><td>页面只显示系统组织数据（默认）</td></tr>
+      <tr><td>点击 →</td><td><b>弹窗 · 必填访问理由</b> → 确认进入（不能一键随意提权）</td><td>该 Tab 请求带 <code>X-Admin-Override</code>，<b>写审计</b>（谁/何时/哪个页面/<b>填写的理由</b>）</td></tr>
+      <tr><td><span class="pill on">🔓 已提权</span></td><td>「已提权 · 全平台（点击关闭）」</td><td>显示全平台数据；<b>再次点击即关闭</b>，回到系统组织</td></tr>
+    </tbody>
+  </table>
+  <ul class="clean">
+    <li>提权是<b>按 Tab 局部生效</b>：在"模型&成本"提权，不影响"知识库管理"。</li>
+    <li><b>开启必弹窗、必填理由</b>（写入审计）；<b>关闭为一键</b>（再点一次按钮）。</li>
+    <li>可<b>随时开/关切换</b>；离开页面或刷新默认回到未提权（不粘住）。</li>
+    <li>技术上复用现有 <code>AdminOverrideHolder</code> / <code>X-Admin-Override</code> 机制，由按钮按 Tab 触发，服务端照旧写破玻璃审计。</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="no">5</span>落地改动清单</h2>
+  <table>
+    <thead><tr><th style="width:24%">改动</th><th>内容</th><th style="width:12%">影响面</th></tr></thead>
+    <tbody>
+      <tr><td>系统组织 seed</td><td>Organization 增 <code>SYSTEM</code> 类型；seed 系统组织(org_id=0/固定 id)，绑超管 185****0934 为 OWNER；后续超管入此组织</td><td>后端+DB</td></tr>
+      <tr><td>judge 成本归属</td><td>评测判分记账 org=系统组织；ModelUsageRecorder 平台级用量 org_id=系统组织；查询侧把 0 当系统组织正常展示</td><td>后端</td></tr>
+      <tr><td>超管默认上下文</td><td>超管登录默认落系统组织；平台级活动/成本自然归此且可见</td><td>前端+后端</td></tr>
+      <tr><td>去全局全平台视图</td><td>移除组织切换器"全平台视图"入口；跨组织统一走 Tab 级提权开关</td><td>前端</td></tr>
+      <tr><td>Tab 级提权开关</td><td>5 个 Tab 各加提权按钮（复用 X-Admin-Override，按 Tab 触发+可关）；4 个 Tab 无提权入口</td><td>前端(+审计)</td></tr>
+      <tr><td>邀请超管</td><td>= 加入系统组织(ADMIN)+授平台 ADMIN 角色；多超管共享统计</td><td>后端</td></tr>
+      <tr><td>权限收敛（已在分支）</td><td>预算编辑/回放/抽样严格按组织 OWNER/ADMIN（去平台管理员兜底）</td><td>已实现待评审</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="no">6</span>分阶段落地</h2>
+  <div class="phase"><div class="h"><span class="n">阶段一 · 权限收敛（分支已改，低风险）</span><span class="d">目标 2026-07-06</span></div>
+    <div class="b"><ul class="clean"><li>管理控件严格按组织角色（预算/回放/抽样）——分支已实现待评审合并</li><li>性能诊断复核（本设计判定其无需提权，确认默认即系统组织口径）</li></ul></div></div>
+  <div class="phase"><div class="h"><span class="n">阶段二 · 系统组织落地</span><span class="d">目标 2026-07-10</span></div>
+    <div class="b"><ul class="clean"><li>Organization SYSTEM 类型 + seed 系统组织 + 绑超管</li><li>judge/平台级用量 org=系统组织；查询把 0 当系统组织</li><li>超管默认落系统组织；邀请超管=加系统组织成员</li></ul></div></div>
+  <div class="phase"><div class="h"><span class="n">阶段三 · Tab 级提权开关</span><span class="d">目标 2026-07-14</span></div>
+    <div class="b"><ul class="clean"><li>移除全局全平台视图入口</li><li>5 个 Tab 加提权审计开关（可开可关切换）+ 审计留痕</li><li>4 个 Tab 明确无提权入口</li></ul></div></div>
+</section>
+
+<section>
+  <h2><span class="no">7</span>仍待你确认的小点</h2>
+  <ul class="clean">
+    <li><b>提权粒度</b>：每个 Tab 各自独立开关（推荐，互不影响），还是一次提权对 5 个 Tab 同时生效（会话级）？</li>
+    <li><b>系统组织在组织切换器里是否可见</b>：作为超管默认组织常驻显示，还是隐藏（仅超管以其身份活动）？</li>
+  </ul>
+</section>
+
+<footer>RAGForge · 系统组织 &amp; 侧栏授权收敛设计 v0.3 · 拟制 2026-07-05 · 待确认 · 内部架构设计稿（PII 已脱敏）</footer>
+
+</div>
+</body>
+</html>

@@ -342,29 +342,28 @@ class JudgeQualityControllerTest {
   }
 
   @Test
-  void setBudget_平台管理员_设置成功() throws Exception {
+  void setBudget_平台管理员非本组织管理员_返回403() throws Exception {
+    // 平台管理员若不是本组织的所有者/管理员，也不能配置该组织预算。
     com.ragforge.security.RagAuthContextHolder.set(adminCtx(1L));
     com.ragforge.security.OrgContextHolder.set(5L);
-    when(budgetService.snapshotForOrg(5L))
-        .thenReturn(
-            new com.ragforge.judge.JudgeBudgetService.BudgetSnapshot(
-                new BigDecimal("100.0000"), new BigDecimal("0.0000"), false));
+    when(orgMemberMapper.isOrgAdmin(5L, 1L)).thenReturn(false);
 
     mockMvc
         .perform(
             put("/api/v1/evaluation/quality/budget")
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content("{\"monthlyBudgetCny\":100}"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.monthlyBudgetCny").value(100.0));
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.errorCode").value("NOT_ORG_ADMIN"));
 
-    verify(budgetService).setBudget(eq(5L), eq(new BigDecimal("100")));
+    verify(budgetService, never()).setBudget(any(), any());
   }
 
   @Test
   void setBudget_非法金额_返回400() throws Exception {
-    com.ragforge.security.RagAuthContextHolder.set(adminCtx(1L));
+    com.ragforge.security.RagAuthContextHolder.set(userCtx(42L));
     com.ragforge.security.OrgContextHolder.set(5L);
+    when(orgMemberMapper.isOrgAdmin(5L, 42L)).thenReturn(true);
 
     mockMvc
         .perform(

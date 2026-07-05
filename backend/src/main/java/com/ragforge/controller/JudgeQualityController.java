@@ -173,13 +173,13 @@ public class JudgeQualityController {
         ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive();
     Long orgId = platformView ? null : com.ragforge.security.OrgContextHolder.get();
     com.ragforge.judge.JudgeBudgetService.BudgetSnapshot snap = budgetService.snapshotForOrg(orgId);
-    // 预算按组织分配、由平台管理员配置：仅平台管理员在具体组织上下文下可编辑。
-    // 预算由组织创建者/管理员配置（平台管理员亦可）。
+    // 预算仅由该组织的创建者/管理员配置（平台管理员若非本组织管理员则不放行）。
     boolean editable =
         !platformView
             && orgId != null
             && ctx != null
-            && (ctx.isAdmin() || orgMemberMapper.isOrgAdmin(orgId, ctx.userId()));
+            && ctx.userId() != null
+            && orgMemberMapper.isOrgAdmin(orgId, ctx.userId());
 
     java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
     body.put("monthlyBudgetCny", snap.monthlyBudgetCny());
@@ -199,8 +199,8 @@ public class JudgeQualityController {
     if (ctx == null || ctx.userId() == null || orgId == null) {
       throw new BizException(400, "ORG_CONTEXT_REQUIRED");
     }
-    // 月度评测预算由组织创建者/管理员配置（平台管理员亦可）。
-    if (!ctx.isAdmin() && !orgMemberMapper.isOrgAdmin(orgId, ctx.userId())) {
+    // 月度评测预算仅由该组织的创建者/管理员配置（平台管理员若非本组织管理员则不放行）。
+    if (!orgMemberMapper.isOrgAdmin(orgId, ctx.userId())) {
       throw new BizException(403, "NOT_ORG_ADMIN");
     }
     java.math.BigDecimal amount;

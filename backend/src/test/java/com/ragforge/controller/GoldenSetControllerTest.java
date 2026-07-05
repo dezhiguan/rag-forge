@@ -273,23 +273,19 @@ class GoldenSetControllerTest {
   }
 
   @Test
-  void replayOrg_平台管理员_跳过组织角色校验也可触发() throws Exception {
+  void replayOrg_平台管理员非本组织管理员_返回403() throws Exception {
+    // 平台管理员若不是本组织的所有者/管理员，也不能触发该组织回放。
     RagAuthContextHolder.set(adminCtx(1L));
     OrgContextHolder.set(5L);
-    when(knowledgeBaseMapper.selectList(any())).thenReturn(List.of(kb(99L, 5L)));
-    when(judgeQueryService.goldenSetEnabledQuestionCount(anySet())).thenReturn(8);
-    when(budgetService.isExceeded(anyLong(), anySet())).thenReturn(false);
-    when(redisTemplate.opsForValue()).thenReturn(valueOps);
-    when(valueOps.setIfAbsent(anyString(), eq("1"), eq(GoldenSetController.REPLAY_COOLDOWN)))
-        .thenReturn(true);
+    when(orgMemberMapper.isOrgAdmin(5L, 1L)).thenReturn(false);
 
     mockMvc
         .perform(post("/api/v1/evaluation/golden-set/replay/org"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.requested").value(8));
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.errorCode").value("NOT_ORG_ADMIN"));
 
-    assertThat(queuedTasks).hasSize(1);
-    verify(orgMemberMapper, never()).isOrgAdmin(anyLong(), anyLong());
+    verify(replayJob, never()).replayForKbScope(anySet(), eq(50));
+    assertThat(queuedTasks).isEmpty();
   }
 
   @Test

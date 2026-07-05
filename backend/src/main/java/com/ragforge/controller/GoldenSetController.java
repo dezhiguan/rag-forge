@@ -116,8 +116,8 @@ public class GoldenSetController {
     if (ctx == null || ctx.userId() == null || orgId == null) {
       throw new BizException(400, "ORG_CONTEXT_REQUIRED");
     }
-    boolean allowed = ctx.isAdmin() || orgMemberMapper.isOrgAdmin(orgId, ctx.userId());
-    if (!allowed) {
+    // 仅该组织的创建者/管理员可触发回放（平台管理员若非本组织管理员则不放行）。
+    if (!orgMemberMapper.isOrgAdmin(orgId, ctx.userId())) {
       throw new BizException(403, "NOT_ORG_ADMIN");
     }
     Set<Long> scopeKbIds = orgKbIds(orgId);

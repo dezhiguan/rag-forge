@@ -501,13 +501,12 @@ const toast = useToast()
 const { clearSession, ragRole } = useAuth()
 // 全局抽样率与月度预算仅平台管理员可改;非管理员时全局区控件置灰(与后端 SAMPLING_GLOBAL_ADMIN_ONLY 一致)。
 const isPlatformAdmin = computed(() => ragRole.value === 'ADMIN')
-// 组织级回放/抽样配置权限：当前组织的所有者/管理员，或平台管理员。
+// 组织级回放/抽样/预算配置权限：严格按当前组织角色（所有者/管理员），去掉平台管理员在任意组织的兜底。
+// 平台管理员在"自己只是普通成员"的组织里不放行；提权（破玻璃）时落系统组织 myRole=OWNER 天然覆盖。
 const { current: currentOrg } = useOrg()
 // 「全平台」口径由提权（破玻璃）驱动，而非已下线的全局全平台视图。
 const { active: isPlatform } = useElevation()
-const canManageOrg = computed(
-  () => isPlatformAdmin.value || ['OWNER', 'ADMIN'].includes(currentOrg.value?.myRole),
-)
+const canManageOrg = computed(() => ['OWNER', 'ADMIN'].includes(currentOrg.value?.myRole))
 // 提权（破玻璃）：② 段展示「平台基准」卡片而非组织黄金集。
 const isPlatformView = computed(() => isPlatformAdmin.value && isPlatform.value)
 const router = useRouter()
