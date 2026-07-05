@@ -28,15 +28,19 @@
       <template v-if="!isPlatform">
         <div class="desc">下表是<b>本组织</b>的全部 API key。Key 仅在创建时可见可复制，请妥善保存，不要暴露在前端代码中。</div>
         <table>
-          <thead><tr><th>名称</th><th>Key</th><th>创建日期</th><th>最近使用</th><th></th></tr></thead>
+          <thead><tr><th>名称</th><th>权限</th><th>可访问范围</th><th>Key</th><th>有效期</th><th>最近使用</th><th></th></tr></thead>
           <tbody>
-            <tr v-if="!keys.length"><td colspan="5" class="empty">{{ loading ? '加载中…' : '暂无 API key' }}</td></tr>
+            <tr v-if="!keys.length"><td colspan="7" class="empty">{{ loading ? '加载中…' : '暂无 API key' }}</td></tr>
             <tr v-for="k in keys" :key="k.id">
               <td class="kname">{{ k.keyName }}
-                <span v-if="k.accessLevel === 'WRITE'" class="tag t-write">读写</span>
                 <span v-if="!k.enabled" class="tag t-off">已吊销</span></td>
+              <td><span class="tag" :class="k.accessLevel === 'WRITE' ? 't-write' : 't-read'">{{ k.accessLevel === 'WRITE' ? '读写' : '只读' }}</span></td>
+              <td>
+                <span v-if="k.scopeMode === 'KB_LIST'" class="scope-list" @click="openScope(k)">🎯 指定 {{ kbIdsOf(k).length }} 个库</span>
+                <span v-else class="scope-all">全部知识库</span>
+              </td>
               <td class="kcode">{{ k.keyMasked }}</td>
-              <td>{{ fmt(k.createdAt) }}</td>
+              <td><span class="exp" :class="expiryClass(k)">{{ expiryLabel(k) }}</span></td>
               <td>{{ fmt(k.lastUsedAt) || '—' }}</td>
               <td><div class="row-act icons" v-if="canManage">
                 <span class="ic" title="修改名称" @click="onRename(k)">✏️</span>
@@ -217,6 +221,31 @@
         </div>
       </div>
     </div>
+
+    <!-- 可访问范围：查看该 key 具体授权的知识库 -->
+    <div v-if="scopeDialog.open" class="mask" @click.self="closeScope">
+      <div class="reveal">
+        <div class="rv-head">
+          <h3>可访问的知识库</h3>
+          <span class="rv-x" @click="closeScope">×</span>
+        </div>
+        <p class="rv-msg">密钥 <b>{{ scopeDialog.keyName }}</b> 被授权访问以下 <b>{{ scopeDialog.items.length }}</b> 个知识库：</p>
+        <div class="kb-list">
+          <div v-for="it in scopeDialog.items" :key="it.id" class="kb-item">
+            <span class="kb-ico">📚</span>
+            <div class="kb-body">
+              <div class="kb-name" :class="{ 'kb-gone': !it.exists }">{{ it.name }}</div>
+              <div v-if="it.exists" class="kb-meta">{{ it.docCount }} 文档 · {{ it.chunkCount }} 片段</div>
+              <div v-else class="kb-meta kb-gone">已删除或当前无权访问</div>
+            </div>
+          </div>
+          <div v-if="!scopeDialog.items.length" class="kb-empty">该 key 未授权任何知识库</div>
+        </div>
+        <div class="rv-foot">
+          <button class="btn" @click="closeScope">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -237,6 +266,9 @@ const loading = ref(false)
 const creating = ref(false)
 const newKey = ref('')
 const showReveal = ref(false)
+// 「可访问范围」查看具体授权知识库的弹窗；kbIndex 懒加载本组织 KB（id→kb）供解析库名。
+const scopeDialog = ref({ open: false, keyName: '', items: [] })
+const kbIndex = ref(null)
 // 创建表单（可视化选范围/KB/过期）
 const showCreateForm = ref(false)
 const orgKbs = ref([])
@@ -283,6 +315,73 @@ const mcpTools = [
 
 function fmt(s) {
   return s ? String(s).slice(0, 10) : ''
+}
+
+// allowedKbIds 可能是 JSON 字符串("[1,2]")或数组，统一解析为 number[]。
+function kbIdsOf(k) {
+  const raw = k?.allowedKbIds
+  const arr = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string' && raw.trim()
+      ? (() => { try { const a = JSON.parse(raw); return Array.isArray(a) ? a : [] } catch { return [] } })()
+      : []
+  return arr.map(Number).filter((n) => !Number.isNaN(n))
+}
+
+// 有效期展示：永不过期 / 到期日；≤7 天预警、已过期置灰。
+function daysToExpiry(k) {
+  if (!k?.expiresAt) return null
+  const exp = new Date(String(k.expiresAt).slice(0, 10))
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.round((exp.getTime() - today.getTime()) / 86400000)
+}
+function expiryLabel(k) {
+  if (!k?.expiresAt) return '永不过期'
+  const day = String(k.expiresAt).slice(0, 10)
+  const d = daysToExpiry(k)
+  if (d < 0) return `已过期（${day}）`
+  if (d <= 7) return `${d} 天后到期`
+  return `${day} 到期`
+}
+function expiryClass(k) {
+  if (!k?.expiresAt) return 'exp-never'
+  const d = daysToExpiry(k)
+  if (d < 0) return 'exp-past'
+  if (d <= 7) return 'exp-soon'
+  return 'exp-date'
+}
+
+// 懒加载本组织 KB 建立 id→kb 索引（listKb 已按当前组织过滤）。
+async function ensureKbIndex() {
+  if (kbIndex.value) return kbIndex.value
+  const m = new Map()
+  try {
+    const res = await listKb()
+    const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+    for (const kb of list) m.set(Number(kb.id), kb)
+  } catch {
+    /* 全局拦截提示 */
+  }
+  kbIndex.value = m
+  return m
+}
+async function openScope(k) {
+  const ids = kbIdsOf(k)
+  const idx = await ensureKbIndex()
+  scopeDialog.value = {
+    open: true,
+    keyName: k.keyName,
+    items: ids.map((id) => {
+      const kb = idx.get(Number(id))
+      return kb
+        ? { id, name: kb.name, docCount: kb.docCount ?? 0, chunkCount: kb.chunkCount ?? 0, exists: true }
+        : { id, name: `知识库 #${id}`, exists: false }
+    }),
+  }
+}
+function closeScope() {
+  scopeDialog.value = { open: false, keyName: '', items: [] }
 }
 
 async function reload() {
@@ -460,6 +559,28 @@ tbody tr:last-child td { border-bottom: 0; }
 .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
 .t-on { background: #e8f6ee; color: #15803d; } .t-off { background: #fee2e2; color: #dc2626; }
 .t-write { background: #fef3c7; color: #b45309; }
+.t-read { background: var(--primary-soft); color: var(--primary); }
+
+/* 可访问范围 */
+.scope-all { color: var(--text-muted); }
+.scope-list { color: var(--primary); font-weight: 600; cursor: pointer; border-bottom: 1px dashed var(--primary-border); padding-bottom: 1px; }
+.scope-list:hover { border-bottom-color: var(--primary); }
+
+/* 有效期 */
+.exp { font-size: 13px; }
+.exp-never { color: var(--text-muted); }
+.exp-date { color: #c2410c; }
+.exp-soon { color: #dc2626; font-weight: 600; }
+.exp-past { color: var(--text-muted); text-decoration: line-through; }
+
+/* 可访问范围弹窗内的 KB 列表 */
+.kb-list { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; margin-bottom: 4px; }
+.kb-item { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.kb-ico { width: 30px; height: 30px; border-radius: 8px; background: var(--primary-soft); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.kb-name { font-weight: 600; color: var(--navy); font-size: 13.5px; }
+.kb-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+.kb-gone { color: #dc2626; }
+.kb-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 18px 0; }
 .row-act { display: flex; gap: 14px; } .row-act span { cursor: pointer; color: var(--primary); font-weight: 600; }
 .row-act .del { color: var(--red, #dc2626); } .row-act .muted { color: var(--text-muted); cursor: default; }
 .row-act.icons { gap: 16px; } .row-act.icons .ic { font-size: 16px; line-height: 1; opacity: .85; cursor: pointer; }
