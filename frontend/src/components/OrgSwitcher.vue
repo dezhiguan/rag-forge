@@ -29,25 +29,14 @@
         </button>
       </div>
 
-      <template v-if="isAdmin">
-        <div class="menu-sep"></div>
-        <div class="menu-label">平台管理</div>
-        <button class="org-opt" :class="{ active: current.platform }" @click="selectPlatform">
-          <span class="org-ava sm" style="background:#1e293b">∞</span>
-          <span class="org-meta">
-            <span class="org-name">全平台视图</span>
-            <span class="org-sub">超管 · 破玻璃(留审计)</span>
-          </span>
-          <span class="check">{{ current.platform ? '✓' : '' }}</span>
-        </button>
-      </template>
+      <!-- 全局「全平台视图」已下线：跨组织访问改为各页面右上的「提权查看全平台」开关（Tab 级破玻璃）。 -->
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useOrg, PLATFORM_ID } from '../composables/useOrg'
+import { useOrg } from '../composables/useOrg'
 import { useAuth } from '../composables/useAuth'
 
 // 破玻璃访问理由的存储 key（request.js 读取并注入 X-Admin-Override-Reason）
@@ -90,14 +79,6 @@ function select(o) {
   window.location.reload()
 }
 
-// 进入全平台视图 = 超管破玻璃：点击直接进入（不再弹填理由弹窗）。
-// 超管默认只看自己组织；破玻璃仍全程审计——理由由 request.js 默认注入 'platform-view'。
-function selectPlatform() {
-  open.value = false
-  if (current.value.platform) return
-  setCurrent(PLATFORM_ID)
-  window.location.reload()
-}
 
 
 function onDocClick() {

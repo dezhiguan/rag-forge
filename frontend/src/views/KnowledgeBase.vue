@@ -5,15 +5,7 @@
         <div class="toolbar-left">
           <button v-if="canCreateKb" class="btn btn-primary" @click="openCreate">+ 创建知识库</button>
           <button class="btn btn-secondary" :disabled="loadingKb" @click="loadKbs">刷新</button>
-          <button
-            v-if="showAdminViewAll"
-            class="btn btn-sm bg-breakglass"
-            :class="{ on: adminViewAll }"
-            :title="adminViewAll ? '正在以平台管理员身份查看全部知识库（已留审计）' : '平台管理员破玻璃：查看全部用户的知识库（将被审计）'"
-            @click="toggleAdminViewAll"
-          >
-            <span class="bg-ic">🛡</span>{{ adminViewAll ? '查看全部·已留痕' : '查看全部 · 平台管理员' }}
-          </button>
+          <ElevationToggle page-name="知识库管理" @change="loadKbs" />
         </div>
         <div class="toolbar-right">
           <div class="kb-search" :class="{ has: kbKeyword }">
@@ -589,6 +581,7 @@ import { onMounted, onUnmounted, reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createKb, deleteKb, listKb, listKbPaged, updateKb, getVisibilityImpact, changeVisibility } from '../api/kb'
 import Pager from '../components/Pager.vue'
+import ElevationToggle from '../components/ElevationToggle.vue'
 import { highlightParts } from '../utils/highlight'
 import { listOrgs } from '../api/org'
 import {
@@ -640,11 +633,8 @@ const { isPlatform, current } = useOrg()
 const canCreateKb = computed(
   () => !isPlatform.value && (!!current.value?.personal || ['OWNER', 'ADMIN'].includes(current.value?.myRole)),
 )
-// 「查看全部知识库」是平台级越权：仅在「全平台视图」(破玻璃)下出现，与驾驶舱口径一致；
-// 个人/团队组织上下文下不显示。
-const showAdminViewAll = computed(() => ragRole.value === 'ADMIN' && isPlatform.value)
-const adminViewAll = ref(false)
-const adminOverrideReason = ref('')
+// 跨组织「查看全部知识库」改由页头 ElevationToggle（Tab 级提权）承载：
+// 提权后 request.js 注入 X-Admin-Override，listKb/listKbPaged 即返回全平台库（留审计）。
 
 const kbList = ref([]) // 当前页（服务端分页返回）
 const allKbs = ref([]) // 全量（仅供上传下拉/默认上传目标用）
@@ -827,31 +817,12 @@ function onEditChunkOverlapBlur() {
   editForm.value.chunkOverlap = normalizeChunkOverlap(editForm.value.chunkOverlap)
 }
 
-async function toggleAdminViewAll() {
-  if (!adminViewAll.value) {
-    const reason = await confirmDialog({
-      title: '查看全部知识库',
-      message: '这是平台管理员越权操作，将被审计留痕。请填写访问原因：',
-      input: true,
-      inputPlaceholder: '如：排查某用户入库失败',
-      confirmText: '确认查看',
-      variant: 'danger',
-    })
-    if (!reason || !String(reason).trim()) return
-    adminOverrideReason.value = String(reason).trim()
-    adminViewAll.value = true
-  } else {
-    adminViewAll.value = false
-    adminOverrideReason.value = ''
-  }
-  await loadKbs()
-}
-
 async function loadKbs() {
   loadingKb.value = true
   try {
-    // 全量列表：仅用于上传下拉/默认上传目标（写权限库通常很少）
-    const res = await listKb(adminViewAll.value ? adminOverrideReason.value : undefined)
+    // 全量列表：仅用于上传下拉/默认上传目标（写权限库通常很少）。
+    // 提权态下由 request.js 统一注入 X-Admin-Override，返回全平台库。
+    const res = await listKb()
     allKbs.value = res.data ?? []
     if ((!uploadKbId.value || !uploadableKbs.value.some((kb) => kb.id === uploadKbId.value)) && uploadableKbs.value.length) {
       uploadKbId.value = uploadableKbs.value[0].id

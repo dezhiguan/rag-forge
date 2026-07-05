@@ -1,5 +1,8 @@
 <template>
   <div class="page-body">
+    <Teleport to="#topbar-right">
+      <ElevationToggle page-name="驾驶舱" @change="loadMetrics" />
+    </Teleport>
     <div v-if="isPersonal" class="upgrade-banner">
       <span class="ub-ico">⬆</span>
       <span class="ub-txt">
@@ -205,6 +208,7 @@ import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { getDashboardMetrics } from '../api/metrics'
 import { reprocessDocument } from '../api/document'
 import { useOrg } from '../composables/useOrg'
+import ElevationToggle from '../components/ElevationToggle.vue'
 import { listMembers } from '../api/org'
 import { useToast } from '../composables/useToast'
 

@@ -4,6 +4,9 @@
       <span class="topbar-divider" />
       <span class="topbar-subtitle">管理接入凭证、查阅接口与 MCP 集成方式，均归属当前组织，切换组织即切换上下文</span>
     </Teleport>
+    <Teleport to="#topbar-right">
+      <ElevationToggle page-name="开发者中心" @change="reload" />
+    </Teleport>
 
     <!-- 子 tab -->
     <div class="seg">
@@ -254,6 +257,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useOrg } from '../composables/useOrg'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
+import ElevationToggle from '../components/ElevationToggle.vue'
 import { listApiKeys, createApiKey, renameApiKey, deleteApiKey, governanceSearchKeys, revokeApiKey } from '../api/apikey'
 import { listKb } from '../api/kb'
 

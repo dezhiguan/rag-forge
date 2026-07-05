@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
 import { ERROR_MESSAGES } from './error-messages'
+import { resolveContextHeaders } from '../utils/elevation-headers'
 // 静默续期收口到 session.js：跨标签页单飞 + 主动续期 + 失败分级（401/403 才算真过期）
 import { silentRefresh, handleSessionExpired } from './session'
 
@@ -141,20 +142,10 @@ request.interceptors.request.use((config) => {
   if (state.accessToken) {
     config.headers.Authorization = `Bearer ${state.accessToken}`
   }
-  // 注入当前组织上下文。从 localStorage 读，避免与 api 层循环依赖。
-  // platform = 超管全平台视图 → 破玻璃头(X-Admin-Override)；其余 = X-Org-Id；个人(null)不带头。
+  // 注入当前组织上下文 / 提权头。从 localStorage 读，避免与 api 层循环依赖。
+  // 提权(ragforge.elevation)→ X-Admin-Override + 理由头；否则按当前组织 → X-Org-Id。见 resolveContextHeaders。
   try {
-    const orgId = localStorage.getItem('ragforge.currentOrgId')
-    if (orgId === 'platform') {
-      config.headers['X-Admin-Override'] = 'true'
-      // 理由由 OrgSwitcher 进入平台视图时显式采集(留审计);缺失时兜底不影响取数。
-      // HTTP 头仅允许 ISO-8859-1,中文理由须编码后传输,后端 URLDecoder 解码还原。
-      config.headers['X-Admin-Override-Reason'] = encodeURIComponent(
-        localStorage.getItem('ragforge.adminOverrideReason') || 'platform-view',
-      )
-    } else if (orgId && orgId !== 'null' && orgId !== '') {
-      config.headers['X-Org-Id'] = orgId
-    }
+    Object.assign(config.headers, resolveContextHeaders(localStorage))
   } catch {
     /* ignore */
   }

@@ -4,6 +4,9 @@
       <span class="topbar-divider" />
       <span class="topbar-subtitle">统一管理检索链路使用的大模型，监控 Token 消耗与费用</span>
     </Teleport>
+    <Teleport to="#topbar-right">
+      <ElevationToggle page-name="模型 & 成本" @change="load" />
+    </Teleport>
 
     <div class="tabs">
       <div class="tab" :class="{ active: activeTab === 0 }" @click="activeTab = 0">模型管理</div>
@@ -171,6 +174,7 @@ import { getModelList, toggleModel, getModelCostStats, getModelCostDetail } from
 import { useToast } from '../composables/useToast'
 import { useAuth } from '../composables/useAuth'
 import { useOrg } from '../composables/useOrg'
+import ElevationToggle from '../components/ElevationToggle.vue'
 
 const toast = useToast()
 const { ragRole } = useAuth()

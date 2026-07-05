@@ -4,6 +4,9 @@
       <span class="topbar-divider" />
       <span class="topbar-subtitle">LLM-as-Judge 评测质量趋势与成本监控</span>
     </Teleport>
+    <Teleport to="#topbar-right">
+      <ElevationToggle page-name="质量看板" @change="loadAll" />
+    </Teleport>
 
     <div v-if="globalError" class="quality-error-banner">
       {{ globalError }}
@@ -489,6 +492,7 @@ import { bottleneckLabel, resolveHttpError } from '../api/error-messages'
 import { useAuth } from '../composables/useAuth'
 import { useOrg } from '../composables/useOrg'
 import { confirm as confirmDialog } from '../composables/useConfirm'
+import ElevationToggle from '../components/ElevationToggle.vue'
 import { useToast } from '../composables/useToast'
 
 const toast = useToast()
