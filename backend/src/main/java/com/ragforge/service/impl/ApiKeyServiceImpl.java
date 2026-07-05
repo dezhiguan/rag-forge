@@ -39,6 +39,9 @@ public class ApiKeyServiceImpl implements ApiKeyService {
 
   // 与 DB 列 api_keys.key_name VARCHAR(100) 对齐：超长须提前 400 拦下，避免入库溢出落 500 兜底。
   private static final int MAX_KEY_NAME_LEN = 100;
+  // 限流（次/分钟）：读 key 常规调用；写 key 需支撑大批量入库，暂放宽到 1000（后续可收紧）。
+  private static final int READ_RATE_LIMIT = 100;
+  private static final int WRITE_RATE_LIMIT = 1000;
 
   /** 超管全平台视图（破玻璃）= 只读治理。 */
   public boolean isPlatformGovernance() {
@@ -134,8 +137,8 @@ public class ApiKeyServiceImpl implements ApiKeyService {
       throw new BizException(400, "KEY_NAME_TOO_LONG");
     }
     String scopeMode = normalizeScopeMode(cmd.scopeMode());
-    // 本期仅 READ（READ_WRITE 暂不开放，无写接口接受 key）。
-    String accessLevel = "READ";
+    // READ（默认，只读检索/应答）| WRITE（额外可调 /documents 入库，写范围=本 key 的 scope 库）。
+    String accessLevel = normalizeAccessLevel(cmd.accessLevel());
 
     String allowedKbIdsJson = null;
     if ("KB_LIST".equals(scopeMode)) {
@@ -154,7 +157,8 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     apiKey.setKeyHash(sha256Hex(key));
     apiKey.setKeyPrefix(key.substring(0, Math.min(12, key.length())));
     apiKey.setEnabled(true);
-    apiKey.setRateLimit(100);
+    // 写 key 需支撑大批量入库，先给更宽限流（1000/min），后续可按治理需要收紧。
+    apiKey.setRateLimit("WRITE".equals(accessLevel) ? WRITE_RATE_LIMIT : READ_RATE_LIMIT);
     apiKey.setOrgId(orgId);
     apiKey.setScopeMode(scopeMode);
     apiKey.setAccessLevel(accessLevel);
@@ -176,6 +180,12 @@ public class ApiKeyServiceImpl implements ApiKeyService {
       return "KB_LIST";
     }
     return "ORG_ALL"; // 默认
+  }
+
+  /** 权限级别归一：仅 READ / WRITE 合法，其余（含 null）回落 READ（最小权限默认）。 */
+  private String normalizeAccessLevel(String raw) {
+    String v = raw == null ? "" : raw.trim().toUpperCase();
+    return "WRITE".equals(v) ? "WRITE" : "READ";
   }
 
   /** KB_LIST 授权的库必须都存在且归属当前组织，否则拒绝（防越权注入他组织库）。 */

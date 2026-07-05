@@ -34,6 +34,8 @@ export const ERROR_MESSAGES = {
   API_KEY_INVALID: 'API 密钥无效或已被禁用，请检查后重试',
   API_KEY_EXPIRED: '密钥已过期，请重新生成后使用',
   API_KEY_RATE_LIMITED: '请求过于频繁，请稍后再试',
+  API_KEY_READ_ONLY: '该 API 密钥为只读，无法写入数据；请在开发者中心创建具有写入权限（WRITE）的密钥',
+  API_KEY_KB_NOT_AUTHORIZED: '该 API 密钥未被授权写入此知识库，请检查密钥的可访问范围',
   INVALID_STRATEGY: '所选分块策略不适用于当前文档（例如「按标题分块」仅支持 Markdown 文档）。请改用「固定窗口」或「递归切分」等策略重新分块。',
   SEMANTIC_REQUIRES_LONG_TEXT: '文本不足 2000 字，无法使用语义分块，请改用其他策略。',
   NO_CHUNKER_STRATEGY_AVAILABLE: '没有可用的分块策略，请更换策略后重试。',

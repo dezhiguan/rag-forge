@@ -32,7 +32,9 @@
           <tbody>
             <tr v-if="!keys.length"><td colspan="5" class="empty">{{ loading ? '加载中…' : '暂无 API key' }}</td></tr>
             <tr v-for="k in keys" :key="k.id">
-              <td class="kname">{{ k.keyName }} <span v-if="!k.enabled" class="tag t-off">已吊销</span></td>
+              <td class="kname">{{ k.keyName }}
+                <span v-if="k.accessLevel === 'WRITE'" class="tag t-write">读写</span>
+                <span v-if="!k.enabled" class="tag t-off">已吊销</span></td>
               <td class="kcode">{{ k.keyMasked }}</td>
               <td>{{ fmt(k.createdAt) }}</td>
               <td>{{ fmt(k.lastUsedAt) || '—' }}</td>
@@ -86,7 +88,7 @@
           <div class="sec-hint">凭 API key（X-API-Key）调用，均按 key 绑定的组织过滤数据。</div>
           <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/search</span><span class="ep-desc">混合检索（向量+BM25+精排）</span></div>
           <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/answer</span><span class="ep-desc">RAG 应答</span></div>
-          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/documents</span><span class="ep-desc">上传文档入库</span></div>
+          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/documents</span><span class="ep-desc">上传文档入库（需 WRITE 密钥）</span></div>
         </div>
       </div>
       <div class="card card-pad mt16">
@@ -164,7 +166,17 @@
 
           <div class="cf-field">
             <span class="cf-label">权限级别</span>
-            <span class="cf-static">只读（READ）· 本期仅支持只读</span>
+            <label class="cf-radio">
+              <input type="radio" value="READ" v-model="createForm.accessLevel" />
+              只读（READ）· 检索 / 应答
+            </label>
+            <label class="cf-radio">
+              <input type="radio" value="WRITE" v-model="createForm.accessLevel" />
+              读写（WRITE）· 额外可调 /documents 入库
+            </label>
+            <div v-if="createForm.accessLevel === 'WRITE'" class="cf-hint">
+              ⚠ 写入密钥可向上方所选范围内的知识库入库，产生存储与向量化成本（计入本组织用量）。请妥善保管。
+            </div>
           </div>
 
           <div class="cf-field">
@@ -316,7 +328,8 @@ async function submitCreate() {
     toast.warning('指定知识库范围时，请至少选择一个知识库')
     return
   }
-  const payload = { keyName: name, scopeMode: createForm.value.scopeMode, accessLevel: 'READ' }
+  const accessLevel = createForm.value.accessLevel === 'WRITE' ? 'WRITE' : 'READ'
+  const payload = { keyName: name, scopeMode: createForm.value.scopeMode, accessLevel }
   if (createForm.value.scopeMode === 'KB_LIST') {
     payload.allowedKbIds = createForm.value.allowedKbIds
   }
@@ -446,6 +459,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .kcode { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--slate); }
 .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
 .t-on { background: #e8f6ee; color: #15803d; } .t-off { background: #fee2e2; color: #dc2626; }
+.t-write { background: #fef3c7; color: #b45309; }
 .row-act { display: flex; gap: 14px; } .row-act span { cursor: pointer; color: var(--primary); font-weight: 600; }
 .row-act .del { color: var(--red, #dc2626); } .row-act .muted { color: var(--text-muted); cursor: default; }
 .row-act.icons { gap: 16px; } .row-act.icons .ic { font-size: 16px; line-height: 1; opacity: .85; cursor: pointer; }
@@ -490,6 +504,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .cf-radio { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--slate); cursor: pointer; }
 .cf-radio input { width: 15px; height: 15px; }
 .cf-static { font-size: 12.5px; color: var(--text-muted); }
+.cf-hint { font-size: 12px; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 10px; line-height: 1.6; }
 .cf-kblist { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; }
 .cf-kb { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--slate); cursor: pointer; }
 .cf-kb input { width: 15px; height: 15px; }

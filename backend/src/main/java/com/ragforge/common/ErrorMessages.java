@@ -70,6 +70,10 @@ public final class ErrorMessages {
           Map.entry("API_KEY_INVALID", "API 密钥无效或已被禁用，请检查后重试"),
           Map.entry("API_KEY_EXPIRED", "密钥已过期，请重新生成后使用"),
           Map.entry("API_KEY_RATE_LIMITED", "请求过于频繁，请稍后再试"),
+          Map.entry(
+              "API_KEY_READ_ONLY", "该 API 密钥为只读，无法写入数据；请在开发者中心创建具有写入权限（WRITE）的密钥"),
+          Map.entry(
+              "API_KEY_KB_NOT_AUTHORIZED", "该 API 密钥未被授权写入此知识库，请检查密钥的可访问范围"),
           // 治理 / 破玻璃
           Map.entry("GOVERNANCE_REQUIRES_BREAKGLASS", "该治理操作需先进入「全平台视图」（破玻璃）后才能执行"),
           Map.entry("GOVERNANCE_QUERY_TOO_SHORT", "请输入至少 3 个字符的密钥名称或前缀"),

@@ -206,12 +206,25 @@ public class DocumentUploadApplicationServiceImpl implements DocumentUploadAppli
     return ingestResponse(result);
   }
 
+  /**
+   * /documents（relay 入库）写入被拒时给出更精确、友好的错误码：
+   * API key 只读 → 提示创建写权限密钥；API key 写但未授权此库 → 提示该库不在密钥范围；其余（JWT 用户无写权限）沿用通用码。
+   */
+  private BizException writeForbidden() {
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    if (ctx != null && "SERVICE_ACCOUNT".equals(ctx.ragRole())) {
+      boolean noWritable = ctx.writableKbIds() == null || ctx.writableKbIds().isEmpty();
+      return new BizException(403, noWritable ? "API_KEY_READ_ONLY" : "API_KEY_KB_NOT_AUTHORIZED");
+    }
+    return new BizException(403, "KB_WRITE_FORBIDDEN");
+  }
+
   @Override
   public UploadRelayResult relayUpload(MultipartFile file, String metaJson) {
     IngestCommand cmd = parseMeta(metaJson);
     Long kbId = cmd.getKbId();
     if (!kbAccessGuard.canWrite(kbId)) {
-      throw new BizException(403, "KB_WRITE_FORBIDDEN");
+      throw writeForbidden();
     }
     if (file.getSize() > RelayUploadLimits.RELAY_UPLOAD_LIMIT_BYTES) {
       return UploadRelayResult.payloadTooLarge(

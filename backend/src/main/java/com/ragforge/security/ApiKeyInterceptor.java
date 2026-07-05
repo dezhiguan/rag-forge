@@ -185,8 +185,9 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     String principalType = normalizePrincipalType(apiKey.getPrincipalType());
     String principalId = hasText(apiKey.getPrincipalId()) ? apiKey.getPrincipalId() : "sa:" + apiKey.getKeyName();
     Set<Long> readable = resolveReadableKbIds(apiKey);
-    // 本期只做 READ：写集为空（无写接口接受 key）。READ_WRITE 开放后再据 access_level 赋值。
-    Set<Long> writable = Set.of();
+    // WRITE 级 key：可写范围 = 本 key 的 scope 库（与可读一致，WRITE 蕴含 READ），用于 /documents 入库鉴权；
+    // READ 级写集为空 → canWrite 恒 false。仅 /documents 在 API key 拦截路径内，其余写端点不受影响。
+    Set<Long> writable = "WRITE".equals(apiKey.getAccessLevel()) ? readable : Set.of();
     return new RagAuthContext(
         null,
         "SERVICE_ACCOUNT",
