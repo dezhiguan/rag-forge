@@ -12,7 +12,7 @@
 - **定位**:RAG 基础设施层,为 [CareerMate(AI 求职 Agent)](https://github.com/dezhiguan/careermate) 等上层应用提供知识检索 / RAG 应答 / MCP API
 - **线上**:https://ragforge.net (已上线运行)
 - **后端**:Java 21 + Spring Boot 3.5.15 + MyBatis-Plus
-- **数据**:PostgreSQL + pgvector(`vl_vector` 2560 维)、Elasticsearch 8.15(BM25)、RocketMQ、Redis
+- **数据**:PostgreSQL(业务数据/正文/元数据)、Qdrant(向量库,1024 维,HNSW ANN)、Elasticsearch 8.15(BM25)、RocketMQ、Redis
 - **AI**:Spring AI 1.0(MCP WebMVC SSE);模型走 DashScope + DeepSeek(见下)
 - **前端**:Vue 3 + Vite + Element Plus(纯 JavaScript)
 - **部署**:k3s 单节点(应用层),数据层独立机,入口层 Nginx
@@ -31,7 +31,7 @@
 ### 模型(按 Purpose)
 | Purpose | 模型 | 供应商 | 说明 |
 |------|------|------|------|
-| EMBEDDING | `qwen3-vl-embedding` | DashScope | 文本+图片统一 **2560 维** |
+| EMBEDDING | `qwen3-vl-embedding` | DashScope | 文本+图片统一,Matryoshka 截断至 **1024 维**(匹配 Qdrant collection) |
 | REWRITE | `qwen-turbo` | DashScope | Query 改写(支持动态选型) |
 | ANSWER | `qwen-plus` | DashScope | RAG 应答 / 调试台(支持动态选型) |
 | RERANK | `qwen3-rerank` | DashScope | 仅 `full` 策略 |
@@ -41,7 +41,8 @@
 > ⚠️ 历史误区(已纠正):早期文档写的 text-embedding-v4 / DeepSeek-V3 改写 / 本地 bge-reranker 微服务**均已不是现状**。rerank 走 DashScope 在线,`reranker/`(jina)线上未部署。
 
 ### 中间件
-- PostgreSQL + pgvector:业务数据 + 向量(`document_chunks.vl_vector vector(2560)`)
+- PostgreSQL:业务数据 + chunk 正文/元数据(向量已迁出 Qdrant,`document_chunks.vl_vector` 列留空不再用于检索)
+- Qdrant:向量存储 + ANN 检索(collection `ragforge_chunks`,1024 维,gRPC,oversampling 2.0)
 - Elasticsearch 8.15 + IK:BM25 关键词检索(IK 缺失回退 standard)
 - RocketMQ:文档处理异步管道(topic `ragforge-document-process`,group `ragforge-doc-process-group`)
 - Redis:认证撤销、API Key 限流、ShedLock
@@ -53,8 +54,10 @@ vector(默认) / keyword / hybrid(RRF) / rewrite(改写+多路向量) / full(改
 ```
 每策略独立并发限流 + 超时;`full` 默认并发=1,是唯一调用 rerank 的策略。
 
-### 向量索引现状(重要)
-`vl_vector` 为 2560 维 > pgvector 0.8 索引上限 2000,**当前无 HNSW,向量检索走顺序扫描**。切换见 `backend/src/main/resources/db/manual/V27__vl_unified_vector.sql`。
+### 向量检索现状(重要)
+向量已**迁至 Qdrant**(collection `ragforge_chunks`,**1024 维**,**HNSW ANN**,oversampling 2.0);PG `vl_vector` 列留空、不再入库不再用于检索。
+检索流:`query → embedding(1024) → Qdrant ANN(按 kb_id/doc_id/chunk_type 过滤) → 拿 chunkId+score → 回 PG 按 chunkId 批量取正文/元数据 → 组装 SearchResult`(见 `search/VectorSearchService.java`、`search/QdrantVectorStore.java`)。
+> ⚠️ 历史误区(已纠正):早期"vl_vector 2560 维 / pgvector 无 HNSW / 顺序扫描"**已不是现状**。
 
 ### 数据库
 Flyway `V1..V51`(baseline=26,out-of-order),核心表 ~26 张:knowledge_bases / documents / document_chunks / retrieval_logs / kb_acl / answer_logs / clean_profiles / eval_* / judge_* / model_config / model_usage_daily / organizations / org_members / api_keys / revoked_jtis / admin_access_audit 等。
