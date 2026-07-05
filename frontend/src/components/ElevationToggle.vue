@@ -1,6 +1,6 @@
 <template>
   <button
-    v-if="isAdmin"
+    v-if="canElevate"
     class="elev-toggle"
     :class="{ on: active }"
     :title="active
@@ -14,9 +14,10 @@
 </template>
 
 <script setup>
-import { computed, onUnmounted } from 'vue'
+import { computed, onUnmounted, watch } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useElevation } from '../composables/useElevation'
+import { useOrg } from '../composables/useOrg'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 
 // 每个需要跨组织的页面在页头右上放一个本组件。开启需弹窗必填理由；关闭一键；离开页面自动关闭。
@@ -24,7 +25,11 @@ const props = defineProps({ pageName: { type: String, default: '本页' } })
 const emit = defineEmits(['change'])
 
 const { ragRole } = useAuth()
+const { isSystem } = useOrg()
 const isAdmin = computed(() => ragRole.value === 'ADMIN')
+// 提权（跨组织破玻璃）是系统组织的治理能力：仅超管、且当前处于系统组织时可用。
+// 超管的个人组织是私人空间，与普通用户一致，不得提权。
+const canElevate = computed(() => isAdmin.value && isSystem.value)
 const { active, activate, deactivate } = useElevation()
 
 async function toggle() {
@@ -49,6 +54,14 @@ async function toggle() {
     emit('change', true)
   }
 }
+
+// 一旦离开系统组织（如切回个人组织），立即结束提权：个人组织不得携带破玻璃口径。
+watch(canElevate, (ok) => {
+  if (!ok && active.value) {
+    deactivate()
+    emit('change', false)
+  }
+})
 
 // 离开页面即结束提权：不跨页粘住。
 onUnmounted(() => {

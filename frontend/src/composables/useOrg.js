@@ -47,6 +47,8 @@ export function useOrg() {
     current,
     currentOrgId: computed(() => current.value.id ?? null),
     isPersonal: computed(() => !!current.value.personal),
+    // 系统组织（org_id=0，type=SYSTEM）：超管治理工作区，成员皆超管。跨组织「提权破玻璃」仅此组织下可用。
+    isSystem: computed(() => current.value.type === 'SYSTEM' || current.value.id === 0),
     isPlatform: computed(() => state.currentId === PLATFORM_ID),
     /** 拉取我的组织（含个人组织）；当前选中失效则回退到个人组织。 */
     async load(opts = {}) {
