@@ -49,7 +49,6 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useOrg, PLATFORM_ID } from '../composables/useOrg'
 import { useAuth } from '../composables/useAuth'
-import { confirm as confirmDialog } from '../composables/useConfirm'
 
 // 破玻璃访问理由的存储 key（request.js 读取并注入 X-Admin-Override-Reason）
 const ADMIN_OVERRIDE_REASON_KEY = 'ragforge.adminOverrideReason'
@@ -91,21 +90,11 @@ function select(o) {
   window.location.reload()
 }
 
-// 进入全平台视图 = 超管破玻璃:默认不激活,必须显式确认并填写访问理由(留审计)。
-// 超管默认只看自己组织；仅在此主动破玻璃后才跨组织访问全平台数据。
-async function selectPlatform() {
+// 进入全平台视图 = 超管破玻璃：点击直接进入（不再弹填理由弹窗）。
+// 超管默认只看自己组织；破玻璃仍全程审计——理由由 request.js 默认注入 'platform-view'。
+function selectPlatform() {
   open.value = false
   if (current.value.platform) return
-  const reason = await confirmDialog({
-    title: '进入全平台视图(超管破玻璃)',
-    message: '你将以超管身份跨组织访问全平台数据,本次访问全程审计。请填写访问理由:',
-    input: true,
-    inputPlaceholder: '如:排查组织质量下降 / 客户支持工单 #123 / 安全事件核查',
-    confirmText: '确认进入',
-  })
-  const r = typeof reason === 'string' ? reason.trim() : ''
-  if (!r) return // 取消或未填理由 → 默认不激活,保持当前组织
-  try { localStorage.setItem(ADMIN_OVERRIDE_REASON_KEY, r.slice(0, 200)) } catch { /* ignore */ }
   setCurrent(PLATFORM_ID)
   window.location.reload()
 }
