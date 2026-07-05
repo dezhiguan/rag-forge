@@ -172,9 +172,9 @@
                 - 纯图片文档（fileType=image/*）：直接用整篇下载 URL，那本身就是这张图
               -->
               <img
-                v-if="c.imageUrl || (isImageDoc && c.imageKey)"
+                v-if="chunkThumbSrc(c)"
                 class="chunk-thumb"
-                :src="c.imageUrl || downloadUrl"
+                :src="chunkThumbSrc(c)"
                 alt="chunk 预览图"
               >
               <div v-if="c.headingPath" class="chunk-heading">{{ c.headingPath }}</div>
@@ -407,7 +407,7 @@ import Pager from '../components/Pager.vue'
 import ContentModal from '../components/ContentModal.vue'
 import RechunkDialog from '../components/RechunkDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rechunkDocument } from '../api/document'
+import { deleteDocument, getDocument, listDocumentChunks, reprocessDocument, rechunkDocument, downloadDocument } from '../api/document'
 import { getKb } from '../api/kb'
 import { highlightParts as hlParts } from '../utils/highlight'
 import { chunkerStrategyLabel } from '../utils/chunker'
@@ -462,7 +462,34 @@ const normalizedStatus = computed(() => normalizeDocStatus(doc.value?.parseStatu
 const isCompletedDoc = computed(() => normalizedStatus.value === 'completed')
 const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
 const isImageDoc = computed(() => (doc.value?.fileType || '').toLowerCase().startsWith('image/'))
-const downloadUrl = computed(() => doc.value?.id ? `/api/v1/documents/${doc.value.id}/download` : '')
+// 纯图片文档的预览：后端 imageUrl 在本地盘存储下为 file:// 或空（浏览器不可加载），
+// 而 /download 需 JWT 鉴权，<img src> 带不了内存里的 token → 401 裂图。
+// 解决：用带鉴权的 request 拉整篇图片为 blob，再转 objectURL 给 <img>（把登录态带过去）。
+const localImageBlobUrl = ref('')
+const isHttpUrl = (u) => typeof u === 'string' && /^https?:\/\//.test(u)
+// chunk 缩略图最终 src：优先可用的 http(s) presigned URL；否则纯图片文档用带鉴权拉取的 blob。
+function chunkThumbSrc(c) {
+  if (isHttpUrl(c?.imageUrl)) return c.imageUrl
+  if (isImageDoc.value && c?.imageKey) return localImageBlobUrl.value
+  return ''
+}
+function revokeLocalImage() {
+  if (localImageBlobUrl.value) {
+    URL.revokeObjectURL(localImageBlobUrl.value)
+    localImageBlobUrl.value = ''
+  }
+}
+async function resolveLocalImage() {
+  revokeLocalImage()
+  if (!isImageDoc.value || !doc.value?.id) return
+  try {
+    const res = await downloadDocument(doc.value.id)
+    const blob = res?.data ?? res
+    if (blob instanceof Blob) localImageBlobUrl.value = URL.createObjectURL(blob)
+  } catch {
+    /* 拉取失败则退化为无预览，不影响 chunk 列表 */
+  }
+}
 
 // 压缩包容器：以 VO.isArchive 为准；EXPANDING/EXPANDED 是容器专属状态，也一并识别。
 // FAILED 单靠状态无法区分容器与普通文档失败，只由 isArchive 判定，避免误伤普通失败文档。
@@ -645,6 +672,7 @@ async function loadDetail() {
     doc.value = res.data ?? null
     await loadKbPermission()
     resetChunks()
+    resolveLocalImage()
     if (normalizeDocStatus(doc.value?.parseStatus) === 'completed') {
       await loadChunksPage(1)
     }
@@ -779,6 +807,7 @@ onMounted(async () => {
 onUnmounted(() => {
   const id = Number(route.params.id)
   if (id) stopPolling(id)
+  revokeLocalImage()
   window.removeEventListener('keydown', onKeydown)
 })
 
