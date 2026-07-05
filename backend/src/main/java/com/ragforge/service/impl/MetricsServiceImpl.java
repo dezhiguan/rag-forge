@@ -81,8 +81,14 @@ public class MetricsServiceImpl implements MetricsService {
 
   /** 按当前组织(X-Org-Id)：知识库/文档/chunk 仅统计本组织的库；检索次数/延迟/质量按 org_id 归属本组织。 */
   private DashboardMetricsVO loadOrgDashboard(Long orgId) {
+    // 未选择组织(缺 X-Org-Id 且非管理员破玻璃)：绝不把 null 下传给 applyCost/applyRetrievalQuality/
+    // loadRetrievalTrend——那里的 orgId==null 语义是"全平台聚合"(仅供管理员破玻璃)，普通调用者退化到
+    // 全局即等于跨组织泄露平台成本/质量/token。此处直接返回空看板(全 0)。
+    if (orgId == null) {
+      return emptyDashboard();
+    }
     DashboardMetricsVO vo = new DashboardMetricsVO();
-    List<Long> kbIds = orgId == null ? List.of() : orgKbIds(orgId);
+    List<Long> kbIds = orgKbIds(orgId);
     vo.setKbCount(kbIds.size());
     if (kbIds.isEmpty()) {
       vo.setDocumentCount(0);
@@ -98,24 +104,31 @@ public class MetricsServiceImpl implements MetricsService {
 
     LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
     LocalDateTime windowStart = windowStart();
-    if (orgId == null) {
-      vo.setTodayApiCalls(0);
-      vo.setAvgLatencyMs(0);
-    } else {
-      vo.setTodayApiCalls(
-          retrievalLogMapper.selectCount(
-              new LambdaQueryWrapper<RetrievalLog>()
-                  .eq(RetrievalLog::getOrgId, orgId)
-                  .ge(RetrievalLog::getCreatedAt, startOfDay)));
-      vo.setAvgLatencyMs(calcAvgLatencyMs(windowStart, orgId));
-    }
+    vo.setTodayApiCalls(
+        retrievalLogMapper.selectCount(
+            new LambdaQueryWrapper<RetrievalLog>()
+                .eq(RetrievalLog::getOrgId, orgId)
+                .ge(RetrievalLog::getCreatedAt, startOfDay)));
+    vo.setAvgLatencyMs(calcAvgLatencyMs(windowStart, orgId));
     applyRetrievalQuality(vo, windowStart, orgId);
     applyIngestHealth(vo, kbIds, false);
     applyCost(vo, orgId);
     vo.setRetrievalTrend(loadRetrievalTrend(windowStart, orgId));
     // 命中率源自评测实验（管理员/编辑功能），普通用户无评测，不展示。
     vo.setHitRate(0.0);
-    vo.setRecentActivities(orgId == null ? List.of() : orgRecentActivities(orgId, kbIds, 10));
+    vo.setRecentActivities(orgRecentActivities(orgId, kbIds, 10));
+    return vo;
+  }
+
+  /** 空看板：未选择组织时返回，全部指标归零，不触发任何跨组织聚合查询。 */
+  private DashboardMetricsVO emptyDashboard() {
+    DashboardMetricsVO vo = new DashboardMetricsVO();
+    vo.setTotalCost(BigDecimal.ZERO);
+    vo.setEmbeddingCost(BigDecimal.ZERO);
+    vo.setRerankCost(BigDecimal.ZERO);
+    vo.setLlmCost(BigDecimal.ZERO);
+    vo.setRetrievalTrend(List.of());
+    vo.setRecentActivities(List.of());
     return vo;
   }
 
