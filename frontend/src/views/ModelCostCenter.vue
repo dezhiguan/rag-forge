@@ -56,7 +56,7 @@
         <table v-else class="data-table">
           <thead>
             <tr>
-              <th>模型</th><th>用途</th><th>计价（¥/百万Token）</th>
+              <th>模型</th><th>用途</th><th>输入单价（¥/百万Token）</th><th>输出价（¥/百万Token）</th>
               <th>本月费用</th><th>状态</th><th style="text-align:center">启用</th>
             </tr>
           </thead>
@@ -67,7 +67,8 @@
                 <div class="m-vendor">{{ vendorLabel(m.vendor) }}<span v-if="!m.isPrimary"> · 备用</span></div>
               </td>
               <td><span class="badge" :class="purposeClass(m.purpose)">{{ purposeLabel(m.purpose) }}</span></td>
-              <td class="price">{{ priceLabel(m) }}</td>
+              <td class="price">{{ inputPriceLabel(m) }}</td>
+              <td class="price">{{ outputPriceLabel(m) }}</td>
               <td class="cost-cell">{{ formatMoney(m.monthlyCost) }}</td>
               <td>
                 <span class="badge" :class="m.enabled ? 'badge-green' : 'badge-gray'">
@@ -222,10 +223,14 @@ const legendPurposes = computed(() => {
   return [...set]
 })
 
-function priceLabel(m) {
+function inputPriceLabel(m) {
   if (m.isLocal) return '本地 · 无 API 费'
-  if (Number(m.outputPrice) > 0) return `¥${fmt(m.inputPrice)} / ¥${fmt(m.outputPrice)}`
   return `¥${fmt(m.inputPrice)}`
+}
+function outputPriceLabel(m) {
+  if (m.isLocal) return '—'
+  if (Number(m.outputPrice) > 0) return `¥${fmt(m.outputPrice)}`
+  return '—'
 }
 function fmt(v) { return Number(v ?? 0).toFixed(2) }
 function formatMoney(v) { return '¥' + Number(v ?? 0).toFixed(2) }
