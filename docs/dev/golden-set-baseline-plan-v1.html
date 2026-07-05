@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAGForge 平台级黄金集（100 题检索质量基准）· 定版 v1.0</title>
+<style>
+  :root{--ink:#0f1f3d;--blue:#2563eb;--bg:#f5f7fb;--card:#fff;--line:#e3e8f0;--muted:#5b6b85;--amber:#a35a00;--amberbg:#fff6e9;--green:#15803d;--greenbg:#eef8f1;--red:#c0392b;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg);line-height:1.7;font-size:14.5px}
+  .wrap{max-width:1000px;margin:0 auto;padding:36px 28px 80px}
+  h1{font-size:25px;margin:0 0 6px}
+  h2{font-size:19px;margin:34px 0 12px;padding-left:11px;border-left:4px solid var(--blue)}
+  h3{font-size:15.5px;margin:20px 0 8px}
+  .sub{color:var(--muted);font-size:13px}
+  .badge-final{display:inline-block;background:var(--greenbg);color:var(--green);border:1px solid #bfe3ca;border-radius:20px;padding:2px 12px;font-size:12.5px;font-weight:700;margin-left:8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0;box-shadow:0 1px 2px rgba(15,31,61,.04)}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.3px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f0f4fb;font-weight:600}
+  code{background:#eef1f6;padding:1px 6px;border-radius:5px;font-size:12.6px;font-family:"SF Mono",Menlo,monospace}
+  .tag{display:inline-block;padding:1px 9px;border-radius:20px;font-size:12px;font-weight:600}
+  .t-yes{background:var(--greenbg);color:var(--green);border:1px solid #bfe3ca}
+  .decided{background:var(--greenbg);border:1px solid #bfe3ca;border-radius:12px;padding:14px 18px;margin:12px 0}
+  .decided b{color:var(--green)}
+  .note{background:#eef4ff;border:1px solid #cfe0ff;border-radius:10px;padding:12px 15px;margin:12px 0;font-size:13.4px}
+  .warn{background:#fdeeee;border:1px solid #f2c4c0;border-radius:10px;padding:12px 15px;margin:12px 0;font-size:13.4px}
+  ul{margin:8px 0 8px 2px;padding-left:20px}li{margin:4px 0}
+  .kpi{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
+  .kpi div{flex:1;min-width:135px;background:#f7f9fd;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .kpi .n{font-size:22px;font-weight:700;color:var(--blue)}.kpi .l{font-size:12.5px;color:var(--muted)}
+  .phase{border-left:3px solid var(--blue);padding:4px 0 4px 16px;margin:10px 0}
+  .phase .d{font-size:12.5px;color:var(--muted)}
+  .foot{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .total-row td{background:#f0f4fb;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>RAGForge 平台级黄金集 — 100 题检索质量基准 <span class="badge-final">定版 v1.0</span></h1>
+  <div class="sub">
+    拟制日期：<b>2026-07-06</b> ｜ 版本：<b>v1.0（定版，已确认）</b> ｜ 作者：平台超管 / 架构<br>
+    环境：生产 ragforge.net ｜ 归属：系统组织（org_id=0）｜ 采纳"方案 2 · 集中+加厚易错层"，并新增<b>全格式覆盖</b>硬要求
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:2px">修订记录</h3>
+    <table>
+      <tr><th style="width:70px">版本</th><th style="width:105px">日期</th><th>说明</th></tr>
+      <tr><td>v0.1</td><td>2026-07-06</td><td>草案：目标、数据模型事实、5 决策点、初版 100 题结构</td></tr>
+      <tr><td><b>v1.0</b></td><td>2026-07-06</td><td><b>定版</b>：采纳方案 2（集中 1 个基准库、加厚易错层、预留扩容 200）；新增<b>基准语料覆盖全部支持格式</b>（文档 6 类 + 图片 4 类 + 归档 2 类）；新增<b>语料必须为有意义真实内容</b>（禁止重复文字/随机数字/填充文本）；5 决策点全部落定；分阶段目标日期确定</td></tr>
+    </table>
+  </div>
+
+  <h2>1. 目标（定版）</h2>
+  <div class="card">
+    内置 <b>100 条平台级黄金集</b>，作为检索 / 应答质量的<b>冻结基线</b>，归属系统组织、由超管治理。改动<b>分块 / 检索模型 / 内容清洗 / Rerank / 解析器</b>后回放这 100 题，即可量化质量涨跌。<b>复用现有 Golden Set Replay + LLM-as-Judge + 现有质量看板</b>，不新建看板、不新增指标、不新增 cron。
+    <div class="note">与 v0.1 一致的前提事实：黄金题 = <code>eval_questions.judge_enabled=TRUE</code>，须绑 KB（org 隔离靠 <code>kb.org_id</code>）；回放走应答 → LLM-Judge（DeepSeek）→ <code>judge_results</code> → <code>judge_metrics_daily</code> → 看板；打分维度含 <b>context_precision / context_recall</b>（检索质量信号）+ faithfulness / answer_relevance。系统组织当前 0 库，故第一步必须建基准库并入库语料。</div>
+  </div>
+
+  <h2>2. 五个决策点（全部落定）</h2>
+  <div class="decided"><b>D1 · 基准库归属</b>：<span class="tag t-yes">已定</span> 系统组织（org_id=0）下新建 <b>1 个「平台基准库·v1」</b>集中承载（方案 2 集中口径）。语料一库全格式覆盖；扩容到 200 题时再按文档类型拆分为多库（v2）。</div>
+  <div class="decided"><b>D2 · 语料格式</b>：<span class="tag t-yes">已定</span> 基准语料<b>覆盖全部支持格式</b>——文档 <code>PDF/Word/Markdown/HTML/TXT/CSV</code> + 图片 <code>PNG/JPG/GIF/WEBP</code>（自动 OCR）+ 归档 <code>ZIP/TAR.GZ</code>（用归档上传交付，同时验证服务端展开入库链路）。单文件 ≤ 50MB。</div>
+  <div class="decided"><b>D2+ · 语料质量红线</b>：<span class="tag t-yes">已定</span> 每份文档必须是<b>有意义、连贯、真实的内容</b>（真实主题、可读段落、有事实可问）。<b>严禁</b>无意义重复文字、随机数字、lorem-ipsum、凑字数填充——否则黄金题问不出真问题、检索命中无意义、基线失真。CSV 需真实字段与真实数值，图片需含清晰真实文字。</div>
+  <div class="decided"><b>D3 · 度量口径</b>：<span class="tag t-yes">已定</span> LLM-Judge 为主（context_precision / context_recall + faithfulness / answer_relevance → overall），复用现有链路、零新增基建。纯检索命中率（eval_experiments top-k / MRR）属 Core Set 之外扩展，<b>本期不做</b>。</div>
+  <div class="decided"><b>D4 · 交付方式</b>：<span class="tag t-yes">已定</span> 超管在系统组织内建库、上传全格式语料入库；100 题经 <code>POST /eval/…/questions/batch</code> 批量导入并置 <code>judge_enabled=TRUE</code>。题干与 <code>expected_text_snippets</code> 随后用 Flyway seed 按 dataset 名固化以便环境复现；<b>不硬编码 chunk_id</b>。</div>
+  <div class="decided"><b>D5 · 冻结机制</b>：<span class="tag t-yes">已定</span> <code>eval_questions</code> 加列 <code>is_core BOOLEAN DEFAULT FALSE</code> + 3 处守卫（<code>update</code>/<code>delete</code> 命中核心题抛 <code>403 CORE_QUESTION_LOCKED</code>；<code>EvaluationLab.vue</code> 加 🔒 徽章 + 禁用编辑/删除）。</div>
+
+  <h2>3. 基准语料 · 全格式覆盖矩阵</h2>
+  <div class="card">
+    <p>一个「平台基准库·v1」内，按格式各备至少 1~2 份稳定、脱敏、可版本化的文档；每种格式挂对应黄金题，使<b>格式相关的解析/OCR 回归可被单独发现</b>。</p>
+    <div class="warn">🔴 <b>语料质量红线</b>：所有文档必须是<b>有意义的真实内容</b>——真实主题、连贯段落、有事实可供提问。<b>禁止</b>无意义重复文字、随机数字、lorem-ipsum、凑字数填充。CSV 用真实字段+真实数值，图片含清晰真实文字。基线的可信度取决于语料的真实性。</div>
+    <table>
+      <tr><th style="width:120px">格式</th><th>语料建议（稳定/脱敏）</th><th style="width:80px">题数</th><th>侧重检验</th></tr>
+      <tr><td>Markdown</td><td>RAGForge 自有 <code>docs/</code>（architecture / 部署 / 安全）</td><td>16</td><td>语义 / 关键词 / Hybrid / Rerank</td></tr>
+      <tr><td>PDF</td><td>含表格+页码的手册；含 1 份扫描 PDF</td><td>18</td><td>PDF 解析 / 表格 / 页码 / 扫描 OCR</td></tr>
+      <tr><td>Word (docx)</td><td>规范/流程类 Word 文档</td><td>10</td><td>Word 解析 / 标题层级</td></tr>
+      <tr><td>HTML</td><td>导出的网页/文档 HTML</td><td>8</td><td>HTML 去噪 / 正文抽取</td></tr>
+      <tr><td>TXT</td><td>纯文本说明/日志片段</td><td>6</td><td>纯文本切分</td></tr>
+      <tr><td>CSV</td><td>结构化表（指标/清单，含数字）</td><td>12</td><td>表格→文本 / 数字准确性 / 聚合</td></tr>
+      <tr><td>PNG</td><td>架构图 / 流程图（含文字）</td><td>10</td><td>OCR / 图注 / 跨模态</td></tr>
+      <tr><td>JPG</td><td>截图 / 照片类（含文字）</td><td>8</td><td>OCR / 视觉证据</td></tr>
+      <tr><td>GIF</td><td>含文字的图（首帧）</td><td>6</td><td>图片检索 / 视觉证据</td></tr>
+      <tr><td>WEBP</td><td>压缩图（含文字）</td><td>6</td><td>WEBP 解码 / OCR</td></tr>
+      <tr class="total-row"><td>合计</td><td>文档 6 类 + 图片 4 类（经 ZIP/TAR.GZ 交付验证归档链路）</td><td>100</td><td>—</td></tr>
+    </table>
+    <div class="note">交付时把上述语料打包成 <b>ZIP / TAR.GZ</b> 上传，由服务端自动展开入库——一次性覆盖归档上传链路，无需单独造归档题。</div>
+  </div>
+
+  <h2>4. 难度分层（方案 2 · 加厚易错层）</h2>
+  <div class="card">
+    <div class="kpi">
+      <div><div class="n">100</div><div class="l">v1 题数（集中一库）</div></div>
+      <div><div class="n">10</div><div class="l">覆盖格式类型</div></div>
+      <div><div class="n">→200</div><div class="l">v2 扩容路径</div></div>
+      <div><div class="n">~¥1.6</div><div class="l">单次全量回放成本</div></div>
+    </div>
+    <p>难度层与格式<b>正交</b>（每题 <code>judge_tags</code> 同时带格式标签 + 难度标签）。相比均匀分布，<b>加厚否定/无答案、多跳、长尾</b>三类易错场景，让每类样本足够抗 judge 噪声：</p>
+    <table>
+      <tr><th>难度层</th><th style="width:80px">题数</th><th>检验点</th><th>tags</th></tr>
+      <tr><td>精确 / 关键词</td><td>22</td><td>专有名词、配置项、数字精准召回</td><td><code>exact,keyword</code></td></tr>
+      <tr><td>语义 / 改写</td><td>22</td><td>同义改写、口语化提问</td><td><code>semantic,rewrite</code></td></tr>
+      <tr><td>多跳 / 聚合 <b>（加厚）</b></td><td>16</td><td>跨段/跨文档综合，Hybrid/Rerank</td><td><code>multihop</code></td></tr>
+      <tr><td>否定 / 无答案 <b>（加厚）</b></td><td>20</td><td>库中无答案时不臆造（faithfulness）</td><td><code>negative,noanswer</code></td></tr>
+      <tr><td>长尾 / 边界 <b>（加厚）</b></td><td>20</td><td>罕见术语、边角信息、易漏召回</td><td><code>longtail,edge</code></td></tr>
+      <tr class="total-row"><td>合计</td><td>100</td><td>—</td><td>—</td></tr>
+    </table>
+    <h3>每条黄金题字段规范</h3>
+    <table>
+      <tr><th style="width:200px">字段</th><th>规范</th></tr>
+      <tr><td><code>question</code></td><td>真实、单一意图；否定题给库中确无的问法</td></tr>
+      <tr><td><code>expected_text_snippets</code></td><td>期望命中原文片段（1~3 段），人工核对/回归锚点；否定题留空</td></tr>
+      <tr><td><code>judge_tags</code></td><td>格式标签（如 <code>pdf</code>/<code>csv</code>/<code>png</code>）+ 难度标签</td></tr>
+      <tr><td><code>judge_enabled</code> / <code>is_core</code></td><td>全部 <code>TRUE</code>（纳入回放 + 冻结锁定）</td></tr>
+    </table>
+  </div>
+
+  <h2>5. 基线判读</h2>
+  <div class="card">
+    <ul>
+      <li><b>建基线</b>：100 题首次全量回放后，记录 overall_score 与 context_precision/recall 的 <b>p50/p95</b> 为基线分（存现有 <code>judge_metrics_daily</code>）。</li>
+      <li><b>回归</b>：改动后再回放，看现有质量看板同维度日趋势涨跌定位退化；按 <code>judge_tags</code> 可下钻到"哪种格式/哪类难度"退化。<b>不新建差分看板。</b></li>
+      <li><b>成本</b>：单题 DeepSeek judge ≈ ¥0.016，100 题 ≈ ¥1.6/次，受 <code>org_judge_budget</code> 保护，无预算风险。</li>
+    </ul>
+  </div>
+
+  <h2>6. 落地阶段与目标日期</h2>
+  <div class="card">
+    <div class="phase"><b>阶段 0 · 方案定版</b> <span class="d">2026-07-06（今日，✔ 已确认）</span></div>
+    <div class="phase"><b>阶段 1 · 基准库 + 全格式语料入库</b> <span class="d">目标 2026-07-07</span><br>系统组织建「平台基准库·v1」；备齐 10 类格式语料（脱敏），打包 ZIP/TAR.GZ 上传，等入库 <code>completed</code>、可检索。</div>
+    <div class="phase"><b>阶段 2 · 编制并导入 100 题</b> <span class="d">目标 2026-07-08 ~ 07-09</span><br>按格式矩阵 + 难度分层编题，<code>batch</code> 导入置 judge_enabled，人工抽检检索命中。</div>
+    <div class="phase"><b>阶段 3 · 冻结 + 首次回放建基线</b> <span class="d">目标 2026-07-10</span><br><code>is_core</code> 列 + 3 守卫；题干 seed 固化；触发回放、记录基线分。后端 <code>mvn test-compile</code> + 前端 <code>npm build</code> 通过后合 main 部署。</div>
+    <div class="phase"><b>阶段 4 · 验收</b> <span class="d">目标 2026-07-10</span><br>看板显示"本组织已启用 100 题"、基线分留档、核心题锁定生效、10 类格式均有题命中。</div>
+  </div>
+
+  <h2>7. 非目标 / 风险</h2>
+  <div class="card">
+    <ul>
+      <li><b>非目标</b>：不新建看板 / 指标（含 RETRIEVAL_HIT_RATE、ANSWER_CORRECTNESS）/ cron，不做版本差分——严守 Core Set 收敛。</li>
+      <li><b>chunk_id 不稳定</b>：seed 用 <code>expected_text_snippets</code> 而非 chunk_id；黄金回放本身无需 expected chunk。</li>
+      <li><b>语料隐私</b>：全部脱敏 / 公开可版本化，敏感内容不入基线。</li>
+      <li><b>内容漂移</b>：基准库文档冻结，不随业务更新；更新走 v2 并重记基线分。</li>
+      <li><b>图片/OCR 语料</b>：需含清晰文字，否则 OCR 题无稳定命中；GIF/WEBP 以含文字图为准。</li>
+    </ul>
+  </div>
+
+  <div class="foot">
+    RAGForge 平台级黄金集基准 · 定版 v1.0 · 2026-07-06 · 确认即进入阶段 1。<br>
+    关联：Core Set 冻结基线（2026-06-26 收敛）· 系统组织治理模型（org_id=0）· LLM-as-Judge 打分链路 · 全格式解析/OCR/归档入库链路。
+  </div>
+
+</div>
+</body>
+</html>
