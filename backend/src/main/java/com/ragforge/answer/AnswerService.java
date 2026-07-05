@@ -201,10 +201,10 @@ public class AnswerService {
       throw e;
     }
     long llmLatency = llmResult.latencyMs() > 0 ? llmResult.latencyMs() : System.currentTimeMillis() - llmStart;
-    // 规范化答案里的 [n] 引用编号:应答 LLM 常把编号写飘(如只检索到 1 个块却引用 [5]),
-    // 越界编号收敛到有效范围,避免用户看到指向不存在块的悬空编号(与检索块显示对齐)。
+    // 引用重锚定 + 越界规范化:应答 LLM 常把 [n] 编号写飘(内容对但编号指错块,或只 1 个块却引用 [5]);
+    // 保守地把明显指错的编号校正到真正支撑该句的检索块(保持原始块序号空间，与检索块显示对齐)。
     String answerText =
-        CitationLinker.normalizeCitationMarkers(llmResult.content(), retrieval.getResults().size());
+        CitationLinker.reanchorCitationMarkers(llmResult.content(), retrieval.getResults());
     List<Citation> citations = citationLinker.link(answerText, retrieval.getResults());
     GuardRailResult guard = guardRails.check(answerText, citations);
 
@@ -444,8 +444,13 @@ public class AnswerService {
 class PromptBuilder {
   String build(String query, List<SearchResult> chunks, KnowledgeBase kb) {
     StringBuilder sb = new StringBuilder();
-    sb.append("你是 RAGForge 助手。基于以下参考资料回答问题，必须用 [n] 标号引用。\n");
-    sb.append("不要使用参考资料之外的信息；如果资料不足，说明不足并引用最相关资料。\n\n");
+    sb.append("你是 RAGForge 助手。基于以下带编号的参考资料回答问题。\n");
+    sb.append("引用规则（务必严格遵守）：\n");
+    sb.append("1. 每个事实后面用 [n] 标注它的来源，n 必须是下方【真正包含该事实】的那一段的编号；\n");
+    sb.append("2. 只能使用下面出现过的编号，禁止编造或使用超出范围的编号；\n");
+    sb.append("3. 引用前先核对：该编号那一段确实写到了这个事实，再落笔，不要凭印象写号；\n");
+    sb.append("4. 不要使用参考资料之外的信息；资料不足时如实说明并引用最相关的一段。\n\n");
+    sb.append("参考资料（共 ").append(chunks.size()).append(" 段）：\n");
     for (int i = 0; i < chunks.size(); i++) {
       SearchResult c = chunks.get(i);
       sb.append("[").append(i + 1).append("] ");
@@ -455,7 +460,7 @@ class PromptBuilder {
       sb.append(c.getContent() == null ? "" : c.getContent()).append("\n\n");
     }
     sb.append("用户问题：").append(query).append("\n");
-    sb.append("回答时必须在每个事实后面带 [n] 引用标号。");
+    sb.append("回答时在每个事实后面带上【真正包含该事实那一段】的 [n] 引用标号。");
     return sb.toString();
   }
 }
@@ -549,8 +554,16 @@ class CitationLinker {
     return indices;
   }
 
+  private static final Pattern MARKER_RUN = Pattern.compile("(?:\\[\\d+])+");
+  private static final Pattern ALNUM = Pattern.compile("[a-z0-9]{2,}");
+  // 重锚定阈值:原引用块支撑度 < LOW 且另有块支撑度 >= HIGH 且明显更优(领先 MARGIN)才改。
+  private static final double SUPPORT_LOW = 0.30;
+  private static final double SUPPORT_HIGH = 0.50;
+  private static final double SUPPORT_MARGIN = 0.20;
+
   /**
-   * 规范化答案中的 [n] 引用编号:越界(&lt;1 或 &gt;检索块数)的编号收敛到 [1](排名最高的检索块), 有效编号保持不变。避免应答 LLM 幻觉出的悬空编号(如只 1 个块却写 [5])在页面上指向不存在的块。
+   * 规范化答案中的 [n] 引用编号:越界(&lt;1 或 &gt;检索块数)的编号收敛到 [1](排名最高的检索块), 有效编号保持不变。
+   * 保留供不带块内容的场景使用；带块内容时优先走 {@link #reanchorCitationMarkers}。
    */
   static String normalizeCitationMarkers(String answer, int chunkCount) {
     if (answer == null || answer.isBlank() || chunkCount <= 0 || !answer.contains("[")) {
@@ -565,6 +578,126 @@ class CitationLinker {
     }
     matcher.appendTail(sb);
     return sb.toString();
+  }
+
+  /**
+   * 引用重锚定:把 LLM 写飘的 [n] 校正到真正支撑该句的检索块（保持原始块序号空间，与检索块显示对齐）。
+   * 保守策略——仅当原引用块明显不支撑该句、且另有块明显支撑时才改；越界且无匹配的收敛到 [1]。
+   * 逐"引用簇"处理:一句话末尾的连续 [a][b] 共享同一 claim(该句文本)。
+   */
+  static String reanchorCitationMarkers(String answer, List<SearchResult> chunks) {
+    int n = chunks == null ? 0 : chunks.size();
+    if (answer == null || answer.isBlank() || n <= 0 || !answer.contains("[")) {
+      return answer;
+    }
+    List<Set<String>> chunkTerms = new ArrayList<>(n);
+    for (SearchResult c : chunks) {
+      chunkTerms.add(termSet(c.getContent()));
+    }
+    java.util.regex.Matcher run = MARKER_RUN.matcher(answer);
+    StringBuilder sb = new StringBuilder();
+    int prevEnd = 0;
+    while (run.find()) {
+      Set<String> claimTerms = termSet(claimFor(answer, prevEnd, run.start()));
+      java.util.regex.Matcher single = REF.matcher(run.group());
+      java.util.LinkedHashSet<Integer> fixed = new java.util.LinkedHashSet<>();
+      while (single.find()) {
+        fixed.add(remapIndex(Integer.parseInt(single.group(1)), n, claimTerms, chunkTerms));
+      }
+      StringBuilder replaced = new StringBuilder();
+      for (int idx : fixed) {
+        replaced.append('[').append(idx).append(']');
+      }
+      run.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(replaced.toString()));
+      prevEnd = run.end();
+    }
+    run.appendTail(sb);
+    return sb.toString();
+  }
+
+  /** 决定单个引用编号 k 的去向：保持 / 重锚到最佳块 / 越界收敛。 */
+  private static int remapIndex(int k, int n, Set<String> claimTerms, List<Set<String>> chunkTerms) {
+    boolean valid = k >= 1 && k <= n;
+    double orig = valid ? support(chunkTerms.get(k - 1), claimTerms) : -1.0;
+    if (orig >= SUPPORT_LOW) {
+      return k; // 原引用块已支撑该句，不动（避免过度纠正）
+    }
+    int best = -1;
+    double bestScore = -1.0;
+    for (int i = 0; i < n; i++) {
+      double s = support(chunkTerms.get(i), claimTerms);
+      if (s > bestScore) {
+        bestScore = s;
+        best = i + 1;
+      }
+    }
+    if (best >= 1 && bestScore >= SUPPORT_HIGH && bestScore >= orig + SUPPORT_MARGIN) {
+      return best; // 另有块明显支撑该句 → 重锚
+    }
+    if (!valid) {
+      return 1; // 越界且无明显匹配 → 收敛到排名最高块（沿用旧行为）
+    }
+    return k; // 有效但弱、无明显更优 → 保持原样
+  }
+
+  private static double support(Set<String> chunkTerms, Set<String> claimTerms) {
+    if (claimTerms.isEmpty() || chunkTerms.isEmpty()) {
+      return 0.0;
+    }
+    int hit = 0;
+    for (String t : claimTerms) {
+      if (chunkTerms.contains(t)) {
+        hit++;
+      }
+    }
+    return (double) hit / claimTerms.size();
+  }
+
+  /** claim = 引用簇所在句子的文本（从上一簇之后、最近句子边界起，到本簇前）。 */
+  private static String claimFor(String text, int prevEnd, int start) {
+    int b = prevEnd;
+    for (int i = start - 1; i > prevEnd; i--) {
+      char ch = text.charAt(i);
+      if (ch == '。' || ch == '！' || ch == '？' || ch == '!' || ch == '?' || ch == '；' || ch == ';' || ch == '\n') {
+        b = i + 1;
+        break;
+      }
+    }
+    return text.substring(Math.min(b, start), start);
+  }
+
+  /** 提取用于匹配的 term 集：英数 token(≥2) + CJK 连续段的字符 bigram。 */
+  private static Set<String> termSet(String text) {
+    Set<String> terms = new java.util.HashSet<>();
+    if (text == null || text.isEmpty()) {
+      return terms;
+    }
+    String s = text.toLowerCase(Locale.ROOT);
+    java.util.regex.Matcher an = ALNUM.matcher(s);
+    while (an.find()) {
+      terms.add(an.group());
+    }
+    int i = 0;
+    int len = s.length();
+    while (i < len) {
+      if (isCjk(s.charAt(i))) {
+        int j = i;
+        while (j < len && isCjk(s.charAt(j))) {
+          j++;
+        }
+        for (int p = i; p + 1 < j; p++) {
+          terms.add(s.substring(p, p + 2));
+        }
+        i = j;
+      } else {
+        i++;
+      }
+    }
+    return terms;
+  }
+
+  private static boolean isCjk(char c) {
+    return c >= 0x4E00 && c <= 0x9FFF;
   }
 
   private static String truncate(String value, int max) {

@@ -56,6 +56,47 @@ class CitationLinkerTest {
     assertThat(CitationLinker.normalizeCitationMarkers("有编号[3]但无块", 0)).isEqualTo("有编号[3]但无块");
   }
 
+  @Test
+  void reanchorMovesDriftedMarkerToSupportingChunk() {
+    // 复现线上漂移:答案内容正确(30天滑动续期来自安全规范=块1),但 LLM 把编号写成 [3](块3=检索策略,不含该事实)。
+    List<SearchResult> chunks =
+        List.of(
+            chunk(20393, "RAGForge 安全与权限规范。access token 有效期为 15 分钟。refresh token 采用旋转机制，有效期 7 天；开启记住我后为 30 天滑动续期。"),
+            chunk(20395, "常见问题 FAQ。向量检索为什么走顺序扫描。因为文档向量是 2560 维。"),
+            chunk(20396, "检索策略指标。vector 默认并发 48；hybrid 并发 20；full 调用重排。"));
+    String out =
+        CitationLinker.reanchorCitationMarkers("开启记住我后，refresh token 的有效期为 30 天滑动续期 [3]。", chunks);
+    assertThat(out).isEqualTo("开启记住我后，refresh token 的有效期为 30 天滑动续期 [1]。");
+  }
+
+  @Test
+  void reanchorKeepsCorrectMarkersUntouched() {
+    // 编号本就正确(该句事实确实在块2)→ 不动，避免过度纠正。
+    List<SearchResult> chunks =
+        List.of(
+            chunk(1, "部署形态：k3s 单节点集群，命名空间 ragforge。"),
+            chunk(2, "向量维度统一为 2560 维，超过 pgvector 2000 维上限，走顺序扫描。"));
+    String out = CitationLinker.reanchorCitationMarkers("文档向量维度是 2560 维 [2]。", chunks);
+    assertThat(out).isEqualTo("文档向量维度是 2560 维 [2]。");
+  }
+
+  @Test
+  void reanchorClampsOutOfRangeWithoutMatch() {
+    // 越界且无块支撑 → 收敛到 [1]（沿用旧规范化行为）。
+    List<SearchResult> chunks = List.of(chunk(1, "与问题完全无关的内容 foobar baz。"));
+    assertThat(CitationLinker.reanchorCitationMarkers("某个事实 [5]。", chunks))
+        .isEqualTo("某个事实 [1]。");
+  }
+
+  private SearchResult chunk(long id, String content) {
+    SearchResult result = new SearchResult();
+    result.setChunkId(id);
+    result.setDocId(id);
+    result.setContent(content);
+    result.setChunkModality("TEXT");
+    return result;
+  }
+
   private SearchResult hit(long id) {
     SearchResult result = new SearchResult();
     result.setChunkId(id);
