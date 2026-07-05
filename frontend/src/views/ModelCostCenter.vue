@@ -96,6 +96,7 @@
           <div class="chart">
             <div class="bars">
               <div class="bar-col" v-for="p in trend" :key="p.date">
+                <div class="bar-val" v-if="pointTotal(p) > 0">¥{{ fmtMoney(pointTotal(p)) }}</div>
                 <div class="stack" :style="{ height: barHeight(p) + '%' }">
                   <i v-for="seg in stackSegments(p)" :key="seg.purpose"
                      :style="{ height: seg.heightPct + '%', background: purposeColor(seg.purpose) }"
@@ -228,6 +229,7 @@ function priceLabel(m) {
 }
 function fmt(v) { return Number(v ?? 0).toFixed(2) }
 function formatMoney(v) { return '¥' + Number(v ?? 0).toFixed(2) }
+function fmtMoney(v) { return Number(v ?? 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 function formatNum(n) { return Number(n ?? 0).toLocaleString() }
 function formatPct(r) { return (Number(r ?? 0) * 100).toFixed(1) + '%' }
 function formatTokens(n) {
@@ -363,7 +365,8 @@ tr.off td { opacity: .5; }
 
 .grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; }
 .chart { padding: 18px; }
-.bars { display: flex; align-items: flex-end; gap: 10px; height: 190px; padding-top: 8px; }
+.bars { display: flex; align-items: flex-end; gap: 10px; height: 190px; padding-top: 22px; }
+.bar-val { font-size: 11px; font-weight: 500; color: var(--text-muted); line-height: 1; white-space: nowrap; }
 .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; justify-content: flex-end; height: 100%; }
 .stack { width: 58%; min-width: 16px; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 5px 5px 0 0; overflow: hidden; }
 .stack i { display: block; }
