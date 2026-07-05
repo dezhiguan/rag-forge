@@ -33,6 +33,7 @@ class JudgeSamplingControllerTest {
 
   @Mock private JudgeSamplingConfigMapper configMapper;
   @Mock private KbAccessGuard kbAccessGuard;
+  @Mock private com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
   private MockMvc mockMvc;
@@ -43,7 +44,7 @@ class JudgeSamplingControllerTest {
     RagAuthContextHolder.set(
         new RagAuthContext(1L, "ADMIN", Set.of(), Set.of(), Set.of(), "USER", "user-1"));
     mockMvc =
-        standaloneSetup(new JudgeSamplingController(configMapper, kbAccessGuard))
+        standaloneSetup(new JudgeSamplingController(configMapper, kbAccessGuard, knowledgeBaseMapper))
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
   }

@@ -30,6 +30,7 @@ public class JudgeQualityController {
   private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
   private final com.ragforge.judge.JudgeCostGuardProperties costGuardProperties;
   private final com.ragforge.judge.JudgeBudgetService budgetService;
+  private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
 
   /** 组织月度评测预算上限（防误填天价）。 */
   private static final java.math.BigDecimal MAX_MONTHLY_BUDGET = new java.math.BigDecimal("1000000");
@@ -173,7 +174,12 @@ public class JudgeQualityController {
     Long orgId = platformView ? null : com.ragforge.security.OrgContextHolder.get();
     com.ragforge.judge.JudgeBudgetService.BudgetSnapshot snap = budgetService.snapshotForOrg(orgId);
     // 预算按组织分配、由平台管理员配置：仅平台管理员在具体组织上下文下可编辑。
-    boolean editable = !platformView && orgId != null && ctx != null && ctx.isAdmin();
+    // 预算由组织创建者/管理员配置（平台管理员亦可）。
+    boolean editable =
+        !platformView
+            && orgId != null
+            && ctx != null
+            && (ctx.isAdmin() || orgMemberMapper.isOrgAdmin(orgId, ctx.userId()));
 
     java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
     body.put("monthlyBudgetCny", snap.monthlyBudgetCny());
@@ -193,9 +199,9 @@ public class JudgeQualityController {
     if (ctx == null || ctx.userId() == null || orgId == null) {
       throw new BizException(400, "ORG_CONTEXT_REQUIRED");
     }
-    // 月度评测预算按组织分配，仅平台管理员可配置（组织超支时联系平台管理员）。
-    if (!ctx.isAdmin()) {
-      throw new BizException(403, "BUDGET_ADMIN_ONLY");
+    // 月度评测预算由组织创建者/管理员配置（平台管理员亦可）。
+    if (!ctx.isAdmin() && !orgMemberMapper.isOrgAdmin(orgId, ctx.userId())) {
+      throw new BizException(403, "NOT_ORG_ADMIN");
     }
     java.math.BigDecimal amount;
     try {

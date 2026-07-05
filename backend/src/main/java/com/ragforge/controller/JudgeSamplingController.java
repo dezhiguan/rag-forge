@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,24 +37,43 @@ public class JudgeSamplingController {
 
   private final JudgeSamplingConfigMapper configMapper;
   private final KbAccessGuard kbAccessGuard;
+  private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
 
   @GetMapping
   public Result<List<JudgeSamplingConfig>> list() {
     List<JudgeSamplingConfig> list =
         configMapper.selectList(new LambdaQueryWrapper<JudgeSamplingConfig>().orderByAsc(JudgeSamplingConfig::getScopeType));
-    if (isPlatformAdmin()) {
+    // 仅在知识库侧审计提权(破玻璃)时才跨组织看全部；否则(含超管)按当前组织收敛，
+    // 只返回本组织 KB 的覆盖 + 全局配置(只读展示)，避免泄漏其它组织配置。
+    if (com.ragforge.security.AdminOverrideHolder.isActive()) {
       return Result.ok(list);
     }
-    // 非平台管理员:只返回全局配置(只读展示)+ 自己可管理的 KB 覆盖,避免泄漏其它组织配置。
+    Set<Long> orgKbIds = currentOrgKbIds();
     List<JudgeSamplingConfig> scoped =
         list.stream()
             .filter(
                 c ->
                     SCOPE_KB.equalsIgnoreCase(c.getScopeType())
-                        ? (c.getScopeId() != null && kbAccessGuard.canAdmin(c.getScopeId()))
+                        ? (c.getScopeId() != null && orgKbIds.contains(c.getScopeId()))
                         : "GLOBAL".equalsIgnoreCase(c.getScopeType()))
             .toList();
     return Result.ok(scoped);
+  }
+
+  /** 当前组织(X-Org-Id)自有的 KB id 集；无组织上下文返回空集。 */
+  private Set<Long> currentOrgKbIds() {
+    Long orgId = com.ragforge.security.OrgContextHolder.get();
+    if (orgId == null) {
+      return java.util.Set.of();
+    }
+    return knowledgeBaseMapper
+        .selectList(
+            new LambdaQueryWrapper<com.ragforge.model.entity.KnowledgeBase>()
+                .ne(com.ragforge.model.entity.KnowledgeBase::getStatus, "deleted")
+                .eq(com.ragforge.model.entity.KnowledgeBase::getOrgId, orgId))
+        .stream()
+        .map(com.ragforge.model.entity.KnowledgeBase::getId)
+        .collect(java.util.stream.Collectors.toSet());
   }
 
   @PostMapping

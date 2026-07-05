@@ -44,6 +44,7 @@ class JudgeQualityControllerTest {
   @Mock private KbAccessGuard kbAccessGuard;
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private com.ragforge.judge.JudgeBudgetService budgetService;
+  @Mock private com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
 
   private MockMvc mockMvc;
   private JudgeQualityController controller;
@@ -54,7 +55,12 @@ class JudgeQualityControllerTest {
   void setUp() {
     controller =
         new JudgeQualityController(
-            queryService, kbAccessGuard, knowledgeBaseMapper, costGuardProperties, budgetService);
+            queryService,
+            kbAccessGuard,
+            knowledgeBaseMapper,
+            costGuardProperties,
+            budgetService,
+            orgMemberMapper);
     mockMvc =
         standaloneSetup(controller)
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -298,9 +304,10 @@ class JudgeQualityControllerTest {
   }
 
   @Test
-  void setBudget_普通组织用户_返回403仅平台管理员() throws Exception {
+  void setBudget_普通成员_返回403() throws Exception {
     com.ragforge.security.RagAuthContextHolder.set(userCtx(42L));
     com.ragforge.security.OrgContextHolder.set(5L);
+    when(orgMemberMapper.isOrgAdmin(5L, 42L)).thenReturn(false);
 
     mockMvc
         .perform(
@@ -308,9 +315,30 @@ class JudgeQualityControllerTest {
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content("{\"monthlyBudgetCny\":100}"))
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.errorCode").value("BUDGET_ADMIN_ONLY"));
+        .andExpect(jsonPath("$.errorCode").value("NOT_ORG_ADMIN"));
 
     verify(budgetService, never()).setBudget(any(), any());
+  }
+
+  @Test
+  void setBudget_组织管理员_设置成功() throws Exception {
+    com.ragforge.security.RagAuthContextHolder.set(userCtx(42L));
+    com.ragforge.security.OrgContextHolder.set(5L);
+    when(orgMemberMapper.isOrgAdmin(5L, 42L)).thenReturn(true);
+    when(budgetService.snapshotForOrg(5L))
+        .thenReturn(
+            new com.ragforge.judge.JudgeBudgetService.BudgetSnapshot(
+                new BigDecimal("100.0000"), new BigDecimal("0.0000"), false));
+
+    mockMvc
+        .perform(
+            put("/api/v1/evaluation/quality/budget")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content("{\"monthlyBudgetCny\":100}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.monthlyBudgetCny").value(100.0));
+
+    verify(budgetService).setBudget(eq(5L), eq(new BigDecimal("100")));
   }
 
   @Test

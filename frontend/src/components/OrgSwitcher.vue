@@ -29,27 +29,15 @@
         </button>
       </div>
 
-      <template v-if="isAdmin">
-        <div class="menu-sep"></div>
-        <div class="menu-label">平台管理</div>
-        <button class="org-opt" :class="{ active: current.platform }" @click="selectPlatform">
-          <span class="org-ava sm" style="background:#1e293b">∞</span>
-          <span class="org-meta">
-            <span class="org-name">全平台视图</span>
-            <span class="org-sub">超管 · 破玻璃(留审计)</span>
-          </span>
-          <span class="check">{{ current.platform ? '✓' : '' }}</span>
-        </button>
-      </template>
+      <!-- 全局「全平台视图(超管破玻璃)」入口已下线：跨组织访问统一走知识库侧的审计提权。 -->
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useOrg, PLATFORM_ID } from '../composables/useOrg'
+import { useOrg } from '../composables/useOrg'
 import { useAuth } from '../composables/useAuth'
-import { confirm as confirmDialog } from '../composables/useConfirm'
 
 // 破玻璃访问理由的存储 key（request.js 读取并注入 X-Admin-Override-Reason）
 const ADMIN_OVERRIDE_REASON_KEY = 'ragforge.adminOverrideReason'
@@ -91,25 +79,6 @@ function select(o) {
   window.location.reload()
 }
 
-// 进入全平台视图 = 超管破玻璃:默认不激活,必须显式确认并填写访问理由(留审计)。
-// 取消或未填理由则不进入。理由存 localStorage,供 request.js 注入 X-Admin-Override-Reason;
-// 头本身照常注入 —— 故驾驶舱/质量看板/成本等平台数据 tab 显示不受影响。
-async function selectPlatform() {
-  open.value = false
-  if (current.value.platform) return
-  const reason = await confirmDialog({
-    title: '进入全平台视图(超管破玻璃)',
-    message: '你将以超管身份跨组织访问全平台数据,本次访问全程审计。请填写访问理由:',
-    input: true,
-    inputPlaceholder: '如:排查组织质量下降 / 客户支持工单 #123 / 安全事件核查',
-    confirmText: '确认进入',
-  })
-  const r = typeof reason === 'string' ? reason.trim() : ''
-  if (!r) return // 取消或未填理由 → 默认不激活,保持当前组织
-  try { localStorage.setItem(ADMIN_OVERRIDE_REASON_KEY, r.slice(0, 200)) } catch { /* ignore */ }
-  setCurrent(PLATFORM_ID)
-  window.location.reload()
-}
 
 function onDocClick() {
   open.value = false

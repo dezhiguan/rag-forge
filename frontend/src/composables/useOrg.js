@@ -57,11 +57,10 @@ export function useOrg() {
         const ind = individualOrg()
         const indId = ind ? ind.id : null
         if (state.currentId === PLATFORM_ID) {
-          // 全平台仅超管可用：非超管残留 platform → 回退个人组织。
-          if (!opts.isAdmin) {
-            state.currentId = indId
-            persist(indId)
-          }
+          // 全局「全平台视图」已下线：任何残留 platform（含超管）都回退个人组织；
+          // 跨组织访问统一走知识库侧的审计提权，超管默认只看自己组织。
+          state.currentId = indId
+          persist(indId)
         } else if (!list.some((o) => o.id === state.currentId)) {
           // 选中已失效（含旧的 null / 换了用户）→ 回退个人组织。
           state.currentId = indId
