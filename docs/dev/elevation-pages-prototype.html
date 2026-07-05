@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>需提权页面 · 逐页原型 · RAGForge</title>
+<style>
+  :root{--bg:#eef1f5;--ink:#1f2733;--sub:#66748a;--line:#e4e9f0;--primary:#2f6bff;--ok:#12a150;--warn:#a35a00}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;font-size:14px;line-height:1.6}
+  .wrap{max-width:1000px;margin:0 auto;padding:26px 20px 70px}
+  .top{background:linear-gradient(135deg,#1c2b4a,#2f6bff);color:#fff;border-radius:14px;padding:22px 26px;margin-bottom:18px}
+  .top h1{margin:0 0 6px;font-size:21px}
+  .top p{margin:0;opacity:.88;font-size:13px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12.5px}
+  .legend b{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);padding:3px 10px;border-radius:8px;font-weight:600}
+  /* screen frame */
+  .screen{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:20px;overflow:hidden;box-shadow:0 1px 3px rgba(20,30,60,.04)}
+  .screen .chrome{background:#f5f7fb;border-bottom:1px solid var(--line);padding:8px 14px;display:flex;align-items:center;gap:7px;font-size:12px;color:#8894a6}
+  .screen .chrome i{width:10px;height:10px;border-radius:50%;background:#dfe4ec;display:inline-block}
+  .screen .chrome i.r{background:#febc2e}.screen .chrome i.g{background:#28c840}.screen .chrome i.rd{background:#ff5f57}
+  .screen .chrome .url{margin-left:8px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 10px;font-size:11.5px;color:#7a8699}
+  .body{padding:20px 22px}
+  .phead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;position:relative}
+  .phead h2{margin:0 0 3px;font-size:18px}
+  .scope{font-size:12px;color:var(--sub)}
+  .chip{display:inline-block;padding:1px 9px;border-radius:999px;font-size:11.5px;font-weight:700;margin-left:3px}
+  .chip.sys{background:#eef2ff;color:#3949ab}.chip.all{background:#fff2e0;color:#a35a00}
+  /* elevate button */
+  .elev{border:1px solid #cfe0ff;background:#eef4ff;color:#2f6bff;font-weight:700;font-size:12.5px;padding:8px 14px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;transition:.15s}
+  .elev:hover{filter:brightness(.98)}
+  .elev.on{background:#fff2e0;border-color:#f0cf9a;color:#a35a00}
+  /* annotation bubble */
+  .anno{position:absolute;top:-6px;right:170px;background:#141b2d;color:#fff;font-size:11px;padding:4px 9px;border-radius:7px;white-space:nowrap}
+  .anno:after{content:"";position:absolute;right:-6px;top:11px;border:6px solid transparent;border-left-color:#141b2d}
+  .audit{margin:12px 0 0;font-size:12px;color:var(--warn);background:#fff7e8;border:1px solid #f0d9a8;border-radius:8px;padding:8px 12px;display:none}
+  .audit.show{display:block}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:16px 0}
+  .kpi{background:#fafbfd;border:1px solid var(--line);border-radius:11px;padding:12px 14px}
+  .kpi .l{font-size:11.5px;color:var(--sub)}.kpi .v{font-size:20px;font-weight:700;margin-top:3px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+  th,td{padding:8px 11px;text-align:left;border-bottom:1px solid var(--line)}
+  th{background:#f5f8fc;font-weight:600;color:#41506a;font-size:11.5px}
+  tr:last-child td{border-bottom:none}
+  .toolbar{display:flex;gap:8px;align-items:center;margin:14px 0 8px;flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:12.5px;color:#41506a}
+  .sel{border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12.5px;background:#fff;color:#333}
+  .search{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12.5px;color:#98a2b3}
+  .sec-t{font-size:13.5px;font-weight:700;margin:16px 0 6px}
+  .muted{color:var(--sub);font-size:12px}
+  .barbg{height:9px;background:#eef1f5;border-radius:6px;overflow:hidden;margin-top:6px}
+  .bar{height:100%;background:#2f6bff}
+  .foot{text-align:center;color:#9aa6b6;font-size:11.5px;margin-top:8px}
+  .note{background:#fff;border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:18px;font-size:13px}
+  /* 提权确认弹窗 */
+  .mask{position:fixed;inset:0;background:rgba(20,28,46,.5);display:none;align-items:center;justify-content:center;z-index:50}
+  .mask.show{display:flex}
+  .modal{background:#fff;border-radius:14px;width:440px;max-width:92vw;padding:22px 24px;box-shadow:0 20px 60px rgba(20,30,60,.3)}
+  .modal h3{margin:0 0 4px;font-size:17px;display:flex;align-items:center;gap:8px}
+  .modal .desc{font-size:12.5px;color:var(--sub);margin:0 0 14px}
+  .modal label{font-size:12px;color:#41506a;font-weight:600}
+  .modal textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:13px;margin-top:6px;resize:vertical;min-height:64px;font-family:inherit}
+  .modal textarea:focus{outline:none;border-color:var(--primary)}
+  .modal .err{color:#d64545;font-size:11.5px;margin-top:5px;display:none}
+  .modal .err.show{display:block}
+  .modal .acts{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+  .modal .cancel{border:1px solid var(--line);background:#fff;color:#41506a;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer}
+  .modal .ok{border:none;background:var(--primary);color:#fff;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer}
+  .modal .who{font-size:11.5px;color:#8894a6;margin-top:10px;background:#f7f9fc;border:1px solid var(--line);border-radius:7px;padding:7px 10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>需提权页面 · 逐页原型（5 个）</h1>
+    <p>驾驶舱 / 知识库管理 / 质量看板 / 模型&成本 / 开发者中心 —— 每页标清：提权按钮位置、未提权↔已提权两态、如何关闭</p>
+    <div class="legend">
+      <b>📍 按钮位置：页面标题右侧（页头右上角）</b>
+      <b>🛡 开启 = 弹窗必填理由 → 确认进入</b>
+      <b>🔓 已提权 = 全平台 + 审计条</b>
+      <b>关闭 = 再点一次同一按钮</b>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>统一规则（5 页一致）：</b>提权按钮固定放在<b>页头右上角</b>、与标题同一行。点击「🛡 提权查看全平台」<b>先弹窗、必填访问理由</b>，确认后才进入（理由写入审计）；进入后按钮变琥珀色「🔓 已提权 · 全平台（点击关闭）」，页头下方出现<b>审计留痕条</b>（含刚填的理由），范围标签由「系统组织」变「全平台」。<b>关闭 = 再点一次该按钮</b>（刷新/离开页面也自动回未提权，不粘住）。下面每页均可点击试。
+  </div>
+
+  <div id="root"></div>
+  <div class="foot">交互原型（示意数据）· 提权按 Tab 局部生效、开启需弹窗填理由、可随时关闭 · v0.3 · 2026-07-05</div>
+</div>
+
+<!-- 提权确认弹窗 -->
+<div class="mask" id="mask">
+  <div class="modal">
+    <h3>🛡 提权查看全平台（超管破玻璃）</h3>
+    <p class="desc">你将临时以超管身份跨组织访问本页的全平台数据，本次访问<b>全程审计</b>。请填写访问理由后进入。</p>
+    <label>访问理由（必填）</label>
+    <textarea id="reason" placeholder="如：排查某组织质量下降 / 客户支持工单 #123 / 安全事件核查"></textarea>
+    <div class="err" id="err">请填写访问理由后再进入。</div>
+    <div class="who" id="who">操作人：185****0934（超管）· 页面：—</div>
+    <div class="acts">
+      <button class="cancel" onclick="closeModal()">取消</button>
+      <button class="ok" onclick="confirmElev()">确认进入</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PAGES = [
+  {id:'dash', em:'🏠', name:'驾驶舱', url:'/dashboard', anno:'① 按钮在此（页头右上）'},
+  {id:'kb',   em:'📁', name:'知识库管理', url:'/knowledge', anno:'按钮在此'},
+  {id:'qual', em:'📈', name:'质量看板', url:'/evaluation/quality', anno:'按钮在此'},
+  {id:'cost', em:'🧠', name:'模型 & 成本', url:'/models', anno:'按钮在此'},
+  {id:'dev',  em:'🔌', name:'开发者中心', url:'/api', anno:'按钮在此'},
+];
+const st = {};       // 每页独立提权态
+const reasons = {};  // 每页提权理由（审计）
+let pendingId = null; // 正在弹窗确认的页面
+
+function bodyFor(id, on){
+  if(id==='dash'){
+    const k = on ? [['今日检索','3,914'],['入库文档','1,732'],['平均耗时','512ms'],['评审成本','¥86.40']]
+                 : [['今日检索','128'],['入库文档','56'],['平均耗时','484ms'],['评审成本','¥3.20']];
+    const rows = on ? [['组织A','842 检索 / 305 文档'],['组织B','410 / 120'],['…其余 9 组织','聚合']]
+                    : [['系统组织','128 检索 / 56 文档']];
+    return grid(k)+`<div class="sec-t">最近操作</div><table><thead><tr><th>组织</th><th>明细</th></tr></thead><tbody>`
+      + rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')+`</tbody></table>`;
+  }
+  if(id==='kb'){
+    const k = on ? [['知识库','38'],['文档','1,732'],['Chunk','41,905'],['组织数','12']]
+                 : [['知识库','4'],['文档','56'],['Chunk','1,204'],['owner','全是超管']];
+    const rows = on ? [['#589 octx-eval-kb','系统组织','可用'],['DISCRIMINATIVE-QUALITY','组织A','可用'],['QA-CSV-规范','组织B','可用'],['…其余 34 个','多个组织','—']]
+                    : [['#589 octx-eval-kb','系统组织','可用'],['#590 octx-rich-kb','系统组织','可用'],['#591 octx-f-kb','系统组织','可用'],['#600 平台基准库','系统组织','冻结']];
+    return `<div class="toolbar"><span class="btn">刷新</span><select class="sel"><option>上传到知识库：octx-eval-kb</option></select><span class="search">🔍 搜索知识库名称</span></div>`
+      + grid(k)+`<table><thead><tr><th>知识库</th><th>归属</th><th>状态</th></tr></thead><tbody>`
+      + rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')+`</tbody></table>`;
+  }
+  if(id==='qual'){
+    const k = on ? [['黄金题','412'],['Top3 命中','71%'],['本月判分','¥86.40'],['组织数','12']]
+                 : [['黄金题','100'],['Top3 命中','78%'],['本月判分','¥3.20'],['预算','¥200']];
+    const rows = on ? [['系统组织基准','100 题','78%'],['组织A','13 题','66%'],['组织B','0 题','—'],['…其余','聚合','—']]
+                    : [['系统组织基准','100 题','78% 命中']];
+    return grid(k)
+      + `<div class="sec-t">① 线上质量抽样 <span class="muted">（管理控件仅系统组织 OWNER/ADMIN 可改）</span></div>`
+      + `<div class="sec-t">② 黄金集回归测试</div>`
+      + `<table><thead><tr><th>基准范围</th><th>题数</th><th>命中</th></tr></thead><tbody>`
+      + rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')+`</tbody></table>`;
+  }
+  if(id==='cost'){
+    const k = on ? [['本月成本','¥1,204'],['judge 成本','¥62.10'],['Token','28.7M'],['组织数','12']]
+                 : [['本月成本','¥86.40'],['judge 成本','¥62.10'],['Token','1.9M'],['归属','系统组织']];
+    const rows = on ? [['系统组织','含 judge 等平台级','¥86.40'],['组织A','检索+应答','¥540'],['组织B','检索+应答','¥310'],['…其余','—','¥267']]
+                    : [['qwen3-rerank','RERANK','¥12.30'],['qwen-max','ANSWER','¥12.00'],['judge（评测判分·归系统组织）','JUDGE','¥62.10']];
+    return grid(k)+`<div class="sec-t">${on?'按组织成本':'按模型成本（系统组织）'}</div>`
+      + `<table><thead><tr><th>${on?'组织':'模型'}</th><th>用途/明细</th><th>成本</th></tr></thead><tbody>`
+      + rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')+`</tbody></table>`;
+  }
+  if(id==='dev'){
+    const k = on ? [['API Key','27'],['本月调用','48k'],['组织数','12'],['—','—']]
+                 : [['API Key','2'],['本月调用','1.2k'],['限流','1000/min'],['归属','系统组织']];
+    const rows = on ? [['sk-sys-****a1','READ/WRITE','系统组织'],['sk-316-****9f','WRITE','组织A'],['sk-66-****2d','READ','组织B'],['…其余 24 个','—','多个组织']]
+                    : [['sk-sys-****a1','READ/WRITE','系统组织'],['sk-sys-****c7','READ','系统组织']];
+    return grid(k)+`<table><thead><tr><th>API Key</th><th>权限</th><th>归属</th></tr></thead><tbody>`
+      + rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')+`</tbody></table>`;
+  }
+}
+function grid(k){return `<div class="grid">`+k.map(x=>`<div class="kpi"><div class="l">${x[0]}</div><div class="v">${x[1]}</div></div>`).join('')+`</div>`;}
+
+function render(){
+  document.getElementById('root').innerHTML = PAGES.map(p=>{
+    const on = !!st[p.id];
+    return `<div class="screen">
+      <div class="chrome"><i class="rd"></i><i class="r"></i><i class="g"></i><span class="url">ragforge.net${p.url}</span></div>
+      <div class="body">
+        <div class="phead">
+          ${p.id==='dash'?`<div class="anno">${p.anno}</div>`:''}
+          <div><h2>${p.em} ${p.name}</h2><div class="scope">数据范围：${on?'<span class="chip all">全平台（已提权 · 审计留痕）</span>':'<span class="chip sys">系统组织</span>'}</div></div>
+          <button class="elev ${on?'on':''}" onclick="tog('${p.id}')">${on?'🔓 已提权 · 全平台（点击关闭）':'🛡 提权查看全平台 · 审计'}</button>
+        </div>
+        <div class="audit ${on?'show':''}">⚠ 已进入全平台提权视图：本次跨组织访问全程审计（操作人 185****0934 · ${p.name} · 理由：${reasons[p.id]||'—'}）。看完请点右上按钮关闭提权。</div>
+        ${bodyFor(p.id,on)}
+      </div>
+    </div>`;
+  }).join('');
+}
+function tog(id){
+  if(st[id]){ st[id]=false; render(); return; }   // 已提权 → 一键关闭
+  // 未提权 → 弹窗填理由
+  pendingId = id;
+  const p = PAGES.find(x=>x.id===id);
+  document.getElementById('who').textContent = `操作人：185****0934（超管）· 页面：${p.em} ${p.name}`;
+  document.getElementById('reason').value = '';
+  document.getElementById('err').classList.remove('show');
+  document.getElementById('mask').classList.add('show');
+  setTimeout(()=>document.getElementById('reason').focus(),50);
+}
+function closeModal(){ document.getElementById('mask').classList.remove('show'); pendingId=null; }
+function confirmElev(){
+  const r = document.getElementById('reason').value.trim();
+  if(!r){ document.getElementById('err').classList.add('show'); return; }
+  st[pendingId]=true; reasons[pendingId]=r;
+  document.getElementById('mask').classList.remove('show');
+  pendingId=null; render();
+}
+render();
+</script>
+</body>
+</html>
