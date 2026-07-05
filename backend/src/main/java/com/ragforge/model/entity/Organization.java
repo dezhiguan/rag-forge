@@ -16,7 +16,7 @@ public class Organization {
 
   private String slug;
   private String name;
-  /** 组织类型：INDIVIDUAL（个人组织，单人）/ TEAM（团队组织）。 */
+  /** 组织类型：INDIVIDUAL（个人组织，单人）/ TEAM（团队组织）/ SYSTEM（系统组织，org_id=0，平台团队工作区）。 */
   private String type;
   private Long createdByUserId;
   private LocalDateTime createdAt;
