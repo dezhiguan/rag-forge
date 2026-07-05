@@ -36,6 +36,20 @@ function individualOrg() {
   return state.orgs.find((o) => o.personal) || null
 }
 
+function systemOrg() {
+  // 系统组织仅在超管的组织列表里出现（后端按成员身份返回），普通用户列表中没有。
+  return state.orgs.find((o) => o.type === 'SYSTEM' || o.id === 0) || null
+}
+
+// 默认落地组织：超管默认落「系统组织」（治理工作区），其余用户落个人组织。
+// 个人组织仍是超管的私人空间，可随时从组织切换器切回。
+function defaultOrgId() {
+  const sys = systemOrg()
+  if (sys) return sys.id
+  const ind = individualOrg()
+  return ind ? ind.id : null
+}
+
 export function useOrg() {
   const current = computed(() => {
     if (state.currentId === PLATFORM_ID) return PLATFORM
@@ -50,23 +64,23 @@ export function useOrg() {
     // 系统组织（org_id=0，type=SYSTEM）：超管治理工作区，成员皆超管。跨组织「提权破玻璃」仅此组织下可用。
     isSystem: computed(() => current.value.type === 'SYSTEM' || current.value.id === 0),
     isPlatform: computed(() => state.currentId === PLATFORM_ID),
-    /** 拉取我的组织（含个人组织）；当前选中失效则回退到个人组织。 */
+    /** 拉取我的组织（含个人组织）；当前选中失效则回退到默认组织（超管=系统组织，其余=个人组织）。 */
     async load(opts = {}) {
       try {
         const res = await listOrgs()
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
         state.orgs = list
-        const ind = individualOrg()
-        const indId = ind ? ind.id : null
+        const defId = defaultOrgId()
         if (state.currentId === PLATFORM_ID) {
-          // 全局「全平台视图」已下线：任何残留 platform（含超管）一律回退个人组织。
-          // 跨组织改由各页面的 Tab 级「提权查看全平台」开关承载，超管默认只看自己组织。
-          state.currentId = indId
-          persist(indId)
+          // 全局「全平台视图」已下线：任何残留 platform 一律回退默认组织（超管=系统组织）。
+          // 跨组织改由各页面的 Tab 级「提权查看全平台」开关承载。
+          state.currentId = defId
+          persist(defId)
         } else if (!list.some((o) => o.id === state.currentId)) {
-          // 选中已失效（含旧的 null / 换了用户）→ 回退个人组织。
-          state.currentId = indId
-          persist(indId)
+          // 选中已失效（含首次登录的 null / 换了用户）→ 回退默认组织：
+          // 超管落系统组织（治理工作区），其余用户落个人组织。
+          state.currentId = defId
+          persist(defId)
         }
       } finally {
         state.loaded = true
