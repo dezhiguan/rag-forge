@@ -82,8 +82,8 @@
   <p class="sub">解决「判分样本 org 级隔离 vs 黄金集全局值」的作用域割裂 —— 收敛为「平台基准单轨」</p>
   <div class="meta">
     <div><div class="k">拟制日期</div><div class="v">2026-07-04</div></div>
-    <div><div class="k">版本</div><div class="v">v0.3</div></div>
-    <div><div class="k">状态</div><div class="v">待架构评审</div></div>
+    <div><div class="k">版本</div><div class="v">v0.4</div></div>
+    <div><div class="k">状态</div><div class="v">已落地上线</div></div>
     <div><div class="k">编制</div><div class="v">产品 / QA</div></div>
   </div>
 </header>
@@ -95,7 +95,8 @@
     <tbody>
       <tr><td>v0.1</td><td>2026-07-04</td><td>初稿：根因分析、双轨目标模型、三阶段落地方案</td></tr>
       <tr><td>v0.2</td><td>2026-07-04</td><td><b>收敛为「平台基准单轨」</b>：黄金集定为固定 100 题平台基准、不下放租户；显式补充「冻结基线知识库 + 系统组织自持 + 防删/版本化」；「组织回归集」降级为 backlog</td></tr>
-      <tr><td><b>v0.3</b></td><td>2026-07-04</td><td>新增「为什么固定输入结果仍会变（信号 vs 噪声）」；要求每次回放记录<b>链路指纹</b>并设<b>噪声带告警阈值</b></td></tr>
+      <tr><td>v0.3</td><td>2026-07-04</td><td>新增「为什么固定输入结果仍会变（信号 vs 噪声）」；要求每次回放记录<b>链路指纹</b>并设<b>噪声带告警阈值</b></td></tr>
+      <tr><td><b>v0.4</b></td><td>2026-07-05</td><td><b>方向调整为「组织级黄金集 + 平台特例」并已落地上线</b>：黄金集下放为组织级（enabled-count/回放按组织、样本落本组织）；平台管理员=固定 100 平台基准卡片；<b>阶段二「组织回归集/预算」已实现</b>——按组织月度评测预算 + 真实拦截（超支 403）+ 抽样/回放权限收口到组织所有者·管理员；抽屉重设计上线</td></tr>
     </tbody>
   </table>
   <h3>分阶段目标日期</h3>
@@ -103,7 +104,7 @@
     <thead><tr><th>阶段</th><th>目标日期</th><th>一句话目标</th><th>风险</th></tr></thead>
     <tbody>
       <tr><td>阶段一 · 平台基准归位 + 租户止血</td><td><b>2026-07-08 前</b></td><td>黄金集收敛为平台基准；建冻结基线库/系统组织；租户侧隐藏黄金集控件、诚实空态</td><td>低</td></tr>
-      <tr><td>阶段二 · 组织回归集 <span class="pill bl">Backlog</span></td><td>待租户诉求验证后评估</td><td>租户自助回放（预算隔离前置），非本期范围</td><td>中</td></tr>
+      <tr><td>阶段二 · 组织回归集 + 按组织预算 <span class="pill rec">已上线</span></td><td><b>2026-07-05</b></td><td>组织级黄金集回放（样本落本组织）+ 按组织月度预算与真实拦截 + 权限收口</td><td>已落地</td></tr>
     </tbody>
   </table>
 </section>
@@ -220,13 +221,18 @@
     </div>
   </div>
 
-  <div class="phase backlog">
-    <div class="ph-head"><span class="name">阶段二 · 组织回归集 <span class="pill bl">Backlog</span></span><span class="date">待租户诉求验证后评估</span></div>
+  <div class="phase">
+    <div class="ph-head"><span class="name">阶段二 · 组织回归集 + 按组织预算 <span class="pill rec">已上线</span></span><span class="date">2026-07-05</span></div>
     <div class="ph-body">
-      <p>若后续确有租户提出「想一键验证自己库改动后的质量」，再评估开放<b>组织回归集</b>：org 内选题 + 绑定自己 KB、组织管理员自助回放、样本落本 org、<b>计本 org 预算</b>。</p>
-      <div class="callout risk">
-        <b>前置硬约束（届时必须先做）：预算隔离。</b>org 级回放必须走 org 预算账，绝不能记平台预算 —— 否则一开放自助就会打爆平台 judge 预算（这也是当初做成 admin-only 的真实原因）。
+      <p><b>已实现并上线</b>：组织从「评测数据集」勾选黄金题（<code>enabled-count</code> 按组织），组织所有者/管理员自助回放
+        <code>POST /replay/org</code>，样本落本组织、点亮本组织质量看板；单次上限 50 题 + 每组织 5 分钟冷却 + 二次确认。</p>
+      <div class="callout rec">
+        <b>预算隔离已落地（真实拦截）：</b>新增 <code>org_judge_budget</code> 表，按组织月度预算（组织自配或回退平台默认）；
+        本月已用按组织实时统计（<code>judge_results</code> 按 KB 归属）；<b>用完即拦截</b>——超支时 <code>/replay/org</code> 返回
+        <code>403 GOLDEN_BUDGET_EXCEEDED</code>、前端「立即回放」置灰并提示「请联系平台管理员」。预算配置仅平台管理员
+        （<code>BUDGET_ADMIN_ONLY</code>），抽样/回放配置收口到组织所有者·管理员，普通成员只读置灰。
       </div>
+      <p class="lead">平台侧仍为固定 100 平台基准卡片（Core Set）；平台预算作为组织未配置时的默认回退。</p>
     </div>
   </div>
 </section>
@@ -256,7 +262,7 @@
 </section>
 
 <footer>
-  RAGForge · 质量看板作用域改造设计方案 v0.3 · 拟制 2026-07-04 · 待架构评审 · 内部产品设计稿 · docs/dev/
+  RAGForge · 质量看板作用域改造设计方案 v0.4 · 拟制 2026-07-04 · 更新 2026-07-05 · 已落地上线 · 内部产品设计稿 · docs/dev/
 </footer>
 
 </div>
