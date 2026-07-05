@@ -25,6 +25,7 @@ export const ERROR_MESSAGES = {
   KB_VISIBILITY_REQUIRED: '请选择可见性',
   // API Key 创建 / 授权 / 鉴权
   KEY_NAME_REQUIRED: '请输入 API 密钥名称',
+  KEY_NAME_TOO_LONG: 'API 密钥名称过长（最多 100 个字符）',
   ALLOWED_KB_IDS_REQUIRED: '请至少选择一个要授权的知识库',
   KB_NOT_IN_ORG: '所选知识库不属于当前组织，无法授权',
   PLATFORM_VIEW_READONLY: '全平台视图为只读治理视角，不能创建或修改内容，请切换到具体组织后再试',

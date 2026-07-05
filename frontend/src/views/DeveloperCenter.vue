@@ -136,7 +136,7 @@
         <div class="cf-body">
           <label class="cf-field">
             <span class="cf-label">名称 *</span>
-            <input class="cf-input" v-model="createForm.keyName" placeholder="如 careermate-prod" />
+            <input class="cf-input" v-model="createForm.keyName" maxlength="100" placeholder="如 careermate-prod" />
           </label>
 
           <div class="cf-field">
@@ -309,7 +309,7 @@ async function submitCreate() {
   if (creating.value) return
   const name = createForm.value.keyName.trim()
   if (!name) {
-    toast.warning('请输入 API key 名称')
+    toast.warning('请输入 API 密钥名称')
     return
   }
   if (createForm.value.scopeMode === 'KB_LIST' && createForm.value.allowedKbIds.length === 0) {
@@ -366,7 +366,7 @@ async function onRename(k) {
 async function onGovSearch() {
   const q = govQuery.value.trim()
   if (q.length < 3) {
-    toast.error('请输入至少 3 个字符的 key 名称或前缀')
+    toast.error('请输入至少 3 个字符的密钥名称或前缀')
     return
   }
   govLoading.value = true

@@ -37,6 +37,9 @@ public class ApiKeyServiceImpl implements ApiKeyService {
   private final OrgMemberMapper orgMemberMapper;
   private final KnowledgeBaseMapper knowledgeBaseMapper;
 
+  // 与 DB 列 api_keys.key_name VARCHAR(100) 对齐：超长须提前 400 拦下，避免入库溢出落 500 兜底。
+  private static final int MAX_KEY_NAME_LEN = 100;
+
   /** 超管全平台视图（破玻璃）= 只读治理。 */
   public boolean isPlatformGovernance() {
     RagAuthContext ctx = RagAuthContextHolder.get();
@@ -126,6 +129,9 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     String keyName = cmd == null ? null : cmd.keyName();
     if (keyName == null || keyName.isBlank()) {
       throw new BizException(400, "KEY_NAME_REQUIRED");
+    }
+    if (keyName.trim().length() > MAX_KEY_NAME_LEN) {
+      throw new BizException(400, "KEY_NAME_TOO_LONG");
     }
     String scopeMode = normalizeScopeMode(cmd.scopeMode());
     // 本期仅 READ（READ_WRITE 暂不开放，无写接口接受 key）。
@@ -227,6 +233,9 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     requireOrgAdmin(apiKey.getOrgId());
     if (keyName == null || keyName.isBlank()) {
       throw new BizException(400, "KEY_NAME_REQUIRED");
+    }
+    if (keyName.trim().length() > MAX_KEY_NAME_LEN) {
+      throw new BizException(400, "KEY_NAME_TOO_LONG");
     }
     apiKey.setKeyName(keyName.trim());
     apiKeyMapper.update(

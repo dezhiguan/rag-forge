@@ -60,6 +60,7 @@ public final class ErrorMessages {
           Map.entry("KB_VISIBILITY_REQUIRED", "请选择知识库可见性"),
           // API Key 创建 / 授权
           Map.entry("KEY_NAME_REQUIRED", "请输入 API 密钥名称"),
+          Map.entry("KEY_NAME_TOO_LONG", "API 密钥名称过长（最多 100 个字符）"),
           Map.entry("API_KEY_NOT_FOUND", "API 密钥不存在或已被删除"),
           Map.entry("ALLOWED_KB_IDS_REQUIRED", "请至少选择一个要授权的知识库"),
           Map.entry("KB_NOT_IN_ORG", "所选知识库不属于当前组织，无法授权"),
@@ -71,7 +72,7 @@ public final class ErrorMessages {
           Map.entry("API_KEY_RATE_LIMITED", "请求过于频繁，请稍后再试"),
           // 治理 / 破玻璃
           Map.entry("GOVERNANCE_REQUIRES_BREAKGLASS", "该治理操作需先进入「全平台视图」（破玻璃）后才能执行"),
-          Map.entry("GOVERNANCE_QUERY_TOO_SHORT", "请输入更精确的检索词（至少 3 个字符）"),
+          Map.entry("GOVERNANCE_QUERY_TOO_SHORT", "请输入至少 3 个字符的密钥名称或前缀"),
           Map.entry("REVOKE_REASON_REQUIRED", "请填写吊销原因"),
           // 文档 / 分块
           Map.entry("DOCUMENT_NOT_FOUND", "文档不存在或已被删除"),
