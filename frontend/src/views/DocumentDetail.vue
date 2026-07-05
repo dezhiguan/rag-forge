@@ -464,20 +464,26 @@ const isFailedDoc = computed(() => normalizedStatus.value === 'failed')
 const isImageDoc = computed(() => (doc.value?.fileType || '').toLowerCase().startsWith('image/'))
 // 纯图片文档的预览：后端 imageUrl 在本地盘存储下为 file:// 或空（浏览器不可加载），
 // 而 /download 需 JWT 鉴权，<img src> 带不了内存里的 token → 401 裂图。
-// 解决：用带鉴权的 request 拉整篇图片为 blob，再转 objectURL 给 <img>（把登录态带过去）。
-const localImageBlobUrl = ref('')
+// 解决：用带鉴权的 request 拉整篇图片为 blob，再转 base64 data URL 给 <img>（把登录态带过去）。
+// 用 data: 而非 blob:：站点 CSP 的 img-src 允许 'self' data: 但不含 blob:，blob URL 会被 CSP 拦截。
+const localImageDataUrl = ref('')
 const isHttpUrl = (u) => typeof u === 'string' && /^https?:\/\//.test(u)
-// chunk 缩略图最终 src：优先可用的 http(s) presigned URL；否则纯图片文档用带鉴权拉取的 blob。
+// chunk 缩略图最终 src：优先可用的 http(s) presigned URL；否则纯图片文档用带鉴权拉取的 data URL。
 function chunkThumbSrc(c) {
   if (isHttpUrl(c?.imageUrl)) return c.imageUrl
-  if (isImageDoc.value && c?.imageKey) return localImageBlobUrl.value
+  if (isImageDoc.value && c?.imageKey) return localImageDataUrl.value
   return ''
 }
 function revokeLocalImage() {
-  if (localImageBlobUrl.value) {
-    URL.revokeObjectURL(localImageBlobUrl.value)
-    localImageBlobUrl.value = ''
-  }
+  localImageDataUrl.value = ''
+}
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(fr.result)
+    fr.onerror = () => reject(fr.error)
+    fr.readAsDataURL(blob)
+  })
 }
 async function resolveLocalImage() {
   revokeLocalImage()
@@ -486,13 +492,13 @@ async function resolveLocalImage() {
     const res = await downloadDocument(doc.value.id)
     const raw = res?.data ?? res
     if (raw instanceof Blob) {
-      // /download 返回 application/octet-stream + nosniff，blob 会继承该类型导致 <img> 不解码。
-      // 重贴成文档真实图片 MIME（如 image/webp），确保浏览器按图片解码。
+      // /download 返回 application/octet-stream，blob 会继承该类型导致 <img> 不按图片解码。
+      // 重贴成文档真实图片 MIME（如 image/webp），再转 data URL，确保浏览器按图片解码且过 CSP。
       const typed =
         raw.type && raw.type.startsWith('image/')
           ? raw
           : new Blob([raw], { type: doc.value.fileType || 'image/*' })
-      localImageBlobUrl.value = URL.createObjectURL(typed)
+      localImageDataUrl.value = await blobToDataUrl(typed)
     }
   } catch {
     /* 拉取失败则退化为无预览，不影响 chunk 列表 */
