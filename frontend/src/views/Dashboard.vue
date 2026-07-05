@@ -208,11 +208,14 @@ import { onMounted, reactive, ref, computed, watch } from 'vue'
 import { getDashboardMetrics } from '../api/metrics'
 import { reprocessDocument } from '../api/document'
 import { useOrg } from '../composables/useOrg'
+import { useElevation } from '../composables/useElevation'
 import ElevationToggle from '../components/ElevationToggle.vue'
 import { listMembers } from '../api/org'
 import { useToast } from '../composables/useToast'
 
-const { current, isPersonal, isPlatform, load: loadOrgs } = useOrg()
+const { current, isPersonal, load: loadOrgs } = useOrg()
+// 「全平台」口径由提权（破玻璃）驱动，而非已下线的全局全平台视图。
+const { active: isPlatform } = useElevation()
 const toast = useToast()
 const loading = ref(false)
 const lastUpdated = ref('')

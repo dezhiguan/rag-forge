@@ -255,13 +255,18 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useOrg } from '../composables/useOrg'
+import { useElevation } from '../composables/useElevation'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import ElevationToggle from '../components/ElevationToggle.vue'
 import { listApiKeys, createApiKey, renameApiKey, deleteApiKey, governanceSearchKeys, revokeApiKey } from '../api/apikey'
 import { listKb } from '../api/kb'
 
-const { current, isPlatform, currentOrgId } = useOrg()
+const { current, currentOrgId } = useOrg()
+// 治理态由「提权（破玻璃）」驱动，而非已下线的全局全平台视图。
+// 提权后 = 全平台定向治理（不浏览全量 key，按名称/前缀定向查询 + 吊销）；未提权 = 管当前组织自己的 key。
+const { active: elevationActive } = useElevation()
+const isPlatform = elevationActive
 const toast = useToast()
 
 const tab = ref('keys')

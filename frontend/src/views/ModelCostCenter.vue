@@ -174,12 +174,15 @@ import { getModelList, toggleModel, getModelCostStats, getModelCostDetail } from
 import { useToast } from '../composables/useToast'
 import { useAuth } from '../composables/useAuth'
 import { useOrg } from '../composables/useOrg'
+import { useElevation } from '../composables/useElevation'
 import ElevationToggle from '../components/ElevationToggle.vue'
 
 const toast = useToast()
 const { ragRole } = useAuth()
-const { current, currentOrgId, isPlatform } = useOrg()
-// 模型启停仅超管在「全平台视图」(破玻璃)可操作；组织上下文内所有人只读。
+const { current, currentOrgId } = useOrg()
+// 「全平台」口径由提权（破玻璃）驱动，而非已下线的全局全平台视图。
+const { active: isPlatform } = useElevation()
+// 模型启停仅超管提权（破玻璃）后可操作；组织上下文内所有人只读。
 const canManageModels = computed(() => ragRole.value === 'ADMIN' && isPlatform.value)
 const orgName = computed(() => current.value?.name || '当前组织')
 

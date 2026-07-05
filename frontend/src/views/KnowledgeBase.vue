@@ -599,6 +599,7 @@ import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { useAuth } from '../composables/useAuth'
 import { useOrg } from '../composables/useOrg'
+import { useElevation } from '../composables/useElevation'
 import {
   CHUNK_OVERLAP_MAX,
   CHUNK_OVERLAP_MIN,
@@ -627,9 +628,11 @@ const route = useRoute()
 const { start: startDocPolling, stop: stopDocPolling } = useDocumentPolling()
 
 const { ragRole } = useAuth()
-const { isPlatform, current } = useOrg()
+const { current } = useOrg()
+// 「全平台」口径由提权（破玻璃）驱动，而非已下线的全局全平台视图。
+const { active: isPlatform } = useElevation()
 // 创建知识库权限：个人组织本人可建；团队组织仅 OWNER/ADMIN 可建（与后端 applyOwnership 的
-// NOT_ORG_ADMIN 守卫一致）。MEMBER/平台视图不显示「创建知识库」按钮，避免点了才被 403。
+// NOT_ORG_ADMIN 守卫一致）。MEMBER/提权（破玻璃只读治理）不显示「创建知识库」按钮，避免点了才被 403。
 const canCreateKb = computed(
   () => !isPlatform.value && (!!current.value?.personal || ['OWNER', 'ADMIN'].includes(current.value?.myRole)),
 )
