@@ -15,8 +15,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
+import com.ragforge.common.PageResult;
 import com.ragforge.config.EvalProperties;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.EvalDatasetMapper;
@@ -224,6 +226,33 @@ class EvalExperimentServiceImplTest {
 
     assertThat(list).hasSize(1);
     assertThat(list.get(0).getDatasetName()).isEqualTo("ds-1");
+  }
+
+  @Test
+  void list_paged_returnsPageResultWithTotal() {
+    EvalExperiment exp = completedExperiment(11L, 1L);
+    Page<EvalExperiment> page = new Page<>(1, 10);
+    page.setRecords(List.of(exp));
+    page.setTotal(1);
+    when(evalExperimentMapper.selectPage(any(), any())).thenReturn(page);
+    when(evalDatasetMapper.selectList(any())).thenReturn(List.of(dataset(1L, 10L, "ds-1")));
+
+    PageResult<?> result = evalExperimentService.list(1, 10, null);
+
+    assertThat(result.getTotal()).isEqualTo(1);
+    assertThat(result.getList()).hasSize(1);
+  }
+
+  @Test
+  void list_filterByDatasetName_noMatch_returnsEmptyWithoutQueryingExperiments() {
+    // 关键词无匹配数据集 → 直接返回空页，不查实验表。
+    when(evalDatasetMapper.selectList(any())).thenReturn(List.of());
+
+    PageResult<?> result = evalExperimentService.list(1, 10, "不存在的数据集");
+
+    assertThat(result.getTotal()).isZero();
+    assertThat(result.getList()).isEmpty();
+    verify(evalExperimentMapper, org.mockito.Mockito.never()).selectPage(any(), any());
   }
 
   @Test

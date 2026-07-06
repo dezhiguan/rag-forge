@@ -1,10 +1,13 @@
 package com.ragforge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragforge.common.BizException;
+import com.ragforge.common.PageResult;
 import com.ragforge.common.TextNormalizer;
 import com.ragforge.config.EvalProperties;
 import com.ragforge.mapper.EvalDatasetMapper;
@@ -235,6 +238,60 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
 
     Map<Long, String> datasetNames = datasetNames(experiments.stream().map(EvalExperiment::getDatasetId).toList());
     return experiments.stream().map(exp -> toSummaryVO(exp, datasetNames.get(exp.getDatasetId()))).toList();
+  }
+
+  @Override
+  public PageResult<EvalExperimentVO> list(int page, int size, String datasetName) {
+    int p = Math.max(1, page);
+    int s = Math.min(Math.max(1, size), 100);
+    String kw = datasetName == null ? null : datasetName.trim();
+
+    // 计算待筛数据集 id 集合：null=不按数据集筛（无组织筛且无关键词）；空列表=无匹配→空页。
+    List<Long> datasetIds = null;
+    List<Long> scopeKbIds = currentOrgKbIdsOrNull();
+    if (scopeKbIds != null) {
+      if (scopeKbIds.isEmpty()) {
+        return PageResult.of(0, p, s, Collections.emptyList());
+      }
+      datasetIds =
+          evalDatasetMapper
+              .selectList(new LambdaQueryWrapper<EvalDataset>().in(EvalDataset::getKbId, scopeKbIds))
+              .stream()
+              .map(EvalDataset::getId)
+              .toList();
+      if (datasetIds.isEmpty()) {
+        return PageResult.of(0, p, s, Collections.emptyList());
+      }
+    }
+    if (StringUtils.hasText(kw)) {
+      LambdaQueryWrapper<EvalDataset> nameQuery =
+          new LambdaQueryWrapper<EvalDataset>().like(EvalDataset::getName, kw);
+      if (datasetIds != null) {
+        nameQuery.in(EvalDataset::getId, datasetIds);
+      }
+      List<Long> matched =
+          evalDatasetMapper.selectList(nameQuery).stream().map(EvalDataset::getId).toList();
+      if (matched.isEmpty()) {
+        return PageResult.of(0, p, s, Collections.emptyList());
+      }
+      datasetIds = matched;
+    }
+
+    LambdaQueryWrapper<EvalExperiment> w =
+        new LambdaQueryWrapper<EvalExperiment>().orderByDesc(EvalExperiment::getCreatedAt);
+    if (datasetIds != null) {
+      w.in(EvalExperiment::getDatasetId, datasetIds);
+    }
+    IPage<EvalExperiment> result = evalExperimentMapper.selectPage(new Page<>(p, s), w);
+    List<EvalExperiment> experiments = result.getRecords();
+    if (experiments.isEmpty()) {
+      return PageResult.of(result.getTotal(), p, s, Collections.emptyList());
+    }
+    Map<Long, String> datasetNames =
+        datasetNames(experiments.stream().map(EvalExperiment::getDatasetId).toList());
+    List<EvalExperimentVO> list =
+        experiments.stream().map(exp -> toSummaryVO(exp, datasetNames.get(exp.getDatasetId()))).toList();
+    return PageResult.of(result.getTotal(), p, s, list);
   }
 
   @Override

@@ -248,7 +248,7 @@
         <!-- 概览卡片 -->
         <div class="summary-cards" v-if="experiments.length">
           <div class="summary-card">
-            <div class="summary-num">{{ experiments.length }}</div>
+            <div class="summary-num">{{ expTotal }}</div>
             <div class="summary-label">实验总数</div>
           </div>
           <div class="summary-card">
@@ -268,7 +268,17 @@
         <div class="top-toolbar">
           <div class="toolbar-left">
             <button class="btn btn-primary" @click="openRunExperiment">+ 运行新实验</button>
-            <button class="btn-ghost btn-sm" :disabled="loadingExperiments" @click="loadExperiments">刷新</button>
+            <button class="btn-ghost btn-sm" :disabled="loadingExperiments" @click="loadExperiments(expPage)">刷新</button>
+          </div>
+          <div class="toolbar-right">
+            <input
+              v-model="expKeyword"
+              class="exp-search"
+              type="text"
+              placeholder="按数据集名称模糊搜索"
+              @input="onExpSearchInput"
+            />
+            <span v-if="expKeyword" class="exp-search-clear" @click="expKeyword = ''; loadExperiments(1)">✕</span>
           </div>
         </div>
 
@@ -313,6 +323,23 @@
               </tr>
             </tbody>
           </table>
+          <div v-if="expTotal > EXP_PAGE_SIZE" class="pager">
+            <button
+              class="btn btn-secondary btn-sm"
+              :disabled="expPage <= 1 || loadingExperiments"
+              @click="loadExperiments(expPage - 1)"
+            >
+              上一页
+            </button>
+            <span class="pager-info">第 {{ expPage }} 页 / 共 {{ expTotalPages }} 页 · {{ expTotal }} 条</span>
+            <button
+              class="btn btn-secondary btn-sm"
+              :disabled="expPage >= expTotalPages || loadingExperiments"
+              @click="loadExperiments(expPage + 1)"
+            >
+              下一页
+            </button>
+          </div>
         </div>
       </template>
 
@@ -938,6 +965,11 @@ const batchText = ref('')
 
 const experiments = ref([])
 const loadingExperiments = ref(false)
+const expKeyword = ref('')
+const expPage = ref(1)
+const expTotal = ref(0)
+const EXP_PAGE_SIZE = 10
+let expSearchTimer = null
 const showRunExperiment = ref(false)
 const runningExperiment = ref(false)
 const showExperimentDetail = ref(false)
@@ -980,14 +1012,28 @@ async function loadDatasets() {
   }
 }
 
-async function loadExperiments() {
+async function loadExperiments(page = expPage.value) {
   loadingExperiments.value = true
   try {
-    const res = await listExperiments()
-    experiments.value = res.data ?? []
+    const res = await listExperiments({
+      page,
+      size: EXP_PAGE_SIZE,
+      datasetName: expKeyword.value.trim() || undefined,
+    })
+    const data = res.data ?? {}
+    experiments.value = data.list ?? []
+    expTotal.value = data.total ?? 0
+    expPage.value = page
   } finally {
     loadingExperiments.value = false
   }
+}
+
+const expTotalPages = computed(() => Math.max(1, Math.ceil(expTotal.value / EXP_PAGE_SIZE)))
+
+function onExpSearchInput() {
+  clearTimeout(expSearchTimer)
+  expSearchTimer = setTimeout(() => loadExperiments(1), 300)
 }
 
 async function loadQuestions(datasetId, page = 1) {
@@ -1976,8 +2022,25 @@ onMounted(async () => {
   border-bottom-color: var(--primary);
 }
 
-.top-toolbar { margin-bottom: 12px; }
+.top-toolbar { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .toolbar-left { display: flex; gap: 10px; align-items: center; }
+.toolbar-right { display: flex; align-items: center; gap: 6px; position: relative; }
+.exp-search {
+  width: 220px;
+  padding: 6px 26px 6px 10px;
+  border: 1px solid var(--border, #e3e8f0);
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+}
+.exp-search:focus { border-color: var(--primary, #2563eb); }
+.exp-search-clear {
+  position: absolute;
+  right: 8px;
+  cursor: pointer;
+  color: var(--text-muted, #94a3b8);
+  font-size: 12px;
+}
 
 .btn-outline-sm {
   display: inline-block;
