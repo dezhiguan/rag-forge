@@ -31,6 +31,7 @@ import com.ragforge.judge.sampler.SampleRequest;
 import com.ragforge.search.RetrievalService;
 import com.ragforge.search.RetrievalService.RetrievalOutput;
 import com.ragforge.search.SearchResult;
+import com.ragforge.security.OrgContextHolder;
 import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import com.ragforge.service.LlmService;
@@ -86,6 +87,9 @@ public class AnswerService {
   public SseEmitter answer(AnswerRequest request) {
     validateRequest(request);
     RagAuthContext authContext = RagAuthContextHolder.get();
+    // 组织上下文是 ThreadLocal，异步池线程默认拿不到 → 模型用量会误记到无归属组织(org 0)。
+    // 捕获当前组织，在异步线程内重放，确保应答的 token/费用正确归属发起组织。
+    Long orgId = OrgContextHolder.get();
     SseEmitter emitter = new SseEmitter(600_000L);
     try {
       // 专用有界池(M4)，取代无界的 ForkJoinPool.commonPool；池满即拒绝，转成友好提示而非 500/无限积压。
@@ -93,6 +97,9 @@ public class AnswerService {
           () -> {
             try {
               RagAuthContextHolder.set(authContext);
+              if (orgId != null) {
+                OrgContextHolder.set(orgId);
+              }
               answerInternal(request, delta -> send(emitter, "token", Map.of("delta", delta)), emitter);
             } catch (BizException e) {
               sendError(emitter, e.getMessage(), e.getMessage());
@@ -101,6 +108,7 @@ public class AnswerService {
               sendError(emitter, "ANSWER_FAILED", e.getMessage());
             } finally {
               RagAuthContextHolder.clear();
+              OrgContextHolder.clear();
             }
           },
           answerExecutor);

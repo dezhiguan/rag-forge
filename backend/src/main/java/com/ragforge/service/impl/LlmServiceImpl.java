@@ -226,6 +226,11 @@ public class LlmServiceImpl implements LlmService {
     if (maxTokens != null && maxTokens > 0) {
       body.put("max_tokens", maxTokens);
     }
+    // OpenAI 兼容的流式接口默认不返回 usage；必须显式开启 stream_options.include_usage=true，
+    // 才会在最后一帧带上 token 用量。否则应答生成的 prompt/completion tokens 恒为 0、费用记不上。
+    if (stream) {
+      body.set("stream_options", objectMapper.createObjectNode().put("include_usage", true));
+    }
     return body.toString();
   }
 }
