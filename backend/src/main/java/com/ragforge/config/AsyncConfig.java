@@ -35,8 +35,10 @@ public class AsyncConfig {
   @Bean
   public Executor evalOrchestrationExecutor() {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.setCorePoolSize(3);
-    executor.setMaxPoolSize(6);
+    // 串行化实验编排（池=1）：一场接一场跑，避免消融一次并发 5 场把 1g 堆压爆（2026-07-07 OOM 事故）。
+    // 用户侧已异步返回+轮询，串行只增加后台墙钟、不阻塞 UI。溢出 CallerRunsPolicy 兜底不丢任务。
+    executor.setCorePoolSize(1);
+    executor.setMaxPoolSize(1);
     executor.setQueueCapacity(50);
     executor.setThreadNamePrefix("eval-orch-");
     executor.setTaskDecorator(MdcContext.taskDecorator());
