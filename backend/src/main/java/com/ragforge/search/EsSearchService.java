@@ -4,6 +4,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
+import com.ragforge.config.ElasticsearchClientProvider;
 import com.ragforge.pipeline.indexer.EsIndexService;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +18,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class EsSearchService {
 
-  private final ElasticsearchClient client;
+  private final ElasticsearchClientProvider clientProvider;
 
   public List<SearchResult> search(String query, List<Long> kbIds, List<Long> docIds, int topK) {
     return search(query, kbIds, docIds, topK, null);
@@ -30,6 +31,7 @@ public class EsSearchService {
       int topK,
       com.ragforge.model.dto.SearchRequest.SearchFilter filter) {
     requireKbScope(kbIds);
+    ElasticsearchClient client = clientProvider.get();
     try {
       SearchResponse<Map> response =
           client.search(

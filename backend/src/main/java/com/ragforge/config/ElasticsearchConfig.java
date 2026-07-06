@@ -1,58 +1,26 @@
 package com.ragforge.config;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.json.jackson.JacksonJsonpMapper;
-import co.elastic.clients.transport.ElasticsearchTransport;
-import co.elastic.clients.transport.rest_client.RestClientTransport;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.http.HttpHost;
-import org.apache.http.auth.AuthScope;
-import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.impl.client.BasicCredentialsProvider;
-import org.elasticsearch.client.RestClient;
-import org.elasticsearch.client.RestClientBuilder;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.util.StringUtils;
 
+/**
+ * Elasticsearch 客户端装配。
+ *
+ * <p>RestClient/Transport/Client 的构建、超时/keep-alive 配置以及**运行期自愈（reactor 死掉后重建）**
+ * 都收敛到 {@link ElasticsearchClientProvider}。生产代码应通过 provider 取用 live client；这里仅保留一个
+ * {@code ElasticsearchClient} Bean 供上下文装配/测试，快照自 provider（重建对已注入该 Bean 的消费者不可见，
+ * 故新代码请注入 {@link ElasticsearchClientProvider}）。
+ */
 @Slf4j
 @Configuration
 @EnableConfigurationProperties(ElasticsearchProperties.class)
 public class ElasticsearchConfig {
 
   @Bean
-  public RestClient elasticsearchRestClient(ElasticsearchProperties properties) {
-    RestClientBuilder builder =
-        RestClient.builder(new HttpHost(properties.getHost(), properties.getPort(), properties.getScheme()));
-
-    if (StringUtils.hasText(properties.getUsername()) && StringUtils.hasText(properties.getPassword())) {
-      BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-      credentialsProvider.setCredentials(
-          AuthScope.ANY,
-          new UsernamePasswordCredentials(properties.getUsername(), properties.getPassword()));
-      builder.setHttpClientConfigCallback(
-          httpClientBuilder -> httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider));
-    }
-
-    // RestClient doesn't connect eagerly; startup stays resilient even if ES is down.
-    log.info(
-        "Elasticsearch RestClient configured: {}://{}:{} (auth={})",
-        properties.getScheme(),
-        properties.getHost(),
-        properties.getPort(),
-        StringUtils.hasText(properties.getUsername()));
-
-    return builder.build();
-  }
-
-  @Bean
-  public ElasticsearchTransport elasticsearchTransport(RestClient restClient) {
-    return new RestClientTransport(restClient, new JacksonJsonpMapper());
-  }
-
-  @Bean
-  public ElasticsearchClient elasticsearchClient(ElasticsearchTransport transport) {
-    return new ElasticsearchClient(transport);
+  public ElasticsearchClient elasticsearchClient(ElasticsearchClientProvider provider) {
+    return provider.get();
   }
 }

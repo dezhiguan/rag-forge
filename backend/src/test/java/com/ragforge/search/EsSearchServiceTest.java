@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -13,6 +14,7 @@ import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.util.ObjectBuilder;
+import com.ragforge.config.ElasticsearchClientProvider;
 import com.ragforge.model.dto.SearchRequest.SearchFilter;
 import java.util.List;
 import java.util.Map;
@@ -27,12 +29,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class EsSearchServiceTest {
 
   @Mock private ElasticsearchClient client;
+  @Mock private ElasticsearchClientProvider clientProvider;
 
   private EsSearchService esSearchService;
 
   @BeforeEach
   void setUp() {
-    esSearchService = new EsSearchService(client);
+    lenient().when(clientProvider.get()).thenReturn(client);
+    esSearchService = new EsSearchService(clientProvider);
   }
 
   @Test

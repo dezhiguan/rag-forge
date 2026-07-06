@@ -14,6 +14,7 @@ import co.elastic.clients.elasticsearch.core.CountResponse;
 import co.elastic.clients.elasticsearch.indices.CreateIndexResponse;
 import co.elastic.clients.elasticsearch.indices.ElasticsearchIndicesClient;
 import co.elastic.clients.transport.endpoints.BooleanResponse;
+import com.ragforge.config.ElasticsearchClientProvider;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import java.time.LocalDateTime;
@@ -34,12 +35,14 @@ class EsIndexServiceTest {
 
   @Mock private ElasticsearchClient client;
   @Mock private ElasticsearchIndicesClient indicesClient;
+  @Mock private ElasticsearchClientProvider clientProvider;
 
   private EsIndexService esIndexService;
 
   @BeforeEach
   void setUp() {
-    esIndexService = new EsIndexService(client);
+    when(clientProvider.get()).thenReturn(client);
+    esIndexService = new EsIndexService(clientProvider);
     when(client.indices()).thenReturn(indicesClient);
   }
 

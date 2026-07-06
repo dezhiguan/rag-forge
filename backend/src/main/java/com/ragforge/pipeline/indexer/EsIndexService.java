@@ -9,6 +9,7 @@ import co.elastic.clients.elasticsearch.core.CountResponse;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
 import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
 import co.elastic.clients.elasticsearch.indices.ExistsRequest;
+import com.ragforge.config.ElasticsearchClientProvider;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import jakarta.annotation.PostConstruct;
@@ -35,7 +36,7 @@ public class EsIndexService {
 
   private static final int BULK_BATCH_SIZE = 50;
 
-  private final ElasticsearchClient client;
+  private final ElasticsearchClientProvider clientProvider;
 
   @PostConstruct
   public void init() {
@@ -48,6 +49,7 @@ public class EsIndexService {
   }
 
   public void createIndexIfNotExists() {
+    ElasticsearchClient client = clientProvider.get();
     try {
       ExistsRequest existsRequest = new ExistsRequest.Builder().index(INDEX_NAME).build();
       boolean exists = client.indices().exists(existsRequest).value();
@@ -145,6 +147,7 @@ public class EsIndexService {
       return true;
     }
 
+    ElasticsearchClient client = clientProvider.get();
     try {
       BulkRequest request = new BulkRequest.Builder().operations(ops).build();
       BulkResponse response = client.bulk(request);
@@ -179,6 +182,7 @@ public class EsIndexService {
     if (docId == null) {
       return 0;
     }
+    ElasticsearchClient client = clientProvider.get();
     try {
       CountResponse response =
           client.count(
@@ -197,6 +201,7 @@ public class EsIndexService {
     if (docId == null) {
       return;
     }
+    ElasticsearchClient client = clientProvider.get();
     try {
       client.deleteByQuery(
           r ->
@@ -213,6 +218,7 @@ public class EsIndexService {
     if (kbId == null) {
       return;
     }
+    ElasticsearchClient client = clientProvider.get();
     try {
       client.deleteByQuery(
           r ->
