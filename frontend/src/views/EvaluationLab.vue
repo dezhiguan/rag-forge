@@ -280,8 +280,8 @@
             <div class="summary-label">实验总数</div>
           </div>
           <div class="summary-card">
-            <div class="summary-num accent-green">{{ bestTop3Rate }}</div>
-            <div class="summary-label">最佳 Top3</div>
+            <div class="summary-num accent-green">{{ avgTop1Rate }}</div>
+            <div class="summary-label">平均 Top1</div>
           </div>
           <div class="summary-card">
             <div class="summary-num">{{ avgMrr }}</div>
@@ -1674,10 +1674,11 @@ const totalQuestions = computed(() =>
 
 const totalExperiments = computed(() => experiments.value.length)
 
-const bestTop3Rate = computed(() => {
+// 平均 Top1 命中率：Top1 最严格（答案须排第一），不像「最佳 Top3」取最大值会恒饱和到 100%，区分度更高。
+const avgTop1Rate = computed(() => {
   if (!experiments.value.length) return '—'
-  const best = Math.max(...experiments.value.map(e => Number(e.top3HitRate ?? 0)))
-  return `${(best * 100).toFixed(1)}%`
+  const sum = experiments.value.reduce((s, e) => s + Number(e.top1HitRate ?? 0), 0)
+  return `${((sum / experiments.value.length) * 100).toFixed(1)}%`
 })
 
 const avgMrr = computed(() => {
