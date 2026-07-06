@@ -10,9 +10,11 @@ import static org.mockito.Mockito.when;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.EvalDatasetMapper;
+import com.ragforge.mapper.EvalQuestionMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.dto.CreateEvalDatasetDTO;
 import com.ragforge.model.entity.EvalDataset;
+import com.ragforge.model.entity.EvalQuestion;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.security.OrgContextHolder;
 import com.ragforge.security.RagAuthContextHolder;
@@ -30,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class EvalDatasetServiceImplTest {
 
   @Mock private EvalDatasetMapper evalDatasetMapper;
+  @Mock private EvalQuestionMapper evalQuestionMapper;
   @Mock private KnowledgeBaseMapper knowledgeBaseMapper;
 
   @InjectMocks private EvalDatasetServiceImpl evalDatasetService;
@@ -136,6 +139,20 @@ class EvalDatasetServiceImplTest {
     evalDatasetService.delete(3L);
 
     verify(evalDatasetMapper).deleteById(3L);
+  }
+
+  @Test
+  void delete_coreDataset_throws403AndKeepsDataset() {
+    when(evalDatasetMapper.selectById(3L)).thenReturn(dataset(3L, "baseline", 10L));
+    EvalQuestion core = new EvalQuestion();
+    core.setDatasetId(3L);
+    core.setIsCore(true);
+    when(evalQuestionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(core));
+
+    assertThatThrownBy(() -> evalDatasetService.delete(3L))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("CORE_DATASET_LOCKED");
+    verify(evalDatasetMapper, never()).deleteById(3L);
   }
 
   @Test

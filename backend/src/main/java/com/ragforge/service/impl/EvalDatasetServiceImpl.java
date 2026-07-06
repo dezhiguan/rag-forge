@@ -3,14 +3,18 @@ package com.ragforge.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.EvalDatasetMapper;
+import com.ragforge.mapper.EvalQuestionMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.dto.CreateEvalDatasetDTO;
 import com.ragforge.model.entity.EvalDataset;
+import com.ragforge.model.entity.EvalQuestion;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.vo.EvalDatasetVO;
 import com.ragforge.service.EvalDatasetService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +26,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
   private static final String KB_STATUS_DELETED = "deleted";
 
   private final EvalDatasetMapper evalDatasetMapper;
+  private final EvalQuestionMapper evalQuestionMapper;
   private final KnowledgeBaseMapper knowledgeBaseMapper;
 
   @Override
@@ -36,7 +41,27 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
       }
       w.in(EvalDataset::getKbId, scopeKbIds);
     }
-    return evalDatasetMapper.selectList(w).stream().map(EvalDatasetVO::fromEntity).toList();
+    List<EvalDatasetVO> vos =
+        evalDatasetMapper.selectList(w).stream().map(EvalDatasetVO::fromEntity).toList();
+    // 标记冻结基线：含核心题(is_core)的数据集置 locked=true，前端据此置灰操作按钮。
+    Set<Long> lockedIds = coreDatasetIds(vos.stream().map(EvalDatasetVO::getId).toList());
+    vos.forEach(v -> v.setLocked(lockedIds.contains(v.getId())));
+    return vos;
+  }
+
+  /** 返回给定数据集中含核心题(is_core=TRUE)的数据集 id 集合。 */
+  private Set<Long> coreDatasetIds(List<Long> datasetIds) {
+    if (datasetIds == null || datasetIds.isEmpty()) {
+      return Set.of();
+    }
+    return evalQuestionMapper
+        .selectList(
+            new LambdaQueryWrapper<EvalQuestion>()
+                .in(EvalQuestion::getDatasetId, datasetIds)
+                .eq(EvalQuestion::getIsCore, true))
+        .stream()
+        .map(EvalQuestion::getDatasetId)
+        .collect(Collectors.toSet());
   }
 
   /** 当前组织可访问的 KB ids = 本组织的库 + 公开库；破玻璃/无组织上下文返回 null（不过滤）。 */
@@ -86,6 +111,10 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
   @Transactional
   public void delete(Long id) {
     requireDatasetEntity(id);
+    // 冻结基线保护：含核心题的数据集不可删除（防误删，与前端置灰双保险）。
+    if (!coreDatasetIds(List.of(id)).isEmpty()) {
+      throw new BizException(403, "CORE_DATASET_LOCKED");
+    }
     evalDatasetMapper.deleteById(id);
   }
 

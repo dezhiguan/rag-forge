@@ -120,7 +120,10 @@ public final class ErrorMessages {
               "停用后该用途将没有可用模型，请先启用备用模型"),
           Map.entry(
               "CORE_QUESTION_LOCKED",
-              "这是平台级黄金集的核心题（质量基线已冻结），不可编辑或删除"),
+              "这是冻结基线的核心题，已锁定，不可编辑或删除"),
+          Map.entry(
+              "CORE_DATASET_LOCKED",
+              "该数据集是冻结的基线评测集，已锁定，不可删除"),
           // 通用兜底码
           Map.entry("INVALID_REQUEST", "请求格式有误，请检查后重试"),
           Map.entry("INVALID_PARAM", "请求参数有误，请检查后重试"),

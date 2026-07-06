@@ -124,7 +124,12 @@
                   <td>{{ formatTime(ds.createdAt) }}</td>
                   <td class="actions-cell">
                     <button class="btn-outline-sm" @click.stop="openRunExperiment(ds.id)">创建实验</button>
-                    <span class="link-action danger-subtle" @click.stop="onDeleteDataset(ds)">删除</span>
+                    <span
+                      class="link-action"
+                      :class="ds.locked ? 'action-locked' : 'danger-subtle'"
+                      :title="ds.locked ? '冻结的基线评测集，已锁定不可删除' : ''"
+                      @click.stop="ds.locked || onDeleteDataset(ds)"
+                    >{{ ds.locked ? '🔒 已锁定' : '删除' }}</span>
                   </td>
                 </tr>
 
@@ -2124,7 +2129,12 @@ onMounted(async () => {
 .metric-accent { color: #10b981; }
 
 /* Actions cell */
-.actions-cell { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+/* 操作列保持为表格单元格（不能用 display:flex，否则脱离 border-collapse 导致行分隔线断开） */
+.actions-cell { white-space: nowrap; vertical-align: middle; }
+.actions-cell > * { vertical-align: middle; }
+.actions-cell > * + * { margin-left: 12px; }
+/* 冻结基线：删除置灰不可用（创建实验保留可用，用于回归重跑） */
+.action-locked { color: var(--text-muted); cursor: not-allowed; }
 
 /* Danger subtle */
 .link-action.danger-subtle { color: var(--text-muted); font-size: 11px; }

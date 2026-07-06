@@ -8,6 +8,8 @@ export const ERROR_MESSAGES = {
   JUDGE_RESULT_NOT_FOUND: '案例不存在或已被删除',
   CASE_ACCESS_DENIED: '无权访问该案例',
   EVAL_DATASET_NOT_FOUND: '数据集不存在',
+  CORE_QUESTION_LOCKED: '这是冻结基线的核心题，已锁定，不可编辑或删除',
+  CORE_DATASET_LOCKED: '该数据集是冻结的基线评测集，已锁定，不可删除',
   REPLAY_ALREADY_RUNNING: '已有回放任务正在进行，请稍后再试',
   DATASET_ID_REQUIRED: '请选择具体的数据集（管理员才能跑全量回放）',
   DATASET_KB_FORBIDDEN: '您没有访问该数据集对应知识库的权限',
