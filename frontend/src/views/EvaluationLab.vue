@@ -330,23 +330,15 @@
               </tr>
             </tbody>
           </table>
-          <div v-if="expTotal > EXP_PAGE_SIZE" class="pager">
-            <button
-              class="btn btn-secondary btn-sm"
-              :disabled="expPage <= 1 || loadingExperiments"
-              @click="loadExperiments(expPage - 1)"
-            >
-              上一页
-            </button>
-            <span class="pager-info">第 {{ expPage }} 页 / 共 {{ expTotalPages }} 页 · {{ expTotal }} 条</span>
-            <button
-              class="btn btn-secondary btn-sm"
-              :disabled="expPage >= expTotalPages || loadingExperiments"
-              @click="loadExperiments(expPage + 1)"
-            >
-              下一页
-            </button>
-          </div>
+          <Pager
+            v-if="experiments.length"
+            :total="expTotal"
+            :page="expPage"
+            :size="expSize"
+            unit="条"
+            @update:page="loadExperiments"
+            @update:size="onExpSize"
+          />
         </div>
       </template>
 
@@ -878,6 +870,7 @@ import { listKb } from '../api/kb'
 import { search as searchApi } from '../api/search'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import Pager from '../components/Pager.vue'
 
 const toast = useToast()
 const route = useRoute()
@@ -975,7 +968,7 @@ const loadingExperiments = ref(false)
 const expKeyword = ref('')
 const expPage = ref(1)
 const expTotal = ref(0)
-const EXP_PAGE_SIZE = 10
+const expSize = ref(10)
 let expSearchTimer = null
 const showRunExperiment = ref(false)
 const runningExperiment = ref(false)
@@ -1024,7 +1017,7 @@ async function loadExperiments(page = expPage.value) {
   try {
     const res = await listExperiments({
       page,
-      size: EXP_PAGE_SIZE,
+      size: expSize.value,
       datasetName: expKeyword.value.trim() || undefined,
     })
     const data = res.data ?? {}
@@ -1036,7 +1029,10 @@ async function loadExperiments(page = expPage.value) {
   }
 }
 
-const expTotalPages = computed(() => Math.max(1, Math.ceil(expTotal.value / EXP_PAGE_SIZE)))
+function onExpSize(size) {
+  expSize.value = size
+  loadExperiments(1)
+}
 
 function onExpSearchInput() {
   clearTimeout(expSearchTimer)
