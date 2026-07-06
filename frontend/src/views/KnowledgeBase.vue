@@ -802,7 +802,11 @@ const VIS_LABELS = {
 // 编辑模态可见性选项（模型 Y）：团队库 PRIVATE/ORG；个人库仅 PRIVATE。
 const editVisibilityOptions = computed(() => {
   const vals = isTeamOwnership(editForm.value.orgId) ? ['PRIVATE', 'ORG'] : ['PRIVATE']
-  return vals.map((v) => ({ value: v, label: VIS_LABELS[v] }))
+  // 始终包含该库当前的既有可见性，保证编辑时能正确回显：
+  // 覆盖历史遗留 PUBLIC，以及组织信息（allMyOrgs）尚未就绪时 isTeamOwnership 误判为个人库导致 ORG 缺项的场景。
+  const cur = editForm.value.visibility
+  if (cur && !vals.includes(cur)) vals.push(cur)
+  return vals.map((v) => ({ value: v, label: VIS_LABELS[v] || v }))
 })
 const answerModes = ['OFF', 'PREVIEW', 'ON']
 const answerModels = ['qwen-plus']
