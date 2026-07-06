@@ -27,6 +27,25 @@ public class AsyncConfig {
     return executor;
   }
 
+  /**
+   * 实验编排专用池：一场实验的整体驱动线程（提交逐题任务并等待汇总）跑在这里，与逐题检索用的
+   * evalExperimentExecutor 分池。若同池，消融实验并发触发多场实验时，编排线程会占满池、把逐题任务
+   * 饿死造成自锁。溢出用 CallerRunsPolicy 退化为调用方(请求线程)同步跑该场，宁可慢不丢任务。
+   */
+  @Bean
+  public Executor evalOrchestrationExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(3);
+    executor.setMaxPoolSize(6);
+    executor.setQueueCapacity(50);
+    executor.setThreadNamePrefix("eval-orch-");
+    executor.setTaskDecorator(MdcContext.taskDecorator());
+    executor.setRejectedExecutionHandler(
+        new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+    executor.initialize();
+    return executor;
+  }
+
   @Bean
   public Executor retrievalExecutor(RetrievalProperties retrievalProperties) {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

@@ -7,6 +7,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "ragforge.eval")
 public class EvalProperties {
 
-  private int maxConcurrentQuestions = 2;
-  private long questionTimeoutMs = 30000;
+  private int maxConcurrentQuestions = 6;
+  private long questionTimeoutMs = 45000;
 }
