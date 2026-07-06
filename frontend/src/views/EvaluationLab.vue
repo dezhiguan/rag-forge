@@ -1483,12 +1483,16 @@ async function onRunExperiment() {
   }
 }
 
-// 有实验处于 running 时轮询刷新列表，全部完成/失败后自动停止。
+// 有实验处于 running 时轮询刷新列表；全部完成/失败或超过最长时长后停止。
+// 设上限防止：实验进程崩溃/重启导致某行永久卡 running 时，前端无限轮询（后端 reaper 会在 ~15min 内把它置 failed）。
+const EXP_POLL_MAX_MS = 3 * 60 * 1000
 function startExperimentPolling() {
   stopExperimentPolling()
+  const startedAt = Date.now()
   expPollTimer = setInterval(async () => {
     await loadExperiments(expPage.value)
-    if (!experiments.value.some((e) => e.status === 'running')) {
+    const stillRunning = experiments.value.some((e) => e.status === 'running')
+    if (!stillRunning || Date.now() - startedAt > EXP_POLL_MAX_MS) {
       stopExperimentPolling()
     }
   }, 2000)
