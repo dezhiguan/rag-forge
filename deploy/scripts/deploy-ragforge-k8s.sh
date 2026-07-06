@@ -191,12 +191,15 @@ k3s kubectl apply -f "${K8S_DIR}/backend-configmap.yaml"
 k3s kubectl apply -f "${K8S_DIR}/backend-service.yaml"
 k3s kubectl apply -f "${K8S_DIR}/frontend-service.yaml"
 # Single-node k3s: roll api first while worker/judge are scaled down to avoid JVM memory spike.
+# 缩回时以清单(apply 后的 spec.replicas)为准，避免此处硬编码副本数覆盖 backend-deployment.yaml。
 k3s kubectl -n "${NAMESPACE}" scale deployment/ragforge-worker deployment/ragforge-judge --replicas=0 || true
 k3s kubectl apply -f "${RENDERED_DEPLOY}"
 wait_rollout ragforge-api
-k3s kubectl -n "${NAMESPACE}" scale deployment/ragforge-worker --replicas=1
+WORKER_REPLICAS="$(k3s kubectl -n "${NAMESPACE}" get deployment/ragforge-worker -o jsonpath='{.spec.replicas}' 2>/dev/null || echo 1)"
+JUDGE_REPLICAS="$(k3s kubectl -n "${NAMESPACE}" get deployment/ragforge-judge -o jsonpath='{.spec.replicas}' 2>/dev/null || echo 1)"
+k3s kubectl -n "${NAMESPACE}" scale deployment/ragforge-worker --replicas="${WORKER_REPLICAS:-1}"
 wait_rollout ragforge-worker
-k3s kubectl -n "${NAMESPACE}" scale deployment/ragforge-judge --replicas=1
+k3s kubectl -n "${NAMESPACE}" scale deployment/ragforge-judge --replicas="${JUDGE_REPLICAS:-1}"
 wait_rollout ragforge-judge
 render_ragforge_frontend_deployment "${K8S_DIR}/frontend-deployment.yaml" "${RENDERED_FRONTEND_DEPLOY}" "${FRONTEND_IMAGE}"
 k3s kubectl apply -f "${RENDERED_FRONTEND_DEPLOY}"
