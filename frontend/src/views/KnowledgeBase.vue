@@ -755,7 +755,11 @@ async function loadManageableOrgs() {
 function isTeamOwnership(orgId) {
   if (orgId == null) return false
   const org = allMyOrgs.value.find((o) => o.id === orgId)
-  return !!org && !org.personal
+  if (org) return !org.personal
+  // 组织列表尚未加载到该组织：凡绑定了非空 orgId 且不等于个人组织的，一律按团队库处理，
+  // 避免因 allMyOrgs 缺失/时序问题把团队库误判为个人库、导致编辑时选不到「组织内可见」。
+  const pid = personalOrg.value?.id
+  return pid == null || orgId !== pid
 }
 // 可见性选项随归属变化（模型 Y：移除全域公开）：个人库仅 PRIVATE；团队库 PRIVATE/ORG
 const visibilityOptions = computed(() =>
@@ -1123,7 +1127,10 @@ async function onCreateKb() {
   }
 }
 
-function openEdit(kb) {
+async function openEdit(kb) {
+  // 加载我的组织列表：editVisibilityOptions 依赖 allMyOrgs 判定团队库，
+  // 否则团队库编辑时可见性只剩 PRIVATE、无法选「组织内可见」。
+  if (!allMyOrgs.value.length) await loadManageableOrgs()
   const vis = (kb.visibility || 'PRIVATE').toUpperCase()
   editForm.value = {
     id: kb.id,
@@ -1571,6 +1578,7 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
+  loadManageableOrgs()
   await loadKbs()
   // 默认全部合上，由用户点击展开（含第一个库）
   // 从驾驶舱「新建知识库」深链进入：自动打开创建弹窗，并清掉 query 防刷新重弹
