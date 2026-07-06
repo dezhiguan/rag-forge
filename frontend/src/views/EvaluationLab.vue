@@ -271,14 +271,16 @@
             <button class="btn-ghost btn-sm" :disabled="loadingExperiments" @click="loadExperiments(expPage)">刷新</button>
           </div>
           <div class="toolbar-right">
-            <input
-              v-model="expKeyword"
-              class="exp-search"
-              type="text"
-              placeholder="按数据集名称模糊搜索"
-              @input="onExpSearchInput"
-            />
-            <span v-if="expKeyword" class="exp-search-clear" @click="expKeyword = ''; loadExperiments(1)">✕</span>
+            <div class="kb-search" :class="{ has: expKeyword }">
+              <span class="kb-search-ico">🔍</span>
+              <input
+                v-model="expKeyword"
+                type="text"
+                placeholder="搜索数据集名称"
+                @input="onExpSearchInput"
+              />
+              <span v-if="expKeyword" class="kb-search-clear" @click="expKeyword = ''; loadExperiments(1)">✕</span>
+            </div>
           </div>
         </div>
 
@@ -2024,23 +2026,13 @@ onMounted(async () => {
 
 .top-toolbar { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .toolbar-left { display: flex; gap: 10px; align-items: center; }
-.toolbar-right { display: flex; align-items: center; gap: 6px; position: relative; }
-.exp-search {
-  width: 220px;
-  padding: 6px 26px 6px 10px;
-  border: 1px solid var(--border, #e3e8f0);
-  border-radius: 8px;
-  font-size: 13px;
-  outline: none;
-}
-.exp-search:focus { border-color: var(--primary, #2563eb); }
-.exp-search-clear {
-  position: absolute;
-  right: 8px;
-  cursor: pointer;
-  color: var(--text-muted, #94a3b8);
-  font-size: 12px;
-}
+.toolbar-right { display: flex; align-items: center; gap: 6px; }
+/* 与知识库搜索框保持一致 */
+.kb-search { position: relative; }
+.kb-search input { height: 36px; width: 240px; padding: 0 32px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; background: #fff; outline: none; transition: .15s; }
+.kb-search input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft, #eff4ff); }
+.kb-search-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+.kb-search-clear { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer; font-size: 12px; }
 
 .btn-outline-sm {
   display: inline-block;
