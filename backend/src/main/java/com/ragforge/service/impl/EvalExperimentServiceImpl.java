@@ -51,6 +51,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import com.ragforge.web.TraceIds;
@@ -107,22 +108,45 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     experiment.setCreatedAt(LocalDateTime.now());
     evalExperimentMapper.insert(experiment);
 
+    // 检索(数十题 × 远程 embedding/ES/rerank，可达分钟级)异步执行：请求立即返回 running 态，前端按状态轮询。
+    // 消融实验会并发触发 5 个策略，各自独立异步跑，UI 不再被逐个策略串行阻塞。
+    // experiment 已在上面无事务地 insert（自动提交），异步线程能读到该行并回写结果/失败态。
+    self.processExperimentAsync(
+        experiment.getId(), dataset.getKbId(), questions, normalizedStrategy, runTopK, runVectorWeight);
+
+    return getDetail(experiment.getId());
+  }
+
+  /**
+   * 异步执行一场实验的检索+评分+落库。运行于 evalOrchestrationExecutor（与逐题执行的 evalExperimentExecutor
+   * 分池，避免编排线程占满逐题池导致自锁）。失败时置 failed 态，不抛出（异步无调用方接收异常）。
+   */
+  @Async("evalOrchestrationExecutor")
+  public void processExperimentAsync(
+      Long experimentId,
+      Long kbId,
+      List<EvalQuestion> questions,
+      String normalizedStrategy,
+      int runTopK,
+      double runVectorWeight) {
+    EvalExperiment experiment = evalExperimentMapper.selectById(experimentId);
+    if (experiment == null) {
+      log.warn("异步执行时实验已不存在 experimentId={}", experimentId);
+      return;
+    }
     int total = questions.size();
     List<EvalResult> evalResults = new ArrayList<>(total);
-
-    // 检索(数十题 × 远程 embedding/ES/rerank，可达分钟级)在事务外跑，避免整场实验持 DB 连接 + 行锁。
-    // experiment 已在上面无事务地 insert（自动提交），故 catch 里的 markAsFailed(REQUIRES_NEW) 能看到该行。
     try {
       long searchStart = System.currentTimeMillis();
       List<EvalQuestionRunResult> runResults =
           runQuestionsConcurrently(
-              questions, experiment.getId(), dataset.getKbId(), normalizedStrategy, runTopK, runVectorWeight);
+              questions, experimentId, kbId, normalizedStrategy, runTopK, runVectorWeight);
       for (EvalQuestionRunResult runResult : runResults) {
         evalResults.add(runResult.getResult());
       }
       log.info(
           "Eval experiment questions completed: experimentId={} questions={} searchElapsedMs={}",
-          experiment.getId(),
+          experimentId,
           total,
           System.currentTimeMillis() - searchStart);
 
@@ -130,14 +154,10 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
       // 结果批插 + 置 completed 放同一短事务原子提交。
       self.finalizeExperiment(experiment, evalResults);
     } catch (Exception e) {
-      // 真实原因记日志(含 traceId)，对外统一友好文案，不把内部异常细节吐给用户。
-      log.error(
-          "评测实验运行失败 experimentId={} traceId={}", experiment.getId(), TraceIds.current(), e);
+      // 真实原因记日志(含 traceId)，前端凭 failed 状态提示；异步无调用方，不再向上抛。
+      log.error("评测实验运行失败 experimentId={} traceId={}", experimentId, TraceIds.current(), e);
       self.markAsFailed(experiment);
-      throw new BizException(500, "评测实验运行失败，请稍后重试");
     }
-
-    return getDetail(experiment.getId());
   }
 
   /** 从各题结果算 top1/top3/mrr/平均延迟并置为 completed（仅在内存对象上，落库由 finalizeExperiment 负责）。 */

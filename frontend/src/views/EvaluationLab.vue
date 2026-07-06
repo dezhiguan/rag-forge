@@ -47,6 +47,17 @@
             <button class="btn btn-primary" @click="openCreateDataset">+ 创建数据集</button>
             <button class="btn-ghost btn-sm" :disabled="loadingDatasets" @click="loadDatasets">刷新</button>
           </div>
+          <div class="toolbar-right">
+            <div class="kb-search" :class="{ has: dsKeyword }">
+              <span class="kb-search-ico">🔍</span>
+              <input
+                v-model="dsKeyword"
+                type="text"
+                placeholder="搜索数据集名称"
+              />
+              <span v-if="dsKeyword" class="kb-search-clear" @click="dsKeyword = ''">✕</span>
+            </div>
+          </div>
         </div>
 
         <div v-if="loadingDatasets" class="state-hint">
@@ -106,7 +117,7 @@
               </tr>
             </thead>
             <tbody>
-              <template v-for="ds in datasets" :key="ds.id">
+              <template v-for="ds in pagedDatasets" :key="ds.id">
                 <tr class="dataset-row" @click="toggleDataset(ds.id)">
                   <td>
                     <div class="dataset-cell">
@@ -246,6 +257,18 @@
               </template>
             </tbody>
           </table>
+          <div v-if="!filteredDatasets.length" class="state-hint" style="padding: 32px 0;">
+            <div class="state-title">未找到匹配「{{ dsKeyword }}」的数据集</div>
+          </div>
+          <Pager
+            v-if="filteredDatasets.length"
+            :total="filteredDatasets.length"
+            :page="dsPage"
+            :size="dsSize"
+            unit="个"
+            @update:page="dsPage = $event"
+            @update:size="onDsSize"
+          />
         </div>
       </template>
 
@@ -317,14 +340,18 @@
               <tr v-for="exp in experiments" :key="exp.id" class="experiment-row">
                 <td>{{ exp.datasetName || `#${exp.datasetId}` }}</td>
                 <td><span class="strategy-badge" :class="`strategy-${exp.strategy}`">{{ strategyLabelMap[exp.strategy] || exp.strategy }}</span></td>
-                <td>{{ exp.totalQuestions ?? 0 }}</td>
-                <td class="metric-cell">{{ formatRate(exp.top1HitRate) }}</td>
-                <td class="metric-cell metric-accent">{{ formatRate(exp.top3HitRate) }}</td>
-                <td class="metric-cell">{{ formatMrr(exp.mrr) }}</td>
-                <td>{{ exp.avgLatencyMs ?? 0 }}ms</td>
+                <td>{{ exp.status === 'completed' ? (exp.totalQuestions ?? 0) : '—' }}</td>
+                <td class="metric-cell">{{ expMetricMain(exp, formatRate(exp.top1HitRate)) }}</td>
+                <td class="metric-cell metric-accent">{{ expMetricSub(exp, formatRate(exp.top3HitRate)) }}</td>
+                <td class="metric-cell">{{ expMetricSub(exp, formatMrr(exp.mrr)) }}</td>
+                <td>{{ exp.status === 'completed' ? `${exp.avgLatencyMs ?? 0}ms` : '—' }}</td>
                 <td>{{ formatTime(exp.createdAt) }}</td>
                 <td class="actions-cell">
-                  <span class="link-action" @click="openExperimentDetail(exp.id)">详情</span>
+                  <span
+                    class="link-action"
+                    :class="{ 'action-locked': exp.status !== 'completed' }"
+                    @click="exp.status === 'completed' && openExperimentDetail(exp.id)"
+                  >详情</span>
                   <span class="link-action danger-subtle" @click="onDeleteExperiment(exp)">删除</span>
                 </td>
               </tr>
@@ -849,7 +876,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   batchCreateEvalQuestions,
@@ -970,6 +997,11 @@ const expPage = ref(1)
 const expTotal = ref(0)
 const expSize = ref(10)
 let expSearchTimer = null
+let expPollTimer = null
+// 数据集列表：客户端分页 + 名称模糊搜索（数据集数量小，一次性拉全后本地筛/切页）。
+const dsKeyword = ref('')
+const dsPage = ref(1)
+const dsSize = ref(10)
 const showRunExperiment = ref(false)
 const runningExperiment = ref(false)
 const showExperimentDetail = ref(false)
@@ -1010,6 +1042,35 @@ async function loadDatasets() {
   } finally {
     loadingDatasets.value = false
   }
+}
+
+// 按名称模糊过滤后的数据集；关键词变化时回到第 1 页。
+const filteredDatasets = computed(() => {
+  const kw = dsKeyword.value.trim().toLowerCase()
+  if (!kw) return datasets.value
+  return datasets.value.filter((ds) => (ds.name || '').toLowerCase().includes(kw))
+})
+const pagedDatasets = computed(() => {
+  const startIdx = (dsPage.value - 1) * dsSize.value
+  return filteredDatasets.value.slice(startIdx, startIdx + dsSize.value)
+})
+watch([dsKeyword, () => filteredDatasets.value.length], () => {
+  const maxPage = Math.max(1, Math.ceil(filteredDatasets.value.length / dsSize.value))
+  if (dsPage.value > maxPage) dsPage.value = maxPage
+})
+function onDsSize(size) {
+  dsSize.value = size
+  dsPage.value = 1
+}
+
+// 实验行指标展示：running 显示「运行中…」，failed 显示「失败」，否则显示格式化值。
+function expMetricMain(exp, value) {
+  if (exp.status === 'running') return '运行中…'
+  if (exp.status === 'failed') return '失败'
+  return value
+}
+function expMetricSub(exp, value) {
+  return exp.status === 'completed' ? value : '—'
 }
 
 async function loadExperiments(page = expPage.value) {
@@ -1381,8 +1442,11 @@ async function onDeleteQuestion(datasetId, question) {
 }
 
 function openRunExperiment(datasetId) {
+  // 从「+ 运行新实验」按钮进入时，@click 会把 MouseEvent 当作实参传进来（真值），
+  // 导致 datasetId 被设为事件对象、下拉无匹配项而空白。仅接受数字型 id，否则默认选中第一个数据集。
+  const presetId = typeof datasetId === 'number' ? datasetId : null
   runForm.value = {
-    datasetId: datasetId || (datasets.value.length ? datasets.value[0].id : null),
+    datasetId: presetId ?? (datasets.value.length ? datasets.value[0].id : null),
     strategy: 'full',
     vectorWeight: 0.55,
     topK: 8,
@@ -1398,29 +1462,41 @@ async function onRunExperiment() {
   }
   runningExperiment.value = true
   try {
-    if (runForm.value.ablation) {
-      const strategies = ['vector', 'keyword', 'hybrid', 'full', 'rewrite']
-      for (const strategy of strategies) {
-        await runExperiment({
-          datasetId: runForm.value.datasetId,
-          strategy,
-          vectorWeight: runForm.value.vectorWeight,
-          topK: runForm.value.topK,
-        })
-      }
-    } else {
+    // 后端已异步执行：每个 run 请求立即返回 running 态实验，不再阻塞。消融=5 个策略各建一场实验。
+    const strategies = runForm.value.ablation
+      ? ['vector', 'keyword', 'hybrid', 'full', 'rewrite']
+      : [runForm.value.strategy]
+    for (const strategy of strategies) {
       await runExperiment({
         datasetId: runForm.value.datasetId,
-        strategy: runForm.value.strategy,
+        strategy,
         vectorWeight: runForm.value.vectorWeight,
         topK: runForm.value.topK,
       })
     }
     showRunExperiment.value = false
     activeTab.value = 'experiments'
-    await loadExperiments()
+    await loadExperiments(1)
+    startExperimentPolling()
   } finally {
     runningExperiment.value = false
+  }
+}
+
+// 有实验处于 running 时轮询刷新列表，全部完成/失败后自动停止。
+function startExperimentPolling() {
+  stopExperimentPolling()
+  expPollTimer = setInterval(async () => {
+    await loadExperiments(expPage.value)
+    if (!experiments.value.some((e) => e.status === 'running')) {
+      stopExperimentPolling()
+    }
+  }, 2000)
+}
+function stopExperimentPolling() {
+  if (expPollTimer) {
+    clearInterval(expPollTimer)
+    expPollTimer = null
   }
 }
 
@@ -1633,6 +1709,16 @@ onMounted(async () => {
       await loadQuestions(id, 1)
     }
   }
+
+  // 页面加载时若已有实验在跑（如刷新页面），继续轮询直到完成。
+  if (experiments.value.some((e) => e.status === 'running')) {
+    startExperimentPolling()
+  }
+})
+
+onUnmounted(() => {
+  stopExperimentPolling()
+  clearTimeout(expSearchTimer)
 })
 </script>
 
