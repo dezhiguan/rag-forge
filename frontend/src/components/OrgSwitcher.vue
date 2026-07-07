@@ -36,6 +36,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useOrg } from '../composables/useOrg'
 import { useAuth } from '../composables/useAuth'
 
@@ -44,6 +45,7 @@ const ADMIN_OVERRIDE_REASON_KEY = 'ragforge.adminOverrideReason'
 
 defineProps({ collapsed: { type: Boolean, default: false } })
 
+const route = useRoute()
 const { orgs, current, load, setCurrent } = useOrg()
 const { ragRole, isAuthenticated, userDisplayName } = useAuth()
 const isAdmin = computed(() => ragRole.value === 'ADMIN')
@@ -75,8 +77,16 @@ function select(o) {
   // 离开平台视图即结束破玻璃：清除已存的访问理由，避免残留到普通组织上下文。
   try { localStorage.removeItem(ADMIN_OVERRIDE_REASON_KEY) } catch { /* ignore */ }
   setCurrent(o.id ?? null)
-  // 切换组织是全局上下文变更：整页重载，确保所有页面带新的 X-Org-Id 重新取数。
-  window.location.reload()
+  // 切换组织是全局上下文变更。当前若停在按旧组织资源 id 定位的 L3 深页
+  // (文档列表 / 文档详情 / 质量案例详情)，该资源在新组织下并不存在，
+  // 原地重载会带旧 id 触发 403/空态。统一回退到所属区块的列表页
+  // (由路由 meta.orgSwitchFallback 声明)，再整页加载；其余页面原地重载。
+  const fallback = route.meta?.orgSwitchFallback
+  if (typeof fallback === 'string' && fallback && fallback !== route.path) {
+    window.location.assign(fallback)
+  } else {
+    window.location.reload()
+  }
 }
 
 
