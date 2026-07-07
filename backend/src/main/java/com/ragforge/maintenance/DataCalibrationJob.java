@@ -24,7 +24,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DataCalibrationJob {
 
-  private static final String STATUS_COMPLETED = "completed";
+  // documents.parse_status 在库中为大写枚举（COMPLETED/FAILED），与 DocumentServiceImpl 守卫一致；
+  // 此前误写小写 "completed" 导致 KB doc_count 对账恒匹配 0 行、把 doc_count 反复刷成 0。
+  private static final String STATUS_COMPLETED = "COMPLETED";
+  // knowledge_bases.status 为小写（deleted），此处针对 KB 状态，保持小写。
   private static final String STATUS_DELETED = "deleted";
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;

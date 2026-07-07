@@ -37,6 +37,7 @@ class IngestServiceImplTest {
 
   @Mock private DocumentMapper documentMapper;
   @Mock private DocumentChunkMapper chunkMapper;
+  @Mock private com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private DocumentProcessProducer mqProducer;
   @Mock private ArchiveExpandProducer archiveExpandProducer;
   @Mock private EsIndexService esIndexService;
@@ -51,6 +52,7 @@ class IngestServiceImplTest {
         new IngestServiceImpl(
             documentMapper,
             chunkMapper,
+            knowledgeBaseMapper,
             mqProducer,
             archiveExpandProducer,
             esIndexService,

@@ -3,6 +3,7 @@ package com.ragforge.service.ingest;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentChunkMapper;
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.metrics.RagforgeMetrics;
 import com.ragforge.model.dto.Identity;
 import com.ragforge.model.dto.IngestCommand;
@@ -52,6 +53,7 @@ public class IngestServiceImpl implements IngestService {
 
   private final DocumentMapper documentMapper;
   private final DocumentChunkMapper chunkMapper;
+  private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentProcessProducer mqProducer;
   private final ArchiveExpandProducer archiveExpandProducer;
   private final EsIndexService esIndexService;
@@ -203,6 +205,12 @@ public class IngestServiceImpl implements IngestService {
 
     documentMapper.updateStatus(oldDocId, STATUS_REPROCESSING);
     chunkMapper.deleteByDocumentId(oldDocId);
+    // 原子回减旧分片的 KB 计数（文档仍在，doc_count 不动）；replaceFields 会 bump version，
+    // 重处理管道因 version>1 不再重复 +1 doc_count。与 DocumentServiceImpl.replaceDocument 对齐。
+    int oldChunkCount = old.getChunkCount() == null ? 0 : old.getChunkCount();
+    if (oldChunkCount > 0) {
+      knowledgeBaseMapper.adjustCounters(old.getKbId(), -oldChunkCount, 0);
+    }
     documentMapper.replaceFields(oldDocId, cmd);
     documentMapper.updateStatus(oldDocId, STATUS_PENDING);
 

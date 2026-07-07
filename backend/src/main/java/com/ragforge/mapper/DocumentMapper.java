@@ -136,6 +136,7 @@ public interface DocumentMapper extends BaseMapper<Document> {
           indexed_content = #{cmd.indexedContent},
           chunk_type = #{cmd.chunkType},
           chunk_count = 0,
+          version = COALESCE(version, 1) + 1,
           error_msg = NULL,
           updated_at = NOW()
       WHERE id = #{id}

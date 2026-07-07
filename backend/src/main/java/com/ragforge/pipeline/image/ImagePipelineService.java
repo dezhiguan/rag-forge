@@ -2,6 +2,7 @@ package com.ragforge.pipeline.image;
 
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentMapper;
+import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.entity.Document;
 import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.pipeline.indexer.EsIndexService;
@@ -30,6 +31,7 @@ public class ImagePipelineService {
   private static final String STATUS_PROCESSING = "PROCESSING";
 
   private final DocumentMapper documentMapper;
+  private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final ObjectStorage objectStorage;
   private final ImagePipelineSupport imagePipelineSupport;
   private final EsIndexService esIndexService;
@@ -44,11 +46,16 @@ public class ImagePipelineService {
       if (doc == null) {
         throw new BizException(404, "文档不存在: " + documentId);
       }
+      // 与文本管道一致：仅新文档首次处理(起始 PENDING 且 version==1)才 +1 doc_count；
+      // chunk_count 每次完成累加本次分片数，reprocess 的残余漂移由 DataCalibrationJob 对账纠偏。
+      boolean incrementDocCount =
+          "PENDING".equals(doc.getParseStatus()) && (doc.getVersion() == null || doc.getVersion() == 1);
       updateStatus(documentId, STATUS_PROCESSING, null);
       cleanup(documentId);
       if (!multimodalProperties.isEnabled()) {
         updateChunkCount(documentId, 0);
         updateStatus(documentId, STATUS_COMPLETED, null);
+        knowledgeBaseMapper.adjustCounters(doc.getKbId(), 0, incrementDocCount ? 1 : 0);
         log.info(
             "Image pipeline skipped because multimodal is disabled: docId={} latencyMs={}",
             documentId,
@@ -64,6 +71,7 @@ public class ImagePipelineService {
       esIndexService.indexChunks(inserted, doc);
       updateChunkCount(documentId, inserted.size());
       updateStatus(documentId, STATUS_COMPLETED, null);
+      knowledgeBaseMapper.adjustCounters(doc.getKbId(), inserted.size(), incrementDocCount ? 1 : 0);
       log.info(
           "Image pipeline completed: docId={} chunks={} latencyMs={}",
           documentId,

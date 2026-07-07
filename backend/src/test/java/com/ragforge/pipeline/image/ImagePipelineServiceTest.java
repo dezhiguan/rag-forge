@@ -38,6 +38,7 @@ import org.springframework.jdbc.core.RowCallbackHandler;
 class ImagePipelineServiceTest {
 
   @Mock private DocumentMapper documentMapper;
+  @Mock private com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
   @Mock private ObjectStorage objectStorage;
   @Mock private ImagePipelineSupport imagePipelineSupport;
   @Mock private EsIndexService esIndexService;
@@ -53,6 +54,7 @@ class ImagePipelineServiceTest {
     service =
         new ImagePipelineService(
             documentMapper,
+            knowledgeBaseMapper,
             objectStorage,
             imagePipelineSupport,
             esIndexService,
