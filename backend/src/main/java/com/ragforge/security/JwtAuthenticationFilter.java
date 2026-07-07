@@ -39,6 +39,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private final AdminAccessAuditService adminAccessAuditService;
   private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
 
+  /**
+   * /api/auth/** 是公开的认证代理端点（登录/刷新/登出/找回密码/凭据管理），它们要么用 rf_refresh
+   * cookie、要么把 Authorization 头原样转发给网关自行校验，从不依赖本过滤器写入的 RagAuthContext。
+   *
+   * <p>本过滤器对任意带 Bearer 的请求都会校验，失败即 401 并中断链路。前端 authClient 会给
+   * /api/auth/refresh 也带上当前 access token；笔记本合盖休眠时主动续期定时器被冻结、access token 到期，
+   * 唤醒后这次刷新携带的正是**已过期**的 Bearer——若不跳过，refresh（其存在意义就是在 access token
+   * 过期时换新令牌）会被本过滤器以「登录状态已失效」401 拦死，导致「记住我 30 天」内合盖必被踢登录。
+   * 故对 /api/auth/** 跳过本过滤器：这些端点的鉴权由其自身/网关负责。
+   */
+  @Override
+  protected boolean shouldNotFilter(HttpServletRequest request) {
+    String path = request.getServletPath();
+    if (path == null || path.isEmpty()) {
+      path = request.getRequestURI();
+    }
+    return path != null && path.startsWith("/api/auth/");
+  }
+
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
