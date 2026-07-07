@@ -64,7 +64,7 @@ query -> chunks + scores + citations + metadata + 分段耗时(rewrite/vector/ke
 - **检索调试台**:对比不同策略、权重、TopK 参数下的召回与排序。
 - **质量评测 + LLM-as-Judge**:构建评测集观察召回/排序/失败样本;离线 Golden Set 与在线抽样由 DeepSeek 充当裁判自动打分,质量看板内置。
 - **统一认证与权限**:后台接口使用 Auth Gateway 颁发的 Bearer JWT(RS256 + JWKS 校验);支持账号密码/短信验证码登录、刷新令牌、退出、全端退出、密码重置;角色 `ADMIN` / `KB_EDITOR` / `KB_VIEWER` / `SERVICE_ACCOUNT`;知识库通过 `kb_acl`、JWT claims 和组织模型做细粒度读写控制;Auth Gateway 的会话撤销/密码变更事件经 HMAC webhook 同步,Redis 维护撤销名单。
-- **组织模型**:GitHub 式"个人 + 组织"协作(已移除早期 tenant 多租户),知识库归属 `owner_user_id` / `org_id`,支持组织邀请与通知。
+- **组织模型**:统一以**组织**为归属维度(已移除早期 tenant 多租户),组织分为**个人组织**与**企业组织**——每个用户注册即拥有一个个人组织,企业组织支持成员协作;知识库统一归属 `org_id`,支持组织邀请与通知。
 - **API Key 管理**:为外部系统和 MCP 工具提供受控调用,支持启停、服务账号上下文、知识库范围(`allowed_kb_ids`)和 Redis 分钟级限流。
 - **MCP Server**:无状态 Streamable HTTP 端点 `/mcp`,暴露 `search_knowledge`、`list_knowledge_bases`、`answer_with_citations` 三个工具(早期 SSE 传输已弃用)。
 - **模型注册表 & 成本中心**:模型统一注册(`model_config`),按模型/组织维度计量计价(`model_usage_daily`);改写与应答支持运行时动态选型与 fallback。
@@ -404,7 +404,9 @@ RAGForge 已上线运行(见[线上环境](https://ragforge.net)),核心的导�
 当前线上验证规模(参考):
 
 ```text
-约 10,000 份文档 / 约 100,000 个 Chunk / 8 个知识库
+规模按组织维度统计,示例:
+  组织 A:约 62,900 份文档 / 约 1,230,000 个 Chunk / 8 个知识库
+  组织 B:约 9,900 份文档  / 约 112,000 个 Chunk   / 8 个知识库
 ```
 
 实际容量取决于文档长度、切分参数、Embedding 速度、ES/PG/Qdrant 参数和资源。向量检索已由 Qdrant HNSW ANN 承载(见[多模态与向量空间](#多模态与向量空间)),具备近似索引与横向扩展空间。
