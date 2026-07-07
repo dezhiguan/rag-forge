@@ -58,14 +58,25 @@ public class DataCalibrationJob {
   public DataCalibrationReport calibrate() {
     long start = System.currentTimeMillis();
     DataCalibrationReport report = new DataCalibrationReport();
-    calibrateDocumentChunkCounts(report);
+    // 先校正 KB 计数（每库一次聚合，轻量且是列表页数据源），再跑较重的文档级循环，
+    // 确保即便文档级循环耗时/中断，用户可见的 KB doc_count/chunk_count 也已被刷正。
     calibrateKnowledgeBaseCounts(report);
+    calibrateDocumentChunkCounts(report);
     report.setElapsedMs(System.currentTimeMillis() - start);
     return report;
   }
 
   private void calibrateDocumentChunkCounts(DataCalibrationReport report) {
-    List<Document> docs = documentMapper.selectList(null);
+    // 仅拉对账所需的轻量列，绝不加载 indexed_content 等大字段：全表 76k+ 文档若带全文一次性入堆
+    // 会在 1.5G 堆的 pod 上 OOM，导致对账在首步就崩、永远到不了 KB 计数校正（历史 doc_count 恒 0 的元凶之一）。
+    List<Document> docs =
+        documentMapper.selectList(
+            new LambdaQueryWrapper<Document>()
+                .select(
+                    Document::getId,
+                    Document::getKbId,
+                    Document::getChunkCount,
+                    Document::getParseStatus));
     for (Document doc : docs) {
       report.setCheckedDocuments(report.getCheckedDocuments() + 1);
       Long actual =
