@@ -289,6 +289,8 @@ class KnowledgeBaseServiceImplTest {
   void listVisibleFiltersOrgContextAndResolvesPermissionsAndCounts() {
     com.ragforge.security.OrgContextHolder.set(100L);
     KnowledgeBase owned = kb(1L, "owned", 100L, "PRIVATE", 7L);
+    owned.setDocCount(3);
+    owned.setChunkCount(30);
     KnowledgeBase publicKb = kb(2L, "public", 999L, "PUBLIC", 99L);
     KnowledgeBase hidden = kb(3L, "hidden", 999L, "ORG", 99L);
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(1L, 2L, 3L));
@@ -298,26 +300,28 @@ class KnowledgeBaseServiceImplTest {
     lenient()
         .when(organizationMapper.selectBatchIds(any()))
         .thenReturn(List.of(org(100L, "personal"), org(999L, "other")));
-    when(documentMapper.selectMaps(any()))
-        .thenReturn(List.of(Map.of("kb_id", 1L, "cnt", 3), Map.of("kb_id", 2L, "cnt", 4)));
-    when(documentChunkMapper.selectMaps(any()))
-        .thenReturn(List.of(Map.of("kb_id", 1L, "cnt", 30), Map.of("kb_id", 2L, "cnt", 40)));
 
     List<KnowledgeBaseVO> vos = knowledgeBaseService.listVisibleToCurrentUser();
 
     // 模型 Y：仅当前组织(100)的库保留；他组织的 PUBLIC(2L)/ORG(3L) 不再穿透。
     assertThat(vos).extracting(KnowledgeBaseVO::getId).containsExactly(1L);
     assertThat(vos.get(0).getMyPermission()).isEqualTo("admin");
+    // 计数直接读实体冗余字段(不再实时聚合)。
     assertThat(vos.get(0).getDocCount()).isEqualTo(3);
     assertThat(vos.get(0).getChunkCount()).isEqualTo(30);
   }
 
   @Test
   void listVisiblePagedAppliesKeywordAndBounds() {
+    // 关键词/边界过滤已下推到 SQL(selectPage),此处 mock 返回“已过滤”的一页,
+    // 验证入参归一化(page 0→1、size 0→10)与 total 透传。
     KnowledgeBase alpha = kb(11L, "alpha", 100L, "PRIVATE", 7L);
-    KnowledgeBase beta = kb(12L, "beta", 100L, "PRIVATE", 7L);
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(11L, 12L));
-    when(knowledgeBaseMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(alpha, beta));
+    com.baomidou.mybatisplus.extension.plugins.pagination.Page<KnowledgeBase> mpPage =
+        new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10);
+    mpPage.setRecords(List.of(alpha));
+    mpPage.setTotal(1);
+    when(knowledgeBaseMapper.selectPage(any(), any())).thenReturn(mpPage);
 
     com.ragforge.common.PageResult<KnowledgeBaseVO> page =
         knowledgeBaseService.listVisiblePaged("AL", 0, 0);

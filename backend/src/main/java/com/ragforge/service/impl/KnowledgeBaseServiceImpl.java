@@ -1,14 +1,12 @@
 package com.ragforge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.DocumentMapper;
 import com.ragforge.mapper.KnowledgeBaseMapper;
 import com.ragforge.model.dto.CreateKbDTO;
 import com.ragforge.model.dto.UpdateKbDTO;
 import com.ragforge.model.entity.Document;
-import com.ragforge.model.entity.DocumentChunk;
 import com.ragforge.model.entity.KnowledgeBase;
 import com.ragforge.model.vo.KnowledgeBaseVO;
 import com.ragforge.security.RagAuthContext;
@@ -33,7 +31,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentMapper documentMapper;
-  private final com.ragforge.mapper.DocumentChunkMapper documentChunkMapper;
   private final com.ragforge.security.KbAccessGuard kbAccessGuard;
   private final com.ragforge.mapper.KbAclMapper kbAclMapper;
   private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
@@ -177,7 +174,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 })
             .toList();
     enrichOrgNames(vos);
-    applyRealCounts(vos);
     return vos;
   }
 
@@ -243,57 +239,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     return "read";
   }
 
-  /**
-   * 用实时聚合的文档/分片数覆盖 VO 上来自实体的冗余计数器，避免计数器漂移（文档失败/删除/replace
-   * 等非常规路径会导致 knowledge_bases.doc_count 与实际不一致）导致列表展示错误。批量 group by，避免 N+1。
-   */
-  private void applyRealCounts(List<KnowledgeBaseVO> vos) {
-    if (vos == null || vos.isEmpty()) {
-      return;
-    }
-    List<Long> kbIds =
-        vos.stream().map(KnowledgeBaseVO::getId).filter(java.util.Objects::nonNull).toList();
-    if (kbIds.isEmpty()) {
-      return;
-    }
-    java.util.Map<Long, Integer> docCounts =
-        countByKb(
-            documentMapper.selectMaps(
-                new QueryWrapper<Document>()
-                    .select("kb_id", "count(*) AS cnt")
-                    .in("kb_id", kbIds)
-                    // 压缩包子文档在列表中隐藏，docCount 不计子文档，只算容器+独立文档，保持一致
-                    .isNull("parent_document_id")
-                    .groupBy("kb_id")));
-    java.util.Map<Long, Integer> chunkCounts =
-        countByKb(
-            documentChunkMapper.selectMaps(
-                new QueryWrapper<DocumentChunk>()
-                    .select("kb_id", "count(*) AS cnt")
-                    .in("kb_id", kbIds)
-                    .groupBy("kb_id")));
-    for (KnowledgeBaseVO vo : vos) {
-      vo.setDocCount(docCounts.getOrDefault(vo.getId(), 0));
-      vo.setChunkCount(chunkCounts.getOrDefault(vo.getId(), 0));
-    }
-  }
-
-  private java.util.Map<Long, Integer> countByKb(List<java.util.Map<String, Object>> rows) {
-    java.util.Map<Long, Integer> result = new java.util.HashMap<>();
-    if (rows == null) {
-      return result;
-    }
-    for (java.util.Map<String, Object> row : rows) {
-      Object kb = row.get("kb_id");
-      Object cnt = row.get("cnt");
-      if (kb instanceof Number) {
-        result.put(
-            ((Number) kb).longValue(), cnt instanceof Number ? ((Number) cnt).intValue() : 0);
-      }
-    }
-    return result;
-  }
-
   private List<KnowledgeBaseVO> loadListAll() {
     List<KnowledgeBase> list =
         knowledgeBaseMapper.selectList(
@@ -302,7 +247,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .orderByDesc(KnowledgeBase::getCreatedAt));
     List<KnowledgeBaseVO> vos = list.stream().map(KnowledgeBaseVO::fromEntity).toList();
     enrichOrgNames(vos);
-    applyRealCounts(vos);
     return vos;
   }
 
@@ -310,7 +254,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
   public KnowledgeBaseVO getById(Long id) {
     KnowledgeBase kb = requireActiveKb(id);
     KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
-    applyRealCounts(java.util.List.of(vo));
     RagAuthContext ctx = RagAuthContextHolder.get();
     boolean admin = ctx != null && ctx.isAdmin();
     Set<Long> adminIds = Set.of();
@@ -363,18 +306,66 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
       String keyword, int page, int size) {
     int p = page < 1 ? 1 : page;
     int s = size < 1 ? 10 : Math.min(size, 100);
-    List<KnowledgeBaseVO> all = listVisibleToCurrentUser();
-    String kw = keyword == null ? "" : keyword.trim().toLowerCase();
-    List<KnowledgeBaseVO> filtered =
-        kw.isEmpty()
-            ? all
-            : all.stream()
-                .filter(vo -> vo.getName() != null && vo.getName().toLowerCase().contains(kw))
-                .toList();
-    int from = Math.min((p - 1) * s, filtered.size());
-    int to = Math.min(from + s, filtered.size());
-    return com.ragforge.common.PageResult.of(
-        filtered.size(), p, s, new java.util.ArrayList<>(filtered.subList(from, to)));
+    RagAuthContext ctx = RagAuthContextHolder.get();
+    Set<Long> readable = kbAccessGuard.allReadableKbIds();
+    if (readable.isEmpty()) {
+      return com.ragforge.common.PageResult.of(0, p, s, java.util.List.of());
+    }
+    // 真·数据库分页：把「可读集合 + 组织上下文过滤 + 关键词 + 排序 + LIMIT/OFFSET」下推到 SQL,
+    // 不再全量 load 到内存再 subList。计数取实体冗余字段(adjustCounters 原子维护 + 对账兜底),
+    // 不再对百万级 document_chunks 实时 COUNT。
+    LambdaQueryWrapper<KnowledgeBase> wrapper =
+        new LambdaQueryWrapper<KnowledgeBase>()
+            .in(KnowledgeBase::getId, readable)
+            .ne(KnowledgeBase::getStatus, STATUS_DELETED);
+    Long orgFilter = orgContextFilterId(ctx);
+    if (orgFilter != null) {
+      wrapper.eq(KnowledgeBase::getOrgId, orgFilter);
+    }
+    String kw = keyword == null ? null : keyword.trim();
+    if (kw != null && !kw.isEmpty()) {
+      wrapper.apply("LOWER(name) LIKE LOWER({0})", "%" + kw + "%");
+    }
+    wrapper.orderByDesc(KnowledgeBase::getCreatedAt);
+
+    com.baomidou.mybatisplus.extension.plugins.pagination.Page<KnowledgeBase> mpPage =
+        new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(p, s);
+    com.baomidou.mybatisplus.core.metadata.IPage<KnowledgeBase> result =
+        knowledgeBaseMapper.selectPage(mpPage, wrapper);
+
+    boolean admin = ctx != null && ctx.isAdmin();
+    Set<Long> adminIds = Set.of();
+    Set<Long> writableIds = Set.of();
+    if (ctx != null && ctx.userId() != null) {
+      adminIds = new java.util.HashSet<>(kbAclMapper.findAdminKbIds(ctx.userId()));
+      writableIds = new java.util.HashSet<>(kbAclMapper.findWritableKbIds(ctx.userId()));
+    }
+    final boolean isAdmin = admin;
+    final Set<Long> adminSet = adminIds;
+    final Set<Long> writableSet = writableIds;
+    final Long uid = ctx == null ? null : ctx.userId();
+    List<KnowledgeBaseVO> vos =
+        result.getRecords().stream()
+            .map(
+                kb -> {
+                  KnowledgeBaseVO vo = KnowledgeBaseVO.fromEntity(kb);
+                  vo.setMyPermission(resolvePermission(kb, uid, isAdmin, adminSet, writableSet));
+                  return vo;
+                })
+            .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+    enrichOrgNames(vos);
+    return com.ragforge.common.PageResult.of(result.getTotal(), p, s, vos);
+  }
+
+  /**
+   * 当前组织上下文过滤 id：破玻璃(全平台超管)返回 null 不过滤；否则返回 X-Org-Id(可能为 null 表示不过滤)。
+   * 与内存版 {@link #filterByOrgContext} 语义保持一致，供分页 SQL 下推使用。
+   */
+  private Long orgContextFilterId(RagAuthContext ctx) {
+    if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
+      return null;
+    }
+    return com.ragforge.security.OrgContextHolder.get();
   }
 
   // ============ 可见性变更（P0 权限+审计 / P1 依赖预检 / P2 放开治理） ============
