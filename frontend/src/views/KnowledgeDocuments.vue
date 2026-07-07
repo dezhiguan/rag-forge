@@ -160,7 +160,12 @@ const breadcrumbItems = computed(() => [
 async function loadKb() {
   try {
     const res = await listKb()
-    kb.value = (res.data ?? []).find((item) => item.id === kbId.value) || null
+    const list = res.data ?? []
+    kb.value = list.find((item) => item.id === kbId.value) || null
+    return list
+  } catch {
+    // 列表拉取失败（网络/鉴权瞬态）不做归属判定，返回 null 交由后续兜底
+    return null
   } finally {
     kbLoaded.value = true
   }
@@ -277,7 +282,16 @@ function fileTypeLabel(filename) {
 }
 
 async function refreshPage() {
-  await loadKb()
+  // OS-B1：组织切换是整页刷新且保留 URL，旧组织的 kbId 会残留到新组织。
+  // loadKb 用的是按当前组织过滤的 listKb —— 若成功拿到列表却不含当前 kbId，
+  // 说明该库不属于当前组织，直接回退到当前组织的知识库列表，
+  // 不再发出必然 403 的文档请求（避免误导性的“无权访问”弹窗 + 锁态）。
+  const kbList = await loadKb()
+  if (Array.isArray(kbList) && !kb.value) {
+    toast.info('该知识库不属于当前组织，已返回知识库列表')
+    router.replace('/knowledge')
+    return
+  }
   await loadDocs(1)
 }
 
