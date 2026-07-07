@@ -63,7 +63,7 @@ vector(默认) / keyword / hybrid(RRF) / rewrite(改写+多路向量) / full(改
 Flyway `V1..V51`(baseline=26,out-of-order),核心表 ~26 张:knowledge_bases / documents / document_chunks / retrieval_logs / kb_acl / answer_logs / clean_profiles / eval_* / judge_* / model_config / model_usage_daily / organizations / org_members / api_keys / revoked_jtis / admin_access_audit 等。
 
 ### 认证与权限
-Auth Gateway 颁发 JWT(RS256),后端自研 `JwtVerifier`(JWKS 验签,非 nimbus)。角色为字符串约定 `ADMIN / KB_EDITOR / KB_VIEWER / SERVICE_ACCOUNT`。KB 访问统一过 `KbAccessGuard`。组织模型为 GitHub 式个人+组织(已移除 tenant)。
+Auth Gateway 颁发 JWT(RS256),后端自研 `JwtVerifier`(JWKS 验签,非 nimbus)。角色为字符串约定 `ADMIN / KB_EDITOR / KB_VIEWER / SERVICE_ACCOUNT`。KB 访问统一过 `KbAccessGuard`。组织模型统一以组织为归属维度(分个人组织/企业组织,已移除 tenant),知识库归属 `org_id`。
 会话:access 15min/refresh 旋转(7d,记住我 30d 滑动),网关 60s 旋转宽限期;前端 `api/session.js` 主动续期+跨标签页 Web Locks 单飞+失败分级(仅 401/403 踢登录)。详见 `docs/dev/security-and-multitenancy.md` §8。
 
 ### 部署(k3s)
