@@ -46,7 +46,7 @@ const ADMIN_OVERRIDE_REASON_KEY = 'ragforge.adminOverrideReason'
 defineProps({ collapsed: { type: Boolean, default: false } })
 
 const route = useRoute()
-const { orgs, current, load, setCurrent } = useOrg()
+const { orgs, current, load, setCurrent, persistCurrent } = useOrg()
 const { ragRole, isAuthenticated, userDisplayName } = useAuth()
 const isAdmin = computed(() => ragRole.value === 'ADMIN')
 const open = ref(false)
@@ -76,15 +76,19 @@ function select(o) {
   if (o.id === current.value.id) return
   // 离开平台视图即结束破玻璃：清除已存的访问理由，避免残留到普通组织上下文。
   try { localStorage.removeItem(ADMIN_OVERRIDE_REASON_KEY) } catch { /* ignore */ }
-  setCurrent(o.id ?? null)
   // 切换组织是全局上下文变更。当前若停在按旧组织资源 id 定位的 L3 深页
   // (文档列表 / 文档详情 / 质量案例详情)，该资源在新组织下并不存在，
   // 原地重载会带旧 id 触发 403/空态。统一回退到所属区块的列表页
   // (由路由 meta.orgSwitchFallback 声明)，再整页加载；其余页面原地重载。
   const fallback = route.meta?.orgSwitchFallback
+  const targetOrgId = o.id ?? null
   if (typeof fallback === 'string' && fallback && fallback !== route.path) {
+    // 深页回退是整页硬导航：只持久化 org、不做响应式切换，避免当前页在导航生效前
+    // 感知到 currentOrgId 变化而闪出「不属于当前组织」横幅（文档详情）。
+    persistCurrent(targetOrgId)
     window.location.assign(fallback)
   } else {
+    setCurrent(targetOrgId)
     window.location.reload()
   }
 }

@@ -93,6 +93,16 @@ export function useOrg() {
       state.currentId = next
       persist(next)
     },
+    /**
+     * 仅持久化当前组织到 localStorage，不做响应式变更。
+     * 用于「切组织即整页硬导航」的场景：此时新页面会整页加载并从 localStorage 重新读取，
+     * 无需改动响应式 currentId；避免当前页在导航前对 currentId 变化产生闪烁
+     * （如文档详情的「不属于当前组织」横幅在跳转前一瞬间渲染）。
+     */
+    persistCurrent(id) {
+      const next = id === undefined ? (individualOrg()?.id ?? null) : id
+      persist(next)
+    },
     reset() {
       state.orgs = []
       state.currentId = null
