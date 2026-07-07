@@ -10,7 +10,8 @@
 [![Live Site](https://img.shields.io/badge/Live%20Site-ragforge.net-2EA043?logo=googlechrome&logoColor=white)](https://ragforge.net)
 [![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://adoptium.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.x-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15%2F16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-1024d%20HNSW%20%2B%20INT8-DC244C?logo=qdrant&logoColor=white)](https://qdrant.tech/)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-8.15-005571?logo=elasticsearch&logoColor=white)](https://www.elastic.co/)
 [![RocketMQ](https://img.shields.io/badge/RocketMQ-5.x-D77310?logo=apacherocketmq&logoColor=white)](https://rocketmq.apache.org/)
 [![MCP](https://img.shields.io/badge/MCP-Spring%20AI%201.0-6DB33F?logo=spring&logoColor=white)](https://docs.spring.io/spring-ai/reference/)
@@ -57,7 +58,7 @@ query -> chunks + scores + citations + metadata + 分段耗时(rewrite/vector/ke
 
 - **知识库与文档管理**:支持 PDF、Markdown、TXT、Word/OOXML 等常见格式,Tika 解析。
 - **异步文档处理管道**:上传 → 存储 → RocketMQ → 解析 → 清洗 → 分块 → Embedding → PG/ES 入库,全程状态可查。
-- **多模态统一向量空间**:文本与图片统一编码到 **2560 维** 同一向量空间(DashScope `qwen3-vl-embedding`),支持以文搜图/图文混合检索。
+- **多模态统一向量空间**:文本与图片统一编码到 **同一向量空间**(DashScope `qwen3-vl-embedding` 多模态 embedding,Matryoshka 截断至 **1024 维**),支持以文搜图/图文混合检索;向量存储与 ANN 检索由 **Qdrant** 承载(HNSW + INT8 量化)。
 - **5 种检索策略**:`vector` / `keyword` / `hybrid(RRF 融合)` / `rewrite(改写+多路召回)` / `full(改写+混合+rerank 精排)`,每种策略带独立并发限流与超时保护。
 - **RAG 应答**:`POST /api/v1/answer`,SSE 流式返回答案 + 引用片段。
 - **检索调试台**:对比不同策略、权重、TopK 参数下的召回与排序。
@@ -65,7 +66,7 @@ query -> chunks + scores + citations + metadata + 分段耗时(rewrite/vector/ke
 - **统一认证与权限**:后台接口使用 Auth Gateway 颁发的 Bearer JWT(RS256 + JWKS 校验);支持账号密码/短信验证码登录、刷新令牌、退出、全端退出、密码重置;角色 `ADMIN` / `KB_EDITOR` / `KB_VIEWER` / `SERVICE_ACCOUNT`;知识库通过 `kb_acl`、JWT claims 和组织模型做细粒度读写控制;Auth Gateway 的会话撤销/密码变更事件经 HMAC webhook 同步,Redis 维护撤销名单。
 - **组织模型**:GitHub 式"个人 + 组织"协作(已移除早期 tenant 多租户),知识库归属 `owner_user_id` / `org_id`,支持组织邀请与通知。
 - **API Key 管理**:为外部系统和 MCP 工具提供受控调用,支持启停、服务账号上下文、知识库范围(`allowed_kb_ids`)和 Redis 分钟级限流。
-- **MCP Server**:基于 Spring AI MCP(WebMVC SSE),暴露 `search_knowledge`、`list_knowledge_bases`、`answer_with_citations` 三个工具。
+- **MCP Server**:无状态 Streamable HTTP 端点 `/mcp`,暴露 `search_knowledge`、`list_knowledge_bases`、`answer_with_citations` 三个工具(早期 SSE 传输已弃用)。
 - **模型注册表 & 成本中心**:模型统一注册(`model_config`),按模型/组织维度计量计价(`model_usage_daily`);改写与应答支持运行时动态选型与 fallback。
 - **元数据过滤检索**:检索请求支持 `filter.chunkType` 等参数。
 - **文本直传接口**:`POST /api/v1/documents`(text 通道)已解析文本直接入库,避免二次解析。
@@ -100,7 +101,8 @@ query -> chunks + scores + citations + metadata + 分段耗时(rewrite/vector/ke
                                  v
             +-------------------------------------------------+
             |                   Data Layer                    |
-            | PostgreSQL + pgvector(vl_vector 2560) /          |
+            | Qdrant(向量 1024d/HNSW/INT8) /                    |
+            | PostgreSQL(业务数据 + chunk 正文/元数据) /          |
             | Elasticsearch(BM25) / Redis                      |
             +-------------------------------------------------+
 ```
@@ -119,7 +121,7 @@ Browser
 
 ```text
 Client / Agent / MCP
-  -> /api/v1/search | /api/v1/answer | /sse
+  -> /api/v1/search | /api/v1/answer | /mcp
   -> Bearer JWT 或 X-API-Key
   -> SERVICE_ACCOUNT / user 上下文
   -> 按可读 KB 范围过滤
@@ -133,15 +135,15 @@ Client / Agent / MCP
 | AI / MCP | Spring AI 1.0.0(`spring-ai-starter-mcp-server-webmvc`) |
 | 安全 | Spring Security, 自研 JWT 校验(RS256 + JWKS), HMAC webhook, Redis 撤销名单 |
 | ORM | MyBatis-Plus 3.5.16 |
-| 数据库 | PostgreSQL + pgvector 0.1.6 |
-| 向量检索 | pgvector(`vl_vector` 2560 维) |
+| 数据库 | PostgreSQL(业务数据 + chunk 正文/元数据) |
+| 向量检索 | Qdrant(官方 Java gRPC client 1.12.0,collection `ragforge_chunks`,1024 维,HNSW ANN + INT8 量化,oversampling 2.0) |
 | 关键词检索 | Elasticsearch 8.15.x(BM25, IK 分词,缺失回退 standard) |
 | 消息队列 | RocketMQ(spring-boot-starter 2.3.3) |
 | 缓存 / 限流 / 撤销 / 分布式锁 | Redis, Caffeine, ShedLock 5.16 |
 | 文档解析 | Apache Tika 2.9.3 |
 | 对象存储 | 阿里云 OSS SDK 3.18.3(抽象层,默认本地盘) |
 | 可观测 | Micrometer + Prometheus, SkyWalking Agent 9.3 |
-| Embedding / Rewrite / Answer / Rerank | DashScope(`qwen3-vl-embedding` / `qwen-turbo` / `qwen-plus` / `qwen3-rerank`) |
+| Embedding / Rewrite / Answer / Rerank | DashScope(`qwen3-vl-embedding` 截断 1024 维 / `qwen-turbo` / `qwen-plus` / `qwen3-rerank`) |
 | LLM-as-Judge | DeepSeek(`deepseek-v4-flash`) |
 | 前端 | Vue 3.4, Vite 5, Vue Router 4, Element Plus 2, Axios(纯 JavaScript) |
 | 部署 | k3s(应用层),数据层独立机,入口层 Nginx |
@@ -152,26 +154,29 @@ Client / Agent / MCP
 
 | 策略 | 链路 | 是否 Rerank | 默认并发上限 | 默认超时 |
 | --- | --- | --- | --- | --- |
-| `vector` (默认) | pgvector 余弦相似度 | 否 | 5 | 8s |
-| `keyword` | Elasticsearch BM25 | 否 | 20 | 5s |
-| `hybrid` | vector + keyword 并行 + RRF 融合(RRF_K=10) | 否 | 5 | 12s |
-| `rewrite` | Query 改写(qwen-turbo)+ 多路向量召回 | 否 | 3 | 10s |
-| `full` | 改写 → 多查询混合(RRF)→ DashScope rerank 精排 | **是** | 1 | 15s |
+| `vector` (默认) | Qdrant ANN(HNSW,余弦)| 否 | 48 | 5s |
+| `keyword` | Elasticsearch BM25 | 否 | 40 | 5s |
+| `hybrid` | vector + keyword 并行 + RRF 融合(带 vectorWeight 加权)| 否 | 32 | 5s |
+| `rewrite` | Query 改写(qwen-turbo)+ 多路向量召回 | 否 | 8 | 10s |
+| `full` | 改写 → 多查询混合(RRF)→ DashScope rerank 精排 | **是** | 4 | 15s |
 
-- `full` 是唯一调用 rerank 的策略,默认并发限制为 1,避免重链路拖垮在线服务。
+- `full` 是唯一调用 rerank 的策略,默认并发上限最低(4),避免重链路拖垮在线服务。
+- 并发上限均可经 `RAGFORGE_RETRIEVAL_*_CONCURRENCY` 环境变量覆盖;多副本下由 **Redis 分布式限流**(ZSET + 租约)做全局收口,单机 fail-open。
 - 受控检索线程池(`retrieval-` 前缀)并行执行 hybrid/full 的多路召回;触发限流返回 429,超时返回 504。
+- query 向量、改写结果、rerank 结果均有缓存,命中即跳过对应的 DashScope 调用(不重复计量 token)。
 
 ## 多模态与向量空间
 
-- 文本与图片统一编码到 **同一个 2560 维向量空间**(DashScope `qwen3-vl-embedding` 多模态 embedding 接口),向量列为 `document_chunks.vl_vector vector(2560)`。
-- **已知工程权衡**:pgvector 0.8.x 的 HNSW/IVF 索引维度上限为 2000,因此 2560 维向量**当前没有近似索引,向量检索走顺序扫描(sequential scan)**。在当前规模(约 10 万 chunk)下延迟可接受;若规模显著增长,需考虑降维、PQ 量化或换向量库。该取舍记录在 `backend/src/main/resources/db/manual/V27__vl_unified_vector.sql`。
+- 文本与图片统一编码到 **同一个向量空间**(DashScope `qwen3-vl-embedding` 多模态 embedding 接口);利用 Matryoshka 表示,向量截断至 **1024 维**以匹配 Qdrant collection 配置。
+- **向量存储已从 pgvector 迁移到 Qdrant**(collection `ragforge_chunks`,1024 维,**HNSW ANN + INT8 标量量化**,oversampling 2.0,余弦距离,内网 gRPC 访问)。检索流为:`query → embedding(1024) → Qdrant ANN(按 kb_id / doc_id / chunk_type 过滤)→ 拿 chunkId + score → 回 PostgreSQL 按 chunkId 批量取正文/元数据 → 组装 SearchResult`(见 `backend/src/main/java/com/ragforge/search/QdrantVectorStore.java`、`VectorSearchService.java`)。
+- PostgreSQL 仍承载业务数据与 chunk 正文/元数据;历史 `document_chunks.vl_vector` 列**已留空、不再入库、不再用于检索**(历史手工迁移 `db/manual/V27__vl_unified_vector.sql` 仅作留档)。
 - 图片文档走独立的图片处理管道(`ImagePipelineService`),可选 OCR(`qwen-vl-ocr`)与图片描述。
 
 ## 模型与成本中心
 
 | 用途(Purpose) | 当前模型 | 供应商 | 备注 |
 | --- | --- | --- | --- |
-| EMBEDDING | `qwen3-vl-embedding` | DashScope | 文本+图片统一 2560 维 |
+| EMBEDDING | `qwen3-vl-embedding` | DashScope | 文本+图片统一,Matryoshka 截断至 1024 维(匹配 Qdrant collection) |
 | REWRITE | `qwen-turbo` | DashScope | Query 改写,支持运行时动态选型 |
 | ANSWER | `qwen-plus` | DashScope | RAG 应答 / 调试台,支持运行时动态选型 |
 | RERANK | `qwen3-rerank` | DashScope | 仅 `full` 策略调用 |
@@ -192,7 +197,7 @@ Client / Agent / MCP
 | `/api/v1/health`、`/actuator/health` | 公开 | 健康检查 |
 | `/api/v1/.well-known/...jwks.json` | 公开 | RAGForge 后端 client assertion 公钥 |
 | `/api/v1/events/**` | HMAC | Auth Gateway 事件 webhook(HmacSHA256 + 时间戳) |
-| `/api/v1/search`、`/api/v1/answer`、`/mcp/**`、`/sse` | JWT 或 API Key | 外部检索 / RAG 应答 / MCP |
+| `/api/v1/search`、`/api/v1/answer`、`/mcp` | JWT 或 API Key | 外部检索 / RAG 应答 / MCP(无状态 Streamable HTTP) |
 | 其他 `/api/v1/**` | JWT | 后台管理 API |
 
 角色:
@@ -241,7 +246,8 @@ rag-forge/
 - **EvaluationLab(`/eval`)/ EvaluationQuality(`/evaluation/quality`)** — 评测集与 LLM-as-Judge 质量看板。
 - **ModelCostCenter(`/models`)** — 模型注册与成本看板。
 - **DeveloperCenter(`/api`)** — API Key 与外部调用管理。
-- **Organizations(`/orgs`)/ AccountSettings(`/account`)** — 组织管理与账号设置。
+- **OrgList(`/orgs`)/ Organizations(`/orgs/manage`)** — 组织列表与组织管理。
+- **AccountSettings(`/account`)** — 账号设置。
 - **PerformanceProbe(`/perf-probe`)** — 检索链路耗时诊断。
 - **Forbidden(`/403`)** — 无权访问提示。
 
@@ -250,10 +256,16 @@ rag-forge/
 ### 1. 启动中间件
 
 ```bash
-docker compose up -d   # PostgreSQL+pgvector / Elasticsearch / RocketMQ
+docker compose up -d   # PostgreSQL / Elasticsearch / RocketMQ(向量库 Qdrant 与 Redis 见下)
 ```
 
-默认端口:PostgreSQL `5433`、Elasticsearch `9200`、RocketMQ NameServer `9876`、Broker `10911`。Redis 需另行提供(认证撤销、API Key 限流、ShedLock 均依赖)。
+默认端口:PostgreSQL `5433`、Elasticsearch `9200`、RocketMQ NameServer `9876`、Broker `10911`。**Qdrant**(向量库,gRPC `6334`)与 **Redis**(认证撤销、API Key 限流、ShedLock)当前不在 `docker-compose.yml` 内,需另行提供,例如:
+
+```bash
+docker run -d --name ragforge-qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+```
+
+collection `ragforge_chunks`(1024 维、Cosine、HNSW、INT8 量化)首次使用前需在 Qdrant 侧建好。
 
 ### 2. 配置环境变量
 
@@ -276,6 +288,10 @@ ELASTICSEARCH_PORT=9200
 ROCKETMQ_NAMESRV_ADDR=127.0.0.1:9876
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
+QDRANT_HOST=127.0.0.1
+QDRANT_GRPC_PORT=6334
+QDRANT_COLLECTION=ragforge_chunks
+RAGFORGE_VL_DIM=1024
 ```
 
 后台登录与 JWT 认证还需配置 Auth Gateway(issuer / audience / JWKS / token 代理 / client assertion 私钥 / HMAC secret),详见 [docs/dev/auth-and-permissions.md](docs/dev/auth-and-permissions.md)。本地 `dev` profile 下文件存储默认走本地盘。
@@ -327,25 +343,26 @@ curl -N -X POST http://localhost:8080/api/v1/answer \
 
 ## MCP Server
 
-基于 Spring AI MCP(WebMVC SSE),server name `ragforge-mcp-server`,暴露三个工具:
+server name `ragforge-mcp-server`,暴露三个工具:
 
-- `searchKnowledgeBase` — 按策略检索知识库
-- `listKnowledgeBases` — 列出可访问的知识库
-- `answerWithCitations` — RAG 应答并返回引用
+- `search_knowledge` — 按策略检索知识库
+- `list_knowledge_bases` — 列出可访问的知识库
+- `answer_with_citations` — RAG 应答并返回引用
 
-SSE 订阅端点 `/sse`,消息端点 `/mcp/message`,均按调用方可读 KB 范围过滤。
+传输方式:三个工具统一走**无状态 Streamable HTTP 端点 `/mcp`**(`StreamableMcpController`),均按调用方可读 KB 范围过滤。早期的 SSE 传输(`/sse` + `/mcp/message`)在多副本下会话内存态不粘滞(`/mcp/message` 404),已按 MCP 标准弃用并关闭(`spring.ai.mcp.server.enabled=false`)。
 
 ## 数据库迁移
 
-后端启用 Flyway(`baseline-version=26`、`out-of-order=true`),迁移文件位于 `backend/src/main/resources/db/migration`,当前最新 `V51`。核心演进:
+后端启用 Flyway(`baseline-version=26`、`out-of-order=true`),迁移文件位于 `backend/src/main/resources/db/migration`,当前最新 `V59`。核心演进:
 
-- `V1` 初始 9 表;`V4/V7` chunk_type;`V6` HNSW 索引(1024 维时代)。
+- `V1` 初始 9 表;`V4/V7` chunk_type;`V6` HNSW 索引(pgvector 时代,现已随向量迁出 Qdrant 而废弃)。
 - `V9/V10/V12` 知识库 owner/visibility、`kb_acl`、API Key 扩展。
 - `V19~V26` 身份标识、清洗 profile、chunker profile、多模态图片 chunk。
 - `V28` RAG 应答(`answer_logs`);`V30/V32` LLM-as-Judge(`judge_results` 等)。
 - `V35~V38` 模型成本中心 + rerank 主备修正(`qwen3-rerank` 为主)。
 - `V42` JWT 撤销名单;`V44` 破玻璃审计;`V45` 组织模型(移除 `tenant_id`)。
-- **手工迁移** `db/manual/V27__vl_unified_vector.sql`:向量列从 `vector(1024)` 切换为统一的 `vl_vector(2560)`(在 Flyway 之外执行)。
+- `V52/V53` API Key 授权级别与去明文;`V55/V56` 组织判分预算 + 系统组织;`V57/V59` 评测 core question 冻结。
+- **历史手工迁移** `db/manual/V27__vl_unified_vector.sql`:pgvector 时代的统一向量列脚本;向量现已迁至 Qdrant,`document_chunks.vl_vector` 列留空不再使用,该脚本仅作留档。
 
 ## 部署架构
 
@@ -353,7 +370,7 @@ SSE 订阅端点 `/sse`,消息端点 `/mcp/message`,均按调用方可读 KB 范
 
 | 层 | 角色 | 组件 |
 | --- | --- | --- |
-| 数据层(独立节点) | 状态层 | PostgreSQL + pgvector、Elasticsearch、Redis、RocketMQ(裸装,未进 k8s) |
+| 数据层(独立节点) | 状态层 | Qdrant(向量库,gRPC 6334)、PostgreSQL、Elasticsearch、Redis、RocketMQ(裸装,未进 k8s) |
 | 入口层(独立节点) | 接入层 | 宿主机 Nginx:静态前端 + `/api/` 反代到应用层 NodePort |
 | 应用层(k3s 单节点) | 计算层 | `ragforge` 命名空间下的全部 pod |
 
@@ -363,7 +380,7 @@ SSE 订阅端点 `/sse`,消息端点 `/mcp/message`,均按调用方可读 KB 范
 | --- | --- | --- | --- |
 | `ragforge-api` | REST / Search / Answer | 3 | NodePort `8080:31090` |
 | `ragforge-frontend` | 前端(集群内) | 2 | NodePort `80:31002` |
-| `ragforge-worker` | RocketMQ 文档处理 consumer | 1 | 无(纯后台) |
+| `ragforge-worker` | RocketMQ 文档处理 consumer | 2 | 无(纯后台) |
 | `ragforge-judge` | LLM-as-Judge 评测 | 1 | 无(纯后台) |
 
 入口链路:`域名(443) → 入口层 Nginx → 应用层 NodePort 31090 → ragforge-backend Service → api pod`。Auth Gateway 在同集群独立命名空间,RAGForge 通过集群内 DNS(`auth-gateway.auth-gateway.svc:8090`)消费其 JWKS 与 token 代理。
@@ -390,9 +407,9 @@ RAGForge 已上线运行(见[线上环境](https://ragforge.net)),核心的导�
 约 10,000 份文档 / 约 100,000 个 Chunk / 8 个知识库
 ```
 
-实际容量取决于文档长度、切分参数、Embedding 速度、ES/PG 参数和资源。当前向量检索为顺序扫描(见[多模态与向量空间](#多模态与向量空间)),更适合中小型知识库检索场景。
+实际容量取决于文档长度、切分参数、Embedding 速度、ES/PG/Qdrant 参数和资源。向量检索已由 Qdrant HNSW ANN 承载(见[多模态与向量空间](#多模态与向量空间)),具备近似索引与横向扩展空间。
 
-后续路线见 [docs/dev/current-architecture-and-refactor-roadmap.md](docs/dev/current-architecture-and-refactor-roadmap.md):向量索引优化、文件存储切 OSS、API/worker/judge 资源隔离深化、评测指标增强、可观测告警完善等。
+后续路线见 [docs/dev/current-architecture-and-refactor-roadmap.md](docs/dev/current-architecture-and-refactor-roadmap.md):文件存储切 OSS、API/worker/judge 资源隔离深化、Qdrant 分片/副本与召回质量调优、评测指标增强、可观测告警完善等。
 
 ## License
 

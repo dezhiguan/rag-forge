@@ -10,7 +10,8 @@
 [![Live Site](https://img.shields.io/badge/Live%20Site-ragforge.net-2EA043?logo=googlechrome&logoColor=white)](https://ragforge.net)
 [![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://adoptium.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.x-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15%2F16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-1024d%20HNSW%20%2B%20INT8-DC244C?logo=qdrant&logoColor=white)](https://qdrant.tech/)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-8.15-005571?logo=elasticsearch&logoColor=white)](https://www.elastic.co/)
 [![RocketMQ](https://img.shields.io/badge/RocketMQ-5.x-D77310?logo=apacherocketmq&logoColor=white)](https://rocketmq.apache.org/)
 [![MCP](https://img.shields.io/badge/MCP-Spring%20AI%201.0-6DB33F?logo=spring&logoColor=white)](https://docs.spring.io/spring-ai/reference/)
@@ -35,7 +36,7 @@ Upstream agents, Q&A systems or business apps can call RAGForge to fetch candida
 
 - **Knowledge base & document management** — PDF, Markdown, TXT, Word/OOXML and more, parsed with Tika.
 - **Async document pipeline** — upload → store → RocketMQ → parse → clean → chunk → embed → index into PG/ES, with status tracking throughout.
-- **Unified multimodal vector space** — text and images are encoded into the same **2560-dim** space (DashScope `qwen3-vl-embedding`), enabling text-to-image and mixed retrieval.
+- **Unified multimodal vector space** — text and images are encoded into the same space (DashScope `qwen3-vl-embedding`, Matryoshka-truncated to **1024-dim**), enabling text-to-image and mixed retrieval; vector storage and ANN search are backed by **Qdrant** (HNSW + INT8 quantization).
 - **5 retrieval strategies** — `vector` / `keyword` / `hybrid (RRF)` / `rewrite (rewrite + multi-recall)` / `full (rewrite + hybrid + rerank)`, each with its own concurrency limiting and timeout guard.
 - **RAG answering** — `POST /api/v1/answer`, SSE streaming answer with citations.
 - **Retrieval debug console** — compare recall and ranking across strategies, weights and TopK.
@@ -43,7 +44,7 @@ Upstream agents, Q&A systems or business apps can call RAGForge to fetch candida
 - **Unified auth & permissions** — admin APIs use Bearer JWT issued by the Auth Gateway (RS256 + JWKS verification); supports password / SMS-code login, token refresh, logout, logout-everywhere and password reset; roles `ADMIN` / `KB_EDITOR` / `KB_VIEWER` / `SERVICE_ACCOUNT`; KB access is controlled at fine grain via `kb_acl`, JWT claims and the organization model; session-revocation / password-change events are synced over an HMAC webhook with a Redis revocation list.
 - **Organization model** — GitHub-style "personal + organization" collaboration (the earlier tenant model has been removed); KBs are owned by `owner_user_id` / `org_id`, with org invitations and notifications.
 - **API key management** — controlled access for external systems and MCP tools, with enable/disable, service-account context, KB scope (`allowed_kb_ids`) and per-minute Redis rate limiting.
-- **MCP Server** — built on Spring AI MCP (WebMVC SSE), exposing three tools: `search_knowledge`, `list_knowledge_bases`, `answer_with_citations`.
+- **MCP Server** — a stateless Streamable HTTP endpoint `/mcp`, exposing three tools: `search_knowledge`, `list_knowledge_bases`, `answer_with_citations` (the earlier SSE transport is deprecated).
 - **Model registry & cost center** — models are registered centrally (`model_config`) and metered/priced per model and per organization (`model_usage_daily`); rewrite and answer support runtime model resolution with fallback.
 - **Metadata-filtered retrieval** — requests support `filter.chunkType` and similar parameters.
 - **Direct text ingestion** — `POST /api/v1/documents` (text channel) ingests already-parsed text directly, avoiding a second parse.
@@ -78,7 +79,8 @@ Upstream agents, Q&A systems or business apps can call RAGForge to fetch candida
                                  v
             +-------------------------------------------------+
             |                   Data Layer                    |
-            | PostgreSQL + pgvector (vl_vector 2560) /         |
+            | Qdrant (vector 1024d / HNSW / INT8) /            |
+            | PostgreSQL (business data + chunk text/meta) /   |
             | Elasticsearch (BM25) / Redis                     |
             +-------------------------------------------------+
 ```
@@ -97,7 +99,7 @@ External retrieval flow:
 
 ```text
 Client / Agent / MCP
-  -> /api/v1/search | /api/v1/answer | /sse
+  -> /api/v1/search | /api/v1/answer | /mcp
   -> Bearer JWT or X-API-Key
   -> SERVICE_ACCOUNT / user context
   -> filter by readable KB scope
@@ -111,15 +113,15 @@ Client / Agent / MCP
 | AI / MCP | Spring AI 1.0.0 (`spring-ai-starter-mcp-server-webmvc`) |
 | Security | Spring Security, in-house JWT verification (RS256 + JWKS), HMAC webhook, Redis revocation list |
 | ORM | MyBatis-Plus 3.5.16 |
-| Database | PostgreSQL + pgvector 0.1.6 |
-| Vector search | pgvector (`vl_vector` 2560-dim) |
+| Database | PostgreSQL (business data + chunk text/metadata) |
+| Vector search | Qdrant (official Java gRPC client 1.12.0, collection `ragforge_chunks`, 1024-dim, HNSW ANN + INT8 quantization, oversampling 2.0) |
 | Keyword search | Elasticsearch 8.15.x (BM25, IK analyzer, falls back to standard) |
 | Message queue | RocketMQ (spring-boot-starter 2.3.3) |
 | Cache / rate limit / revocation / lock | Redis, Caffeine, ShedLock 5.16 |
 | Document parsing | Apache Tika 2.9.3 |
 | Object storage | Aliyun OSS SDK 3.18.3 (abstraction layer, local disk by default) |
 | Observability | Micrometer + Prometheus, SkyWalking Agent 9.3 |
-| Embedding / Rewrite / Answer / Rerank | DashScope (`qwen3-vl-embedding` / `qwen-turbo` / `qwen-plus` / `qwen3-rerank`) |
+| Embedding / Rewrite / Answer / Rerank | DashScope (`qwen3-vl-embedding` truncated to 1024-dim / `qwen-turbo` / `qwen-plus` / `qwen3-rerank`) |
 | LLM-as-Judge | DeepSeek (`deepseek-v4-flash`) |
 | Frontend | Vue 3.4, Vite 5, Vue Router 4, Element Plus 2, Axios (plain JavaScript) |
 | Deployment | k3s (app tier), standalone data node, Nginx entry tier |
@@ -130,26 +132,29 @@ All strategies share a single `RetrievalService` (debug console, evaluation and 
 
 | Strategy | Pipeline | Rerank | Default concurrency | Default timeout |
 | --- | --- | --- | --- | --- |
-| `vector` (default) | pgvector cosine similarity | no | 5 | 8s |
-| `keyword` | Elasticsearch BM25 | no | 20 | 5s |
-| `hybrid` | vector + keyword in parallel + RRF (RRF_K=10) | no | 5 | 12s |
-| `rewrite` | query rewrite (qwen-turbo) + multi-recall vector | no | 3 | 10s |
-| `full` | rewrite → multi-query hybrid (RRF) → DashScope rerank | **yes** | 1 | 15s |
+| `vector` (default) | Qdrant ANN (HNSW, cosine) | no | 48 | 5s |
+| `keyword` | Elasticsearch BM25 | no | 40 | 5s |
+| `hybrid` | vector + keyword in parallel + RRF (with vectorWeight) | no | 32 | 5s |
+| `rewrite` | query rewrite (qwen-turbo) + multi-recall vector | no | 8 | 10s |
+| `full` | rewrite → multi-query hybrid (RRF) → DashScope rerank | **yes** | 4 | 15s |
 
-- `full` is the only strategy that calls rerank; its default concurrency is 1 to keep a heavy chain from starving the online service.
+- `full` is the only strategy that calls rerank; its default concurrency is the lowest (4) to keep a heavy chain from starving the online service.
+- Concurrency limits are overridable via `RAGFORGE_RETRIEVAL_*_CONCURRENCY` env vars; across replicas a **Redis distributed limiter** (ZSET + lease) enforces a global cap, failing open per node.
 - A bounded retrieval thread pool (`retrieval-` prefix) runs the multi-recall legs of hybrid/full; rate-limit hits return 429 and timeouts return 504.
+- Query-embedding, rewrite and rerank results are cached; a cache hit skips the corresponding DashScope call (no double token metering).
 
 ## Multimodal & Vector Space
 
-- Text and images are encoded into a **single 2560-dim vector space** (DashScope `qwen3-vl-embedding` multimodal endpoint); the vector column is `document_chunks.vl_vector vector(2560)`.
-- **Known engineering trade-off**: pgvector 0.8.x caps HNSW/IVF index dimensions at 2000, so the 2560-dim vectors **currently have no approximate index and vector search runs as a sequential scan**. At the current scale (~100k chunks) latency is acceptable; significant growth would call for dimensionality reduction, PQ quantization or a dedicated vector store. This trade-off is recorded in `backend/src/main/resources/db/manual/V27__vl_unified_vector.sql`.
+- Text and images are encoded into a **single vector space** (DashScope `qwen3-vl-embedding` multimodal endpoint); using Matryoshka representations, vectors are truncated to **1024-dim** to match the Qdrant collection.
+- **Vector storage has migrated from pgvector to Qdrant** (collection `ragforge_chunks`, 1024-dim, **HNSW ANN + INT8 scalar quantization**, oversampling 2.0, cosine distance, accessed over internal gRPC). The retrieval flow is: `query → embedding(1024) → Qdrant ANN (filtered by kb_id / doc_id / chunk_type) → chunkId + score → fetch text/metadata from PostgreSQL by chunkId → assemble SearchResult` (see `backend/src/main/java/com/ragforge/search/QdrantVectorStore.java`, `VectorSearchService.java`).
+- PostgreSQL still holds business data and chunk text/metadata; the historical `document_chunks.vl_vector` column is **left empty, no longer ingested and no longer used for retrieval** (the manual migration `db/manual/V27__vl_unified_vector.sql` is kept for reference only).
 - Image documents go through a dedicated pipeline (`ImagePipelineService`) with optional OCR (`qwen-vl-ocr`) and image captioning.
 
 ## Models & Cost Center
 
 | Purpose | Model | Vendor | Notes |
 | --- | --- | --- | --- |
-| EMBEDDING | `qwen3-vl-embedding` | DashScope | unified 2560-dim for text + image |
+| EMBEDDING | `qwen3-vl-embedding` | DashScope | unified for text + image, Matryoshka-truncated to 1024-dim (matches the Qdrant collection) |
 | REWRITE | `qwen-turbo` | DashScope | query rewrite, runtime resolution |
 | ANSWER | `qwen-plus` | DashScope | RAG answering / debug console, runtime resolution |
 | RERANK | `qwen3-rerank` | DashScope | only invoked by `full` |
@@ -168,7 +173,7 @@ All strategies share a single `RetrievalService` (debug console, evaluation and 
 | `/api/v1/health`, `/actuator/health` | public | health checks |
 | `/api/v1/.well-known/...jwks.json` | public | RAGForge backend client-assertion public key |
 | `/api/v1/events/**` | HMAC | Auth Gateway event webhook (HmacSHA256 + timestamp) |
-| `/api/v1/search`, `/api/v1/answer`, `/mcp/**`, `/sse` | JWT or API Key | external retrieval / RAG answering / MCP |
+| `/api/v1/search`, `/api/v1/answer`, `/mcp` | JWT or API Key | external retrieval / RAG answering / MCP (stateless Streamable HTTP) |
 | other `/api/v1/**` | JWT | admin APIs |
 
 Roles:
@@ -217,7 +222,8 @@ Main routes (visibility controlled by role/scope; real permissions are enforced 
 - **EvaluationLab (`/eval`) / EvaluationQuality (`/evaluation/quality`)** — eval sets and LLM-as-Judge quality dashboard.
 - **ModelCostCenter (`/models`)** — model registry and cost dashboard.
 - **DeveloperCenter (`/api`)** — API keys and external access.
-- **Organizations (`/orgs`) / AccountSettings (`/account`)** — org management and account settings.
+- **OrgList (`/orgs`) / Organizations (`/orgs/manage`)** — organization list and organization management.
+- **AccountSettings (`/account`)** — account settings.
 - **PerformanceProbe (`/perf-probe`)** — retrieval latency diagnostics.
 - **Forbidden (`/403`)**
 
@@ -226,10 +232,16 @@ Main routes (visibility controlled by role/scope; real permissions are enforced 
 ### 1. Start middleware
 
 ```bash
-docker compose up -d   # PostgreSQL+pgvector / Elasticsearch / RocketMQ
+docker compose up -d   # PostgreSQL / Elasticsearch / RocketMQ (Qdrant and Redis: see below)
 ```
 
-Default ports: PostgreSQL `5433`, Elasticsearch `9200`, RocketMQ NameServer `9876`, Broker `10911`. Redis must be provided separately (auth revocation, API-key rate limiting and ShedLock all depend on it).
+Default ports: PostgreSQL `5433`, Elasticsearch `9200`, RocketMQ NameServer `9876`, Broker `10911`. **Qdrant** (vector store, gRPC `6334`) and **Redis** (auth revocation, API-key rate limiting, ShedLock) are not in `docker-compose.yml` and must be provided separately, e.g.:
+
+```bash
+docker run -d --name ragforge-qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+```
+
+The collection `ragforge_chunks` (1024-dim, Cosine, HNSW, INT8 quantization) must exist in Qdrant before first use.
 
 ### 2. Configure environment
 
@@ -252,6 +264,10 @@ ELASTICSEARCH_PORT=9200
 ROCKETMQ_NAMESRV_ADDR=127.0.0.1:9876
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
+QDRANT_HOST=127.0.0.1
+QDRANT_GRPC_PORT=6334
+QDRANT_COLLECTION=ragforge_chunks
+RAGFORGE_VL_DIM=1024
 ```
 
 Admin login and JWT auth additionally require Auth Gateway config (issuer / audience / JWKS / token proxy / client-assertion key / HMAC secret); see [docs/dev/auth-and-permissions.md](docs/dev/auth-and-permissions.md). Under the local `dev` profile, file storage defaults to local disk.
@@ -303,25 +319,26 @@ Notes:
 
 ## MCP Server
 
-Built on Spring AI MCP (WebMVC SSE), server name `ragforge-mcp-server`, exposing three tools:
+Server name `ragforge-mcp-server`, exposing three tools:
 
-- `searchKnowledgeBase` — search a KB by strategy
-- `listKnowledgeBases` — list accessible KBs
-- `answerWithCitations` — RAG answer with citations
+- `search_knowledge` — search a KB by strategy
+- `list_knowledge_bases` — list accessible KBs
+- `answer_with_citations` — RAG answer with citations
 
-SSE subscribe endpoint `/sse`, message endpoint `/mcp/message`; both are filtered by the caller's readable KB scope.
+Transport: all three tools are served over a **stateless Streamable HTTP endpoint `/mcp`** (`StreamableMcpController`), filtered by the caller's readable KB scope. The earlier SSE transport (`/sse` + `/mcp/message`) was deprecated per the MCP spec and disabled (`spring.ai.mcp.server.enabled=false`) because session state is not sticky across replicas (`/mcp/message` would 404).
 
 ## Database Migrations
 
-The backend uses Flyway (`baseline-version=26`, `out-of-order=true`); migrations live in `backend/src/main/resources/db/migration`, latest is `V51`. Key evolution:
+The backend uses Flyway (`baseline-version=26`, `out-of-order=true`); migrations live in `backend/src/main/resources/db/migration`, latest is `V59`. Key evolution:
 
-- `V1` initial 9 tables; `V4/V7` chunk_type; `V6` HNSW index (the 1024-dim era).
+- `V1` initial 9 tables; `V4/V7` chunk_type; `V6` HNSW index (pgvector era, now obsolete since vectors moved to Qdrant).
 - `V9/V10/V12` KB owner/visibility, `kb_acl`, API-key extension.
 - `V19~V26` identity fields, cleaning profiles, chunker profiles, multimodal image chunks.
 - `V28` RAG answering (`answer_logs`); `V30/V32` LLM-as-Judge (`judge_results` etc.).
 - `V35~V38` model cost center + rerank primary/fallback fix (`qwen3-rerank` as primary).
 - `V42` JWT revocation list; `V44` break-glass audit; `V45` organization model (drops `tenant_id`).
-- **Manual migration** `db/manual/V27__vl_unified_vector.sql`: switches the vector column from `vector(1024)` to the unified `vl_vector(2560)` (run outside Flyway).
+- `V52/V53` API-key authorization levels + drop plaintext; `V55/V56` org judge budget + system org; `V57/V59` eval core-question freeze.
+- **Historical manual migration** `db/manual/V27__vl_unified_vector.sql`: the pgvector-era unified vector column script; vectors have since moved to Qdrant and the `document_chunks.vl_vector` column is unused — kept for reference only.
 
 ## Deployment
 
@@ -329,7 +346,7 @@ Production uses **physical three-tier separation**, but the **app tier runs on k
 
 | Tier | Role | Components |
 | --- | --- | --- |
-| Data tier (standalone node) | state | PostgreSQL + pgvector, Elasticsearch, Redis, RocketMQ (bare-metal, not in k8s) |
+| Data tier (standalone node) | state | Qdrant (vector store, gRPC 6334), PostgreSQL, Elasticsearch, Redis, RocketMQ (bare-metal, not in k8s) |
 | Entry tier (standalone node) | ingress | host Nginx: static frontend + `/api/` reverse-proxied to the app-tier NodePort |
 | App tier (single-node k3s) | compute | all pods in the `ragforge` namespace |
 
@@ -339,7 +356,7 @@ The `ragforge` namespace (**one backend image, role switched by `RAGFORGE_ROLE`*
 | --- | --- | --- | --- |
 | `ragforge-api` | REST / Search / Answer | 3 | NodePort `8080:31090` |
 | `ragforge-frontend` | frontend (in-cluster) | 2 | NodePort `80:31002` |
-| `ragforge-worker` | RocketMQ document consumer | 1 | none (background) |
+| `ragforge-worker` | RocketMQ document consumer | 2 | none (background) |
 | `ragforge-judge` | LLM-as-Judge | 1 | none (background) |
 
 Entry path: `domain (443) → entry Nginx → app-tier NodePort 31090 → ragforge-backend Service → api pod`. The Auth Gateway runs in a separate namespace in the same cluster; RAGForge consumes its JWKS and token proxy over in-cluster DNS (`auth-gateway.auth-gateway.svc:8090`).
@@ -366,9 +383,9 @@ Current online validation scale (approx.):
 ~10,000 documents / ~100,000 chunks / 8 knowledge bases
 ```
 
-Actual capacity depends on document length, chunking parameters, embedding throughput, ES/PG settings and resources. Vector search currently runs as a sequential scan (see [Multimodal & Vector Space](#multimodal--vector-space)), so it best fits small-to-medium knowledge-base retrieval.
+Actual capacity depends on document length, chunking parameters, embedding throughput, ES/PG/Qdrant settings and resources. Vector search is now backed by Qdrant HNSW ANN (see [Multimodal & Vector Space](#multimodal--vector-space)), providing an approximate index with room to scale horizontally.
 
-Roadmap in [docs/dev/current-architecture-and-refactor-roadmap.md](docs/dev/current-architecture-and-refactor-roadmap.md): vector index optimization, switching file storage to OSS, deeper api/worker/judge resource isolation, richer evaluation metrics, observability and alerting.
+Roadmap in [docs/dev/current-architecture-and-refactor-roadmap.md](docs/dev/current-architecture-and-refactor-roadmap.md): switching file storage to OSS, deeper api/worker/judge resource isolation, Qdrant sharding/replicas and recall-quality tuning, richer evaluation metrics, observability and alerting.
 
 ## License
 
