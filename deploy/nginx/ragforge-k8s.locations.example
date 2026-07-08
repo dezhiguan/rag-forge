@@ -7,4 +7,16 @@
 #       server 172.25.90.184:31090;
 #       keepalive 32;
 #   }
-
+#
+# MCP (Streamable HTTP, stateless POST /mcp):
+#   location = /mcp { proxy_pass http://ragforge_backend; ... }
+#   location = /mcp/ { proxy_pass http://ragforge_backend/mcp; ... }
+#
+# MCP OAuth discovery (API key only — return JSON 404, not SPA HTML):
+#   location = /.well-known/oauth-authorization-server { ... }
+#   location = /.well-known/oauth-protected-resource { ... }
+#   location = /.well-known/openid-configuration { ... }
+#   location = /.well-known/mcp.json { ... }
+#   location ^~ /mcp/.well-known/ { ... }
+#
+# Full merged config: repo root nginx.conf
