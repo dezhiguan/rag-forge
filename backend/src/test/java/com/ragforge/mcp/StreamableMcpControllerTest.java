@@ -18,6 +18,18 @@ class StreamableMcpControllerTest {
   @Mock private RagForgeMcpTools tools;
 
   @Test
+  void get_returnsJsonMethodNotAllowed() {
+    StreamableMcpController controller = new StreamableMcpController(tools);
+
+    ResponseEntity<Map<String, Object>> response = controller.getNotAllowed();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+    assertThat(response.getHeaders().get("Allow")).containsExactly("POST");
+    assertThat(response.getBody()).containsEntry("jsonrpc", "2.0");
+    assertThat(response.getBody().get("error")).isInstanceOf(Map.class);
+  }
+
+  @Test
   void initialize_returnsToolCapabilities() {
     StreamableMcpController controller = new StreamableMcpController(tools);
 

@@ -75,6 +75,10 @@ public class SecurityConfig {
                     // SSE 未读数推送：EventSource 不能带 Authorization header，故放行到 Controller，
                     // 由 NotificationSseService 用 query-param 的 token 自行验签鉴权。
                     .requestMatchers("/api/v1/notifications/stream").permitAll()
+                    // Cursor Streamable HTTP 会对 /mcp 发 GET(Accept: text/event-stream)；仅支持 POST 时
+                    // DispatcherServlet 转发到 /error。若 /error 需登录，客户端会收到 LOGIN_REQUIRED
+                    // 并误走 OAuth discovery，最终对 /authorize|/token POST 撞上 Nginx HTML 405。
+                    .requestMatchers("/error").permitAll()
                     .requestMatchers("/api/v1/search", "/api/v1/answer", "/api/v1/documents", "/api/v1/internal/**", "/mcp", "/mcp/**")
                     .access(
                         (authentication, context) ->

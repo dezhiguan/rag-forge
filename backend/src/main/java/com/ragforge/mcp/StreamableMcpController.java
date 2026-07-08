@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +21,23 @@ public class StreamableMcpController {
 
   private static final String PROTOCOL_VERSION = "2025-03-26";
   private final RagForgeMcpTools tools;
+
+  /**
+   * Cursor Streamable HTTP 可能对 /mcp 发 GET（Accept: text/event-stream）。
+   * 本端点仅支持无状态 POST；显式返回 JSON 405，避免落入 /error 后再被鉴权成 LOGIN_REQUIRED。
+   */
+  @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<Map<String, Object>> getNotAllowed() {
+    return ResponseEntity.status(405)
+        .header("Allow", "POST")
+        .body(
+            orderedMap(
+                "jsonrpc", "2.0",
+                "error",
+                orderedMap(
+                    "code", -32600,
+                    "message", "RAGForge MCP is stateless POST /mcp only (Streamable HTTP JSON-RPC).")));
+  }
 
   @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> handle(@RequestBody Map<String, Object> request) {
