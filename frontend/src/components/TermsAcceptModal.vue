@@ -6,9 +6,10 @@
         RAGForge 的《用户协议》和《隐私政策》已更新。继续使用前请阅读并同意最新协议。
       </p>
       <div class="terms-modal-links">
-        <a href="/terms" target="_blank" class="terms-link">查看用户协议</a>
-        <a href="/privacy" target="_blank" class="terms-link">查看隐私政策</a>
+        <a href="#" class="terms-link" @click.prevent="legalDoc = 'terms'">查看用户协议</a>
+        <a href="#" class="terms-link" @click.prevent="legalDoc = 'privacy'">查看隐私政策</a>
       </div>
+      <LegalDocModal :which="legalDoc" @close="legalDoc = ''" />
       <div v-if="error" class="tip tip-err">{{ error }}</div>
       <div class="terms-modal-actions">
         <button class="btn btn-secondary" :disabled="loading" @click="decline">拒绝（退出登录）</button>
@@ -25,6 +26,7 @@ import { acceptTerms } from '../api/account'
 import { logout } from '../api/auth'
 import { useAuth } from '../composables/useAuth'
 import { notifyLoggedOut } from '../api/session'
+import LegalDocModal from './LegalDocModal.vue'
 
 defineProps({ visible: Boolean })
 const emit = defineEmits(['accepted'])
@@ -33,6 +35,7 @@ const router = useRouter()
 const { clearSession } = useAuth()
 const loading = ref(false)
 const error = ref('')
+const legalDoc = ref('')
 
 async function accept() {
   loading.value = true

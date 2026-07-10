@@ -50,11 +50,13 @@
       <div class="field terms-row">
         <label class="terms-label">
           <input type="checkbox" v-model="agreeTerms" class="terms-checkbox" />
-          <span>我已阅读并同意 <a class="link" href="/terms" target="_blank">用户协议</a> 和 <a class="link" href="/privacy" target="_blank">隐私政策</a></span>
+          <span>我已阅读并同意 <a class="link" href="#" @click.prevent="legalDoc = 'terms'">用户协议</a> 和 <a class="link" href="#" @click.prevent="legalDoc = 'privacy'">隐私政策</a></span>
         </label>
       </div>
       <button type="submit" class="btn-primary" :disabled="loading || !agreeTerms">{{ loading ? '提交中…' : '注 册' }}</button>
     </form>
+
+    <LegalDocModal :which="legalDoc" @close="legalDoc = ''" />
   </div>
 </template>
 
@@ -63,8 +65,10 @@ import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { sendSmsCode } from '../../api/auth'
 import { register } from '../../api/account'
+import LegalDocModal from '../../components/LegalDocModal.vue'
 
 const router = useRouter()
+const legalDoc = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
