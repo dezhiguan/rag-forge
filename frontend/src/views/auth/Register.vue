@@ -82,15 +82,16 @@ const form = reactive({ phone: '', smsCode: '', username: '', email: '', passwor
 const pwdStrength = computed(() => {
   const p = form.password
   if (!p) return { pct: 0, label: '', color: '' }
-  let score = 0
-  if (p.length >= 8) score++
-  if (/[A-Z]/.test(p)) score++
-  if (/[a-z]/.test(p)) score++
-  if (/[0-9]/.test(p)) score++
-  if (/[^A-Za-z0-9]/.test(p)) score++
-  if (score <= 2) return { pct: 25, label: '弱', color: '#dc2626' }
-  if (score <= 3) return { pct: 60, label: '中', color: '#d97706' }
-  return { pct: 100, label: '强', color: '#059669' }
+  // 与后端注册规则对齐：基线=至少 8 位且同时含字母和数字；未达基线一律"弱"（提交会被拒，不给"中"的误导）。
+  const meetsBaseline = p.length >= 8 && /[a-zA-Z]/.test(p) && /[0-9]/.test(p)
+  if (!meetsBaseline) return { pct: 25, label: '弱', color: '#dc2626' }
+  // 达基线后按增强项升级：大小写混合 / 含特殊字符 / 长度≥12，满足 2 项及以上为"强"。
+  let bonus = 0
+  if (/[A-Z]/.test(p) && /[a-z]/.test(p)) bonus++
+  if (/[^A-Za-z0-9]/.test(p)) bonus++
+  if (p.length >= 12) bonus++
+  if (bonus >= 2) return { pct: 100, label: '强', color: '#059669' }
+  return { pct: 60, label: '中', color: '#d97706' }
 })
 
 const smsBtnLabel = computed(() => {
