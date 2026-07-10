@@ -14,6 +14,7 @@ import javax.crypto.spec.SecretKeySpec;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -31,6 +32,7 @@ public class AuthEventService {
   private final ObjectMapper objectMapper;
   private final StringRedisTemplate redisTemplate;
   private final RevokedJtiMapper revokedJtiMapper;
+  private final JdbcTemplate jdbcTemplate;
 
   public AuthEventResult handle(String expectedType, String rawBody, HttpHeaders headers) {
     if (!verifyTimestamp(headers)) {
@@ -59,6 +61,10 @@ public class AuthEventService {
     // 单会话登出只带 jti（不带 user_id），由上面的 revokeTokens 按 jti 精确吊销，不会误伤其它会话。
     if ("user.password.changed".equals(effectiveType) || StringUtils.hasText(userKey(payload))) {
       revokeUser(payload);
+    }
+    // 账号注销：auth-gateway 冷静期到期匿名化 auth_users 后发来 user.deleted，本应用清理归属该用户的 rag-forge 侧数据。
+    if ("user.deleted".equals(effectiveType)) {
+      purgeDeletedUser(payload);
     }
     redisTemplate.opsForValue().set(eventKey, effectiveType, properties.getIdempotencyTtl());
 
@@ -165,6 +171,33 @@ public class AuthEventService {
       }
     }
     return result;
+  }
+
+  /**
+   * 账号注销清理：auth-gateway 匿名化 auth_users 后发来的 user.deleted 事件，由本应用清理归属于该用户的
+   * rag-forge 侧数据：吊销该用户的 API keys（principal_type='user'）、移出所有组织、清空个人资料可识别字段。
+   * 知识库/文档归属组织，不随个人账号删除（符合设计 S5）。
+   */
+  private void purgeDeletedUser(AuthEventPayload payload) {
+    String userKey = userKey(payload);
+    if (!StringUtils.hasText(userKey)) {
+      return;
+    }
+    long userId;
+    try {
+      userId = Long.parseLong(userKey);
+    } catch (NumberFormatException ex) {
+      return;
+    }
+    // api_keys 无 user_id/status 列：属主为 principal_type='user' + principal_id，吊销即 enabled=FALSE。
+    jdbcTemplate.update(
+        "UPDATE api_keys SET enabled = FALSE WHERE principal_type = 'user' AND principal_id = CAST(? AS VARCHAR)",
+        userId);
+    jdbcTemplate.update("DELETE FROM org_members WHERE user_id = ?", userId);
+    jdbcTemplate.update(
+        "UPDATE user_profile SET display_name = NULL, avatar = NULL, bio = NULL,"
+            + " username = NULL, email = NULL, masked_phone = NULL WHERE auth_user_id = ?",
+        userId);
   }
 
   private void revokeUser(AuthEventPayload payload) {

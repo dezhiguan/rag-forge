@@ -23,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class AuthEventServiceTest {
@@ -30,6 +31,7 @@ class AuthEventServiceTest {
   @Mock private StringRedisTemplate redisTemplate;
   @Mock private ValueOperations<String, String> valueOperations;
   @Mock private RevokedJtiMapper revokedJtiMapper;
+  @Mock private JdbcTemplate jdbcTemplate;
 
   private AuthEventProperties properties;
   private AuthEventService service;
@@ -38,7 +40,7 @@ class AuthEventServiceTest {
   void setUp() {
     properties = new AuthEventProperties();
     properties.setHmacSecret("event-secret");
-    service = new AuthEventService(properties, new ObjectMapper(), redisTemplate, revokedJtiMapper);
+    service = new AuthEventService(properties, new ObjectMapper(), redisTemplate, revokedJtiMapper, jdbcTemplate);
   }
 
   @Test
@@ -175,6 +177,24 @@ class AuthEventServiceTest {
     when(valueOperations.get(AuthEventService.USER_REVOKED_AFTER_PREFIX + "42")).thenReturn("100");
 
     assertThat(service.isJwtRevoked(new AuthJwtToken(null, "42", 99L))).isTrue();
+  }
+
+  @Test
+  void userDeletedEventPurgesRagForgeSideData() {
+    String body = "{\"event_id\":\"evt-del\",\"type\":\"user.deleted\",\"user_id\":\"42\"}";
+    when(redisTemplate.hasKey(AuthEventService.EVENT_ID_PREFIX + "evt-del")).thenReturn(false);
+    when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+    AuthEventResult result = service.handle("user.deleted", body, signedHeaders(body));
+
+    assertThat(result.status()).isEqualTo(200);
+    verify(jdbcTemplate)
+        .update(eq("UPDATE api_keys SET enabled = FALSE WHERE principal_type = 'user' AND principal_id = CAST(? AS VARCHAR)"), eq(42L));
+    verify(jdbcTemplate).update(eq("DELETE FROM org_members WHERE user_id = ?"), eq(42L));
+    verify(jdbcTemplate)
+        .update(
+            eq("UPDATE user_profile SET display_name = NULL, avatar = NULL, bio = NULL, username = NULL, email = NULL, masked_phone = NULL WHERE auth_user_id = ?"),
+            eq(42L));
   }
 
   private HttpHeaders signedHeaders(String body) {
