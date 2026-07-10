@@ -118,7 +118,7 @@
           </div>
           <div class="modal-actions">
             <button class="btn btn-secondary" @click="showDeletionStep2 = false">取消</button>
-            <button class="btn btn-danger" :disabled="deletionLoading || !deletionSmsCode" @click="confirmDeletion">确认注销</button>
+            <button class="btn btn-danger" :disabled="deletionLoading || !deletionPhone || !deletionSmsCode" @click="confirmDeletion">确认注销</button>
           </div>
         </div>
       </div>
@@ -162,15 +162,15 @@ const passwordValid = computed(() => {
 const pwdStrength = computed(() => {
   const p = pwd.newPassword
   if (!p) return { pct: 0, label: '', color: '' }
-  let score = 0
-  if (p.length >= 8) score++
-  if (/[A-Z]/.test(p)) score++
-  if (/[a-z]/.test(p)) score++
-  if (/[0-9]/.test(p)) score++
-  if (/[^A-Za-z0-9]/.test(p)) score++
-  if (score <= 2) return { pct: 25, label: '弱', color: '#dc2626' }
-  if (score <= 3) return { pct: 60, label: '中', color: '#d97706' }
-  return { pct: 100, label: '强', color: '#059669' }
+  // 与后端改密规则对齐：基线=至少 8 位且同时含字母和数字；未达基线一律"弱"（提交会被拒）。
+  const meetsBaseline = p.length >= 8 && /[a-zA-Z]/.test(p) && /[0-9]/.test(p)
+  if (!meetsBaseline) return { pct: 25, label: '弱', color: '#dc2626' }
+  let bonus = 0
+  if (/[A-Z]/.test(p) && /[a-z]/.test(p)) bonus++
+  if (/[^A-Za-z0-9]/.test(p)) bonus++
+  if (p.length >= 12) bonus++
+  if (bonus >= 2) return { pct: 100, label: '强', color: '#059669' }
+  return { pct: 60, label: '中', color: '#d97706' }
 })
 
 // 账号注销状态
@@ -228,6 +228,14 @@ function startDeletionCountdown(seconds) {
 
 async function confirmDeletion() {
   if (deletionLoading.value) return
+  if (!/^1\d{10}$/.test(deletionPhone.value || '')) {
+    deletionError.value = '请输入正确的手机号（11 位大陆手机号）'
+    return
+  }
+  if (!deletionSmsCode.value) {
+    deletionError.value = '请输入验证码'
+    return
+  }
   deletionLoading.value = true
   deletionError.value = ''
   try {
