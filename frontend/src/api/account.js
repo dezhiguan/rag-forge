@@ -32,6 +32,25 @@ export function setUsername(payload) {
   return authClient.post('/credential/set-username', payload)
 }
 
+// 账号注销（走 /api/auth 代理到网关）
+export function requestAccountDeletion(payload) {
+  return authClient.post('/users/me/deletion-request', payload)
+}
+
+export function cancelAccountDeletion(payload) {
+  return authClient.delete('/users/me/deletion-request', { data: payload })
+}
+
+// 协议同意（走 /api/auth 代理到网关）
+export function acceptTerms(payload) {
+  return authClient.post('/users/me/terms-acceptance', payload)
+}
+
+// Onboarding（走 /api/v1/me）
+export function completeOnboarding() {
+  return request.post('/me/onboarding-complete')
+}
+
 /** 拉取 /me 并写入鉴权状态（capabilities + 显示名兜底）。 */
 export async function loadMe() {
   const { setMe } = useAuth()

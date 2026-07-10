@@ -21,6 +21,12 @@
         <label for="r-password">密码</label>
         <input id="r-password" v-model="form.password" type="password" autocomplete="new-password"
           placeholder="至少 8 位，含字母与数字" :disabled="loading" @input="errorMsg = ''" />
+        <div v-if="form.password" class="pwd-strength">
+          <div class="pwd-strength-bar">
+            <div class="pwd-strength-fill" :style="{ width: pwdStrength.pct + '%', background: pwdStrength.color }"></div>
+          </div>
+          <span class="pwd-strength-label" :style="{ color: pwdStrength.color }">{{ pwdStrength.label }}</span>
+        </div>
       </div>
       <div class="field">
         <label for="r-password2">确认密码</label>
@@ -41,7 +47,13 @@
             :disabled="smsCountdown > 0 || sendingSms" @click="handleSendSms">{{ smsBtnLabel }}</button>
         </div>
       </div>
-      <button type="submit" class="btn-primary" :disabled="loading">{{ loading ? '提交中…' : '注 册' }}</button>
+      <div class="field terms-row">
+        <label class="terms-label">
+          <input type="checkbox" v-model="agreeTerms" class="terms-checkbox" />
+          <span>我已阅读并同意 <a class="link" href="/terms" target="_blank">用户协议</a> 和 <a class="link" href="/privacy" target="_blank">隐私政策</a></span>
+        </label>
+      </div>
+      <button type="submit" class="btn-primary" :disabled="loading || !agreeTerms">{{ loading ? '提交中…' : '注 册' }}</button>
     </form>
   </div>
 </template>
@@ -60,7 +72,22 @@ const sendingSms = ref(false)
 const smsCountdown = ref(0)
 let countdownTimer = null
 
+const agreeTerms = ref(false)
 const form = reactive({ phone: '', smsCode: '', username: '', email: '', password: '', confirmPassword: '' })
+
+const pwdStrength = computed(() => {
+  const p = form.password
+  if (!p) return { pct: 0, label: '', color: '' }
+  let score = 0
+  if (p.length >= 8) score++
+  if (/[A-Z]/.test(p)) score++
+  if (/[a-z]/.test(p)) score++
+  if (/[0-9]/.test(p)) score++
+  if (/[^A-Za-z0-9]/.test(p)) score++
+  if (score <= 2) return { pct: 25, label: '弱', color: '#dc2626' }
+  if (score <= 3) return { pct: 60, label: '中', color: '#d97706' }
+  return { pct: 100, label: '强', color: '#059669' }
+})
 
 const smsBtnLabel = computed(() => {
   if (sendingSms.value) return '发送中…'
@@ -110,6 +137,7 @@ async function handleRegister() {
       username: form.username || undefined,
       email: form.email || undefined,
       password: form.password || undefined,
+      termsVersion: '1.0',
     })
     const data = body?.data ?? body
     successMsg.value = data?.linked
@@ -173,4 +201,11 @@ onUnmounted(() => {
 .tip { padding: 9px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 14px; }
 .tip-err { background: #fff1f0; color: #b42318; border: 1px solid #ffccc7; }
 .tip-ok { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.pwd-strength { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.pwd-strength-bar { flex: 1; height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; }
+.pwd-strength-fill { height: 100%; border-radius: 2px; transition: width .3s, background .3s; }
+.pwd-strength-label { font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.terms-row { margin-top: 4px; margin-bottom: 16px; }
+.terms-label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px; color: #475569; }
+.terms-checkbox { margin-top: 2px; flex-shrink: 0; cursor: pointer; }
 </style>

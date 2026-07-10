@@ -21,6 +21,8 @@ public class UserProfile {
   private String email;
   private String maskedPhone;
 
+  private Boolean onboardingCompleted;
+
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 }

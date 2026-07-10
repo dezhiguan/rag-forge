@@ -14,14 +14,18 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,6 +47,7 @@ public class AuthProxyController {
   private final UserProfileService userProfileService;
   private final JwtVerifier jwtVerifier;
   private final AuthEventService authEventService;
+  private final JdbcTemplate jdbcTemplate;
 
   public AuthProxyController(
       AuthGatewayProxyClient client,
@@ -50,13 +55,15 @@ public class AuthProxyController {
       ObjectMapper objectMapper,
       UserProfileService userProfileService,
       JwtVerifier jwtVerifier,
-      AuthEventService authEventService) {
+      AuthEventService authEventService,
+      JdbcTemplate jdbcTemplate) {
     this.client = client;
     this.properties = properties;
     this.objectMapper = objectMapper;
     this.userProfileService = userProfileService;
     this.jwtVerifier = jwtVerifier;
     this.authEventService = authEventService;
+    this.jdbcTemplate = jdbcTemplate;
   }
 
   @PostMapping("/register")
@@ -220,6 +227,9 @@ public class AuthProxyController {
     data.put("accessToken", tokens.getAccessToken());
     data.put("expiresIn", tokens.getExpiresIn());
     data.put("user", user);
+    if (tokens.isTermsUpdateRequired()) {
+      data.put("termsUpdateRequired", true);
+    }
     String csrf = "csrf_" + UUID.randomUUID();
     // cookie 生命周期跟随网关 refresh token TTL（记住我=30天/默认7天）；旧网关无该字段时回退 7 天。
     Duration cookieTtl =
@@ -306,6 +316,57 @@ public class AuthProxyController {
     return null;
   }
 
+  /** 协议补签（老用户弹出弹窗后调用）。 */
+  @PostMapping("/users/me/terms-acceptance")
+  public Result<Map<String, Object>> acceptTerms(
+      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+      @RequestBody TermsAcceptRequest request) {
+    String version = request.termsVersion() != null ? request.termsVersion() : "1.0";
+    return Result.ok(client.acceptTerms(authorization, version));
+  }
+
+  /** 申请注销账号。先在 rag-forge 侧检查唯一管理员约束，再委托网关执行注销和 SMS 校验。 */
+  @PostMapping("/users/me/deletion-request")
+  public Result<Map<String, Object>> requestDeletion(
+      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+      @RequestBody DeletionRequestPayload request) {
+    Long userId = userIdFromAuth(authorization);
+    if (userId != null) {
+      checkNotSoleAdmin(userId);
+    }
+    return Result.ok(client.requestAccountDeletion(authorization, request.phone(), request.smsCode()));
+  }
+
+  /** 撤销注销申请（冷静期内）。 */
+  @DeleteMapping("/users/me/deletion-request")
+  public Result<Map<String, Object>> cancelDeletion(
+      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+      @RequestBody(required = false) DeletionRequestPayload request) {
+    String phone = request != null ? request.phone() : null;
+    String smsCode = request != null ? request.smsCode() : null;
+    return Result.ok(client.cancelAccountDeletion(authorization, phone, smsCode));
+  }
+
+  private void checkNotSoleAdmin(Long userId) {
+    List<Map<String, Object>> soleOwnerOrgs = jdbcTemplate.queryForList("""
+        SELECT o.id, o.name FROM organizations o
+        JOIN org_members om ON om.org_id = o.id
+        WHERE om.user_id = ? AND om.role = 'OWNER'
+        AND (SELECT COUNT(*) FROM org_members om2
+             WHERE om2.org_id = o.id AND om2.role = 'OWNER') = 1
+        """, userId);
+    if (!soleOwnerOrgs.isEmpty()) {
+      List<String> names = soleOwnerOrgs.stream()
+          .map(o -> String.valueOf(o.getOrDefault("name", "未知组织")))
+          .collect(Collectors.toList());
+      throw new AuthProxyException(
+          org.springframework.http.HttpStatus.BAD_REQUEST,
+          "{\"error\":\"SOLE_ADMIN\",\"message\":\"您是以下组织的唯一管理员，请先移交权限后再申请注销："
+              + String.join("、", names) + "\"}",
+          null);
+    }
+  }
+
   @ExceptionHandler(AuthProxyException.class)
   public ResponseEntity<String> handleAuthProxy(AuthProxyException ex) {
     return ResponseEntity.status(ex.status())
@@ -342,4 +403,8 @@ public class AuthProxyController {
   public record BindEmailRequest(String email, String password) {}
 
   public record SetUsernameRequest(String username) {}
+
+  public record TermsAcceptRequest(String termsVersion) {}
+
+  public record DeletionRequestPayload(String phone, String smsCode) {}
 }

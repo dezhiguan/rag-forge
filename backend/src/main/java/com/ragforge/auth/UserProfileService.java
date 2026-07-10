@@ -5,6 +5,7 @@ import com.ragforge.model.entity.UserProfile;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -14,6 +15,7 @@ import org.springframework.util.StringUtils;
 public class UserProfileService {
 
   private final UserProfileMapper userProfileMapper;
+  private final JdbcTemplate jdbcTemplate;
 
   /** 取资料；不存在则懒创建一行（仅 auth_user_id）。 */
   public UserProfile getOrCreate(Long authUserId) {
@@ -97,6 +99,12 @@ public class UserProfileService {
       return profile.getMaskedPhone();
     }
     return "用户_" + authUserId;
+  }
+
+  /** 标记用户已完成 Onboarding 引导。 */
+  public void markOnboardingComplete(Long authUserId) {
+    jdbcTemplate.update(
+        "UPDATE user_profile SET onboarding_completed = true WHERE auth_user_id = ?", authUserId);
   }
 
   private String maskPhone(String phone) {

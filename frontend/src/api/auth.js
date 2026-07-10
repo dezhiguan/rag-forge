@@ -92,6 +92,7 @@ function normalizeLoginResponse(body) {
     accessToken: data.accessToken || data.access_token || data.token,
     expiresIn: data.expiresIn || data.expires_in,
     user: data.user || data.profile || null,
+    termsUpdateRequired: Boolean(data.termsUpdateRequired),
   }
 }
 

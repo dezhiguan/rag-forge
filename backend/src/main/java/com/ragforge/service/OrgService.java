@@ -1,6 +1,7 @@
 package com.ragforge.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ragforge.auth.AuthGatewayProxyClient;
 import com.ragforge.auth.UserProfileService;
 import com.ragforge.common.BizException;
 import com.ragforge.mapper.OrgMemberMapper;
@@ -13,6 +14,7 @@ import com.ragforge.security.RagAuthContext;
 import com.ragforge.security.RagAuthContextHolder;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -27,6 +29,7 @@ import org.springframework.util.StringUtils;
 /** 组织与成员管理：GitHub 式个人/组织权限的本地实现。 */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class OrgService {
 
   private static final Pattern SLUG = Pattern.compile("^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$");
@@ -42,6 +45,7 @@ public class OrgService {
   private final UserProfileService userProfileService;
   private final com.ragforge.mapper.KnowledgeBaseMapper knowledgeBaseMapper;
   private final com.ragforge.mapper.ApiKeyMapper apiKeyMapper;
+  private final AuthGatewayProxyClient authGatewayClient;
 
   private Long currentUserId() {
     RagAuthContext ctx = RagAuthContextHolder.get();
@@ -292,6 +296,11 @@ public class OrgService {
       throw new BizException(409, "LAST_OWNER");
     }
     orgMemberMapper.deleteById(target.getId());
+    try {
+      authGatewayClient.invalidateUserSession(targetUserId);
+    } catch (Exception e) {
+      log.warn("Failed to invalidate session for user {} after org removal: {}", targetUserId, e.getMessage());
+    }
   }
 
   /** 更新组织名称/slug（仅 OWNER/ADMIN）。slug 需合法且全局唯一（排除自身）。 */

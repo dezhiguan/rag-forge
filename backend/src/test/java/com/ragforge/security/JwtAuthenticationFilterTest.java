@@ -17,6 +17,7 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,6 +28,7 @@ class JwtAuthenticationFilterTest {
   private AuthEventService authEventService;
   private AdminAccessAuditService adminAccessAuditService;
   private OrgMemberMapper orgMemberMapper;
+  private JdbcTemplate jdbcTemplate;
   private JwtAuthenticationFilter filter;
 
   @BeforeEach
@@ -39,14 +41,18 @@ class JwtAuthenticationFilterTest {
     authEventService = mock(AuthEventService.class);
     adminAccessAuditService = mock(AdminAccessAuditService.class);
     orgMemberMapper = mock(OrgMemberMapper.class);
+    jdbcTemplate = mock(JdbcTemplate.class);
     when(orgMemberMapper.isMember(any(), any())).thenReturn(true);
+    // Default: session_version matches (no stale session)
+    when(jdbcTemplate.queryForObject(any(String.class), any(Class.class), any())).thenReturn(null);
     filter =
         new JwtAuthenticationFilter(
             jwtVerifier,
             new ObjectMapper(),
             authEventService,
             adminAccessAuditService,
-            orgMemberMapper);
+            orgMemberMapper,
+            jdbcTemplate);
   }
 
   @Test

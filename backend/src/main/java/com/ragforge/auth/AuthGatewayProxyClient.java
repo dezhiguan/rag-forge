@@ -164,6 +164,63 @@ public class AuthGatewayProxyClient {
     bearerJson("/auth/credential/set-username", authorization, body);
   }
 
+  /** 递增目标用户 session_version，使其现存 token 在下次访问时失效（如被移出组织后调用）。 */
+  @SuppressWarnings("unchecked")
+  public void invalidateUserSession(Long userId) {
+    MultiValueMap<String, String> form = clientForm();
+    postForm("/internal/users/" + userId + "/invalidate-session", form, Map.class);
+  }
+
+  /** 申请注销账号（Bearer 保护，SMS OTP 已由前端收集）。返回 {deletionScheduledAt}。 */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> requestAccountDeletion(String authorization, String phone, String smsCode) {
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("phone", phone);
+    body.put("smsCode", smsCode);
+    return bearerJsonResult("/auth/users/me/deletion-request", authorization, body);
+  }
+
+  /** 撤销注销申请（冷静期内）。 */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> cancelAccountDeletion(String authorization, String phone, String smsCode) {
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    if (phone != null) body.put("phone", phone);
+    if (smsCode != null) body.put("smsCode", smsCode);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    if (authorization != null && !authorization.isBlank()) {
+      headers.set(HttpHeaders.AUTHORIZATION, authorization);
+    }
+    try {
+      ResponseEntity<Map> response = restTemplate.exchange(
+          properties.getBaseUrl() + "/auth/users/me/deletion-request",
+          org.springframework.http.HttpMethod.DELETE,
+          new HttpEntity<>(body, headers),
+          Map.class);
+      return response.getBody();
+    } catch (HttpStatusCodeException ex) {
+      throw new AuthProxyException(ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+    }
+  }
+
+  /** 老用户补签协议。 */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> acceptTerms(String authorization, String termsVersion) {
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("termsVersion", termsVersion);
+    return bearerJsonResult("/auth/users/me/terms-acceptance", authorization, body);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> bearerJsonResult(String path, String authorization, Object body) {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    if (authorization != null && !authorization.isBlank()) {
+      headers.set(HttpHeaders.AUTHORIZATION, authorization);
+    }
+    return exchange(path, new HttpEntity<>(body, headers), Map.class);
+  }
+
   /**
    * 按手机号精确解析用户（client 鉴权，内部接口）。 返回 {found, registered, authUserId, username,
    * maskedPhone}；未注册 found=false。
@@ -249,5 +306,9 @@ public class AuthGatewayProxyClient {
     /** refresh token 剩余生命周期（秒）。旧网关不返回该字段时为 0，代理层回退默认 7 天。 */
     @JsonProperty("refresh_expires_in")
     private long refreshExpiresIn;
+
+    /** 登录时用户协议版本落后当前版本，需前端弹窗补签。 */
+    @JsonProperty("terms_update_required")
+    private boolean termsUpdateRequired;
   }
 }

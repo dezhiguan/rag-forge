@@ -195,9 +195,15 @@ request.interceptors.response.use(
         msg = '登录已过期，请重新登录'
       } else if (status === 403) {
         const url = err.config?.url || ''
+        const errorCode = data?.errorCode || data?.error || data?.code || ''
         if (url.includes('/evaluation/quality/sampling')) {
           // 区分"全局配置仅平台管理员"与"无权配置该 KB 的抽样",不再统一硬编码。
           msg = translateError(data) || ERROR_MESSAGES.SAMPLING_ADMIN_ONLY
+        } else if (errorCode === 'SESSION_VERSION_MISMATCH' || errorCode === 'SESSION_INVALIDATED') {
+          // 成员被移出组织，session_version 不匹配 → 清 session 跳登录页
+          toast.error('您的组织权限已变更，请重新登录')
+          handleSessionExpired()
+          return Promise.reject(err)
         } else {
           msg = translateError(data) || ERROR_MESSAGES.KB_ACCESS_DENIED
         }

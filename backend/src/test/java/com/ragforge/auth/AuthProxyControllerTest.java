@@ -21,6 +21,7 @@ import com.ragforge.events.AuthEventService;
 import com.ragforge.model.entity.UserProfile;
 import com.ragforge.security.JwtVerifier;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,6 +44,7 @@ class AuthProxyControllerTest {
   @Mock private UserProfileService userProfileService;
   @Mock private JwtVerifier jwtVerifier;
   @Mock private AuthEventService authEventService;
+  @Mock private JdbcTemplate jdbcTemplate;
 
   private MockMvc mockMvc;
   private final ObjectMapper objectMapper = new ObjectMapper();
@@ -51,7 +54,7 @@ class AuthProxyControllerTest {
   void setUp() {
     properties.setCookieSecure(false);
     mockMvc =
-        standaloneSetup(new AuthProxyController(client, properties, objectMapper, userProfileService, jwtVerifier, authEventService))
+        standaloneSetup(new AuthProxyController(client, properties, objectMapper, userProfileService, jwtVerifier, authEventService, jdbcTemplate))
             .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .build();
   }
@@ -302,6 +305,92 @@ class AuthProxyControllerTest {
   }
 
   /** Build a TokenResponse with a fake JWT containing the given userId. */
+  @Test
+  void login_termsUpdateRequired_includedInResponse() throws Exception {
+    TokenResponse tokens = buildTokens(42L, "refresh-token-value");
+    tokens.setTermsUpdateRequired(true);
+    when(client.loginPassword("alice@example.com", "P@ssw0rd", null, null, false)).thenReturn(tokens);
+    UserProfile profile = new UserProfile();
+    profile.setAuthUserId(42L);
+    when(userProfileService.getOrCreate(42L)).thenReturn(profile);
+    when(userProfileService.resolveDisplayName(any(), eq(42L))).thenReturn("Alice");
+
+    mockMvc
+        .perform(
+            post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"account\":\"alice@example.com\",\"password\":\"P@ssw0rd\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.termsUpdateRequired").value(true));
+  }
+
+  @Test
+  void login_noTermsUpdate_fieldAbsent() throws Exception {
+    TokenResponse tokens = buildTokens(42L, "refresh-token-value");
+    when(client.loginPassword("alice@example.com", "P@ssw0rd", null, null, false)).thenReturn(tokens);
+    UserProfile profile = new UserProfile();
+    profile.setAuthUserId(42L);
+    when(userProfileService.getOrCreate(42L)).thenReturn(profile);
+    when(userProfileService.resolveDisplayName(any(), eq(42L))).thenReturn("Alice");
+
+    mockMvc
+        .perform(
+            post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"account\":\"alice@example.com\",\"password\":\"P@ssw0rd\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.termsUpdateRequired").doesNotExist());
+  }
+
+  @Test
+  void acceptTerms_delegatesToClient() throws Exception {
+    when(client.acceptTerms(anyString(), eq("1.0")))
+        .thenReturn(Map.of("accepted", true, "termsVersion", "1.0"));
+
+    mockMvc
+        .perform(
+            post("/api/auth/users/me/terms-acceptance")
+                .header("Authorization", "Bearer fake-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"termsVersion\":\"1.0\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.accepted").value(true));
+
+    verify(client).acceptTerms("Bearer fake-token", "1.0");
+  }
+
+  @Test
+  void requestDeletion_noSoleAdmin_delegatesToClient() throws Exception {
+    when(jdbcTemplate.queryForList(anyString(), any(Object.class))).thenReturn(List.of());
+    when(client.requestAccountDeletion(anyString(), anyString(), anyString()))
+        .thenReturn(Map.of("deletionScheduledAt", "2026-08-10T00:00:00Z"));
+
+    String jwt = buildTokens(5L, "r").getAccessToken();
+    mockMvc
+        .perform(
+            post("/api/auth/users/me/deletion-request")
+                .header("Authorization", "Bearer " + jwt)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"phone\":\"13800000000\",\"smsCode\":\"123456\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.deletionScheduledAt").isString());
+  }
+
+  @Test
+  void requestDeletion_soleAdmin_returns400() throws Exception {
+    when(jdbcTemplate.queryForList(anyString(), any(Object.class)))
+        .thenReturn(List.of(Map.of("id", 1L, "name", "My Org")));
+
+    String jwt = buildTokens(5L, "r").getAccessToken();
+    mockMvc
+        .perform(
+            post("/api/auth/users/me/deletion-request")
+                .header("Authorization", "Bearer " + jwt)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"phone\":\"13800000000\",\"smsCode\":\"123456\"}"))
+        .andExpect(status().isBadRequest());
+  }
+
   private TokenResponse buildTokens(long userId, String refreshToken) throws Exception {
     String payloadJson = objectMapper.writeValueAsString(Map.of(
         "user_id", userId,

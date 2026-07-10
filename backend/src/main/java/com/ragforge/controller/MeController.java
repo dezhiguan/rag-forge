@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -44,6 +45,17 @@ public class MeController {
     data.put("email", profile.getEmail());
     data.put("maskedPhone", profile.getMaskedPhone());
     data.put("capabilities", capabilityResolver.capabilitiesFor(context.ragRole()));
+    data.put("onboardingCompleted", Boolean.TRUE.equals(profile.getOnboardingCompleted()));
     return Result.ok(data);
+  }
+
+  @PostMapping("/onboarding-complete")
+  public Result<Map<String, Object>> completeOnboarding() {
+    RagAuthContext context = RagAuthContextHolder.get();
+    if (context == null || context.userId() == null) {
+      throw new BizException(401, "UNAUTHORIZED");
+    }
+    userProfileService.markOnboardingComplete(context.userId());
+    return Result.ok(Map.of("onboardingCompleted", true));
   }
 }

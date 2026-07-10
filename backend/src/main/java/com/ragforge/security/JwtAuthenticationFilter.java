@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -38,6 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private final AuthEventService authEventService;
   private final AdminAccessAuditService adminAccessAuditService;
   private final com.ragforge.mapper.OrgMemberMapper orgMemberMapper;
+  private final JdbcTemplate jdbcTemplate;
 
   /**
    * /api/auth/** 是公开的认证代理端点（登录/刷新/登出/找回密码/凭据管理），它们要么用 rf_refresh
@@ -71,6 +73,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
           claims = jwtVerifier.verify(token);
           if (isJwtRevoked(claims)) {
             writeUnauthorized(response);
+            return;
+          }
+          if (isSessionVersionStale(claims)) {
+            writeForbidden(response, "SESSION_INVALIDATED", "您的账号权限已变更，请重新登录");
             return;
           }
           context = jwtVerifier.toContext(claims);
@@ -177,6 +183,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       log.warn("JWT revocation check unavailable, continuing with signature-verified token: {}", ex.getMessage());
       return false;
     }
+  }
+
+  /**
+   * 校验 JWT 中的 session_version 与 auth_users 表当前值是否一致。
+   * 不一致说明用户的会话已被服务端主动废止（如被移出组织），应拒绝请求。
+   * 查询失败时 fail-open（不阻断），避免 DB 抖动影响正常用户。
+   */
+  private boolean isSessionVersionStale(JwtClaims claims) {
+    Long userId = claims.longValue("user_id");
+    Long jwtSessionVersion = claims.longValue("session_version");
+    if (userId == null || jwtSessionVersion == null) {
+      return false;
+    }
+    try {
+      Long dbSessionVersion = jdbcTemplate.queryForObject(
+          "SELECT session_version FROM auth_users WHERE id = ?", Long.class, userId);
+      return dbSessionVersion != null && !dbSessionVersion.equals(jwtSessionVersion);
+    } catch (Exception ex) {
+      log.warn("session_version check failed for user {}, fail-open: {}", userId, ex.getMessage());
+      return false;
+    }
+  }
+
+  private void writeForbidden(HttpServletResponse response, String code, String message) throws IOException {
+    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    response.setCharacterEncoding("UTF-8");
+    response.setHeader(TraceIds.HEADER_TRACE_ID, TraceIds.current());
+    response.setHeader(TraceIds.HEADER_REQUEST_ID, TraceIds.currentRequestId());
+    objectMapper.writeValue(response.getWriter(), Result.error(HttpServletResponse.SC_FORBIDDEN, code, message));
   }
 
   private void writeUnauthorized(HttpServletResponse response) throws IOException {

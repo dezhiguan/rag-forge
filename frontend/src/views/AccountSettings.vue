@@ -66,18 +66,71 @@
           <p class="card-hint">修改密码后，所有设备将退出登录，需使用新密码重新登录。</p>
           <input class="input" v-model="pwd.oldPassword" type="password" placeholder="原密码（首次设置可留空）" />
           <input class="input" v-model="pwd.newPassword" type="password" placeholder="新密码：至少 8 位，含字母与数字" />
+          <div v-if="pwd.newPassword" class="pwd-strength">
+            <div class="pwd-strength-bar">
+              <div class="pwd-strength-fill" :style="{ width: pwdStrength.pct + '%', background: pwdStrength.color }"></div>
+            </div>
+            <span class="pwd-strength-label" :style="{ color: pwdStrength.color }">{{ pwdStrength.label }}</span>
+          </div>
           <p v-if="pwd.newPassword && !passwordValid" class="field-hint-error">密码至少 8 位，且需同时包含字母和数字</p>
           <button class="btn btn-primary" :disabled="busy.pwd || !passwordValid" @click="doSetPassword">提交</button>
         </div>
+
+        <div class="card card-pad cred-block danger-zone">
+          <h3 class="danger-title">危险操作</h3>
+          <p class="card-hint">注销账号后，账号将进入 30 天冷静期。期间您无法登录，冷静期结束后数据将被永久删除。</p>
+          <button class="btn btn-danger" @click="showDeletionStep1 = true">注销账号</button>
+        </div>
       </section>
+
+      <!-- 注销确认弹窗 Step 1 -->
+      <div v-if="showDeletionStep1" class="modal-overlay" @click.self="showDeletionStep1 = false">
+        <div class="modal-box">
+          <h3 class="modal-title">确认注销账号</h3>
+          <ul class="deletion-info">
+            <li>账号将在 <strong>30 天后</strong>永久删除，期间不可登录</li>
+            <li>您作为成员加入的组织数据不受影响（知识库归属组织）</li>
+            <li>若您是某组织的唯一管理员，请先移交权限后再申请注销</li>
+          </ul>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" @click="showDeletionStep1 = false">取消</button>
+            <button class="btn btn-danger" @click="openDeletionSmsStep">继续，进入短信验证</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 注销短信验证弹窗 Step 2 -->
+      <div v-if="showDeletionStep2" class="modal-overlay" @click.self="showDeletionStep2 = false">
+        <div class="modal-box">
+          <h3 class="modal-title">短信验证</h3>
+          <p class="card-hint">请输入发送至您绑定手机号的验证码（{{ me.maskedPhone || '已绑手机号' }}）</p>
+          <div v-if="deletionError" class="tip tip-err">{{ deletionError }}</div>
+          <div class="field">
+            <label>手机号（确认验证）</label>
+            <input class="input" v-model.trim="deletionPhone" type="tel" placeholder="请输入绑定手机号" :disabled="deletionLoading" />
+          </div>
+          <div class="field">
+            <label>短信验证码</label>
+            <div class="input-with-suffix">
+              <input class="input" style="border:none;border-radius:0;" v-model.trim="deletionSmsCode" type="text" inputmode="numeric" maxlength="6" placeholder="6 位验证码" :disabled="deletionLoading" />
+              <button type="button" class="sms-btn" :class="{ disabled: deletionSmsCountdown > 0 || sendingDeletionSms }" :disabled="deletionSmsCountdown > 0 || sendingDeletionSms" @click="sendDeletionSms">{{ deletionSmsBtnLabel }}</button>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" @click="showDeletionStep2 = false">取消</button>
+            <button class="btn btn-danger" :disabled="deletionLoading || !deletionSmsCode" @click="confirmDeletion">确认注销</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getProfile, updateProfile, setPassword, bindEmail, setUsername, loadMe } from '../api/account'
+import { getProfile, updateProfile, setPassword, bindEmail, setUsername, loadMe, requestAccountDeletion } from '../api/account'
+import { sendSmsCode } from '../api/auth'
 import { notifyLoggedOut } from '../api/session'
 import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
@@ -104,6 +157,97 @@ const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((emailInput.
 const passwordValid = computed(() => {
   const s = pwd.newPassword || ''
   return s.length >= 8 && /[A-Za-z]/.test(s) && /\d/.test(s)
+})
+
+const pwdStrength = computed(() => {
+  const p = pwd.newPassword
+  if (!p) return { pct: 0, label: '', color: '' }
+  let score = 0
+  if (p.length >= 8) score++
+  if (/[A-Z]/.test(p)) score++
+  if (/[a-z]/.test(p)) score++
+  if (/[0-9]/.test(p)) score++
+  if (/[^A-Za-z0-9]/.test(p)) score++
+  if (score <= 2) return { pct: 25, label: '弱', color: '#dc2626' }
+  if (score <= 3) return { pct: 60, label: '中', color: '#d97706' }
+  return { pct: 100, label: '强', color: '#059669' }
+})
+
+// 账号注销状态
+const showDeletionStep1 = ref(false)
+const showDeletionStep2 = ref(false)
+const deletionPhone = ref('')
+const deletionSmsCode = ref('')
+const deletionLoading = ref(false)
+const deletionError = ref('')
+const sendingDeletionSms = ref(false)
+const deletionSmsCountdown = ref(0)
+let deletionCountdownTimer = null
+
+const deletionSmsBtnLabel = computed(() => {
+  if (sendingDeletionSms.value) return '发送中…'
+  if (deletionSmsCountdown.value > 0) return `${deletionSmsCountdown.value}s 后重发`
+  return '获取验证码'
+})
+
+function openDeletionSmsStep() {
+  showDeletionStep1.value = false
+  showDeletionStep2.value = true
+  deletionError.value = ''
+  deletionSmsCode.value = ''
+}
+
+async function sendDeletionSms() {
+  if (sendingDeletionSms.value || deletionSmsCountdown.value > 0) return
+  if (!deletionPhone.value) {
+    deletionError.value = '请先输入手机号'
+    return
+  }
+  sendingDeletionSms.value = true
+  deletionError.value = ''
+  try {
+    await sendSmsCode({ phone: deletionPhone.value, scene: 'verification' })
+    startDeletionCountdown(60)
+  } catch (e) {
+    deletionError.value = e?.message || '验证码发送失败，请稍后重试'
+  } finally {
+    sendingDeletionSms.value = false
+  }
+}
+
+function startDeletionCountdown(seconds) {
+  deletionSmsCountdown.value = seconds
+  deletionCountdownTimer = setInterval(() => {
+    deletionSmsCountdown.value -= 1
+    if (deletionSmsCountdown.value <= 0) {
+      clearInterval(deletionCountdownTimer)
+      deletionCountdownTimer = null
+    }
+  }, 1000)
+}
+
+async function confirmDeletion() {
+  if (deletionLoading.value) return
+  deletionLoading.value = true
+  deletionError.value = ''
+  try {
+    await requestAccountDeletion({ phone: deletionPhone.value, smsCode: deletionSmsCode.value })
+    showDeletionStep2.value = false
+    toast.success('注销申请已提交，30 天后账号数据将被永久删除。如需撤销，请重新登录后操作。')
+    setTimeout(() => {
+      clearSession()
+      notifyLoggedOut()
+      router.replace('/login')
+    }, 2000)
+  } catch (e) {
+    deletionError.value = e?.message || '注销申请失败，请稍后重试'
+  } finally {
+    deletionLoading.value = false
+  }
+}
+
+onUnmounted(() => {
+  if (deletionCountdownTimer) clearInterval(deletionCountdownTimer)
 })
 
 onMounted(async () => {
@@ -258,4 +402,32 @@ textarea.input { height: auto; min-height: 84px; padding: 9px 12px; line-height:
 .cred-block .input { margin-bottom: 10px; }
 .field-hint-error { margin: -4px 0 10px; font-size: 12px; color: #dc2626; line-height: 1.4; }
 .cred-block .btn { margin-top: 2px; }
+.danger-zone { border-color: #fecaca; }
+.danger-title { font-size: 14px; color: #991b1b; margin: 0 0 12px; }
+.pwd-strength { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+.pwd-strength-bar { flex: 1; height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; }
+.pwd-strength-fill { height: 100%; border-radius: 2px; transition: width .3s, background .3s; }
+.pwd-strength-label { font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,.55);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.modal-box {
+  background: #fff; border-radius: 14px; padding: 28px 28px 24px; max-width: 440px; width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,.18);
+}
+.modal-title { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 14px; }
+.deletion-info { padding-left: 18px; margin-bottom: 18px; }
+.deletion-info li { font-size: 13px; color: #475569; margin-bottom: 6px; line-height: 1.5; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.input-with-suffix {
+  display: flex; align-items: stretch; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #fff;
+}
+.sms-btn {
+  border: none; border-left: 1px solid #e2e8f0; background: #fff; color: #1d4ed8;
+  font-size: 13px; font-weight: 600; padding: 0 14px; cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+.sms-btn.disabled, .sms-btn:disabled { color: #94a3b8; cursor: not-allowed; }
+.tip { padding: 9px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+.tip-err { background: #fff1f0; color: #b42318; border: 1px solid #ffccc7; }
 </style>

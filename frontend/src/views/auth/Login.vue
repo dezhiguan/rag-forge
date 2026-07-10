@@ -150,6 +150,9 @@
 
         <p class="footer-mini">登录即代表同意服务条款与隐私政策</p>
   </div>
+
+  <TermsAcceptModal :visible="showTermsModal" @accepted="onTermsAccepted" />
+  <OnboardingWizard :visible="showOnboarding" @done="doRedirect" />
 </template>
 
 <script setup>
@@ -158,6 +161,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { loginByPassword, loginByMobile, sendSmsCode, fetchCaptcha } from '../../api/auth'
 import { applySession } from '../../api/session'
 import { loadMe } from '../../api/account'
+import TermsAcceptModal from '../../components/TermsAcceptModal.vue'
+import OnboardingWizard from '../../components/OnboardingWizard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -165,6 +170,8 @@ const router = useRouter()
 const tab = ref('password')
 const loading = ref(false)
 const errorMsg = ref('')
+const showTermsModal = ref(false)
+const showOnboarding = ref(false)
 const sendingSms = ref(false)
 const smsCountdown = ref(0)
 const submitCooldown = ref(0)
@@ -336,10 +343,31 @@ async function finishLogin(session) {
   }
   // applySession = 写会话 + 按 expiresIn 安排主动续期 + 广播给其他标签页
   applySession(session)
+  if (session.termsUpdateRequired) {
+    showTermsModal.value = true
+    return
+  }
+  await checkOnboarding()
+}
+
+async function onTermsAccepted() {
+  showTermsModal.value = false
+  await checkOnboarding()
+}
+
+async function checkOnboarding() {
+  const me = await loadMe()
+  if (me && me.onboardingCompleted === false) {
+    showOnboarding.value = true
+  } else {
+    doRedirect()
+  }
+}
+
+function doRedirect() {
+  showOnboarding.value = false
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
   router.replace(redirect.startsWith('/') ? redirect : '/')
-  // /me（capabilities/显示名）后台补全，不阻塞跳转——避免慢或卡住的 /me 拖住登录
-  loadMe()
 }
 
 function onForgotPassword() {
