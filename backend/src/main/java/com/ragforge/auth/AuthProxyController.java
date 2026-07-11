@@ -352,10 +352,12 @@ public class AuthProxyController {
   }
 
   private void checkNotSoleAdmin(Long userId) {
+    // 仅拦截「团队/系统组织」的唯一 OWNER：个人组织(INDIVIDUAL)对本人恒为唯一 OWNER，
+    // 且随账号注销一并处理，不应阻断自助注销；否则任何创建过内容的用户都永远无法注销。
     List<Map<String, Object>> soleOwnerOrgs = jdbcTemplate.queryForList("""
         SELECT o.id, o.name FROM organizations o
         JOIN org_members om ON om.org_id = o.id
-        WHERE om.user_id = ? AND om.role = 'OWNER'
+        WHERE om.user_id = ? AND om.role = 'OWNER' AND o.type <> 'INDIVIDUAL'
         AND (SELECT COUNT(*) FROM org_members om2
              WHERE om2.org_id = o.id AND om2.role = 'OWNER') = 1
         """, userId);
