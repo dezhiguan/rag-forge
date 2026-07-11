@@ -337,14 +337,18 @@ public class AuthProxyController {
     return Result.ok(client.requestAccountDeletion(authorization, request.phone(), request.smsCode()));
   }
 
-  /** 撤销注销申请（冷静期内）。 */
+  /** 撤销注销申请（冷静期内）。仅凭 Bearer 一键撤销，无需短信。 */
   @DeleteMapping("/users/me/deletion-request")
   public Result<Map<String, Object>> cancelDeletion(
-      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-      @RequestBody(required = false) DeletionRequestPayload request) {
-    String phone = request != null ? request.phone() : null;
-    String smsCode = request != null ? request.smsCode() : null;
-    return Result.ok(client.cancelAccountDeletion(authorization, phone, smsCode));
+      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+    return Result.ok(client.cancelAccountDeletion(authorization));
+  }
+
+  /** 查询当前账号注销状态，供设置页展示"注销申请进行中/撤销注销"。 */
+  @GetMapping("/users/me/deletion-status")
+  public Result<Map<String, Object>> deletionStatus(
+      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+    return Result.ok(client.getDeletionStatus(authorization));
   }
 
   private void checkNotSoleAdmin(Long userId) {
