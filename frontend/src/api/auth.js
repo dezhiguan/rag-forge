@@ -93,6 +93,7 @@ function normalizeLoginResponse(body) {
     expiresIn: data.expiresIn || data.expires_in,
     user: data.user || data.profile || null,
     termsUpdateRequired: Boolean(data.termsUpdateRequired),
+    pendingDeletion: Boolean(data.pendingDeletion),
   }
 }
 

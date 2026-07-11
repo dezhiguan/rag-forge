@@ -26,6 +26,7 @@ const routes = [
       { path: '', name: 'Register', component: () => import('../views/auth/Register.vue'), meta: { layout: 'auth', public: true } },
     ],
   },
+  { path: '/account/cancelling', name: 'AccountCancelling', component: () => import('../views/auth/AccountCancelling.vue'), meta: { public: true } },
   { path: '/403', name: 'Forbidden', component: () => import('../views/Forbidden.vue'), meta: { icon: '!', label: '无权访问', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'] } },
   { path: '/', name: 'Dashboard', component: () => import('../views/Dashboard.vue'), meta: { icon: '🏠', label: '驾驶舱', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'], scope: 'rag:dashboard:read' } },
   { path: '/account', name: 'AccountSettings', component: () => import('../views/AccountSettings.vue'), meta: { icon: '⚙', label: '账号设置', roles: ['ADMIN', 'KB_EDITOR', 'KB_VIEWER', 'USER'] } },

@@ -227,6 +227,9 @@ public class AuthProxyController {
     data.put("accessToken", tokens.getAccessToken());
     data.put("expiresIn", tokens.getExpiresIn());
     data.put("user", user);
+    if (tokens.isPendingDeletion()) {
+      data.put("pendingDeletion", true);
+    }
     if (tokens.isTermsUpdateRequired()) {
       data.put("termsUpdateRequired", true);
     }
