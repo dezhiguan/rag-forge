@@ -94,6 +94,10 @@
             </label>
             <a class="link" href="#" @click.prevent="onForgotPassword">忘记密码？</a>
           </div>
+          <label class="terms-check">
+            <input type="checkbox" v-model="form.agreeTerms" />
+            <span>我已阅读并同意 <a class="link" href="#" @click.prevent="legalDoc = 'terms'">《用户协议》</a> 和 <a class="link" href="#" @click.prevent="legalDoc = 'privacy'">《隐私政策》</a></span>
+          </label>
           <button type="submit" class="btn-primary" :disabled="submitDisabled">
             {{ submitBtnLabel }}
           </button>
@@ -143,15 +147,17 @@
             </label>
             <span class="link muted">遇到问题？联系管理员</span>
           </div>
+          <label class="terms-check">
+            <input type="checkbox" v-model="form.agreeTerms" />
+            <span>我已阅读并同意 <a class="link" href="#" @click.prevent="legalDoc = 'terms'">《用户协议》</a> 和 <a class="link" href="#" @click.prevent="legalDoc = 'privacy'">《隐私政策》</a></span>
+          </label>
           <button type="submit" class="btn-primary" :disabled="submitDisabled">
             {{ submitBtnLabel }}
           </button>
         </form>
-
-        <p class="footer-mini">登录即代表同意服务条款与隐私政策</p>
   </div>
 
-  <TermsAcceptModal :visible="showTermsModal" @accepted="onTermsAccepted" />
+  <LegalDocModal :which="legalDoc" @close="legalDoc = ''" />
   <OnboardingWizard :visible="showOnboarding" @done="doRedirect" />
 </template>
 
@@ -160,8 +166,8 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { loginByPassword, loginByMobile, sendSmsCode, fetchCaptcha } from '../../api/auth'
 import { applySession } from '../../api/session'
-import { loadMe } from '../../api/account'
-import TermsAcceptModal from '../../components/TermsAcceptModal.vue'
+import { loadMe, acceptTerms, completeOnboarding } from '../../api/account'
+import LegalDocModal from '../../components/LegalDocModal.vue'
 import OnboardingWizard from '../../components/OnboardingWizard.vue'
 
 const route = useRoute()
@@ -170,7 +176,6 @@ const router = useRouter()
 const tab = ref('password')
 const loading = ref(false)
 const errorMsg = ref('')
-const showTermsModal = ref(false)
 const showOnboarding = ref(false)
 const sendingSms = ref(false)
 const smsCountdown = ref(0)
@@ -189,7 +194,9 @@ const form = reactive({
   captcha: '',
   challengeId: '',
   remember: true,
+  agreeTerms: false,
 })
+const legalDoc = ref('')
 
 const redirectNotice = computed(() => {
   return route.query.reason === 'expired' ? route.query.redirect || null : null
@@ -211,7 +218,7 @@ const smsBtnLabel = computed(() => {
   return '获取验证码'
 })
 
-const submitDisabled = computed(() => loading.value || submitCooldown.value > 0)
+const submitDisabled = computed(() => loading.value || submitCooldown.value > 0 || !form.agreeTerms)
 
 const submitBtnLabel = computed(() => {
   if (loading.value) return '登录中...'
@@ -343,21 +350,18 @@ async function finishLogin(session) {
   }
   // applySession = 写会话 + 按 expiresIn 安排主动续期 + 广播给其他标签页
   applySession(session)
+  // 用户已在登录页勾选同意协议；若后端标记需补签(协议升级/历史未签)，静默补签一次，不再弹窗打断。
   if (session.termsUpdateRequired) {
-    showTermsModal.value = true
-    return
+    try { await acceptTerms({ termsVersion: '1.0' }) } catch { /* 补签失败不阻断登录 */ }
   }
-  await checkOnboarding()
-}
-
-async function onTermsAccepted() {
-  showTermsModal.value = false
   await checkOnboarding()
 }
 
 async function checkOnboarding() {
   const me = await loadMe()
   if (me && me.onboardingCompleted === false) {
+    // 引导仅对新用户展示一次：一旦触发即标记完成，避免用户中途关闭后每次登录重复弹出。
+    completeOnboarding().catch(() => {})
     showOnboarding.value = true
   } else {
     doRedirect()
@@ -557,6 +561,17 @@ onUnmounted(() => {
   cursor: pointer;
   user-select: none;
 }
+.terms-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0 0 14px;
+  cursor: pointer;
+}
+.terms-check input { margin-top: 2px; flex-shrink: 0; cursor: pointer; }
 .check input { display: none; }
 .check .box-tick {
   width: 16px;
