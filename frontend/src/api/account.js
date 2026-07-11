@@ -37,8 +37,14 @@ export function requestAccountDeletion(payload) {
   return authClient.post('/users/me/deletion-request', payload)
 }
 
-export function cancelAccountDeletion(payload) {
-  return authClient.delete('/users/me/deletion-request', { data: payload })
+// 撤销注销：仅凭登录态一键撤销，无需短信
+export function cancelAccountDeletion() {
+  return authClient.delete('/users/me/deletion-request')
+}
+
+// 查询当前账号注销状态（供设置页展示"注销申请进行中/撤销注销"）
+export function fetchDeletionStatus() {
+  return authClient.get('/users/me/deletion-status')
 }
 
 // 协议同意（走 /api/auth 代理到网关）

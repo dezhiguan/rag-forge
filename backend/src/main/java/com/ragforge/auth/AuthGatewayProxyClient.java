@@ -180,14 +180,10 @@ public class AuthGatewayProxyClient {
     return bearerJsonResult("/auth/users/me/deletion-request", authorization, body);
   }
 
-  /** 撤销注销申请（冷静期内）。 */
+  /** 撤销注销申请（冷静期内）。仅凭 Bearer 识别用户，无需短信。 */
   @SuppressWarnings("unchecked")
-  public Map<String, Object> cancelAccountDeletion(String authorization, String phone, String smsCode) {
-    Map<String, Object> body = new java.util.LinkedHashMap<>();
-    if (phone != null) body.put("phone", phone);
-    if (smsCode != null) body.put("smsCode", smsCode);
+  public Map<String, Object> cancelAccountDeletion(String authorization) {
     HttpHeaders headers = new HttpHeaders();
-    headers.setContentType(MediaType.APPLICATION_JSON);
     if (authorization != null && !authorization.isBlank()) {
       headers.set(HttpHeaders.AUTHORIZATION, authorization);
     }
@@ -195,7 +191,26 @@ public class AuthGatewayProxyClient {
       ResponseEntity<Map> response = restTemplate.exchange(
           properties.getBaseUrl() + "/auth/users/me/deletion-request",
           org.springframework.http.HttpMethod.DELETE,
-          new HttpEntity<>(body, headers),
+          new HttpEntity<>(headers),
+          Map.class);
+      return response.getBody();
+    } catch (HttpStatusCodeException ex) {
+      throw new AuthProxyException(ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+    }
+  }
+
+  /** 查询当前账号的注销状态（Bearer 保护，PENDING_DELETION 亦可查）。返回 {status, pendingDeletion, deletionScheduledAt}。 */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> getDeletionStatus(String authorization) {
+    HttpHeaders headers = new HttpHeaders();
+    if (authorization != null && !authorization.isBlank()) {
+      headers.set(HttpHeaders.AUTHORIZATION, authorization);
+    }
+    try {
+      ResponseEntity<Map> response = restTemplate.exchange(
+          properties.getBaseUrl() + "/auth/users/me/deletion-status",
+          org.springframework.http.HttpMethod.GET,
+          new HttpEntity<>(headers),
           Map.class);
       return response.getBody();
     } catch (HttpStatusCodeException ex) {
