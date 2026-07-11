@@ -78,16 +78,8 @@
 
         <div class="card card-pad cred-block danger-zone">
           <h3 class="danger-title">危险操作</h3>
-          <template v-if="pendingDeletion">
-            <p class="card-hint" style="color:#dc2626;font-weight:600;">注销申请进行中</p>
-            <p class="card-hint">账号将于 <strong>{{ deletionDaysLeft }} 天后</strong>（{{ deletionDateText }}）永久删除，删除前可随时撤销。撤销后账号立即恢复正常。</p>
-            <div v-if="deletionError" class="tip tip-err">{{ deletionError }}</div>
-            <button class="btn btn-primary" :disabled="revoking" @click="doRevokeDeletion">{{ revoking ? '撤销中…' : '撤销注销' }}</button>
-          </template>
-          <template v-else>
-            <p class="card-hint">注销账号后，账号将进入 30 天冷静期。期间您无法登录，冷静期结束后数据将被永久删除。</p>
-            <button class="btn btn-danger" @click="showDeletionStep1 = true">注销账号</button>
-          </template>
+          <p class="card-hint">注销 RAGForge 后，账号进入 30 天冷静期，期间登录可恢复；冷静期结束后 RAGForge 数据将被永久删除（不影响你在其它产品的账号）。</p>
+          <button class="btn btn-danger" @click="showDeletionStep1 = true">注销账号</button>
         </div>
       </section>
 
@@ -124,9 +116,14 @@
               <button type="button" class="sms-btn" :class="{ disabled: deletionSmsCountdown > 0 || sendingDeletionSms }" :disabled="deletionSmsCountdown > 0 || sendingDeletionSms" @click="sendDeletionSms">{{ deletionSmsBtnLabel }}</button>
             </div>
           </div>
+          <div class="field">
+            <label>请输入「注销」以确认</label>
+            <input class="input" v-model.trim="deletionConfirmText" type="text" placeholder="注销" :disabled="deletionLoading" />
+          </div>
+          <p class="card-hint" style="color:#b91c1c;">⚠️ 确认后将立即退出登录并返回登录页；30 天内重新登录即可恢复。</p>
           <div class="modal-actions">
             <button class="btn btn-secondary" @click="showDeletionStep2 = false">取消</button>
-            <button class="btn btn-danger" :disabled="deletionLoading || !deletionPhone || !deletionSmsCode" @click="confirmDeletion">确认注销</button>
+            <button class="btn btn-danger" :disabled="deletionLoading || !deletionPhone || !deletionSmsCode || deletionConfirmText !== '注销'" @click="confirmDeletion">确认注销</button>
           </div>
         </div>
       </div>
@@ -137,7 +134,7 @@
 <script setup>
 import { reactive, ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getProfile, updateProfile, setPassword, bindEmail, setUsername, loadMe, requestAccountDeletion, cancelAccountDeletion, fetchDeletionStatus } from '../api/account'
+import { getProfile, updateProfile, setPassword, bindEmail, setUsername, loadMe, requestAccountDeletion } from '../api/account'
 import { sendSmsCode } from '../api/auth'
 import { notifyLoggedOut } from '../api/session'
 import { useAuth } from '../composables/useAuth'
@@ -181,52 +178,12 @@ const pwdStrength = computed(() => {
   return { pct: 60, label: '中', color: '#d97706' }
 })
 
-// 账号注销状态
-const pendingDeletion = ref(false)
-const deletionScheduledAt = ref(null)
-const revoking = ref(false)
-const deletionDaysLeft = computed(() => {
-  if (!deletionScheduledAt.value) return 30
-  const ms = new Date(deletionScheduledAt.value).getTime() - Date.now()
-  return Math.max(0, Math.ceil(ms / 86400000))
-})
-const deletionDateText = computed(() => {
-  if (!deletionScheduledAt.value) return ''
-  const d = new Date(deletionScheduledAt.value)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-})
-
-async function loadDeletionStatus() {
-  try {
-    const body = await fetchDeletionStatus()
-    const data = body?.data ?? body
-    pendingDeletion.value = Boolean(data?.pendingDeletion)
-    deletionScheduledAt.value = data?.deletionScheduledAt || null
-  } catch {
-    pendingDeletion.value = false
-  }
-}
-
-async function doRevokeDeletion() {
-  if (revoking.value) return
-  revoking.value = true
-  deletionError.value = ''
-  try {
-    await cancelAccountDeletion()
-    pendingDeletion.value = false
-    deletionScheduledAt.value = null
-    toast.success('已撤销注销，账号恢复正常')
-  } catch (e) {
-    deletionError.value = e?.message || '撤销失败，请稍后重试'
-  } finally {
-    revoking.value = false
-  }
-}
-
+// 账号注销申请
 const showDeletionStep1 = ref(false)
 const showDeletionStep2 = ref(false)
 const deletionPhone = ref('')
 const deletionSmsCode = ref('')
+const deletionConfirmText = ref('')
 const deletionLoading = ref(false)
 const deletionError = ref('')
 const sendingDeletionSms = ref(false)
@@ -291,12 +248,14 @@ async function confirmDeletion() {
     const body = await requestAccountDeletion({ phone: deletionPhone.value, smsCode: deletionSmsCode.value })
     const data = body?.data ?? body
     showDeletionStep2.value = false
-    // 不登出：保持登录态，切到"注销申请进行中"，用户可随时在本页一键撤销
-    pendingDeletion.value = true
-    deletionScheduledAt.value = data?.deletionScheduledAt || null
-    deletionPhone.value = ''
-    deletionSmsCode.value = ''
-    toast.success('注销申请已提交，进入 30 天冷静期。冷静期内可随时在此撤销。')
+    // 立即登出并跳登录页；用 sessionStorage 传递提示，登录页读取后展示"注销申请已提交"横幅。
+    sessionStorage.setItem('rf_deletion_requested', data?.deletionScheduledAt || '1')
+    toast.success('注销申请已提交，30 天内重新登录可恢复')
+    setTimeout(() => {
+      clearSession()
+      notifyLoggedOut()
+      router.replace('/login')
+    }, 1200)
   } catch (e) {
     deletionError.value = e?.message || '注销申请失败，请稍后重试'
   } finally {
@@ -323,7 +282,6 @@ onMounted(async () => {
   } catch {
     /* 错误已由拦截器提示 */
   }
-  await loadDeletionStatus()
 })
 
 async function saveProfile() {

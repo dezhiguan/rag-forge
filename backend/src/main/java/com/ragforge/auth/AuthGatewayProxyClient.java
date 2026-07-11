@@ -325,5 +325,9 @@ public class AuthGatewayProxyClient {
     /** 登录时用户协议版本落后当前版本，需前端弹窗补签。 */
     @JsonProperty("terms_update_required")
     private boolean termsUpdateRequired;
+
+    /** 该账号的 ragforge membership 处于注销冷静期，前端登录后应落"注销中"中间页。 */
+    @JsonProperty("pending_deletion")
+    private boolean pendingDeletion;
   }
 }

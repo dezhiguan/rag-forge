@@ -62,7 +62,14 @@ public class AuthEventService {
     if ("user.password.changed".equals(effectiveType) || StringUtils.hasText(userKey(payload))) {
       revokeUser(payload);
     }
-    // 账号注销：auth-gateway 冷静期到期匿名化 auth_users 后发来 user.deleted，本应用清理归属该用户的 rag-forge 侧数据。
+    // 应用级注销：auth-gateway 冷静期到期后发 user.app_removed{user_id, app}，app=ragforge 时清理本应用侧数据。
+    if ("user.app_removed".equals(effectiveType)) {
+      Object app = payload.data() == null ? null : payload.data().get("app");
+      if ("ragforge".equals(String.valueOf(app))) {
+        purgeDeletedUser(payload);
+      }
+    }
+    // 账号级注销（历史/兜底）：auth-gateway 匿名化共享 auth_users 后发 user.deleted，本应用同样清理归属该用户的数据。
     if ("user.deleted".equals(effectiveType)) {
       purgeDeletedUser(payload);
     }

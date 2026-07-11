@@ -11,6 +11,10 @@
           密码已重置成功，请使用新密码登录。
         </div>
 
+        <div v-if="deletionNotice" class="tip tip-ok">
+          注销申请已提交，30 天内重新登录即可恢复账号。
+        </div>
+
         <div class="tabs" role="tablist">
           <button
             type="button"
@@ -205,10 +209,15 @@ const redirectNotice = computed(() => {
 // 入口 Nginx 会把直达 /login 的整页请求 302 到 /（query 丢失），
 // 故除 query 外用 sessionStorage 标记兜底，保证横幅在整页跳转链路下也能显示。
 const resetSuccessNotice = ref(false)
+const deletionNotice = ref(false)
 onMounted(() => {
   if (route.query.reason === 'reset-success' || sessionStorage.getItem('rf_reset_success') === '1') {
     resetSuccessNotice.value = true
     sessionStorage.removeItem('rf_reset_success')
+  }
+  if (sessionStorage.getItem('rf_deletion_requested')) {
+    deletionNotice.value = true
+    sessionStorage.removeItem('rf_deletion_requested')
   }
 })
 
@@ -350,6 +359,11 @@ async function finishLogin(session) {
   }
   // applySession = 写会话 + 按 expiresIn 安排主动续期 + 广播给其他标签页
   applySession(session)
+  // 注销冷静期账号：登录放行，但直接落"注销中"中间页，不进主界面、跳过协议/引导。
+  if (session.pendingDeletion) {
+    router.replace('/account/cancelling')
+    return
+  }
   // 用户已在登录页勾选同意协议；若后端标记需补签(协议升级/历史未签)，静默补签一次，不再弹窗打断。
   if (session.termsUpdateRequired) {
     try { await acceptTerms({ termsVersion: '1.0' }) } catch { /* 补签失败不阻断登录 */ }
