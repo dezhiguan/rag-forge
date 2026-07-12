@@ -2,6 +2,7 @@ package com.ragforge.model.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.Data;
@@ -16,7 +17,10 @@ public class SearchRequest {
   /** 限定文档范围（可选），不传则检索知识库下全部文档 */
   private List<Long> docIds;
 
-  /** vector | keyword | rewrite | hybrid | full */
+  /** vector | keyword | rewrite | hybrid | full（大小写不敏感；非法值不再静默兜底为 vector） */
+  @Pattern(
+      regexp = "(?i)(vector|keyword|rewrite|hybrid|full)",
+      message = "strategy 只能是 vector / keyword / rewrite / hybrid / full")
   private String strategy = "vector";
 
   /**

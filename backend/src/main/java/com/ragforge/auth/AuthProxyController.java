@@ -383,6 +383,19 @@ public class AuthProxyController {
         .body(StringUtils.hasText(ex.body()) ? ex.body() : "{\"message\":\"认证服务请求失败\"}");
   }
 
+  /**
+   * 请求体缺失 / JSON 不合法 / 字段类型不匹配：400 + 友好提示。
+   *
+   * <p>本控制器自带的 {@code @ExceptionHandler(Exception.class)} 会抢在全局处理器之前捕获，
+   * 若不单独兜住解析类异常，格式错误的请求体会被误判为「认证代理不可用」(500)，误导排查方向。
+   */
+  @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+  public ResponseEntity<Result<Void>> handleUnreadable(
+      org.springframework.http.converter.HttpMessageNotReadableException ex) {
+    return ResponseEntity.badRequest()
+        .body(Result.error(400, "INVALID_REQUEST", "请求格式错误，请检查后重试"));
+  }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<Result<Void>> handleException(Exception ex) {
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
