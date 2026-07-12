@@ -73,6 +73,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final DocumentChunkMapper documentChunkMapper;
   private final RetrievalService retrievalService;
+  private final com.ragforge.security.KbAccessGuard kbAccessGuard;
   private final ObjectMapper objectMapper;
   private final JdbcTemplate jdbcTemplate;
   private final EvalProperties evalProperties;
@@ -193,7 +194,13 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     evalExperimentMapper.updateById(experiment);
   }
 
-  /** 当前组织的 KB ids；破玻璃(全平台)或无组织上下文返回 null（表示不按组织过滤）。 */
+  /**
+   * 当前组织的 KB ids；仅破玻璃(全平台)返回 null（不按组织过滤）。
+   *
+   * <p>无组织上下文（未带 X-Org-Id，如个人组织视图；或非成员 X-Org-Id 被重置为 null）时，
+   * 收敛到<b>当前用户可读的 KB 集合</b>（`allReadableKbIds`）而非 null。否则会退化为不过滤，
+   * 跨组织泄露全平台评测数据(实验/数据集/失败样本)。收敛到可读集既堵泄露，又保住个人组织自有数据可见。
+   */
   private List<Long> currentOrgKbIdsOrNull() {
     com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
     if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
@@ -201,7 +208,7 @@ public class EvalExperimentServiceImpl implements EvalExperimentService {
     }
     Long orgId = com.ragforge.security.OrgContextHolder.get();
     if (orgId == null) {
-      return null;
+      return new ArrayList<>(kbAccessGuard.allReadableKbIds());
     }
     return knowledgeBaseMapper
         .selectList(

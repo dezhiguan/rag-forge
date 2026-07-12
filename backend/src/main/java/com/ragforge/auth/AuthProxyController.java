@@ -139,6 +139,12 @@ public class AuthProxyController {
 
   @PostMapping("/login")
   public ResponseEntity<Result<Map<String, Object>>> login(@RequestBody PasswordLoginRequest request) {
+    // 账号/密码为空直接 400，避免下游把「空账号」当成一个身份累加防爆破计数（fail:null 桶）
+    // 并回图形验证码，误导排查——历史上曾被误读为「换字段名绕验证码」。
+    if (!StringUtils.hasText(request.account()) || !StringUtils.hasText(request.password())) {
+      return ResponseEntity.badRequest()
+          .body(Result.error(400, "INVALID_PARAM", "请输入账号和密码"));
+    }
     return loginResponse(
         client.loginPassword(
             request.account(),

@@ -28,6 +28,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
   private final EvalDatasetMapper evalDatasetMapper;
   private final EvalQuestionMapper evalQuestionMapper;
   private final KnowledgeBaseMapper knowledgeBaseMapper;
+  private final com.ragforge.security.KbAccessGuard kbAccessGuard;
 
   @Override
   public List<EvalDatasetVO> listAll() {
@@ -64,7 +65,13 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
         .collect(Collectors.toSet());
   }
 
-  /** 当前组织可访问的 KB ids = 本组织的库 + 公开库；破玻璃/无组织上下文返回 null（不过滤）。 */
+  /**
+   * 当前组织可访问的 KB ids = 本组织的库 + 公开库；仅破玻璃返回 null（不过滤）。
+   *
+   * <p>无组织上下文（未带 X-Org-Id，如个人组织视图；或非成员 X-Org-Id 被重置为 null）时，
+   * 收敛到<b>当前用户可读的 KB 集合</b>（`allReadableKbIds`）而非 null；否则会退化为不过滤，
+   * 跨组织泄露全平台评测数据集。与 {@code EvalExperimentServiceImpl} 保持一致。
+   */
   private List<Long> currentOrgKbIdsOrNull() {
     com.ragforge.security.RagAuthContext ctx = com.ragforge.security.RagAuthContextHolder.get();
     if (ctx != null && ctx.isAdmin() && com.ragforge.security.AdminOverrideHolder.isActive()) {
@@ -72,7 +79,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
     }
     Long orgId = com.ragforge.security.OrgContextHolder.get();
     if (orgId == null) {
-      return null;
+      return new java.util.ArrayList<>(kbAccessGuard.allReadableKbIds());
     }
     return knowledgeBaseMapper
         .selectList(
