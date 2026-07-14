@@ -171,6 +171,17 @@
                 class="trend-dot"
                 @mouseenter="hoveredPoint = trendPoints[point.index]"
               />
+              <text
+                :x="metric.labelX"
+                :y="metric.labelY + 3"
+                text-anchor="start"
+                :fill="metric.color"
+                font-size="10"
+                opacity="0.7"
+                class="trend-series-label"
+              >
+                {{ metric.label }}
+              </text>
             </g>
 
             <g>
@@ -655,7 +666,7 @@ const kbOverrideForm = reactive({
 
 const chartWidth = 980
 const chartHeight = 280
-const chartPadding = { top: 12, right: 12, bottom: 34, left: 44 }
+const chartPadding = { top: 12, right: 84, bottom: 34, left: 44 }
 const chartInnerRight = chartWidth - chartPadding.right
 const chartInnerBottom = chartHeight - chartPadding.bottom
 
@@ -744,7 +755,13 @@ const visibleSeries = computed(() => {
         .map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`)
         .join(' ')
 
-      return Object.assign({}, metric, { points: pts, path: d })
+      const last = pts[pts.length - 1]
+      return Object.assign({}, metric, {
+        points: pts,
+        path: d,
+        labelX: last.x + 8,
+        labelY: last.y,
+      })
     })
 })
 
