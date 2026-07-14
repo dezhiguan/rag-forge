@@ -124,6 +124,17 @@
               stroke="rgba(148,163,184,0.28)"
               stroke-width="1"
             />
+            <text
+              v-for="tick in yGrid"
+              :key="`yl-${tick}`"
+              :x="chartPadding.left - 8"
+              :y="yForValue(tick) + 4"
+              text-anchor="end"
+              fill="var(--text-muted)"
+              font-size="11"
+            >
+              {{ tick.toFixed(1) }}
+            </text>
             <line
               :x1="chartPadding.left"
               :x2="chartPadding.left"

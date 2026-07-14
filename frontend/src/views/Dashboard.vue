@@ -109,6 +109,7 @@
               class="trend-bar-wrap"
               :title="`${p.date}：${p.count} 次 · P95 ${p.p95LatencyMs}ms`"
             >
+              <span class="trend-val">{{ p.count }}</span>
               <div class="trend-bar" :style="{ height: trendBarHeight(p.count) }"></div>
               <span class="trend-x">{{ p.date }}</span>
             </div>
@@ -582,6 +583,7 @@ watch(() => current.value?.id, () => loadMembers(), { immediate: true })
   display: flex; align-items: flex-end; gap: 10px; height: 120px; padding-top: 6px;
 }
 .trend-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+.trend-val { font-size: 11px; font-weight: 600; color: var(--slate); font-variant-numeric: tabular-nums; line-height: 1; }
 .trend-bar {
   width: 60%; max-width: 30px; min-height: 6px;
   background: linear-gradient(180deg, var(--primary), #93c5fd);
