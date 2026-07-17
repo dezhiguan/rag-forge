@@ -899,7 +899,7 @@ pre { margin: 0; background: #0f1726; color: #d7e2f4; border-radius: 12px; paddi
 .mcp-via { flex: 0 0 auto; margin-left: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700; color: #7c3aed; background: #f3eefe; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
 
 /* ===== 可点选接口/工具 + 联动详情面板 ===== */
-.doc-grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+.doc-grid { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
 .doc-left { display: flex; flex-direction: column; gap: 16px; }
 @media (max-width: 900px) { .doc-grid { grid-template-columns: 1fr; } }
 
