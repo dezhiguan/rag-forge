@@ -73,7 +73,12 @@ public class StreamableMcpController {
     Map<String, Object> searchProperties = orderedMap(
         "query", orderedMap("type", "string", "description", "Search query."),
         "kbIds", orderedMap("type", "string", "description", "Optional comma-separated knowledge base ids."),
-        "topK", orderedMap("type", "integer", "description", "Number of results, default 5, maximum 10."));
+        "topK",
+        orderedMap(
+            "type",
+            "integer",
+            "description",
+            "Number of results, default 5, range 1-10 (values outside are clamped to the nearest bound, not rejected)."));
     Map<String, Object> searchInputSchema = orderedMap(
         "type", "object",
         "properties", searchProperties,

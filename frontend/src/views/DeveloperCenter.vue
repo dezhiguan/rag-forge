@@ -442,7 +442,7 @@ const apiDocs = {
   },
   answer: {
     path: '/answer',
-    desc: 'RAG 应答：先检索知识库，再由大模型生成带引用编号的回答。以 SSE（text/event-stream）流式返回，最终事件载荷为下方响应结构。kbIds 必填。',
+    desc: 'RAG 应答：先检索知识库，再由大模型生成带引用编号的回答，以 SSE（text/event-stream）流式返回。⚠️ 前置条件：目标 KB 的 answerMode 必须为 ON，否则返回 403 ANSWER_DISABLED；kbIds 必填（为空返回 400 KB_IDS_REQUIRED）。',
     req: [
       { n: 'kbIds', t: 'array', r: true, d: '目标知识库 id 列表（数字数组）。为空返回 400 KB_IDS_REQUIRED。' },
       { n: 'query', t: 'string', r: true, d: '用户问题。' },
@@ -464,6 +464,7 @@ const apiDocs = {
       { n: 'latency', t: 'object', r: true, d: '分段耗时 { retrieval, llm, total }（毫秒）。' },
       { n: 'guardRailResult', t: 'string', r: false, d: '护栏结果，如 PASS / NO_CITATIONS / OUT_OF_SCOPE / PII_LEAK。' },
       { n: 'llmModel', t: 'string', r: false, d: '实际使用的模型。' },
+      { n: 'retrieval', t: 'object', r: false, d: '底层检索结果（结构同 /search 的 data，含 results/latencyMs 等）。' },
     ],
     curl: `curl -N ${baseUrl}/answer \\\n` +
       `  -H "X-API-Key: <API key>" \\\n` +
@@ -476,6 +477,8 @@ const apiDocs = {
       `      }'`,
     respTitle: '响应 · SSE 事件流（text/event-stream）',
     resp: `# 每帧 = event: 事件名 + data: JSON，帧间空行分隔\n\n` +
+      `event: retrieval      # 首个事件：先回传检索命中的 chunks\n` +
+      `data: {"chunks": [{"chunkId": 88231, "docId": 1024, "filename": "个人简历.pdf", "content": "…"}]}\n\n` +
       `event: token          # 增量 token，可能出现多次\n` +
       `data: {"delta": "有。"}\n\n` +
       `event: token\n` +
@@ -488,7 +491,7 @@ const apiDocs = {
   },
   documents: {
     path: '/documents',
-    desc: '上传文档入库（multipart/form-data 表单，非 JSON）：file 部分传文件、meta 部分传元数据 JSON。自动切片 + 向量化。需 WRITE 级 API key。',
+    desc: '上传文档入库（multipart/form-data 表单，非 JSON）：file 部分传文件、meta 部分传元数据 JSON。自动切片 + 向量化。需 WRITE 级 API key。返回的 status 是「登记态」（入库去重结果，即时返回）；文档解析是异步的，要跟踪切片/向量化进度请轮询 GET /documents/{id}/status 的 parseStatus（PROCESSING / COMPLETED / FAILED）——注意二者是不同字段、不同状态机。',
     req: [
       { n: 'file', t: 'string', r: true, d: '【表单 part】文档文件（multipart 的 file 部分，即文档正文来源）。' },
       { n: 'meta', t: 'string', r: true, d: '【表单 part】元数据 JSON 字符串，反序列化为下列字段。' },
@@ -501,7 +504,7 @@ const apiDocs = {
     ],
     res: [
       { n: 'documentId', t: 'number', r: true, d: '入库后文档 id（纯数字，无 doc- 前缀）。' },
-      { n: 'status', t: 'string', r: true, d: '登记状态。', enums: ['CREATED', 'SKIPPED', 'REPLACED'] },
+      { n: 'status', t: 'string', r: true, d: '登记态（入库去重结果，非解析进度）。解析进度另见 GET /documents/{id}/status 的 parseStatus。', enums: ['CREATED', 'SKIPPED', 'REPLACED'] },
     ],
     curl: `curl ${baseUrl}/documents \\\n` +
       `  -H "X-API-Key: <WRITE key>" \\\n` +

@@ -53,7 +53,7 @@ public class RagForgeMcpTools {
     public String searchKnowledgeBase(
             @ToolParam(description = "搜索查询内容") String query,
             @ToolParam(description = "知识库 ID 列表，逗号分隔，例如 '15,16'。不填则搜索所有 KB") String kbIds,
-            @ToolParam(description = "返回结果数量，默认 5，最大 10") int topK) {
+            @ToolParam(description = "返回结果数量，默认 5，范围 1–10（超出自动裁剪到边界，不报错）") int topK) {
         try {
             List<Long> kbIdList = parseKbIds(kbIds);
             Set<Long> readableKbIds = kbIdList.isEmpty()

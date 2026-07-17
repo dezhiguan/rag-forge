@@ -74,7 +74,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     RagAuthContext auth = RagAuthContextHolder.get();
     Long creatorId = auth == null || auth.userId() == null ? 0L : auth.userId();
     kb.setOwnerUserId(creatorId);
-    applyOwnership(kb, dto.getOrgId(), dto.getVisibility(), creatorId);
+    // 归属组织解析顺序：请求体 orgId（显式指定）→ X-Org-Id 当前组织上下文（与创建 API key 一致）→ 个人组织兜底。
+    // 修复：此前直接用 dto.getOrgId()，缺省即落个人组织，忽略 X-Org-Id；导致带 X-Org-Id 的调用方（如第三方/脚本）
+    // 建库串到个人组织。前端建库入口始终显式传 orgId=当前组织，本改动对其无影响。
+    Long targetOrgId =
+        dto.getOrgId() != null ? dto.getOrgId() : com.ragforge.security.OrgContextHolder.get();
+    applyOwnership(kb, targetOrgId, dto.getVisibility(), creatorId);
     kb.setKbType("GENERAL");
     kb.setImageProcessingMode(normalizeImageMode(dto.getImageProcessingMode(), "OFF"));
     applyAnswerConfig(kb, dto.getAnswerMode(), dto.getAnswerModel());
