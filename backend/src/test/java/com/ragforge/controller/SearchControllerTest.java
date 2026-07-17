@@ -218,8 +218,9 @@ class SearchControllerTest {
 
   @Test
   void search_passesChunkTypeFilter() throws Exception {
+    // 省略 strategy 时默认 hybrid（SearchRequest.strategy 默认值改为 hybrid 后的现状）。
     RetrievalOutput output =
-        new RetrievalOutput(List.of(), 10L, "vector", null, null, 10L, null, null);
+        new RetrievalOutput(List.of(), 10L, "hybrid", null, null, 10L, null, null);
 
     when(kbAccessGuard.allReadableKbIds()).thenReturn(Set.of(17L));
 
@@ -228,7 +229,7 @@ class SearchControllerTest {
             isNull(),
             eq(List.of(17L)),
             isNull(),
-            eq("vector"),
+            eq("hybrid"),
             eq(0.55),
             eq(8),
             eq(5),
@@ -249,7 +250,7 @@ class SearchControllerTest {
                     """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(200))
-        .andExpect(jsonPath("$.data.strategy").value("vector"));
+        .andExpect(jsonPath("$.data.strategy").value("hybrid"));
 
     verify(retrievalService)
         .retrieve(
@@ -257,7 +258,7 @@ class SearchControllerTest {
             isNull(),
             eq(List.of(17L)),
             isNull(),
-            eq("vector"),
+            eq("hybrid"),
             eq(0.55),
             eq(8),
             eq(5),
