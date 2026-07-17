@@ -82,28 +82,29 @@
 
     <!-- ============ 接口文档 ============ -->
     <div v-show="tab === 'api'">
-      <div class="doc-grid">
-        <div class="doc-left">
-          <div class="card card-pad">
-            <div class="sec-title">⚙️ 接入信息</div>
-            <div class="sec-hint">把以下信息配置到你的客户端 / 服务端。</div>
-            <div class="kv"><span class="k">Base URL</span><span class="v">{{ baseUrl }}<span class="copy" @click="copy($event, baseUrl)">复制</span></span></div>
-            <div class="kv"><span class="k">认证方式</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
-            <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定，无需传 X-Org-Id</span></div>
-          </div>
-          <div class="card card-pad">
-            <div class="sec-title">🔗 核心接口</div>
-            <div class="sec-hint">点击接口查看入参 / 出参与示例 →</div>
-            <button v-for="e in apiList" :key="e.key" class="ep-btn" :class="{ on: apiSel === e.key }" @click="selectApi(e.key)">
-              <div class="ep-row1">
-                <span class="m m-post">{{ e.method }}</span>
-                <span class="ep-path">{{ e.path }}</span>
-                <span v-if="e.badge" class="ep-badge sse">{{ e.badge }}</span>
-                <span v-if="e.lock" class="ep-badge lock">{{ e.lock }}</span>
-              </div>
-              <div class="ep-desc2">{{ e.desc }}</div>
-            </button>
-          </div>
+      <div class="card card-pad">
+        <div class="sec-title">⚙️ 接入信息</div>
+        <div class="sec-hint">把以下信息配置到你的客户端 / 服务端。</div>
+        <div class="cfg-flat">
+          <div class="cfg-item"><span class="cfg-k">Base URL</span><span class="cfg-v">{{ baseUrl }}<span class="copy" @click="copy($event, baseUrl)">复制</span></span></div>
+          <div class="cfg-item"><span class="cfg-k">认证方式</span><span class="cfg-v">X-API-Key: &lt;API key&gt;</span></div>
+          <div class="cfg-item"><span class="cfg-k">组织归属</span><span class="cfg-v">由 API key 自动绑定，无需传 X-Org-Id</span></div>
+        </div>
+      </div>
+
+      <div class="doc-grid mt16">
+        <div class="card card-pad">
+          <div class="sec-title">🔗 核心接口</div>
+          <div class="sec-hint">点击接口查看入参 / 出参与示例 →</div>
+          <button v-for="e in apiList" :key="e.key" class="ep-btn" :class="{ on: apiSel === e.key }" @click="selectApi(e.key)">
+            <div class="ep-row1">
+              <span class="m m-post">{{ e.method }}</span>
+              <span class="ep-path">{{ e.path }}</span>
+              <span v-if="e.badge" class="ep-badge sse">{{ e.badge }}</span>
+              <span v-if="e.lock" class="ep-badge lock">{{ e.lock }}</span>
+            </div>
+            <div class="ep-desc2">{{ e.desc }}</div>
+          </button>
         </div>
 
         <div class="card card-pad doc-detail">
@@ -132,28 +133,29 @@
 
     <!-- ============ MCP 接入 ============ -->
     <div v-show="tab === 'mcp'">
-      <div class="doc-grid">
-        <div class="doc-left">
-          <div class="card card-pad">
-            <div class="sec-title">🧠 服务端点</div>
-            <div class="sec-hint">统一无状态 HTTP 端点，单次请求即完成。</div>
-            <div class="kv"><span class="k">MCP Endpoint</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
-            <div class="kv"><span class="k">传输方式</span><span class="v">Streamable HTTP · 无状态</span></div>
-            <div class="kv"><span class="k">鉴权头</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
-            <div class="sec-hint" style="margin-top:10px;">已下线旧的 <code class="inl">/sse</code> 端点，请统一使用 <code class="inl">/mcp</code>。</div>
-            <div class="sec-hint">📥 入库不在 MCP 工具内，请用 REST <code class="inl">POST /api/v1/documents</code>（需 WRITE key）。</div>
-          </div>
-          <div class="card card-pad">
-            <div class="sec-title">🧩 可用工具</div>
-            <div class="sec-hint">点击工具查看参数与返回 →</div>
-            <button v-for="t in mcpList" :key="t.key" class="ep-btn" :class="{ on: mcpSel === t.key }" @click="selectMcp(t.key)">
-              <div class="ep-row1">
-                <span class="m m-tool">TOOL</span>
-                <span class="ep-path">{{ t.name }}</span>
-              </div>
-              <div class="ep-desc2">{{ t.desc }}</div>
-            </button>
-          </div>
+      <div class="card card-pad">
+        <div class="sec-title">🧠 服务端点</div>
+        <div class="sec-hint">统一无状态 HTTP 端点，单次请求即完成。</div>
+        <div class="cfg-flat">
+          <div class="cfg-item"><span class="cfg-k">MCP Endpoint</span><span class="cfg-v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
+          <div class="cfg-item"><span class="cfg-k">传输方式</span><span class="cfg-v">Streamable HTTP · 无状态</span></div>
+          <div class="cfg-item"><span class="cfg-k">鉴权头</span><span class="cfg-v">X-API-Key: &lt;API key&gt;</span></div>
+        </div>
+        <div class="sec-hint" style="margin-top:12px;">已下线旧的 <code class="inl">/sse</code> 端点，请统一使用 <code class="inl">/mcp</code>。</div>
+        <div class="sec-hint">📥 入库不在 MCP 工具内，请用 REST <code class="inl">POST /api/v1/documents</code>（需 WRITE key）。</div>
+      </div>
+
+      <div class="doc-grid mt16">
+        <div class="card card-pad">
+          <div class="sec-title">🧩 可用工具</div>
+          <div class="sec-hint">点击工具查看参数与返回 →</div>
+          <button v-for="t in mcpList" :key="t.key" class="ep-btn" :class="{ on: mcpSel === t.key }" @click="selectMcp(t.key)">
+            <div class="ep-row1">
+              <span class="m m-tool">TOOL</span>
+              <span class="ep-path">{{ t.name }}</span>
+            </div>
+            <div class="ep-desc2">{{ t.desc }}</div>
+          </button>
         </div>
 
         <div class="card card-pad doc-detail">
@@ -888,6 +890,13 @@ pre { margin: 0; background: #0f1726; color: #d7e2f4; border-radius: 12px; paddi
 .doc-grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
 .doc-left { display: flex; flex-direction: column; gap: 16px; }
 @media (max-width: 900px) { .doc-grid { grid-template-columns: 1fr; } }
+
+/* 接入信息 / 服务端点：整行铺平，字段横向平铺 */
+.cfg-flat { display: flex; flex-wrap: wrap; gap: 14px 48px; margin-top: 4px; }
+.cfg-item { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.cfg-k { font-size: 11px; color: var(--text-muted); }
+.cfg-v { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--navy); font-weight: 600; word-break: break-all; }
+.cfg-v .copy { margin-left: 10px; }
 .inl { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--primary-soft); border-radius: 4px; padding: 1px 5px; color: var(--navy); }
 
 .ep-btn { display: block; width: 100%; text-align: left; border: 1.5px solid var(--border); background: var(--surface); border-radius: 12px; padding: 11px 13px; cursor: pointer; margin-top: 8px; font: inherit; transition: border-color .12s, background .12s; }
