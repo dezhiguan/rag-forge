@@ -82,55 +82,102 @@
 
     <!-- ============ 接口文档 ============ -->
     <div v-show="tab === 'api'">
-      <div class="grid2">
-        <div class="card card-pad">
-          <div class="sec-title">⚙️ 接入信息</div>
-          <div class="sec-hint">把以下信息配置到你的客户端 / 服务端。</div>
-          <div class="kv"><span class="k">Base URL</span><span class="v">{{ baseUrl }}<span class="copy" @click="copy($event, baseUrl)">复制</span></span></div>
-          <div class="kv"><span class="k">认证方式</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
-          <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定，无需传 X-Org-Id</span></div>
+      <div class="doc-grid">
+        <div class="doc-left">
+          <div class="card card-pad">
+            <div class="sec-title">⚙️ 接入信息</div>
+            <div class="sec-hint">把以下信息配置到你的客户端 / 服务端。</div>
+            <div class="kv"><span class="k">Base URL</span><span class="v">{{ baseUrl }}<span class="copy" @click="copy($event, baseUrl)">复制</span></span></div>
+            <div class="kv"><span class="k">认证方式</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
+            <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定，无需传 X-Org-Id</span></div>
+          </div>
+          <div class="card card-pad">
+            <div class="sec-title">🔗 核心接口</div>
+            <div class="sec-hint">点击接口查看入参 / 出参与示例 →</div>
+            <button v-for="e in apiList" :key="e.key" class="ep-btn" :class="{ on: apiSel === e.key }" @click="selectApi(e.key)">
+              <div class="ep-row1">
+                <span class="m m-post">{{ e.method }}</span>
+                <span class="ep-path">{{ e.path }}</span>
+                <span v-if="e.badge" class="ep-badge sse">{{ e.badge }}</span>
+                <span v-if="e.lock" class="ep-badge lock">{{ e.lock }}</span>
+              </div>
+              <div class="ep-desc2">{{ e.desc }}</div>
+            </button>
+          </div>
         </div>
-        <div class="card card-pad">
-          <div class="sec-title">🔗 核心接口</div>
-          <div class="sec-hint">凭 API key（X-API-Key）调用，均按 key 绑定的组织过滤数据。</div>
-          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/search</span><span class="ep-desc">混合检索（向量+BM25+精排）</span></div>
-          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/answer</span><span class="ep-desc">RAG 应答</span></div>
-          <div class="ep"><span class="m m-post">POST</span><span class="ep-path">/documents</span><span class="ep-desc">上传文档入库（需 WRITE 密钥）</span></div>
+
+        <div class="card card-pad doc-detail">
+          <div class="dt-head"><span class="m m-post">POST</span><span class="dt-path">{{ apiCur.path }}</span></div>
+          <div class="dt-desc">{{ apiCur.desc }}</div>
+
+          <div class="subtabs">
+            <button :class="{ on: apiPane === 'req' }" @click="apiPane = 'req'">请求参数<i>{{ apiCur.req.length }}</i></button>
+            <button :class="{ on: apiPane === 'res' }" @click="apiPane = 'res'">响应参数<i>{{ apiCur.res.length }}</i></button>
+            <button :class="{ on: apiPane === 'ex' }" @click="apiPane = 'ex'">调用示例</button>
+          </div>
+
+          <div v-show="apiPane === 'req'"><ParamTable :rows="apiCur.req" /></div>
+          <div v-show="apiPane === 'res'"><ParamTable :rows="apiCur.res" /></div>
+          <div v-show="apiPane === 'ex'">
+            <div class="cb-label">请求 · cURL</div>
+            <pre><button class="pre-copy" @click="copy($event, apiCur.curl)">复制</button>{{ apiCur.curl }}</pre>
+            <div class="cb-label">{{ apiCur.respTitle || '响应 · JSON' }}</div>
+            <pre><button class="pre-copy" @click="copy($event, apiCur.resp)">复制</button>{{ apiCur.resp }}</pre>
+          </div>
+
+          <div class="doc-note">💡 字段类型旁的 <span class="rq">必填</span> / <span class="op">可选</span> 标签帮助快速判断最小请求体。</div>
         </div>
-      </div>
-      <div class="card card-pad mt16">
-        <div class="sec-title">📋 检索调用示例（cURL）</div>
-        <pre><button class="pre-copy" @click="copy($event, curlText)">复制</button>{{ curlText }}</pre>
       </div>
     </div>
 
     <!-- ============ MCP 接入 ============ -->
     <div v-show="tab === 'mcp'">
-      <div class="grid2">
-        <div class="card card-pad">
-          <div class="sec-title">⚙️ MCP Server 信息</div>
-          <div class="sec-hint">把 RAGForge 作为 MCP Server 接入支持 MCP 的客户端。</div>
-          <div class="kv"><span class="k">协议</span><span class="v">MCP（streamable HTTP）</span></div>
-          <div class="kv"><span class="k">端点</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
-          <div class="sec-hint" style="margin-top:6px;">/mcp（streamable HTTP，无状态）提供全部工具：检索类与 answer_with_citations。</div>
-          <div class="kv"><span class="k">认证</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
-          <div class="kv"><span class="k">组织归属</span><span class="v">由 API key 自动绑定</span></div>
+      <div class="doc-grid">
+        <div class="doc-left">
+          <div class="card card-pad">
+            <div class="sec-title">🧠 服务端点</div>
+            <div class="sec-hint">统一无状态 HTTP 端点，单次请求即完成。</div>
+            <div class="kv"><span class="k">MCP Endpoint</span><span class="v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
+            <div class="kv"><span class="k">传输方式</span><span class="v">Streamable HTTP · 无状态</span></div>
+            <div class="kv"><span class="k">鉴权头</span><span class="v">X-API-Key: &lt;API key&gt;</span></div>
+            <div class="sec-hint" style="margin-top:10px;">已下线旧的 <code class="inl">/sse</code> 端点，请统一使用 <code class="inl">/mcp</code>。</div>
+            <div class="sec-hint">📥 入库不在 MCP 工具内，请用 REST <code class="inl">POST /api/v1/documents</code>（需 WRITE key）。</div>
+          </div>
+          <div class="card card-pad">
+            <div class="sec-title">🧩 可用工具</div>
+            <div class="sec-hint">点击工具查看参数与返回 →</div>
+            <button v-for="t in mcpList" :key="t.key" class="ep-btn" :class="{ on: mcpSel === t.key }" @click="selectMcp(t.key)">
+              <div class="ep-row1">
+                <span class="m m-tool">TOOL</span>
+                <span class="ep-path">{{ t.name }}</span>
+              </div>
+              <div class="ep-desc2">{{ t.desc }}</div>
+            </button>
+          </div>
         </div>
-        <div class="card card-pad">
-          <div class="sec-title">🤝 适用客户端</div>
-          <div class="sec-hint">凡支持 MCP 的客户端均可接入。</div>
-          <div class="ep"><span class="m m-post">Agent</span><span class="ep-path">Claude Code、Cursor、Codex</span></div>
-          <div class="ep"><span class="m m-get">应用</span><span class="ep-path">CareerMate</span></div>
-          <div class="ep"><span class="m m-get">SDK</span><span class="ep-path">任意 MCP Client</span></div>
-        </div>
-      </div>
-      <div class="card card-pad mt16">
-        <div class="sec-title">🧠 MCP 配置</div>
-        <div class="sec-hint">把以下配置加入客户端。Server 暴露的工具仅作用于<b>当前组织</b>。</div>
-        <pre><button class="pre-copy" @click="copy($event, mcpText)">复制</button>{{ mcpText }}</pre>
-        <div class="sec-title" style="margin:24px 0 6px;">可用 MCP 工具</div>
-        <div class="mcp-tool" v-for="t in mcpTools" :key="t.name">
-          <span class="mcp-ico">{{ t.ico }}</span><span class="mcp-name">{{ t.name }}</span><span class="mcp-d">{{ t.desc }}</span><span class="mcp-via">{{ t.via }}</span>
+
+        <div class="card card-pad doc-detail">
+          <div class="dt-head"><span class="m m-tool">TOOL</span><span class="dt-path">{{ mcpCur.name }}</span></div>
+          <div class="dt-desc">{{ mcpCur.desc }}</div>
+
+          <div class="subtabs">
+            <button :class="{ on: mcpPane === 'args' }" @click="mcpPane = 'args'">参数<i>{{ mcpCur.args.length }}</i></button>
+            <button :class="{ on: mcpPane === 'ret' }" @click="mcpPane = 'ret'">返回</button>
+            <button :class="{ on: mcpPane === 'ex' }" @click="mcpPane = 'ex'">调用示例</button>
+          </div>
+
+          <div v-show="mcpPane === 'args'"><ParamTable :rows="mcpCur.args" /></div>
+          <div v-show="mcpPane === 'ret'"><div class="dt-ret">{{ mcpCur.ret }}</div></div>
+          <div v-show="mcpPane === 'ex'">
+            <div class="cb-label">① 客户端配置（粘到 Claude Desktop / Cursor 并重启，三工具共用）</div>
+            <pre><button class="pre-copy" @click="copy($event, mcpText)">复制</button>{{ mcpText }}</pre>
+            <div class="cb-label">② 工具调用 · tools/call</div>
+            <pre><button class="pre-copy" @click="copy($event, mcpCur.call)">复制</button>{{ mcpCur.call }}</pre>
+            <div class="cb-label">③ 返回 · result</div>
+            <pre><button class="pre-copy" @click="copy($event, mcpCur.result)">复制</button>{{ mcpCur.result }}</pre>
+          </div>
+
+          <div class="doc-note">💡 「调用示例」按 ①配置 → ②调用 → ③返回 三步；配置三工具共用同一份，替换成你的 API key 即可。</div>
         </div>
       </div>
     </div>
@@ -259,6 +306,7 @@ import { useElevation } from '../composables/useElevation'
 import { useToast } from '../composables/useToast'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import ElevationToggle from '../components/ElevationToggle.vue'
+import ParamTable from '../components/ParamTable.vue'
 import { listApiKeys, createApiKey, renameApiKey, deleteApiKey, governanceSearchKeys, revokeApiKey } from '../api/apikey'
 import { listKb } from '../api/kb'
 
@@ -307,20 +355,194 @@ const PUBLIC_BASE = 'https://ragforge.net'
 const baseUrl = `${PUBLIC_BASE}/api/v1`
 const mcpUrl = `${PUBLIC_BASE}/mcp`
 // /mcp = streamable HTTP（无状态），暴露全部三个工具，含 answer_with_citations。SSE 传输已下线。
-const curlText =
-  `curl ${baseUrl}/search \\\n` +
-  `  -H "X-API-Key: <API key>" \\\n` +
-  `  -H "Content-Type: application/json" \\\n` +
-  `  -d '{ "query": "Java 高并发经验", "strategy": "hybrid", "topK": 5 }'`
 const mcpText =
   `{\n  "mcpServers": {\n    "ragforge": {\n      "url": "${mcpUrl}",\n` +
   `      "headers": {\n        "X-API-Key": "<API key>"\n      }\n    }\n  }\n}`
-// 工具名即客户端可调用名，需与 /mcp tools/list 实际一致。三个工具均在无状态 /mcp 暴露。
-const mcpTools = [
-  { ico: '🔍', name: 'search_knowledge', desc: '在可访问知识库内混合检索（向量+关键词），返回相关片段', via: '/mcp' },
-  { ico: '📚', name: 'list_knowledge_bases', desc: '列出可访问的知识库（含名称、文档数、片段数）', via: '/mcp' },
-  { ico: '💬', name: 'answer_with_citations', desc: '用知识库回答问题，返回带引用的答案（含图片 URL）', via: '/mcp' },
+
+// ============ 接口文档：可点选接口 + 联动入参/出参/示例 ============
+// 字段全部对齐后端真实实现（SearchRequest / AnswerModels / IngestCommand 等），非臆造。
+const apiSel = ref('search')
+const apiPane = ref('req')
+function selectApi(k) { apiSel.value = k; apiPane.value = 'req' }
+const apiList = [
+  { key: 'search', method: 'POST', path: '/search', desc: '多策略检索（向量 / 关键词 / 混合）' },
+  { key: 'answer', method: 'POST', path: '/answer', desc: 'RAG 应答（检索 + 生成 + 引用）', badge: 'SSE 流式' },
+  { key: 'documents', method: 'POST', path: '/documents', desc: '上传文档入库（multipart 表单）', lock: 'WRITE 密钥' },
 ]
+const apiDocs = {
+  search: {
+    path: '/search',
+    desc: '检索本组织知识库，支持向量 / 关键词 / 混合等多种策略，返回最相关的片段。返回统一 Result 信封（code / msg / data）。',
+    req: [
+      { n: 'query', t: 'string', r: true, d: '检索问题 / 关键词。' },
+      { n: 'kbIds', t: 'array', r: false, d: '限定检索的知识库 id 列表（数字数组）；不传则检索该 key 全部可读库。' },
+      { n: 'docIds', t: 'array', r: false, d: '限定文档 id 范围（数字数组）。' },
+      { n: 'strategy', t: 'string', r: false, d: '检索策略。', enums: ['vector', 'keyword', 'rewrite', 'hybrid', 'full'], def: 'hybrid' },
+      { n: 'topK', t: 'number', r: false, d: '返回片段数，1–50。', def: '8' },
+      { n: 'vectorWeight', t: 'number', r: false, d: '向量权重，仅 hybrid 生效。', def: '0.55' },
+      { n: 'rerankTopN', t: 'number', r: false, d: '精排候选数，1–50，仅 full 生效。', def: '5' },
+      { n: 'filter', t: 'object', r: false, d: '过滤条件，如 { chunkType: [...] }。' },
+    ],
+    res: [
+      { n: 'code', t: 'number', r: true, d: '状态码，0 表示成功。' },
+      { n: 'msg', t: 'string', r: true, d: '提示信息。' },
+      { n: 'data.results', t: 'array', r: true, d: '命中片段数组。' },
+      { n: 'data.results[].docId', t: 'number', r: true, d: '文档 id（纯数字）。' },
+      { n: 'data.results[].chunkId', t: 'number', r: true, d: '片段 id。' },
+      { n: 'data.results[].filename', t: 'string', r: true, d: '来源文件名。' },
+      { n: 'data.results[].content', t: 'string', r: true, d: '片段正文。' },
+      { n: 'data.results[].vectorScore', t: 'number', r: false, d: '向量相似度得分。' },
+      { n: 'data.results[].bm25Score', t: 'number', r: false, d: 'BM25 关键词得分。' },
+      { n: 'data.results[].finalScore', t: 'number', r: true, d: '最终排序得分。' },
+      { n: 'data.results[].imageUrl', t: 'string', r: false, d: '图片片段的时效访问 URL（如有）。' },
+      { n: 'data.latencyMs', t: 'number', r: true, d: '检索总耗时（毫秒）。' },
+      { n: 'data.strategy', t: 'string', r: true, d: '实际生效的检索策略。' },
+    ],
+    curl: `curl ${baseUrl}/search \\\n` +
+      `  -H "X-API-Key: <API key>" \\\n` +
+      `  -H "Content-Type: application/json" \\\n` +
+      `  -d '{\n` +
+      `        "query": "Java 高并发经验",\n` +
+      `        "kbIds": [16],\n` +
+      `        "strategy": "hybrid",\n` +
+      `        "topK": 8\n` +
+      `      }'`,
+    respTitle: '响应 · JSON',
+    resp: `{\n` +
+      `  "code": 0, "msg": "ok",\n` +
+      `  "data": {\n` +
+      `    "results": [\n` +
+      `      {\n` +
+      `        "docId": 1024,\n` +
+      `        "chunkId": 88231,\n` +
+      `        "filename": "个人简历.pdf",\n` +
+      `        "content": "负责千万级订单系统的高并发改造…",\n` +
+      `        "vectorScore": 0.83,\n` +
+      `        "bm25Score": 0.71,\n` +
+      `        "finalScore": 0.912\n` +
+      `      }\n` +
+      `    ],\n` +
+      `    "latencyMs": 83, "strategy": "hybrid"\n` +
+      `  }\n` +
+      `}`,
+  },
+  answer: {
+    path: '/answer',
+    desc: 'RAG 应答：先检索知识库，再由大模型生成带引用编号的回答。以 SSE（text/event-stream）流式返回，最终事件载荷为下方响应结构。kbIds 必填。',
+    req: [
+      { n: 'kbIds', t: 'array', r: true, d: '目标知识库 id 列表（数字数组）。为空返回 400 KB_IDS_REQUIRED。' },
+      { n: 'query', t: 'string', r: true, d: '用户问题。' },
+      { n: 'retrievalStrategy', t: 'string', r: false, d: '检索策略。', def: 'hybrid' },
+      { n: 'topK', t: 'number', r: false, d: '参与生成的片段数。', def: '10' },
+      { n: 'maxTokens', t: 'number', r: false, d: '生成回答的最大 token。', def: '800' },
+      { n: 'stream', t: 'boolean', r: false, d: '是否流式返回（SSE）。', def: 'true' },
+      { n: 'answerMode', t: 'string', r: false, d: '应答模式。', def: 'ON' },
+    ],
+    res: [
+      { n: 'answer', t: 'string', r: true, d: '模型生成的回答，正文内含 [1][2] 引用标记。' },
+      { n: 'citations', t: 'array', r: true, d: '引用来源数组，编号与正文标记对应。' },
+      { n: 'citations[].id', t: 'number', r: true, d: '引用编号。' },
+      { n: 'citations[].docId', t: 'number', r: true, d: '被引用文档 id。' },
+      { n: 'citations[].chunkId', t: 'number', r: true, d: '被引用片段 id。' },
+      { n: 'citations[].textSnippet', t: 'string', r: true, d: '被引用片段摘录。' },
+      { n: 'citations[].score', t: 'number', r: false, d: '相关度得分。' },
+      { n: 'tokens', t: 'object', r: true, d: 'token 用量 { prompt, completion }。' },
+      { n: 'latency', t: 'object', r: true, d: '分段耗时 { retrieval, llm, total }（毫秒）。' },
+      { n: 'guardRailResult', t: 'string', r: false, d: '护栏结果，如 PASS / NO_CITATIONS / OUT_OF_SCOPE / PII_LEAK。' },
+      { n: 'llmModel', t: 'string', r: false, d: '实际使用的模型。' },
+    ],
+    curl: `curl -N ${baseUrl}/answer \\\n` +
+      `  -H "X-API-Key: <API key>" \\\n` +
+      `  -H "Content-Type: application/json" \\\n` +
+      `  -H "Accept: text/event-stream" \\\n` +
+      `  -d '{\n` +
+      `        "kbIds": [16],\n` +
+      `        "query": "候选人有没有分布式事务经验？",\n` +
+      `        "topK": 10\n` +
+      `      }'`,
+    respTitle: '响应 · SSE 事件流（text/event-stream）',
+    resp: `# 每帧 = event: 事件名 + data: JSON，帧间空行分隔\n\n` +
+      `event: token          # 增量 token，可能出现多次\n` +
+      `data: {"delta": "有。"}\n\n` +
+      `event: token\n` +
+      `data: {"delta": "候选人落地过 Seata AT 模式 [1]…"}\n\n` +
+      `event: complete       # 最终事件，data 为完整应答；随后流关闭\n` +
+      `data: {"answer":"…[1]…","citations":[{"id":1,"docId":1024,"textSnippet":"引入 Seata…","score":0.90}],"tokens":{"prompt":512,"completion":130},"latency":{"retrieval":80,"llm":1100,"total":1180},"guardRailResult":"PASS","llmModel":"qwen-max"}\n\n` +
+      `# 出错时改发 error 事件（kbIds 为空 / 无可读库 / 护栏拦截）：\n` +
+      `event: error\n` +
+      `data: {"error": "KB_ACCESS_DENIED", "message": "无可读知识库"}`,
+  },
+  documents: {
+    path: '/documents',
+    desc: '上传文档入库（multipart/form-data 表单，非 JSON）：file 部分传文件、meta 部分传元数据 JSON。自动切片 + 向量化。需 WRITE 级 API key。',
+    req: [
+      { n: 'file', t: 'string', r: true, d: '【表单 part】文档文件（multipart 的 file 部分，即文档正文来源）。' },
+      { n: 'meta', t: 'string', r: true, d: '【表单 part】元数据 JSON 字符串，反序列化为下列字段。' },
+      { n: 'meta.kbId', t: 'number', r: true, d: '目标知识库 id。' },
+      { n: 'meta.identity.externalId', t: 'string', r: false, d: '业务侧唯一标识，用于增量去重 / 覆盖更新。' },
+      { n: 'meta.identity.sourceUrl', t: 'string', r: false, d: '来源 URL。' },
+      { n: 'meta.identity.contentMd5', t: 'string', r: false, d: '内容 MD5。' },
+      { n: 'meta.metadata', t: 'object', r: false, d: '自定义元数据。' },
+      { n: 'meta.onConflict', t: 'string', r: false, d: '同一 externalId 冲突时的策略。', def: 'REJECT' },
+    ],
+    res: [
+      { n: 'documentId', t: 'number', r: true, d: '入库后文档 id（纯数字，无 doc- 前缀）。' },
+      { n: 'status', t: 'string', r: true, d: '登记状态。', enums: ['CREATED', 'SKIPPED', 'REPLACED'] },
+    ],
+    curl: `curl ${baseUrl}/documents \\\n` +
+      `  -H "X-API-Key: <WRITE key>" \\\n` +
+      `  -F 'file=@高级Java工程师-JD.txt' \\\n` +
+      `  -F 'meta={"kbId":16,"identity":{"externalId":"jd-boss-88231"},"onConflict":"REPLACE"}'`,
+    respTitle: '响应 · JSON',
+    resp: `{\n  "documentId": 2048,\n  "status": "CREATED"\n}`,
+  },
+}
+const apiCur = computed(() => apiDocs[apiSel.value])
+
+// ============ MCP 工具：可点选工具 + 联动参数/返回/示例 ============
+// 工具名与入参对齐 /mcp tools/list 实际注册（StreamableMcpController / RagForgeMcpTools）。
+const mcpSel = ref('search_knowledge')
+const mcpPane = ref('args')
+function selectMcp(k) { mcpSel.value = k; mcpPane.value = 'args' }
+const mcpList = [
+  { key: 'search_knowledge', name: 'search_knowledge', desc: '混合检索知识库片段' },
+  { key: 'answer_with_citations', name: 'answer_with_citations', desc: '用知识库回答（带引用）' },
+  { key: 'list_knowledge_bases', name: 'list_knowledge_bases', desc: '列出可读知识库' },
+]
+const mcpDocs = {
+  search_knowledge: {
+    name: 'search_knowledge',
+    desc: '在可读知识库中做混合检索（向量 + 关键词），返回相关片段；命中图片会附带时效访问 URL。策略固定 hybrid（客户端不可选）。',
+    args: [
+      { n: 'query', t: 'string', r: true, d: '检索问题 / 关键词。' },
+      { n: 'kbIds', t: 'string', r: false, d: '逗号分隔的知识库 id 字符串，如 "15,16"；不填=搜所有可读库。' },
+      { n: 'topK', t: 'number', r: false, d: '返回片段数，1–10。', def: '5' },
+    ],
+    ret: '返回编号片段列表文本（[n] 来源 + 内容，图片附 URL），回填给模型供其引用作答。参数错误 / 无可读库时返回 isError=true。',
+    call: `{\n  "method": "tools/call",\n  "params": {\n    "name": "search_knowledge",\n    "arguments": {\n      "query": "Java 高并发经验",\n      "kbIds": "16",\n      "topK": 5\n    }\n  }\n}`,
+    result: `{\n  "content": [ { "type": "text",\n    "text": "[1] 个人简历.pdf 负责千万级订单系统的高并发改造…" } ]\n}`,
+  },
+  answer_with_citations: {
+    name: 'answer_with_citations',
+    desc: '用知识库回答问题，返回带引用（含图片 URL）的答案。topK 固定 10、maxTokens 800、策略 hybrid，均写死，客户端不可传。',
+    args: [
+      { n: 'query', t: 'string', r: true, d: '用户问题。' },
+      { n: 'kbIds', t: 'string', r: false, d: '逗号分隔的知识库 id 字符串，如 "15,16"；不填=所有可读库。' },
+    ],
+    ret: '返回文本：答案正文 + 「引用:」列表（含图片 URL）。',
+    call: `{\n  "method": "tools/call",\n  "params": {\n    "name": "answer_with_citations",\n    "arguments": {\n      "query": "候选人有没有分布式事务经验？",\n      "kbIds": "16"\n    }\n  }\n}`,
+    result: `{\n  "content": [ { "type": "text",\n    "text": "有。候选人落地过 Seata AT 模式 [1]…\\n引用: [1] 个人简历.pdf" } ]\n}`,
+  },
+  list_knowledge_bases: {
+    name: 'list_knowledge_bases',
+    desc: '列出当前 API key 可读的知识库（id / 名称 / 文档数 / 片段数 / 描述），供模型先了解有哪些库再检索。',
+    args: [],
+    ret: '返回知识库清单文本。',
+    call: `{\n  "method": "tools/call",\n  "params": {\n    "name": "list_knowledge_bases",\n    "arguments": {}\n  }\n}`,
+    result: `{\n  "content": [ { "type": "text",\n    "text": "16 岗位JD库 · 文档 214 · 片段 1806\\n17 公司情报库 · 文档 95 · 片段 640" } ]\n}`,
+  },
+}
+const mcpCur = computed(() => mcpDocs[mcpSel.value])
 
 function fmt(s) {
   return s ? String(s).slice(0, 10) : ''
@@ -661,4 +883,42 @@ pre { margin: 0; background: #0f1726; color: #d7e2f4; border-radius: 12px; paddi
 .mcp-name { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; font-weight: 700; color: var(--navy); }
 .mcp-d { font-size: 12px; color: var(--text-muted); margin-left: auto; }
 .mcp-via { flex: 0 0 auto; margin-left: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700; color: #7c3aed; background: #f3eefe; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+
+/* ===== 可点选接口/工具 + 联动详情面板 ===== */
+.doc-grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+.doc-left { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 900px) { .doc-grid { grid-template-columns: 1fr; } }
+.inl { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--primary-soft); border-radius: 4px; padding: 1px 5px; color: var(--navy); }
+
+.ep-btn { display: block; width: 100%; text-align: left; border: 1.5px solid var(--border); background: var(--surface); border-radius: 12px; padding: 11px 13px; cursor: pointer; margin-top: 8px; font: inherit; transition: border-color .12s, background .12s; }
+.ep-btn:first-of-type { margin-top: 0; }
+.ep-btn:hover { border-color: var(--primary); }
+.ep-btn.on { border-color: var(--primary); background: var(--primary-soft); }
+.ep-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ep-row1 { display: flex; align-items: center; gap: 9px; }
+.ep-desc2 { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.ep-badge { font-size: 10.5px; font-weight: 700; border-radius: 5px; padding: 2px 6px; }
+.ep-badge.sse { color: #0369a1; background: #e0f2fe; }
+.ep-badge.lock { color: #c2410c; background: #ffedd5; }
+.m-tool { background: #f3e8ff; color: #7c3aed; }
+
+.doc-detail { align-self: start; }
+.dt-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.dt-path { font-family: ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 700; color: var(--navy); word-break: break-all; }
+.dt-desc { font-size: 12.5px; color: var(--gray); line-height: 1.7; margin-bottom: 14px; }
+.dt-ret { font-size: 13px; color: var(--gray); line-height: 1.75; padding: 4px 2px; }
+
+.subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; flex-wrap: wrap; }
+.subtabs button { appearance: none; border: 0; background: none; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; color: var(--text-muted); padding: 8px 13px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.subtabs button:hover { color: var(--slate); }
+.subtabs button.on { color: var(--primary); border-bottom-color: var(--primary); }
+.subtabs button i { font-style: normal; font-size: 11px; color: var(--text-muted); margin-left: 4px; }
+
+.cb-label { font-size: 11px; font-weight: 700; color: var(--text-muted); margin: 14px 0 7px; }
+.cb-label:first-child { margin-top: 4px; }
+.doc-detail pre { margin: 0; }
+
+.doc-note { margin-top: 14px; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+.doc-note .rq { font-size: 11px; font-weight: 700; color: #dc2626; }
+.doc-note .op { font-size: 11px; color: var(--text-muted); }
 </style>
