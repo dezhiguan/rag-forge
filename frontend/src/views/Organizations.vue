@@ -75,8 +75,11 @@
                 <input class="form-input" v-model="generalForm.name" :disabled="!canManage" />
               </div>
               <div class="form-row">
-                <span class="form-label">slug（短标识）</span>
-                <input class="form-input" v-model="generalForm.slug" :disabled="!canManage" />
+                <span class="form-label">slug（短标识，2–64 位，小写字母/数字/连字符）</span>
+                <div class="form-input-wrap">
+                  <input class="form-input" v-model="generalForm.slug" :disabled="!canManage" placeholder="不能以连字符开头或结尾" />
+                  <span v-if="generalForm.slug.trim() && !generalSlugValid" class="field-err">2–64 位，仅小写字母、数字、连字符，且不能以连字符开头或结尾</span>
+                </div>
               </div>
               <div class="form-row">
                 <span class="form-label">组织 ID</span>
@@ -93,7 +96,7 @@
               <div class="form-actions">
                 <button
                   class="btn-primary"
-                  :disabled="!canManage || !generalDirty || savingGeneral"
+                  :disabled="!canManage || !generalDirty || savingGeneral || !generalSlugValid"
                   @click="onSaveGeneral"
                 >{{ savingGeneral ? '保存中…' : '保存修改' }}</button>
                 <span v-if="!canManage" class="wip-note">仅 OWNER / ADMIN 可修改</span>
@@ -309,13 +312,14 @@
             <label class="field"><span>组织名称 *</span>
               <input v-model="createForm.name" type="text" placeholder="例如：广州日不落科技有限公司" />
             </label>
-            <label class="field"><span>slug（短标识）*</span>
-              <input v-model="createForm.slug" type="text" placeholder="小写字母/数字/连字符，如 rblk" />
+            <label class="field"><span>slug（短标识，2–64 位，小写字母/数字/连字符）*</span>
+              <input v-model="createForm.slug" type="text" placeholder="如 careermate（不能以连字符开头或结尾）" />
+              <span v-if="createForm.slug.trim() && !createSlugValid" class="field-err">2–64 位，仅小写字母、数字、连字符，且不能以连字符开头或结尾</span>
             </label>
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary" @click="showCreate = false">取消</button>
-            <button class="btn btn-primary" :disabled="submitting" @click="onCreate">创建</button>
+            <button class="btn btn-primary" :disabled="submitting || !createSlugValid || !createForm.name.trim()" @click="onCreate">创建</button>
           </div>
         </div>
       </div>
@@ -482,6 +486,10 @@ const generalDirty = computed(
 
 async function onSaveGeneral() {
   if (!canManage.value || !generalDirty.value || savingGeneral.value) return
+  if (!generalSlugValid.value) {
+    toast.warning('组织标识不合法：2–64 位，仅小写字母、数字、连字符，且不能以连字符开头或结尾')
+    return
+  }
   savingGeneral.value = true
   try {
     await updateOrg(org.value.id, { name: generalForm.value.name.trim(), slug: generalForm.value.slug.trim() })
@@ -593,6 +601,10 @@ async function onSendInvite() {
 const showCreate = ref(false)
 const submitting = ref(false)
 const createForm = ref({ name: '', slug: '' })
+// 与后端 OrgService.SLUG 一致：2–64 位，小写字母/数字/连字符，首尾非连字符。
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$/
+const createSlugValid = computed(() => SLUG_RE.test((createForm.value.slug || '').trim()))
+const generalSlugValid = computed(() => SLUG_RE.test((generalForm.value.slug || '').trim()))
 function openCreate() {
   createForm.value = { name: '', slug: '' }
   showCreate.value = true
@@ -600,6 +612,10 @@ function openCreate() {
 async function onCreate() {
   if (!createForm.value.name.trim() || !createForm.value.slug.trim()) {
     toast.warning('请填写组织名称和 slug')
+    return
+  }
+  if (!createSlugValid.value) {
+    toast.warning('组织标识不合法：2–64 位，仅小写字母、数字、连字符，且不能以连字符开头或结尾')
     return
   }
   submitting.value = true
@@ -820,6 +836,9 @@ onMounted(async () => {
 .field > span { font-size: 12.5px; font-weight: 600; color: var(--slate); }
 .field input, .field select { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
 .field input:focus, .field select:focus { outline: none; border-color: var(--primary); }
+.field-err { font-size: 12px; color: #dc2626; line-height: 1.5; margin-top: 6px; }
+.form-input-wrap { flex: 1; display: flex; flex-direction: column; }
+.form-input-wrap .form-input { max-width: 360px; }
 .pii-note { font-size: 11px; color: var(--text-muted); line-height: 1.6; background: #fbfcfe; border: 1px dashed var(--border); border-radius: 8px; padding: 9px 11px; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 0 20px 18px; }
 

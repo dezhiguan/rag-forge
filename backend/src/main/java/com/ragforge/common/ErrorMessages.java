@@ -17,7 +17,7 @@ public final class ErrorMessages {
           // 组织
           Map.entry("ORG_NAME_REQUIRED", "请填写组织名称"),
           Map.entry("ORG_NAME_TOO_LONG", "组织名称过长（最多 128 个字符）"),
-          Map.entry("ORG_SLUG_INVALID", "组织标识不合法（小写字母/数字/连字符，2–64 位）"),
+          Map.entry("ORG_SLUG_INVALID", "组织标识不合法（2–64 位，小写字母/数字/连字符，且不能以连字符开头或结尾）"),
           Map.entry("ORG_SLUG_TAKEN", "该组织标识已被占用，请换一个"),
           Map.entry("ORG_NOT_FOUND", "组织不存在或已被删除"),
           Map.entry("ORG_HAS_KBS", "该组织下仍有知识库，无法删除"),

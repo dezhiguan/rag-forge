@@ -65,10 +65,14 @@
       <div class="modal">
         <h3>创建组织</h3>
         <div class="fld"><label>组织名称</label><input v-model="createForm.name" placeholder="如：广州日不落科技有限公司" /></div>
-        <div class="fld"><label>slug（短标识，小写字母/数字/-）</label><input v-model="createForm.slug" placeholder="如：rbl" /></div>
+        <div class="fld">
+          <label>slug（短标识，2–64 位，小写字母/数字/连字符）</label>
+          <input v-model="createForm.slug" placeholder="如：careermate（不能以连字符开头或结尾）" />
+          <div v-if="createForm.slug.trim() && !slugValid" class="fld-err">2–64 位，仅小写字母、数字、连字符，且不能以连字符开头或结尾</div>
+        </div>
         <div class="modal-foot">
           <button class="btn" @click="openCreate = false">取消</button>
-          <button class="btn-primary" :disabled="creating || !createForm.name.trim() || !createForm.slug.trim()" @click="onCreate">
+          <button class="btn-primary" :disabled="creating || !createForm.name.trim() || !slugValid" @click="onCreate">
             {{ creating ? '创建中…' : '创建' }}
           </button>
         </div>
@@ -104,6 +108,9 @@ function enterPersonalOrg() {
 const openCreate = ref(false)
 const creating = ref(false)
 const createForm = ref({ name: '', slug: '' })
+// 与后端 OrgService.SLUG 保持一致：2–64 位，小写字母/数字/连字符，首尾非连字符。
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$/
+const slugValid = computed(() => SLUG_RE.test(createForm.value.slug.trim()))
 
 const PALETTE = ['#2563eb', '#15803d', '#7c3aed', '#db2777', '#0ea5e9', '#f59e0b']
 function avatarColor(id) {
@@ -134,6 +141,10 @@ function enter(o) {
 
 async function onCreate() {
   if (creating.value) return
+  if (!slugValid.value) {
+    toast.warning('组织标识不合法：2–64 位，仅小写字母、数字、连字符，且不能以连字符开头或结尾')
+    return
+  }
   creating.value = true
   try {
     await createOrg({ name: createForm.value.name.trim(), slug: createForm.value.slug.trim() })
@@ -219,5 +230,6 @@ reload()
 .fld { margin-bottom: 14px; } .fld label { display: block; font-size: 12.5px; font-weight: 600; color: var(--slate); margin-bottom: 6px; }
 .fld input { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; font-size: 13px; }
 .fld input:focus { outline: none; border-color: var(--primary); }
+.fld-err { margin-top: 6px; font-size: 12px; color: #dc2626; line-height: 1.5; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 </style>

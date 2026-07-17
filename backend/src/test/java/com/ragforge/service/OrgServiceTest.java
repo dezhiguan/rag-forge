@@ -85,8 +85,35 @@ class OrgServiceTest {
   }
 
   @Test
+  void createOrganization_acceptsTwoCharSlug() {
+    // 回归：2 位 slug（如 "cm"）曾因正则 {1,62} 要求最短 3 位而被误判非法，现应可创建。
+    when(organizationMapper.selectCount(any())).thenReturn(0L);
+    when(organizationMapper.insert(any(Organization.class)))
+        .thenAnswer(
+            invocation -> {
+              Organization org = invocation.getArgument(0);
+              org.setId(17L);
+              return 1;
+            });
+
+    Map<String, Object> result = orgService.createOrganization("cm", "CareerMate");
+
+    assertThat(result).containsEntry("id", 17L).containsEntry("slug", "cm");
+  }
+
+  @Test
   void createOrganization_rejectsInvalidInputAndTakenSlug() {
     assertThatThrownBy(() -> orgService.createOrganization("UPPER", "Team"))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(400));
+
+    // slug 首尾不能是连字符
+    assertThatThrownBy(() -> orgService.createOrganization("-ab", "Team"))
+        .isInstanceOf(BizException.class)
+        .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(400));
+
+    // slug 至少 2 位（单字符非法）
+    assertThatThrownBy(() -> orgService.createOrganization("a", "Team"))
         .isInstanceOf(BizException.class)
         .satisfies(ex -> assertThat(((BizException) ex).getCode()).isEqualTo(400));
 

@@ -32,7 +32,9 @@ import org.springframework.util.StringUtils;
 @Slf4j
 public class OrgService {
 
-  private static final Pattern SLUG = Pattern.compile("^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$");
+  // 2–64 位，小写字母/数字/连字符，首尾必须是字母或数字（不能以连字符开头或结尾）。
+  // 中段量词为 {0,62}：允许中段为空，故最短 = 首+尾 = 2 位，最长 = 1+62+1 = 64 位，与前端提示对齐。
+  private static final Pattern SLUG = Pattern.compile("^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$");
   /** 显示名长度上限，与 organizations.name VARCHAR(128) 对齐；超长返回 400 而非撞 DB 报 500。 */
   private static final int MAX_NAME_LEN = 128;
   private static final String OWNER = "OWNER";
