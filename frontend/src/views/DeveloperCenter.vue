@@ -82,13 +82,18 @@
 
     <!-- ============ 接口文档 ============ -->
     <div v-show="tab === 'api'">
-      <div class="card card-pad">
-        <div class="sec-title">⚙️ 接入信息</div>
-        <div class="sec-hint">把以下信息配置到你的客户端 / 服务端。</div>
-        <div class="cfg-flat">
-          <div class="cfg-item"><span class="cfg-k">Base URL</span><span class="cfg-v">{{ baseUrl }}<span class="copy" @click="copy($event, baseUrl)">复制</span></span></div>
-          <div class="cfg-item"><span class="cfg-k">认证方式</span><span class="cfg-v">X-API-Key: &lt;API key&gt;</span></div>
-          <div class="cfg-item"><span class="cfg-k">组织归属</span><span class="cfg-v">由 API key 自动绑定，无需传 X-Org-Id</span></div>
+      <div class="cbar">
+        <div class="cbar-item">
+          <div class="cbar-k"><span class="dot"></span>Base URL</div>
+          <div class="cbar-v">{{ baseUrl }}<span class="copy" @click="copy($event, baseUrl)">复制</span></div>
+        </div>
+        <div class="cbar-item">
+          <div class="cbar-k"><span class="dot"></span>认证方式</div>
+          <div class="cbar-v">X-API-Key: &lt;API key&gt;</div>
+        </div>
+        <div class="cbar-item">
+          <div class="cbar-k"><span class="dot"></span>组织归属</div>
+          <div class="cbar-v plain">由 API key 自动绑定，无需传 X-Org-Id</div>
         </div>
       </div>
 
@@ -133,16 +138,23 @@
 
     <!-- ============ MCP 接入 ============ -->
     <div v-show="tab === 'mcp'">
-      <div class="card card-pad">
-        <div class="sec-title">🧠 服务端点</div>
-        <div class="sec-hint">统一无状态 HTTP 端点，单次请求即完成。</div>
-        <div class="cfg-flat">
-          <div class="cfg-item"><span class="cfg-k">MCP Endpoint</span><span class="cfg-v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></span></div>
-          <div class="cfg-item"><span class="cfg-k">传输方式</span><span class="cfg-v">Streamable HTTP · 无状态</span></div>
-          <div class="cfg-item"><span class="cfg-k">鉴权头</span><span class="cfg-v">X-API-Key: &lt;API key&gt;</span></div>
+      <div class="cbar">
+        <div class="cbar-item">
+          <div class="cbar-k"><span class="dot"></span>MCP Endpoint</div>
+          <div class="cbar-v">{{ mcpUrl }}<span class="copy" @click="copy($event, mcpUrl)">复制</span></div>
         </div>
-        <div class="sec-hint" style="margin-top:12px;">已下线旧的 <code class="inl">/sse</code> 端点，请统一使用 <code class="inl">/mcp</code>。</div>
-        <div class="sec-hint">📥 入库不在 MCP 工具内，请用 REST <code class="inl">POST /api/v1/documents</code>（需 WRITE key）。</div>
+        <div class="cbar-item">
+          <div class="cbar-k"><span class="dot"></span>传输方式</div>
+          <div class="cbar-v plain">Streamable HTTP · 无状态</div>
+        </div>
+        <div class="cbar-item">
+          <div class="cbar-k"><span class="dot"></span>鉴权头</div>
+          <div class="cbar-v">X-API-Key: &lt;API key&gt;</div>
+        </div>
+      </div>
+      <div class="cbar-notes">
+        <span>已下线旧的 <code class="inl">/sse</code> 端点，请统一使用 <code class="inl">/mcp</code>。</span>
+        <span>📥 入库不在 MCP 工具内，请用 REST <code class="inl">POST /api/v1/documents</code>（需 WRITE key）。</span>
       </div>
 
       <div class="doc-grid mt16">
@@ -891,12 +903,16 @@ pre { margin: 0; background: #0f1726; color: #d7e2f4; border-radius: 12px; paddi
 .doc-left { display: flex; flex-direction: column; gap: 16px; }
 @media (max-width: 900px) { .doc-grid { grid-template-columns: 1fr; } }
 
-/* 接入信息 / 服务端点：整行铺平，字段横向平铺 */
-.cfg-flat { display: flex; flex-wrap: wrap; gap: 14px 48px; margin-top: 4px; }
-.cfg-item { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.cfg-k { font-size: 11px; color: var(--text-muted); }
-.cfg-v { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--navy); font-weight: 600; word-break: break-all; }
-.cfg-v .copy { margin-left: 10px; }
+/* 接入信息 / 服务端点：顶部瘦信息条，三字段等分分栏 */
+.cbar { display: flex; align-items: stretch; flex-wrap: wrap; border: 1px solid var(--border); background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-sm); overflow: hidden; }
+.cbar-item { flex: 1; min-width: 220px; padding: 12px 18px; border-right: 1px solid var(--border); }
+.cbar-item:last-child { border-right: 0; }
+.cbar-k { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; display: flex; align-items: center; gap: 6px; }
+.cbar-k .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--primary); flex: 0 0 auto; }
+.cbar-v { font-family: ui-monospace, Menlo, monospace; font-size: 13px; font-weight: 600; color: var(--navy); word-break: break-all; }
+.cbar-v.plain { font-family: inherit; }
+.cbar-v .copy { margin-left: 10px; }
+.cbar-notes { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: 10px; padding: 0 2px; font-size: 12px; color: var(--text-muted); }
 .inl { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--primary-soft); border-radius: 4px; padding: 1px 5px; color: var(--navy); }
 
 .ep-btn { display: block; width: 100%; text-align: left; border: 1.5px solid var(--border); background: var(--surface); border-radius: 12px; padding: 11px 13px; cursor: pointer; margin-top: 8px; font: inherit; transition: border-color .12s, background .12s; }
