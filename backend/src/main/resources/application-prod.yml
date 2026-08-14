@@ -9,6 +9,8 @@ spring:
     redis:
       host: ${REDIS_HOST:172.25.90.183}
       port: ${REDIS_PORT:6379}
+      # 口令由 k8s Secret ragforge-backend-env 注入,默认空以便本地免密 Redis 起得来。
+      password: ${REDIS_PASSWORD:}
       timeout: 3000ms
 
   datasource:

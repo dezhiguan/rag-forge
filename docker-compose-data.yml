@@ -81,7 +81,11 @@ services:
     ports:
       - "6379:6379"
     mem_limit: 512m
-    command: redis-server --maxmemory 384mb --maxmemory-policy allkeys-lru
+    # 6379 端口对内网开放(安全组已挡公网),但内网里跑着多个服务,
+    # 免密 Redis 等于任何一台机器都能读认证撤销名单 / 短信验证码 / 限流计数。
+    # 口令从同目录 .env 取(REDIS_PASSWORD),不入 git;.env 缺失时 compose 会报错,
+    # 这是故意的 —— 宁可起不来,也不要静默退回免密。
+    command: redis-server --maxmemory 384mb --maxmemory-policy allkeys-lru --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}"
 
   qdrant:
     image: qdrant/qdrant:v1.12.4
