@@ -537,6 +537,23 @@ jobs:
           cd "${INGRESS_DIR}"
           # [SkyWalking-OFF 2026-06-19] 临时停用 SkyWalking，无需执行 router base patch
           # bash deploy/scripts/patch-skywalking-ui-router-base.sh
+
+          # 2026-09-09 补：重建之前先验语法。
+          #
+          # 在此之前这里是直接 --force-recreate 的：nginx.conf 写错一个字符，
+          # 容器起不来，ragforge.net / careerforge.cn / askdb.ragforge.net
+          # **三个站一起挂**，而且要等冒烟失败才知道。
+          #
+          # 用一次性容器验，挂的卷与正式服务完全一致（证书路径必须挂，否则
+          # ssl_certificate 指向的文件不存在，nginx -t 会误报失败）。
+          # set -e 会在这里终止：此时新配置只是躺在磁盘上，正在跑的容器仍然
+          # 用着自己启动时读到的那份，站点不受影响。
+          docker run --rm \
+            -v "${INGRESS_DIR}/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v /data/ssl/ragforge:/etc/nginx/ssl/ragforge:ro \
+            -v /data/ssl/careerforge:/etc/nginx/ssl/careerforge:ro \
+            nginx:alpine nginx -t
+
           docker compose -f docker-compose-ingress.yml up -d --force-recreate
           docker compose -f docker-compose-ingress.yml ps
           EOF
