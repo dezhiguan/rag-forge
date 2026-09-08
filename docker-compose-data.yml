@@ -9,10 +9,28 @@ services:
       POSTGRES_DB: ragforge
       POSTGRES_USER: ragforge
       POSTGRES_PASSWORD: ragforge
-    mem_limit: 4g
+    # 2026-09-09 由 4g 提到 6g。这台 PG 现在伺候 12 个库、239 张表、7,200 万行
+    # （ragforge / careermate 两个生产库 + askdb 的十个电商业务库），
+    # 4g 限额下实测缓存命中率只有 92%，每 13 次读就要落一次盘。
+    #
+    # 与之配套的两个参数**不在这里**，在 PGDATA 的 postgresql.auto.conf 里
+    # （ALTER SYSTEM 写入，随数据卷持久化）：
+    #     shared_buffers = 2GB          原 1GB
+    #     effective_cache_size = 4GB    原 8GB —— 原值比容器限额还大，
+    #                                   规划器据此高估缓存、偏向索引扫描
+    # 改这里的 mem_limit 时记得一起看那两个值，只动一边收益会被另一边抵掉。
+    mem_limit: 6g
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Schema 由 RAGForge backend 启动时 Flyway 执行（db/migration/V1–V5）
+      #
+      # askdb 的十个电商业务库放在**第二块盘**（vdb，挂载点 /data/qdrant）上，
+      # 通过 PostgreSQL 表空间 shop_ts 指向容器内的 /data/shopdb。
+      # 系统盘只剩 18G，放不下这批数据；vdb 还有 30G。
+      #
+      # **这一行删了会出事**：容器里 /data/shopdb 不存在时，表空间打不开，
+      # 十个库全部无法访问（数据本身还在 vdb 上，但 PG 起来后一碰就报错）。
+      - /data/qdrant/shopdb:/data/shopdb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ragforge -d ragforge"]
       interval: 5s
