@@ -22,11 +22,15 @@
         <router-view />
       </div>
     </main>
+    <footer class="icp-footer">
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">闽ICP备2026020389号-1</a>
+    </footer>
   </div>
 </template>
 
 <style scoped>
 .auth-screen {
+  position: relative;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1.05fr 1fr;
@@ -150,8 +154,30 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px;
+  padding: 40px 24px 56px;
   background: #fff;
+}
+
+.icp-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 8px 16px 12px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.4;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.icp-footer a {
+  color: #475569;
+  text-decoration: none;
+}
+
+.icp-footer a:hover {
+  text-decoration: underline;
 }
 
 .auth-panel-inner {
@@ -182,7 +208,7 @@
 
   .auth-panel {
     align-items: flex-start;
-    padding: 28px 20px 48px;
+    padding: 28px 20px 64px;
   }
 }
 </style>
